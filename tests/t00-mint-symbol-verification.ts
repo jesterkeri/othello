@@ -21,7 +21,7 @@
  */
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +84,8 @@ type Case = {
   unbind?: string;
   pageStatus?: number;
   backedBase?: string;
+  seedFixtures?: boolean;
+  expectContentUnchanged?: boolean;
   genesisHash?: string;
   expectExit: number;
   expectText: string;
@@ -96,6 +98,7 @@ async function runFetcher(
   unbind?: string,
   pageStatus?: number,
   backedBase?: string,
+  seedFixtures?: boolean,
 ) {
   const accounts = new Map<string, { data: string; owner: string }>();
   for (const mint of VERIFIED_XSTOCK_MINTS) {
@@ -153,6 +156,15 @@ async function runFetcher(
   const port = (server.address() as { port: number }).port;
 
   const runDir = mkdtempSync(join(tmpdir(), "othello-t00-"));
+  if (seedFixtures) {
+    // Seed the committed fixtures so the run sees UNCHANGED bytes, the only state in
+    // which cached issuer evidence may be used.
+    const dir = join(runDir, "tests", "fixtures");
+    mkdirSync(dir, { recursive: true });
+    for (const m of VERIFIED_XSTOCK_MINTS) {
+      copyFileSync(join(FIXTURES, `${m.symbol}.json`), join(dir, `${m.symbol}.json`));
+    }
+  }
   const child = spawn(join(REPO, "node_modules", ".bin", "tsx"), [join(REPO, "ops", "fetch-fixtures.ts")], {
     cwd: runDir, // fixtures land here, never over the committed ones
     env: {
@@ -289,6 +301,15 @@ async function main() {
       expectFixture: false,
     },
     {
+      name: "issuer unreachable but every fixture is unchanged",
+      seedFixtures: true,
+      backedBase: "http://127.0.0.1:9",
+      expectExit: 0,
+      expectText: "The account bytes are unchanged, so no new fixture is written",
+      expectFixture: true,
+      expectContentUnchanged: true,
+    },
+    {
       name: "issuer unreachable while a new fixture would be written",
       backedBase: "http://127.0.0.1:9",
       expectExit: 1,
@@ -312,6 +333,7 @@ async function main() {
       c.unbind,
       c.pageStatus,
       c.backedBase,
+      c.seedFixtures,
     );
     const target = join(run.runDir, "tests", "fixtures", `${TARGET_SYMBOL}.json`);
     const wrote = existsSync(target);
@@ -331,6 +353,20 @@ async function main() {
           `${c.expectFixture ? "it to be written" : "no fixture for an unverified mint"}`,
       );
     }
+    if (c.expectContentUnchanged) {
+      for (const m of VERIFIED_XSTOCK_MINTS) {
+        const got = join(run.runDir, "tests", "fixtures", `${m.symbol}.json`);
+        if (!existsSync(got)) {
+          failures.push(`${c.name}: ${m.symbol}.json is missing, the cached path dropped a fixture`);
+        } else if (readFileSync(got, "utf8") !== readFileSync(join(FIXTURES, `${m.symbol}.json`), "utf8")) {
+          failures.push(
+            `${c.name}: ${m.symbol}.json was rewritten during an issuer outage; an unchanged ` +
+              `fixture must be left byte-identical`,
+          );
+        }
+      }
+    }
+
     // Nothing is written until every mint passes, so a failing run leaves none.
     if (c.expectExit !== 0) {
       const any = VERIFIED_XSTOCK_MINTS.filter((m) =>

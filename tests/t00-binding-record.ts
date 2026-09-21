@@ -6,7 +6,7 @@
  *
  * Run: pnpm tsx tests/t00-binding-record.ts
  */
-import { validateBindingRecord, BINDING_MAX_AGE_DAYS } from "../ops/issuer.ts";
+import { validateBindingRecord, BINDING_MAX_AGE_DAYS, BINDING_MAX_SKEW_MS } from "../ops/issuer.ts";
 
 const SYMBOL = "SPYx";
 const ADDRESS = "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W";
@@ -33,6 +33,16 @@ const cases: { name: string; record: unknown; expect: string | null }[] = [
   },
   { name: "digest is not a sha-256", record: { ...good, bodySha256: "nope" }, expect: "bodySha256" },
   { name: "verifiedAt is not a date", record: { ...good, verifiedAt: "yesterday" }, expect: "is not a date" },
+  {
+    name: "verifiedAt is in the future, which would make the age negative",
+    record: { ...good, verifiedAt: "2099-01-01T00:00:00.000Z" },
+    expect: "is in the future",
+  },
+  {
+    name: "verifiedAt is inside the skew allowance",
+    record: { ...good, verifiedAt: new Date(Date.now() + BINDING_MAX_SKEW_MS / 2).toISOString() },
+    expect: null,
+  },
   {
     name: "record is older than the age limit",
     record: {

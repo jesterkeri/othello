@@ -62,6 +62,14 @@ export type IssuerBindingRecord = {
 /** How stale a recorded binding may be before it is refused outright. */
 export const BINDING_MAX_AGE_DAYS = 30;
 
+/**
+ * How far ahead of now a verifiedAt may sit. Small, for ordinary clock skew between
+ * the machine that verified and the machine reading. Anything beyond it is refused:
+ * a future timestamp otherwise makes the computed age negative and slips past the
+ * age limit entirely, which is a way to make a stale record look fresh forever.
+ */
+export const BINDING_MAX_SKEW_MS = 5 * 60 * 1000;
+
 export function validateBindingRecord(
   symbol: string,
   address: string,
@@ -83,7 +91,14 @@ export function validateBindingRecord(
   }
   const at = Date.parse(r!.verifiedAt ?? "");
   if (Number.isNaN(at)) fail(`verifiedAt ${r!.verifiedAt} is not a date`);
-  const ageDays = (Date.now() - at) / 86_400_000;
+  const ageMs = Date.now() - at;
+  if (ageMs < -BINDING_MAX_SKEW_MS) {
+    fail(
+      `verifiedAt ${r!.verifiedAt} is in the future by ` +
+        `${Math.floor(-ageMs / 1000)}s, beyond the ${BINDING_MAX_SKEW_MS / 1000}s skew allowance`,
+    );
+  }
+  const ageDays = ageMs / 86_400_000;
   if (ageDays > BINDING_MAX_AGE_DAYS) {
     fail(`was verified ${Math.floor(ageDays)} days ago, older than the ${BINDING_MAX_AGE_DAYS} day limit`);
   }
