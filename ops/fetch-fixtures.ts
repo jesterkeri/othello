@@ -11,7 +11,11 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { VERIFIED_XSTOCK_MINTS, MINTS_AWAITING_ADDRESS } from "./xstock-mints.ts";
+import {
+  VERIFIED_XSTOCK_MINTS,
+  MINTS_AWAITING_ADDRESS,
+  REQUIRED_FIXTURE_SYMBOLS,
+} from "./xstock-mints.ts";
 
 const RPC = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const OUT_DIR = join(process.cwd(), "tests", "fixtures");
@@ -199,6 +203,15 @@ async function main() {
       );
     } else {
       console.log("NFLXx acceptance OK: multiplier 1, newMultiplier 10, ts 1763337300");
+    }
+  }
+
+  // T00 requires a fixture for every symbol it names. Checked against the
+  // requirement rather than against the allowlist, so shortening the allowlist
+  // fails the task instead of redefining what "all of them" means.
+  for (const symbol of REQUIRED_FIXTURE_SYMBOLS) {
+    if (!written.has(symbol)) {
+      failures.push(`T00 requires a fixture for ${symbol}; none was written`);
     }
   }
 

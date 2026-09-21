@@ -43,5 +43,13 @@ export const VERIFIED_XSTOCK_MINTS: XStockMint[] = [
   },
 ];
 
+/**
+ * The symbols T00 requires a fixture for. This is the requirement itself, not a
+ * description of the list above: fetch-fixtures.ts checks the fixtures it wrote
+ * against this, so deleting an entry from VERIFIED_XSTOCK_MINTS fails the task
+ * instead of quietly producing three fixtures and exiting 0.
+ */
+export const REQUIRED_FIXTURE_SYMBOLS = ["AAPLx", "NFLXx", "SPYx", "NVDAx"] as const;
+
 /** Empty once every mint T00 names has a verified address. */
 export const MINTS_AWAITING_ADDRESS: readonly string[] = [];
