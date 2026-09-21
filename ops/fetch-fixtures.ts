@@ -45,6 +45,7 @@ const MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
  * OPEN-QUESTIONS.md rather than left implicit.
  */
 const BACKED_NETWORK_ATTR = "data-network-address";
+const BACKED_ORIGIN = "https://assets.backed.fi";
 
 /**
  * Integrity and drift values, NOT provenance. Every known xStock mint carries these,
@@ -183,17 +184,24 @@ async function assertTrustedMainnetEndpoint() {
  * The URL comes from the allowlist in this repo, never from the mint, so a hostile
  * mint cannot redirect the check at itself.
  */
-async function assertIssuerBinding(symbol: string, address: string, productPage: string) {
-  const url = BACKED_BASE_OVERRIDE
-    ? `${BACKED_BASE_OVERRIDE}${new URL(productPage).pathname}`
-    : productPage;
-  if (!BACKED_BASE_OVERRIDE && new URL(url).protocol !== "https:") {
-    throw new Error(`${symbol}: product page ${url} is not https, so it authenticates nobody`);
+async function assertIssuerBinding(symbol: string, address: string, productSlug: string) {
+  const origin = BACKED_BASE_OVERRIDE ?? BACKED_ORIGIN;
+  const url = `${origin}/products/${encodeURIComponent(productSlug)}`;
+  if (new URL(url).origin !== new URL(origin).origin) {
+    throw new Error(`${symbol}: product URL ${url} escaped the pinned origin ${origin}`);
   }
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`${symbol}: product page ${url} returned ${res.status} ${res.statusText}`);
+
+  // Redirects are refused rather than followed: a followed redirect can land on a
+  // host that is not the issuer while the request still looks pinned.
+  const res = await fetch(url, { redirect: "manual" });
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error(
+      `${symbol}: ${url} redirected (${res.status} to ${res.headers.get("location") ?? "unknown"}); ` +
+        `the issuer binding must come from ${origin} itself`,
+    );
   }
+  if (!res.ok) throw new Error(`${symbol}: ${url} returned ${res.status} ${res.statusText}`);
+
   const html = await res.text();
   if (!html.includes(`${BACKED_NETWORK_ATTR}="${address}"`)) {
     throw new Error(
@@ -201,8 +209,8 @@ async function assertIssuerBinding(symbol: string, address: string, productPage:
         `not bind this address to ${symbol}, so it does not enter the allowlist (ADR-012).`,
     );
   }
+  return url;
 }
-
 async function getAccountInfo(address: string) {
   const body = await rpcCall("getAccountInfo", [
     address,
@@ -311,8 +319,9 @@ async function main() {
 
   for (const mint of VERIFIED_XSTOCK_MINTS) {
     // The issuer's binding is checked before anything the mint says about itself.
+    let issuerBinding: string;
     try {
-      await assertIssuerBinding(mint.symbol, mint.address, mint.productPage);
+      issuerBinding = await assertIssuerBinding(mint.symbol, mint.address, mint.productSlug);
     } catch (err) {
       failures.push(err instanceof Error ? err.message : String(err));
       continue;
@@ -433,7 +442,7 @@ async function main() {
             rpc: RPC,
             genesisHash: MAINNET_GENESIS_HASH,
             endpointTrusted: !INSECURE_TEST_SEAM,
-            issuerBinding: mint.productPage,
+            issuerBinding,
           },
           null,
           2,

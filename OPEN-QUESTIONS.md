@@ -7,7 +7,10 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
 - [ ] Program binary size vs 2.5 devnet SOL (deploy with `--max-len`; faucet top-up)
 - [ ] BLOCKING before T23 (any deploy): network. Devnet mirror / mainnet fork / mainnet. Decided by Joshua in the design session, not by the builder.
 - [ ] Program-level mint allowlist: hardcoded constant or admin-managed account (ADR-012 prefers a hardcoded const list for the hackathon)
-- [ ] BLOCKING before T07 (gate 1 review): what is the trust root for the SPYx and
+- [x] RESOLVED 2026-09-21 by the design owner: Backed's HTTPS product-page assertion
+      is accepted as the trust root, and SPYx and NVDAx are recorded in SPEC 9b.1 with
+      the root stated in SPEC 9b.6. The four-fixture contract stands unchanged.
+      Original question: what is the trust root for the SPYx and
       NVDAx mint addresses? They are not in SPEC 9b.1, unlike AAPLx and NFLXx. Codex
       round 2 established that NOTHING on-chain can establish issuer identity: the
       scaled-UI authority and the metadata update authority are both non-signer
@@ -21,4 +24,3 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
 - [ ] RPC transport is pinned to https + api.mainnet-beta.solana.com, because a
       genesis hash is public and authenticates nobody. A paid provider will need
       adding to TRUSTED_RPC_HOSTS as an explicit decision, not an env override.
-

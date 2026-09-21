@@ -102,7 +102,7 @@ async function runFetcher(account: Buffer | undefined, genesisHash: string, unbi
     // Backed product pages: the issuer's TLS-authenticated symbol-to-address
     // binding. `unbind` models a page that does not name the address.
     if (req.method === "GET") {
-      const m = VERIFIED_XSTOCK_MINTS.find((x) => req.url === new URL(x.productPage).pathname);
+      const m = VERIFIED_XSTOCK_MINTS.find((x) => req.url === `/products/${x.productSlug}`);
       res.setHeader("content-type", "text/html");
       res.end(
         m && m.symbol !== unbind
@@ -316,9 +316,9 @@ async function main() {
           `produced against a trusted endpoint and must not be used by T03/T06`,
       );
     }
-    if (f.issuerBinding !== m.productPage) {
+    if (f.issuerBinding !== `https://assets.backed.fi/products/${m.productSlug}`) {
       failures.push(
-        `committed fixture ${m.symbol}.json records issuerBinding=${f.issuerBinding}, expected ${m.productPage}`,
+        `committed fixture ${m.symbol}.json records issuerBinding=${f.issuerBinding}, expected https://assets.backed.fi/products/${m.productSlug}`,
       );
     }
   }

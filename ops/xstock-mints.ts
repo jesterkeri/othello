@@ -13,8 +13,9 @@
  * string. None of those establish issuer identity. They are retained only as
  * integrity and drift checks.
  *
- * The binding that does hold is `productPage`: Backed's own site, fetched over TLS at
- * a URL derived from the symbol here rather than from anything the mint says, stating
+ * The binding that does hold is `productSlug`: Backed's own site, fetched over TLS at
+ * a URL this repo builds from a reviewed slug rather than from anything the mint says,
+ * with a pinned origin and redirects refused, stating
  * `data-network-address="<address>"` for Solana. Forging it requires compromising
  * backed.fi's TLS or DNS. That trust root is named, not implied: see OPEN-QUESTIONS.md.
  */
@@ -22,8 +23,12 @@ export type XStockMint = {
   symbol: string;
   name: string;
   address: string;
-  /** Backed's own product page, the TLS-authenticated symbol-to-address binding. */
-  productPage: string;
+  /**
+   * The slug of Backed's own product page. A slug, not a URL, so the origin cannot
+   * be varied here: fetch-fixtures.ts builds
+   * https://assets.backed.fi/products/<slug> itself and rejects redirects.
+   */
+  productSlug: string;
   source: string;
 };
 
@@ -32,29 +37,29 @@ export const VERIFIED_XSTOCK_MINTS: XStockMint[] = [
     symbol: "AAPLx",
     name: "Apple",
     address: "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
-    productPage: "https://assets.backed.fi/products/apple-xstock",
-    source: "SPEC.md 9b.1 (design session), corroborated by Backed's product page",
+    productSlug: "apple-xstock",
+    source: "SPEC.md 9b.1 (design session), bound by Backed's product page per SPEC 9b.6",
   },
   {
     symbol: "NFLXx",
     name: "Netflix",
     address: "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
-    productPage: "https://assets.backed.fi/products/netflix-xstock",
-    source: "SPEC.md 9b.1 (design session), corroborated by Backed's product page",
+    productSlug: "netflix-xstock",
+    source: "SPEC.md 9b.1 (design session), bound by Backed's product page per SPEC 9b.6",
   },
   {
     symbol: "SPYx",
     name: "SP500",
     address: "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
-    productPage: "https://assets.backed.fi/products/sp500-xstock",
-    source: "Backed's product page only; NOT in SPEC 9b.1. See OPEN-QUESTIONS.md",
+    productSlug: "sp500-xstock",
+    source: "SPEC.md 9b.1 (added 2026-09-21), bound by Backed's product page per SPEC 9b.6",
   },
   {
     symbol: "NVDAx",
     name: "NVIDIA",
     address: "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
-    productPage: "https://assets.backed.fi/products/nvidia-xstock",
-    source: "Backed's product page only; NOT in SPEC 9b.1. See OPEN-QUESTIONS.md",
+    productSlug: "nvidia-xstock",
+    source: "SPEC.md 9b.1 (added 2026-09-21), bound by Backed's product page per SPEC 9b.6",
   },
 ];
 

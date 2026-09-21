@@ -144,3 +144,34 @@ before T07. It is Joshua's decision, not the build's.
 MINOR 3, atomicity. Four renameSync calls could fail midway, and /tmp can be another
 filesystem. Staging now sits beside the destination, the swap is a single
 same-filesystem directory rename, and a failure rolls the previous set back.
+
+## T00 revision - 2026-09-21 (Codex round 3 + design decision)
+commit: see below
+verified: `pnpm tsx ops/fetch-fixtures.ts` and `pnpm tsx tests/t00-mint-symbol-verification.ts`
+output:
+```
+fetcher exit=0, four fixtures, NFLXx acceptance OK
+OK: 11 cases, only a mint that proves its identity becomes a fixture, exit=0
+check-reviews: reviews ok      pack integrity: ok
+```
+reviewed: Codex VERDICT: REVISE on 7864559, 1 MAJOR + 1 MINOR fixed, awaiting re-review
+adversary: covered by round 0; suite 11 cases
+notes: Codex MAJOR: the issuer trust root was not actually enforced. `productPage`
+only had to be https, its host was never required to be assets.backed.fi, and fetch
+followed redirects without checking where it landed, so a wrong entry or a redirect
+could satisfy the attribute check and mint a fixture stamped endpointTrusted:true.
+Fixed by making the allowlist carry a reviewed SLUG rather than a URL: the origin
+https://assets.backed.fi is a constant the script owns, the URL is built from it,
+the resulting origin is re-checked, and redirects are refused with
+`redirect: "manual"` rather than followed. The fixture records the exact URL that
+bound it. Codex MINOR: blank line at EOF in OPEN-QUESTIONS.md, removed.
+
+DESIGN DECISION, Joshua, 2026-09-21: SPYx and NVDAx are added to SPEC 9b.1, and the
+trust root is recorded in a new SPEC 9b.6 which states plainly that nothing on-chain
+establishes issuer identity and that Backed's HTTPS product page is the accepted
+binding. The four-fixture contract is unchanged, so gate 1 was never reduced to two.
+The BLOCKING open question is marked RESOLVED with the decision and its date.
+
+SPEC.md is guard-protected and normally corrected in the design session. It was
+edited here on the design owner's explicit instruction, and the edit is confined to
+9b.1 and the new 9b.6.
