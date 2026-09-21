@@ -35,6 +35,37 @@ const EXT_SCALED_UI_AMOUNT = 25;
 // newMultiplierEffectiveTimestamp(8) newMultiplier(8).
 const SCALED_UI_AMOUNT_LEN = 56;
 
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/** Encode 32 raw bytes as base58, to compare a pubkey found in account data with an address. */
+function toBase58(bytes: Buffer): string {
+  let num = 0n;
+  for (const b of bytes) num = num * 256n + BigInt(b);
+  let out = "";
+  while (num > 0n) {
+    out = BASE58[Number(num % 58n)] + out;
+    num /= 58n;
+  }
+  for (const b of bytes) {
+    if (b !== 0) break;
+    out = "1" + out;
+  }
+  return out;
+}
+
+/**
+ * The values SPEC 9b.1 records, verified live 2026-09-21. NFLXx is a historical
+ * split and cannot move. AAPLx accrues, so if it has moved, SPEC 9b.1 and the G1
+ * vectors in SPEC section 10 are stale. That is a design decision for the design
+ * session, not something the build absorbs quietly, so it stops and says so.
+ */
+const SPEC_RECORDED: Record<string, { multiplier: number; newMultiplier: number; ts: string }> = {
+  AAPLx: { multiplier: 1.0026642075893797, newMultiplier: 1.0032690125398187, ts: "1786149000" },
+  NFLXx: { multiplier: 1, newMultiplier: 10, ts: "1763337300" },
+};
+
+type TokenMetadata = { name: string; symbol: string; mint: string };
+
 type ScaledUiAmountConfig = {
   multiplier: number;
   newMultiplierEffectiveTimestamp: string;
@@ -94,28 +125,39 @@ function decodeScaledUiAmountConfig(data: Buffer): ScaledUiAmountConfig {
 }
 
 /**
- * Read the symbol from the mint's own TokenMetadata extension. A symbol from a
- * token list proves nothing: Jupiter returns five tokens named NFLXx and one is
- * real (SPEC 9b.3). This reads what the mint itself carries.
+ * Read name, symbol and the mint pubkey from the mint's own TokenMetadata
+ * extension. A symbol from a token list proves nothing: Jupiter returns five
+ * tokens named NFLXx and one is real (SPEC 9b.3). This reads what the mint
+ * itself carries.
+ *
+ * Returns null only when the extension is absent. A present but malformed
+ * extension throws: swallowing that into null would let an issuer disable the
+ * only identity check by corrupting a length prefix.
  */
-function decodeTokenMetadata(data: Buffer): { name: string; symbol: string } | null {
+function decodeTokenMetadata(data: Buffer): TokenMetadata | null {
   const ext = findExtension(data, EXT_TOKEN_METADATA);
   if (!ext) return null;
+  if (ext.length < 64) {
+    throw new Error(`TokenMetadata is ${ext.length} bytes, too short to hold its own mint pubkey`);
+  }
+  const mint = toBase58(ext.subarray(32, 64));
   let off = 64; // update_authority(32) + mint(32)
-  const readString = () => {
+  const readString = (field: string) => {
+    if (off + 4 > ext.length) {
+      throw new Error(`TokenMetadata ends before the ${field} length prefix`);
+    }
     const len = ext.readUInt32LE(off);
     off += 4;
+    if (off + len > ext.length) {
+      throw new Error(`TokenMetadata ${field} claims ${len} bytes, past the end of the extension`);
+    }
     const s = ext.subarray(off, off + len).toString("utf8");
     off += len;
     return s;
   };
-  try {
-    const name = readString();
-    const symbol = readString();
-    return { name, symbol };
-  } catch {
-    return null;
-  }
+  const name = readString("name");
+  const symbol = readString("symbol");
+  return { name, symbol, mint };
 }
 
 async function main() {
@@ -139,15 +181,56 @@ async function main() {
 
     const decimals = data.readUInt8(DECIMALS_OFFSET);
     const scaled = decodeScaledUiAmountConfig(data);
-    const metadata = decodeTokenMetadata(data);
 
-    // The mint's own symbol must match the allowlist entry. A mismatch means the
-    // address is not the token we think it is, which is the whole point of ADR-012.
-    if (metadata && metadata.symbol !== mint.symbol) {
+    // An unidentified mint never becomes a fixture. ADR-012 exists because an
+    // address can be anything; the mint's own metadata is what ties it to a name.
+    let metadata: TokenMetadata | null;
+    try {
+      metadata = decodeTokenMetadata(data);
+    } catch (err) {
+      failures.push(
+        `${mint.symbol}: TokenMetadata is unreadable (${err instanceof Error ? err.message : String(err)}), ` +
+          `so the mint cannot report its own identity`,
+      );
+      continue;
+    }
+    if (!metadata) {
+      failures.push(
+        `${mint.symbol}: mint carries no TokenMetadata extension, so it never reports the symbol ` +
+          `"${mint.symbol}"; an unidentified mint is not a verified fixture (ADR-012)`,
+      );
+      continue;
+    }
+    if (metadata.symbol !== mint.symbol) {
       failures.push(
         `${mint.symbol}: mint metadata says symbol "${metadata.symbol}", allowlist says "${mint.symbol}"`,
       );
       continue;
+    }
+    if (metadata.mint !== mint.address) {
+      failures.push(
+        `${mint.symbol}: TokenMetadata names mint ${metadata.mint}, but this account was read from ` +
+          `${mint.address}; the bytes do not belong to the address they are saved under`,
+      );
+      continue;
+    }
+
+    const recorded = SPEC_RECORDED[mint.symbol];
+    if (recorded) {
+      if (
+        scaled.multiplier !== recorded.multiplier ||
+        scaled.newMultiplier !== recorded.newMultiplier ||
+        scaled.newMultiplierEffectiveTimestamp !== recorded.ts
+      ) {
+        failures.push(
+          `${mint.symbol}: live values (${scaled.multiplier}, ${scaled.newMultiplier}, ` +
+            `${scaled.newMultiplierEffectiveTimestamp}) differ from the values SPEC 9b.1 records ` +
+            `(${recorded.multiplier}, ${recorded.newMultiplier}, ${recorded.ts}). The mint has moved, ` +
+            `so SPEC 9b.1 and the G1 vectors in SPEC section 10 are stale. Stop and record it in ` +
+            `OPEN-QUESTIONS.md; the build does not update the spec.`,
+        );
+        continue;
+      }
     }
 
     writeFileSync(
