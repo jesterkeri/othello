@@ -4,21 +4,24 @@
   "address": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
   "source": "SPEC.md 9b.1, verified live 2026-09-21",
   "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-  "lamports": 5623680,
   "decimals": 8,
   "dataLen": 680,
   "dataBase64": "AQAAAGVqQkIv6okUBqQZ0dHeCPQqhHlBtaGulevOYZrDFyk0vMrgMhoOAAAIAQEAAAD/3+wbzSzTg5PITaoIyRzA041nf/jQq3tdAz8A9zLMMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARIAQABD+fHuLje4B+pFy3TmAJcivsAJKWAm5ORVi0NeJKXpxgfoN+LIQ7TZ2JXKDHJIcxFvSd5VFlRbdnyWRdakOGiRDAAgAEP58e4uN7gH6kXLdOYAlyK+wAkpYCbk5FWLQ14kpenGBgABAAEZADgABm9ZIlHMR3R4JaWa0UIupDVz9SjaXe4q94ErMU+ZReMAAAAAAADwP1RkGmkAAAAAAAAAAAAAJEAaACEA/9/sG80s04OTyE2qCMkcwNONZ3/40Kt7XQM/APcyzDAABABBAEP58e4uN7gH6kXLdOYAlyK+wAkpYCbk5FWLQ14kpenGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgBAAEP58e4uN7gH6kXLdOYAlyK+wAkpYCbk5FWLQ14kpenGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATAKcAQ/nx7i43uAfqRct05gCXIr7ACSlgJuTkVYtDXiSl6cYH6DfiyEO02diVygxySHMRb0neVRZUW3Z8lkXWpDhokQ4AAABOZXRmbGl4IHhTdG9jawUAAABORkxYeEQAAABodHRwczovL3hzdG9ja3MtbWV0YWRhdGEuYmFja2VkLmZpL3Rva2Vucy9Tb2xhbmEvTkZMWHgvbWV0YWRhdGEuanNvbgAAAAA=",
   "onChainMetadata": {
     "name": "Netflix xStock",
     "symbol": "NFLXx",
-    "mint": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL"
+    "mint": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+    "updateAuthority": "5aMNNLQJwAEeoemTEMkv5NVjqKwvvefRYCQ5Z67HFvEq",
+    "uri": "https://xstocks-metadata.backed.fi/tokens/Solana/NFLXx/metadata.json"
   },
   "decodedScaledUiAmountConfig": {
+    "authority": "S7vYFFWH6BjJyEsdrPQpqpYTqLTrPRK6KW3VwsJuRaS",
     "multiplier": 1,
     "newMultiplierEffectiveTimestamp": "1763337300",
     "newMultiplier": 10
   },
-  "fetchedAt": "2026-09-21T18:06:46.967Z",
-  "slot": 449131076,
-  "rpc": "https://api.mainnet-beta.solana.com"
+  "fetchedAt": "2026-09-21T18:25:16.028Z",
+  "slot": 449135230,
+  "rpc": "https://api.mainnet-beta.solana.com",
+  "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
 }
