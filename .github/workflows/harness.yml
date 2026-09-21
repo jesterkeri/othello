@@ -55,8 +55,23 @@ jobs:
             fi
           fi
           # Open questions must be answered or explicitly deferred before merge.
-          if [ -f OPEN-QUESTIONS.md ] && grep -qE '^- \[ \].*BLOCKING' OPEN-QUESTIONS.md; then
-            echo "A blocking open question is unresolved"; exit 1
+          # A BLOCKING item may carry a scope, "BLOCKING before T23". That defers it
+          # until the named task lands, and the deferral expires the moment that task
+          # is checked off, so a scoped question can never be merged past its own gate.
+          # An unscoped BLOCKING item still fails immediately.
+          if [ -f OPEN-QUESTIONS.md ]; then
+            bad=""
+            while IFS= read -r l; do
+              scope=$(printf '%s' "$l" | grep -oE 'BLOCKING before [A-Z]+[0-9]+' | grep -oE '[A-Z]+[0-9]+$' || true)
+              if [ -z "$scope" ]; then
+                bad="$bad unscoped"
+              elif [ -f TASKS.md ] && grep -qE "^- \[x\][[:space:]]*$scope\b" TASKS.md; then
+                bad="$bad $scope"
+              fi
+            done < <(grep -E '^- \[ \].*BLOCKING' OPEN-QUESTIONS.md || true)
+            if [ -n "$bad" ]; then
+              echo "Blocking open question unresolved at or past its scope:$bad"; exit 1
+            fi
           fi
           echo "pack integrity ok"
 
