@@ -175,3 +175,141 @@ The BLOCKING open question is marked RESOLVED with the decision and its date.
 SPEC.md is guard-protected and normally corrected in the design session. It was
 edited here on the design owner's explicit instruction, and the edit is confined to
 9b.1 and the new 9b.6.
+
+## T01 - 2026-09-21
+commit: 2144fe6 (workspace in e3b4e5d, adversary fix in 2144fe6)
+verified: `anchor build`
+output:
+```
+$ anchor build
+    Finished `release` profile [optimized] target(s) in 0.14s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running unittests src/lib.rs (/home/hr/myvscode_linux/othello/target/debug/deps/othello-995034df92de9df1)
+exit=0
+
+$ ls -l target/deploy/othello.so target/idl/othello.json; md5sum target/deploy/othello.so
+57048 target/deploy/othello.so
+239 target/idl/othello.json
+1641cf74f70526a52100e894df136e98  target/deploy/othello.so
+
+$ cat target/idl/othello.json
+{
+  "address": "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT",
+  "metadata": {
+    "name": "othello",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Othello: xStock-backed mutual credit circle"
+  },
+  "instructions": []
+}
+$ cargo tree -p othello --depth 1   # resolved, the versions T01 exists to record
+othello v0.1.0 (/home/hr/myvscode_linux/othello/programs/othello)
+├── anchor-lang v1.1.2
+└── anchor-spl v1.1.2
+    (transitive, from Cargo.lock)
+    spl-token-2022-interface                 2.1.0
+    spl-pod                                  0.7.4
+    spl-token-metadata-interface             0.8.0
+    spl-token-interface                      2.0.0
+    spl-associated-token-account-interface   2.0.0
+
+$ anchor --version; solana --version; cargo-build-sbf --version; rustc --version; node --version; pnpm --version
+anchor-cli 1.1.2
+solana-cli 3.1.10 (src:7bc9c805; feat:1620780344, client:Agave)
+solana-cargo-build-sbf 3.1.10
+rustc 1.89.0 (29483883e 2025-08-04)
+v22.23.2
+10.32.1
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: DEFECT fixed in 2144fe6, attacks run: 12, test: tests/deploy-artifact.spec.ts
+notes: Resolved versions, which is what T01 exists to pin down: anchor-lang 1.1.2,
+anchor-spl 1.1.2, spl-token-2022-interface 2.1.0, spl-pod 0.7.4. ARCHITECTURE's
+pinned-versions line guessed spl-token-2022-interface 2.1.0 on 2026-09-21 and that
+is exactly what resolved, so T02's PodF64 work and T03's StateWithExtensions decode
+are against the version the design assumed. anchor-lang and anchor-spl are declared
+`~1.1`, not `1.1.2`: a plain caret resolved them to 1.2.0, outside the 1.1.x that
+ARCHITECTURE pins.
+
+Two corrections to what the session had recorded earlier. The installed Agave CLI is
+3.1.10, not 4.2.2. The build toolchain is pinned to rust 1.89.0, not 1.98.1: `stable`
+here carries neither clippy nor rustfmt, 1.89.0 carries both and matches the sbpf
+toolchain, and R1's verify command needs them.
+
+The SPEC section 5 instruction surface is deliberately absent, so the default build's
+IDL is `"instructions": []`. Each instruction arrives with the task that implements
+it rather than as a stub. The one addition is read_clock, the P1 harness probe,
+behind the `harness` cargo feature.
+
+ADVERSARY DEFECT, real, found on e3b4e5d. lib.rs documented read_clock as unable to
+"reach a deployed build", and the only check read target/idl/othello.json. But
+`anchor deploy` uploads target/deploy/othello.so, and the two artifacts are written
+by different build steps, so `cargo build-sbf --features harness` rewrote the .so
+with the probe in it and left the IDL untouched: the suite stayed green, 3 passing,
+over a binary that carried it. The adversary confirmed it live rather than by string
+match, loading the .so in LiteSVM at declare_id and calling the read_clock
+discriminator, which returned the clock. Not a contrived route: P1 needs a harness
+.so and cargo build-sbf is the obvious way to make one. Severity is low today because
+read_clock takes no accounts and moves nothing, but the stated control did not exist.
+
+Fixed by reading the artifact that actually ships. The adversary's test is integrated
+as tests/deploy-artifact.spec.ts and passes on the gate branch; the reproduction is
+recorded below. read_clock now logs a deliberate HARNESS_BUILD_MARKER literal, since
+the incidental "Instruction: ReadClock" string can be switched off by Anchor's
+no-log-ix-name feature. tests/artifacts.ts refuses to assert on an artifact older
+than lib.rs, Cargo.toml or Cargo.lock, because `pnpm test` never builds and a stale
+target/ would green either guard on old bytes.
+
+Reproduction of the defect and the fix, run on 2144fe6:
+```
+$ anchor build && md5sum target/deploy/othello.so
+1641cf74f70526a52100e894df136e98  target/deploy/othello.so
+$ pnpm run test:unit
+4 passing
+
+$ cargo build-sbf --features harness && md5sum target/deploy/othello.so
+4abba020c502c54b7a60d5a374172587  target/deploy/othello.so
+$ python3 -c "import json;print(json.load(open('target/idl/othello.json'))['instructions'])"
+[]                                          <- the IDL guard is blind, as before
+$ pnpm run test:unit
+AssertionError [ERR_ASSERTION]: target/deploy/othello.so carries the harness probe:
+OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY, Instruction: ReadClock, clock.unix_timestamp=
+1 failing
+
+$ anchor build && pnpm run test:unit
+4 passing
+
+$ touch programs/othello/src/lib.rs && pnpm run test:unit
+AssertionError [ERR_ASSERTION]: target/deploy/othello.so is older than
+programs/othello/src/lib.rs. Run `anchor build` before testing; this guard is
+meaningless on a stale artifact.
+4 failing
+```
+
+Three further things the adversary raised as unproven suspicions, all real, all
+fixed here. The two T00 suites were not reachable from `anchor test` at all, because
+mocha only globs *.spec.ts and they are tsx scripts; `pnpm test` now runs them, so
+the fixture-provenance proof is part of the gate rather than something run by hand.
+Anchor.toml pinned anchor_version but not solana_version, leaving the toolchain that
+produces the deployed bytes floating against PIPELINE's "toolchain pinned"; it now
+pins solana_version = "3.1.10". The mocha + tsx substitution for ts-mocha is recorded
+in OPEN-QUESTIONS.md rather than by editing the design-owned ARCHITECTURE.md.
+
+Full suite after the fix: `pnpm test` exit 0, 4 mocha cases plus 11 binding-record
+cases plus 15 mint-symbol cases. `cargo fmt --check` clean. `cargo clippy
+--all-targets -- -D warnings` clean with no features, with `--features harness`, and
+the adversary also confirmed it with `--features idl-build`. `pnpm typecheck` clean.
+
+The program id is machine-local. PREFLIGHT forbids a keypair file inside the repo, so
+target/deploy/othello-keypair.json is generated per clone and gitignored. A clean
+clone builds, exit 0, and prints "Program ID mismatch detected ... run `anchor keys
+sync`"; that one command restores it, and PREFLIGHT already checks all three copies
+before any deploy. The adversary verified the clean-clone build and did not treat the
+mismatch as a defect.
+
+Not done here, and deliberately: P1 chooses the clock-warp harness and reports the
+result for OPEN-QUESTIONS line 1. This task only makes the probe it will call. Note
+that OPEN-QUESTIONS asks for that decision to be recorded as ADR-011, but ADR-011 is
+already Jupiter price units, so the number in that line is stale. The build does not
+write ADRs.
