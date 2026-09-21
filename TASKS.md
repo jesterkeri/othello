@@ -5,7 +5,7 @@ Each gate ends with a refactor pass (R1-R4) that runs BEFORE the Codex brief, so
 Format: `- [ ] Txx <what> | verify: <exact command> | done when: <observable condition>`
 
 ## Gate 1: valuation spike (GO / NO-GO). Do not start gate 2 until G1 is reviewed.
-- [ ] T00 Fetch real mint fixtures (AAPLx, NFLXx, plus SPYx and NVDAx) into tests/fixtures via getAccountInfo base64, with fetch date and slot | verify: `pnpm tsx ops/fetch-fixtures.ts && ls tests/fixtures` | done when: four fixture files; NFLXx fixture decodes multiplier 1, newMultiplier 10, ts 1763337300
+- [x] T00 Fetch real mint fixtures (AAPLx, NFLXx, plus SPYx and NVDAx) into tests/fixtures via getAccountInfo base64, with fetch date and slot | verify: `pnpm tsx ops/fetch-fixtures.ts && ls tests/fixtures` | done when: four fixture files; NFLXx fixture decodes multiplier 1, newMultiplier 10, ts 1763337300
 - [ ] T01 Anchor workspace per ARCHITECTURE layout; pin toolchain files; record resolved anchor-spl and spl-token-2022-interface versions | verify: `anchor build` | done when: builds; versions pasted in DONE.md
 - [ ] P1 Harness proof: the chosen clock-warp harness (LiteSVM or bankrun with anchor 1.1.x) loads the real NFLXx mint at its canonical address and sets Clock to exactly 1763337299 and exactly 1763337300, with the T01 program reading each value back | verify: the harness's own runner | done when: loaded bytes equal tests/fixtures/NFLXx.json dataBase64 and both exact seconds are read back. No multiplier assertions here, those are T03 and T06. If neither harness can do it, stop and report; do not write the ADR
 - [ ] T02 PodF64 exact decoder (ADR-001) with unit tests | verify: `cargo test -p othello decode` | done when: SPEC §10 G1 vectors pass; NaN/Inf/negative rejected
