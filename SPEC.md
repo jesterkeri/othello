@@ -262,7 +262,7 @@ These supersede anything above that conflicts.
 4. **Demo split evidence = NFLXx's real split**, read from its real mint. Circle collateral must pass the depth rule; NFLXx (~$2.1K liquidity) does not, AAPLx/SPYx/NVDAx do.
 5. **Network is undecided** (devnet mirror / mainnet fork / mainnet): see OPEN-QUESTIONS. Gates 1-3 are network-independent (local validator + real fixtures). Nothing is deployed anywhere until it is decided.
 6. **Issuer trust root for the mint allowlist (accepted 2026-09-21 by the design owner).** Nothing on-chain can establish who issued a mint: Token-2022 takes both the scaled-UI authority and the TokenMetadata update authority as **non-signer instruction data**, so a counterfeit mint can carry Backed's public keys without holding them, and the metadata URI is a string its creator chose. Those fields are integrity and drift checks only. **The accepted binding of symbol to mint address is Backed's own product page over HTTPS**, at `https://assets.backed.fi/products/<slug>` built from a reviewed slug in `ops/xstock-mints.ts`, with the origin pinned and redirects refused, stating `data-network-address="<address>"`. The trust root is therefore backed.fi's TLS and DNS, accepted knowingly rather than implied. Every fixture records the exact URL that bound it.
-6. **Rent correction:** a 300 KB program needs 1.5247 SOL rent-exempt (mainnet `getMinimumBalanceForRentExemption(300000)`, 2026-09-21), not 2.09.
+7. **Rent correction:** a 300 KB program needs 1.5247 SOL rent-exempt (mainnet `getMinimumBalanceForRentExemption(300000)`, 2026-09-21), not 2.09.
 
 ## 10. Acceptance criteria per gate
 
