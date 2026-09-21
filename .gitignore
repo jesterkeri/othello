@@ -17,3 +17,5 @@ id.json
 
 # agent worktrees
 .claude/worktrees/
+.fixtures-staging-*/
+.fixtures-previous-*/

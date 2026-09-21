@@ -2,7 +2,7 @@
   "symbol": "NFLXx",
   "name": "Netflix",
   "address": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
-  "source": "SPEC.md 9b.1, verified live 2026-09-21",
+  "source": "SPEC.md 9b.1 (design session), corroborated by Backed's product page",
   "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
   "decimals": 8,
   "dataLen": 680,
@@ -20,8 +20,10 @@
     "newMultiplierEffectiveTimestamp": "1763337300",
     "newMultiplier": 10
   },
-  "fetchedAt": "2026-09-21T18:25:16.028Z",
-  "slot": 449135230,
+  "fetchedAt": "2026-09-21T18:36:52.130Z",
+  "slot": 449137837,
   "rpc": "https://api.mainnet-beta.solana.com",
-  "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
+  "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+  "endpointTrusted": true,
+  "issuerBinding": "https://assets.backed.fi/products/netflix-xstock"
 }

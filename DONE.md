@@ -105,3 +105,42 @@ Codex's output is deliberately NOT written to reviews/*review*.md: check-reviews
 requires `VERDICT: implementation-ready` or `changes required` there, and fails on the
 latter, so a REVISE verdict in that path would break the harness. Gate reviews go
 there at T07; task-level rounds live here.
+
+## T00 revision - 2026-09-21 (Codex round 2)
+commit: see below
+verified: `pnpm tsx ops/fetch-fixtures.ts` and `pnpm tsx tests/t00-mint-symbol-verification.ts`
+output:
+```
+AAPLx/NFLXx/SPYx/NVDAx fetched, NFLXx acceptance OK, exit=0
+OK: 11 cases, only a mint that proves its identity becomes a fixture, exit=0
+
+SOLANA_RPC_URL http://127.0.0.1:9 is http:, not https. ... exit=1
+SOLANA_RPC_URL host example.com is not one of the trusted endpoints ... exit=1
+```
+reviewed: Codex VERDICT: REVISE on df6f61a, 2 CRITICAL + 1 MINOR addressed, awaiting re-review
+adversary: covered by round 0; suite now 11 cases
+notes: Codex was right twice, and the second one removed a claim rather than fixing code.
+
+CRITICAL 1, transport. A genesis hash is public, so an endpoint returning the right
+one proves nothing about who answered; the test's own stub returned it and was
+accepted. Production now requires https to a host in TRUSTED_RPC_HOSTS, and TLS
+authenticates it. The fake-RPC seam is separate and explicit:
+OTHELLO_INSECURE_TEST_RPC=1 warns loudly and stamps every fixture it writes
+endpointTrusted:false. The suite asserts the committed fixtures carry true, so the
+seam cannot leak into the artifacts T03/T06 load.
+
+CRITICAL 2, provenance. The three "Backed-key" anchors were copyable: Token-2022
+takes the scaled-UI authority and the metadata update authority as non-signer
+instruction data, so a counterfeit mint can carry Backed's public keys without
+holding them, and the URI is attacker-chosen. The claim was wrong, so it was removed
+rather than patched: those checks are now labelled integrity and drift checks in both
+files. The binding that does hold is Backed's own product page over TLS, fetched at a
+URL this repo derives from the symbol rather than from anything the mint says, and
+required to state data-network-address="<address>". Verified live for all four.
+The residue, that this makes backed.fi's TLS and DNS the trust root and that
+SPYx/NVDAx are still not in SPEC 9b.1, is recorded in OPEN-QUESTIONS.md as BLOCKING
+before T07. It is Joshua's decision, not the build's.
+
+MINOR 3, atomicity. Four renameSync calls could fail midway, and /tmp can be another
+filesystem. Staging now sits beside the destination, the swap is a single
+same-filesystem directory rename, and a failure rolls the previous set back.

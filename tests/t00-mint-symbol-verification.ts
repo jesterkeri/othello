@@ -81,13 +81,14 @@ function symbolOffset(meta: Buffer): number {
 type Case = {
   name: string;
   account?: Buffer;
+  unbind?: string;
   genesisHash?: string;
   expectExit: number;
   expectText: string;
   expectFixture: boolean;
 };
 
-async function runFetcher(account: Buffer | undefined, genesisHash: string) {
+async function runFetcher(account: Buffer | undefined, genesisHash: string, unbind?: string) {
   const accounts = new Map<string, { data: string; owner: string }>();
   for (const mint of VERIFIED_XSTOCK_MINTS) {
     const f = fixture(mint.symbol);
@@ -98,6 +99,18 @@ async function runFetcher(account: Buffer | undefined, genesisHash: string) {
   }
 
   const server = createServer((req, res) => {
+    // Backed product pages: the issuer's TLS-authenticated symbol-to-address
+    // binding. `unbind` models a page that does not name the address.
+    if (req.method === "GET") {
+      const m = VERIFIED_XSTOCK_MINTS.find((x) => req.url === new URL(x.productPage).pathname);
+      res.setHeader("content-type", "text/html");
+      res.end(
+        m && m.symbol !== unbind
+          ? `<a data-network-address="${m.address}" title="Solana"></a>`
+          : "<html>no binding here</html>",
+      );
+      return;
+    }
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
@@ -128,7 +141,12 @@ async function runFetcher(account: Buffer | undefined, genesisHash: string) {
   const runDir = mkdtempSync(join(tmpdir(), "othello-t00-"));
   const child = spawn(join(REPO, "node_modules", ".bin", "tsx"), [join(REPO, "ops", "fetch-fixtures.ts")], {
     cwd: runDir, // fixtures land here, never over the committed ones
-    env: { ...process.env, SOLANA_RPC_URL: `http://127.0.0.1:${port}` },
+    env: {
+      ...process.env,
+      SOLANA_RPC_URL: `http://127.0.0.1:${port}`,
+      OTHELLO_INSECURE_TEST_RPC: "1", // the seam is explicit, never implied
+      OTHELLO_BACKED_BASE: `http://127.0.0.1:${port}`,
+    },
   });
   let out = "";
   child.stdout.on("data", (c) => (out += c));
@@ -212,7 +230,7 @@ async function main() {
         return v;
       }),
       expectExit: 1,
-      expectText: "not the xStock issuer",
+      expectText: "the value every known xStock carries",
       expectFixture: false,
     },
     {
@@ -234,6 +252,15 @@ async function main() {
       expectFixture: false,
     },
     {
+      name: "the issuer does not bind this address to this symbol",
+      unbind: TARGET_SYMBOL,
+      expectExit: 1,
+      expectText: `does not state data-network-address="${
+        VERIFIED_XSTOCK_MINTS.find((m) => m.symbol === TARGET_SYMBOL)!.address
+      }"`,
+      expectFixture: false,
+    },
+    {
       name: "account has trailing bytes after the TLV region",
       account: writeTlv(nvdax, readTlv(nvdax), Buffer.alloc(2, 0xab)),
       expectExit: 1,
@@ -244,7 +271,7 @@ async function main() {
 
   const failures: string[] = [];
   for (const c of cases) {
-    const run = await runFetcher(c.account, c.genesisHash ?? MAINNET_GENESIS_HASH);
+    const run = await runFetcher(c.account, c.genesisHash ?? MAINNET_GENESIS_HASH, c.unbind);
     const target = join(run.runDir, "tests", "fixtures", `${TARGET_SYMBOL}.json`);
     const wrote = existsSync(target);
 
@@ -276,6 +303,24 @@ async function main() {
       }
     }
     rmSync(run.runDir, { recursive: true, force: true });
+  }
+
+  // A fixture written through the test seam is stamped endpointTrusted:false. The
+  // committed ones must never carry that stamp, or the seam has leaked into the
+  // artifacts the later gates load.
+  for (const m of VERIFIED_XSTOCK_MINTS) {
+    const f = fixture(m.symbol);
+    if (f.endpointTrusted !== true) {
+      failures.push(
+        `committed fixture ${m.symbol}.json has endpointTrusted=${f.endpointTrusted}; it was not ` +
+          `produced against a trusted endpoint and must not be used by T03/T06`,
+      );
+    }
+    if (f.issuerBinding !== m.productPage) {
+      failures.push(
+        `committed fixture ${m.symbol}.json records issuerBinding=${f.issuerBinding}, expected ${m.productPage}`,
+      );
+    }
   }
 
   if (failures.length > 0) {

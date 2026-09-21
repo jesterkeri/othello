@@ -9,9 +9,8 @@
  * Usage: pnpm tsx ops/fetch-fixtures.ts
  *        SOLANA_RPC_URL=<url> pnpm tsx ops/fetch-fixtures.ts
  */
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   VERIFIED_XSTOCK_MINTS,
   MINTS_AWAITING_ADDRESS,
@@ -31,18 +30,48 @@ const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
 
 /**
- * Issuer provenance for the xStock family.
+ * Where trust comes from, and where it does not.
  *
- * A mint's own TokenMetadata is self-reported: an attacker-controlled Token-2022
- * mint can name itself SPYx and embed its own address. These three anchors are not
- * self-reported, because forging them needs Backed's keys. They are the values
- * carried by AAPLx and NFLXx, the two mints SPEC 9b.1 pins independently of this
- * script, so the two addresses that came from a web page are tied to the same
- * issuer as the two the design session verified.
+ * NOT trust: a mint's own TokenMetadata symbol, its embedded mint pubkey, its
+ * scaled-UI authority and its metadata update authority. Token-2022 takes both
+ * authorities as non-signer instruction data, so a counterfeit mint can carry
+ * Backed's public keys without holding them, and the metadata URI is a string the
+ * mint's creator chose. These are kept below as integrity and drift checks only.
+ *
+ * Trust: `productPage` on each allowlist entry, fetched over TLS at a URL derived
+ * from the symbol in this repo rather than from anything the mint says. Backed's own
+ * site stating `data-network-address="<address>"` is the issuer asserting the
+ * binding; forging it needs backed.fi's TLS or DNS. Named as the trust root in
+ * OPEN-QUESTIONS.md rather than left implicit.
+ */
+const BACKED_NETWORK_ATTR = "data-network-address";
+
+/**
+ * Integrity and drift values, NOT provenance. Every known xStock mint carries these,
+ * so a mismatch means the account has changed shape or the address points at
+ * something unrelated. A counterfeit mint can copy all three, which is why they
+ * never stand alone.
  */
 const BACKED_SCALED_UI_AUTHORITY = "S7vYFFWH6BjJyEsdrPQpqpYTqLTrPRK6KW3VwsJuRaS";
 const BACKED_METADATA_UPDATE_AUTHORITY = "5aMNNLQJwAEeoemTEMkv5NVjqKwvvefRYCQ5Z67HFvEq";
 const BACKED_METADATA_HOST = "xstocks-metadata.backed.fi";
+
+/**
+ * RPC transport trust. A genesis hash is public, so an endpoint returning the right
+ * one proves nothing about who is answering; only the transport does. Production
+ * runs therefore require HTTPS to a host on this list, and TLS authenticates it.
+ */
+const TRUSTED_RPC_HOSTS = ["api.mainnet-beta.solana.com"];
+
+/**
+ * The test seam, deliberately loud and deliberately separate from the production
+ * path. With OTHELLO_INSECURE_TEST_RPC=1 the checks above are relaxed so a local
+ * stub can drive the script, and every fixture it writes is stamped
+ * endpointTrusted:false, so a fixture produced through the seam can never be
+ * mistaken for a real one.
+ */
+const INSECURE_TEST_SEAM = process.env.OTHELLO_INSECURE_TEST_RPC === "1";
+const BACKED_BASE_OVERRIDE = INSECURE_TEST_SEAM ? process.env.OTHELLO_BACKED_BASE : undefined;
 
 // Token-2022 mint layout: the base mint is 82 bytes, then one account-type byte,
 // then TLV extension entries.
@@ -108,14 +137,68 @@ async function rpcCall(method: string, params: unknown[]) {
   return body;
 }
 
-/** Refuse to treat any endpoint's answers as mainnet bytes until it proves it is mainnet. */
-async function assertMainnet() {
+/**
+ * A genesis hash identifies a network only if the endpoint is already trusted, so
+ * the transport check comes first and the genesis check is the second gate, not the
+ * first.
+ */
+async function assertTrustedMainnetEndpoint() {
+  let url: URL;
+  try {
+    url = new URL(RPC);
+  } catch {
+    throw new Error(`SOLANA_RPC_URL ${RPC} is not a URL`);
+  }
+  if (INSECURE_TEST_SEAM) {
+    console.error(
+      `WARNING: OTHELLO_INSECURE_TEST_RPC=1. ${RPC} is not authenticated and every ` +
+        `fixture written by this run is stamped endpointTrusted:false. Never commit one.`,
+    );
+  } else {
+    if (url.protocol !== "https:") {
+      throw new Error(
+        `SOLANA_RPC_URL ${RPC} is ${url.protocol}, not https. Without TLS the endpoint is ` +
+          `unauthenticated and its bytes are not mainnet bytes (ADR-012).`,
+      );
+    }
+    if (!TRUSTED_RPC_HOSTS.includes(url.host)) {
+      throw new Error(
+        `SOLANA_RPC_URL host ${url.host} is not one of the trusted endpoints ` +
+          `(${TRUSTED_RPC_HOSTS.join(", ")}). A hostile endpoint can return the public ` +
+          `mainnet genesis hash and then arbitrary account data.`,
+      );
+    }
+  }
   const body = await rpcCall("getGenesisHash", []);
   const hash = body.result as string;
   if (hash !== MAINNET_GENESIS_HASH) {
     throw new Error(
-      `${RPC} reports genesis hash ${hash}, not mainnet-beta's ${MAINNET_GENESIS_HASH}. ` +
-        `Fixtures must be real mainnet bytes (ADR-012), so nothing from this endpoint is accepted.`,
+      `${RPC} reports genesis hash ${hash}, not mainnet-beta's ${MAINNET_GENESIS_HASH}.`,
+    );
+  }
+}
+
+/**
+ * The issuer's own TLS-authenticated statement that this symbol is this address.
+ * The URL comes from the allowlist in this repo, never from the mint, so a hostile
+ * mint cannot redirect the check at itself.
+ */
+async function assertIssuerBinding(symbol: string, address: string, productPage: string) {
+  const url = BACKED_BASE_OVERRIDE
+    ? `${BACKED_BASE_OVERRIDE}${new URL(productPage).pathname}`
+    : productPage;
+  if (!BACKED_BASE_OVERRIDE && new URL(url).protocol !== "https:") {
+    throw new Error(`${symbol}: product page ${url} is not https, so it authenticates nobody`);
+  }
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`${symbol}: product page ${url} returned ${res.status} ${res.statusText}`);
+  }
+  const html = await res.text();
+  if (!html.includes(`${BACKED_NETWORK_ATTR}="${address}"`)) {
+    throw new Error(
+      `${symbol}: ${url} does not state ${BACKED_NETWORK_ATTR}="${address}". The issuer does ` +
+        `not bind this address to ${symbol}, so it does not enter the allowlist (ADR-012).`,
     );
   }
 }
@@ -219,7 +302,7 @@ function decodeTokenMetadata(exts: Map<number, Buffer>): TokenMetadata | null {
 }
 
 async function main() {
-  await assertMainnet();
+  await assertTrustedMainnetEndpoint();
 
   const fetchedAt = new Date().toISOString();
   const failures: string[] = [];
@@ -227,6 +310,14 @@ async function main() {
   const staged: { symbol: string; json: string; line: string }[] = [];
 
   for (const mint of VERIFIED_XSTOCK_MINTS) {
+    // The issuer's binding is checked before anything the mint says about itself.
+    try {
+      await assertIssuerBinding(mint.symbol, mint.address, mint.productPage);
+    } catch (err) {
+      failures.push(err instanceof Error ? err.message : String(err));
+      continue;
+    }
+
     const { value, slot } = await getAccountInfo(mint.address);
 
     if (value.owner !== TOKEN_2022_PROGRAM) {
@@ -271,13 +362,14 @@ async function main() {
       continue;
     }
 
-    // Self-reported fields above prove nothing on their own: anyone can mint a
-    // Token-2022 token that calls itself SPYx and points at itself. These three
-    // need Backed's keys, and they are the values the SPEC-pinned mints carry.
+    // Integrity and drift checks, NOT provenance: all three are copyable by a
+    // counterfeit mint (see the trust note at the top). They catch a mint that has
+    // changed shape or an address that points at something unrelated; they do not
+    // establish who issued it. That is the product-page check below.
     if (scaled.authority !== BACKED_SCALED_UI_AUTHORITY) {
       failures.push(
-        `${mint.symbol}: scaled-UI authority is ${scaled.authority}, not the xStock issuer ` +
-          `${BACKED_SCALED_UI_AUTHORITY} that the SPEC-pinned mints carry`,
+        `${mint.symbol}: scaled-UI authority is ${scaled.authority}, not ${BACKED_SCALED_UI_AUTHORITY}, the value ` +
+          `every known xStock carries`,
       );
       continue;
     }
@@ -340,6 +432,8 @@ async function main() {
             slot,
             rpc: RPC,
             genesisHash: MAINNET_GENESIS_HASH,
+            endpointTrusted: !INSECURE_TEST_SEAM,
+            issuerBinding: mint.productPage,
           },
           null,
           2,
@@ -395,13 +489,31 @@ async function main() {
     process.exit(1);
   }
 
-  const tmp = mkdtempSync(join(tmpdir(), "othello-fixtures-"));
+  // Replace the fixture SET, not file by file. Renaming four files one at a time can
+  // fail midway and leave a blend of this run and the last, which T03 and T06 would
+  // load as one observation. Staging sits beside the destination so the swap is a
+  // same-filesystem directory rename, and a failure rolls the old set back.
+  const parent = dirname(OUT_DIR);
+  mkdirSync(parent, { recursive: true });
+  const stage = join(parent, `.fixtures-staging-${process.pid}`);
+  const previous = join(parent, `.fixtures-previous-${process.pid}`);
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+  let movedAside = false;
   try {
-    for (const s of staged) writeFileSync(join(tmp, `${s.symbol}.json`), s.json);
-    mkdirSync(OUT_DIR, { recursive: true });
-    for (const s of staged) renameSync(join(tmp, `${s.symbol}.json`), join(OUT_DIR, `${s.symbol}.json`));
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    for (const s of staged) writeFileSync(join(stage, `${s.symbol}.json`), s.json);
+    if (existsSync(OUT_DIR)) {
+      renameSync(OUT_DIR, previous);
+      movedAside = true;
+    }
+    renameSync(stage, OUT_DIR);
+    if (movedAside) rmSync(previous, { recursive: true, force: true });
+  } catch (err) {
+    if (movedAside && !existsSync(OUT_DIR)) renameSync(previous, OUT_DIR);
+    rmSync(stage, { recursive: true, force: true });
+    throw new Error(
+      `fixture swap failed, previous set left in place: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   for (const s of staged) console.log(s.line);
