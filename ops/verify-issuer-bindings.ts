@@ -15,11 +15,13 @@
  */
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { VERIFIED_XSTOCK_MINTS } from "./xstock-mints.ts";
 import { BACKED_ORIGIN, BACKED_NETWORK_ATTR, productPageUrl, fetchOrExplain } from "./issuer.ts";
 
-const OUT = join(process.cwd(), "ops", "issuer-bindings.json");
+// Beside this module, so the verifier works from any working directory.
+const OUT = join(dirname(fileURLToPath(import.meta.url)), "issuer-bindings.json");
 
 async function main() {
   const records: Record<string, unknown> = {};

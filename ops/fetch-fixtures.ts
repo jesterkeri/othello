@@ -13,7 +13,15 @@ import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:f
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
-import { BACKED_ORIGIN, BACKED_NETWORK_ATTR, productPageUrl, fetchOrExplain } from "./issuer.ts";
+import {
+  BACKED_ORIGIN,
+  BACKED_NETWORK_ATTR,
+  EndpointUnavailableError,
+  productPageUrl,
+  fetchOrExplain,
+  validateBindingRecord,
+} from "./issuer.ts";
+import { createHash } from "node:crypto";
 import {
   VERIFIED_XSTOCK_MINTS,
   MINTS_AWAITING_ADDRESS,
@@ -185,45 +193,45 @@ async function assertTrustedMainnetEndpoint() {
  * mint cannot redirect the check at itself.
  */
 /**
- * The issuer binding, required from recorded evidence and re-checked live when the
- * site is reachable.
+ * The issuer binding: recorded evidence, fully validated, plus a live re-check.
  *
- * An address cannot enter without a real live verification: ops/issuer-bindings.json
- * is written only by ops/verify-issuer-bindings.ts, and a mint with no record here is
- * refused. A page that is reachable and disagrees is still a hard failure. What is no
- * longer fatal is the site being briefly unreachable, which was failing this task
- * half the time while proving nothing about the binding.
+ * `allowCached` is false whenever this run would WRITE a new or changed fixture.
+ * Creating a fresh artifact under a binding nobody could confirm would make the
+ * repository record a second trust root, which SPEC 9b.6 does not grant: it names
+ * Backed's TLS and DNS as the binding. So a refresh fails closed. A fixture whose
+ * bytes are unchanged produces no new artifact, so an outage there changes nothing
+ * and the validated record stands.
  */
-async function resolveIssuerBinding(symbol: string, address: string, productSlug: string) {
+async function resolveIssuerBinding(
+  symbol: string,
+  address: string,
+  productSlug: string,
+  allowCached: boolean,
+) {
   const file = join(dirname(fileURLToPath(import.meta.url)), "issuer-bindings.json");
-  let record: { address?: string; url?: string; verifiedAt?: string } | undefined;
+  const url = productPageUrl(productSlug, BACKED_BASE_OVERRIDE);
+  let doc: { origin?: string; bindings?: Record<string, unknown> };
   try {
-    const doc = JSON.parse(readFileSync(file, "utf8"));
-    if (doc.origin !== BACKED_ORIGIN) {
-      throw new Error(`records a different origin (${doc.origin}) than ${BACKED_ORIGIN}`);
-    }
-    record = doc.bindings?.[symbol];
+    doc = JSON.parse(readFileSync(file, "utf8"));
   } catch (err) {
     throw new Error(
-      `${symbol}: ops/issuer-bindings.json unusable (${err instanceof Error ? err.message : String(err)}). ` +
+      `${symbol}: ops/issuer-bindings.json unreadable (${err instanceof Error ? err.message : String(err)}). ` +
         `Run: pnpm tsx ops/verify-issuer-bindings.ts`,
     );
   }
-  const url = productPageUrl(productSlug, BACKED_BASE_OVERRIDE);
-  if (!record) {
-    throw new Error(`${symbol}: no recorded issuer binding. Run: pnpm tsx ops/verify-issuer-bindings.ts`);
+  if (doc.origin !== BACKED_ORIGIN) {
+    throw new Error(`${symbol}: issuer-bindings.json records origin ${doc.origin}, not ${BACKED_ORIGIN}`);
   }
-  if (record.address !== address) {
-    throw new Error(
-      `${symbol}: recorded binding is for ${record.address}, allowlist says ${address}. ` +
-        `Re-run ops/verify-issuer-bindings.ts after any address change.`,
-    );
-  }
-  if (!BACKED_BASE_OVERRIDE && record.url !== url) {
-    throw new Error(`${symbol}: recorded binding url ${record.url} is not ${url}`);
-  }
+  // Every field is checked, including the attribute, the digest shape and the age.
+  // The record is always validated against the REAL origin: the test seam changes
+  // where the page is fetched from, never what a recorded binding must pin.
+  const record = validateBindingRecord(
+    symbol,
+    address,
+    `${BACKED_ORIGIN}/products/${encodeURIComponent(productSlug)}`,
+    doc.bindings?.[symbol],
+  );
 
-  // Re-check live. Reachable and wrong is fatal; unreachable falls back to the record.
   try {
     const res = await fetchOrExplain(url, { redirect: "manual" });
     if (res.status >= 300 && res.status < 400) {
@@ -233,18 +241,36 @@ async function resolveIssuerBinding(symbol: string, address: string, productSlug
     }
     if (!res.ok) throw new Error(`${symbol}: ${url} returned ${res.status} ${res.statusText}`);
     const html = await res.text();
-    if (!html.includes(`${BACKED_NETWORK_ATTR}="${address}"`)) {
+    if (!html.includes(record.attribute)) {
       throw new Error(
-        `${symbol}: ${url} no longer states ${BACKED_NETWORK_ATTR}="${address}". The issuer has ` +
-          `changed or withdrawn this binding (ADR-012).`,
+        `${symbol}: ${url} no longer states ${record.attribute}. The issuer has changed or ` +
+          `withdrawn this binding (ADR-012).`,
+      );
+    }
+    // The digest is compared, not merely stored: a changed page is reported so a
+    // silent edit to the issuer's page is visible rather than invisible.
+    const sha = createHash("sha256").update(html).digest("hex");
+    if (sha !== record.bodySha256) {
+      console.error(
+        `NOTE: ${symbol}: ${url} still states the binding, but its page body changed since ` +
+          `${record.verifiedAt}. Re-run ops/verify-issuer-bindings.ts to refresh the attestation.`,
       );
     }
     return { url, live: true, verifiedAt: new Date().toISOString() };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!msg.startsWith("could not reach ")) throw err; // a real answer, not a blip
-    console.error(`NOTE: ${msg}. Using the binding recorded at ${record.verifiedAt}.`);
-    return { url, live: false, verifiedAt: record.verifiedAt ?? "unknown" };
+    if (!(err instanceof EndpointUnavailableError)) throw err; // a real answer, not an outage
+    if (!allowCached) {
+      throw new Error(
+        `${symbol}: ${err.message}. This run would write a new or changed fixture, and a fresh ` +
+          `artifact is never created under a binding nobody could confirm (SPEC 9b.6). Retry when ` +
+          `${BACKED_ORIGIN} is reachable.`,
+      );
+    }
+    console.error(
+      `NOTE: ${symbol}: ${err.message}. The account bytes are unchanged, so no new fixture is ` +
+        `written and the binding recorded at ${record.verifiedAt} stands.`,
+    );
+    return { url, live: false, verifiedAt: record.verifiedAt };
   }
 }
 
@@ -355,15 +381,6 @@ async function main() {
   const staged: { symbol: string; json: string; line: string }[] = [];
 
   for (const mint of VERIFIED_XSTOCK_MINTS) {
-    // The issuer's binding is checked before anything the mint says about itself.
-    let issuerBinding: { url: string; live: boolean; verifiedAt: string };
-    try {
-      issuerBinding = await resolveIssuerBinding(mint.symbol, mint.address, mint.productSlug);
-    } catch (err) {
-      failures.push(err instanceof Error ? err.message : String(err));
-      continue;
-    }
-
     const { value, slot } = await getAccountInfo(mint.address);
 
     if (value.owner !== TOKEN_2022_PROGRAM) {
@@ -467,11 +484,33 @@ async function main() {
     // true of them.
     const existingPath = join(OUT_DIR, `${mint.symbol}.json`);
     let unchanged = false;
+    let prev: any;
     if (existsSync(existingPath)) {
       try {
-        const prev = JSON.parse(readFileSync(existingPath, "utf8"));
+        prev = JSON.parse(readFileSync(existingPath, "utf8"));
         unchanged = prev.dataBase64 === value.data[0] && prev.address === mint.address;
-        if (unchanged) {
+      } catch {
+        unchanged = false;
+      }
+    }
+
+    // Cached evidence is acceptable only when no new artifact is produced.
+    let issuerBinding: { url: string; live: boolean; verifiedAt: string };
+    try {
+      issuerBinding = await resolveIssuerBinding(
+        mint.symbol,
+        mint.address,
+        mint.productSlug,
+        unchanged,
+      );
+    } catch (err) {
+      failures.push(err instanceof Error ? err.message : String(err));
+      continue;
+    }
+
+    if (unchanged) {
+      {
+        {
           staged.push({
             symbol: mint.symbol,
             json: readFileSync(existingPath, "utf8"),
@@ -480,11 +519,9 @@ async function main() {
               `(${prev.fetchedAt})`,
           });
         }
-      } catch {
-        unchanged = false;
       }
+      continue;
     }
-    if (unchanged) continue;
 
     staged.push({
       symbol: mint.symbol,

@@ -21,6 +21,16 @@ export function productPageUrl(productSlug: string, originOverride?: string): st
  * is never retried. On giving up it names the URL and the underlying cause, because
  * node's bare `fetch failed` names neither.
  */
+/** The endpoint could not be reached. A typed class, so callers never classify by message text. */
+export class EndpointUnavailableError extends Error {
+  readonly url: string;
+  constructor(url: string, message: string) {
+    super(message);
+    this.name = "EndpointUnavailableError";
+    this.url = url;
+  }
+}
+
 export async function fetchOrExplain(url: string, init?: RequestInit): Promise<Response> {
   let last: unknown;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -33,5 +43,49 @@ export async function fetchOrExplain(url: string, init?: RequestInit): Promise<R
   }
   const e = last as { message?: string; cause?: { message?: string; code?: string } };
   const cause = e?.cause?.message ?? e?.cause?.code ?? "no cause reported";
-  throw new Error(`could not reach ${url} after 3 attempts: ${e?.message ?? String(last)} (${cause})`);
+  throw new EndpointUnavailableError(
+    url,
+    `could not reach ${url} after 3 attempts: ${e?.message ?? String(last)} (${cause})`,
+  );
+}
+
+/** A recorded binding. Every field is validated before use; none is decorative. */
+export type IssuerBindingRecord = {
+  symbol: string;
+  address: string;
+  url: string;
+  attribute: string;
+  bodySha256: string;
+  verifiedAt: string;
+};
+
+/** How stale a recorded binding may be before it is refused outright. */
+export const BINDING_MAX_AGE_DAYS = 30;
+
+export function validateBindingRecord(
+  symbol: string,
+  address: string,
+  expectedUrl: string,
+  raw: unknown,
+): IssuerBindingRecord {
+  const r = raw as Partial<IssuerBindingRecord> | undefined;
+  const fail = (why: string): never => {
+    throw new Error(`${symbol}: recorded issuer binding ${why}. Run: pnpm tsx ops/verify-issuer-bindings.ts`);
+  };
+  if (!r || typeof r !== "object") fail("is missing");
+  if (r!.symbol !== symbol) fail(`names symbol ${r!.symbol}, expected ${symbol}`);
+  if (r!.address !== address) fail(`is for ${r!.address}, allowlist says ${address}`);
+  if (r!.url !== expectedUrl) fail(`url ${r!.url} is not ${expectedUrl}`);
+  const expectedAttr = `${BACKED_NETWORK_ATTR}="${address}"`;
+  if (r!.attribute !== expectedAttr) fail(`attribute ${r!.attribute} is not ${expectedAttr}`);
+  if (typeof r!.bodySha256 !== "string" || !/^[0-9a-f]{64}$/.test(r!.bodySha256)) {
+    fail("bodySha256 is not a sha-256 digest");
+  }
+  const at = Date.parse(r!.verifiedAt ?? "");
+  if (Number.isNaN(at)) fail(`verifiedAt ${r!.verifiedAt} is not a date`);
+  const ageDays = (Date.now() - at) / 86_400_000;
+  if (ageDays > BINDING_MAX_AGE_DAYS) {
+    fail(`was verified ${Math.floor(ageDays)} days ago, older than the ${BINDING_MAX_AGE_DAYS} day limit`);
+  }
+  return r as IssuerBindingRecord;
 }

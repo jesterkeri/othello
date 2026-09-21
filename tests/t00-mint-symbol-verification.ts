@@ -82,13 +82,21 @@ type Case = {
   name: string;
   account?: Buffer;
   unbind?: string;
+  pageStatus?: number;
+  backedBase?: string;
   genesisHash?: string;
   expectExit: number;
   expectText: string;
   expectFixture: boolean;
 };
 
-async function runFetcher(account: Buffer | undefined, genesisHash: string, unbind?: string) {
+async function runFetcher(
+  account: Buffer | undefined,
+  genesisHash: string,
+  unbind?: string,
+  pageStatus?: number,
+  backedBase?: string,
+) {
   const accounts = new Map<string, { data: string; owner: string }>();
   for (const mint of VERIFIED_XSTOCK_MINTS) {
     const f = fixture(mint.symbol);
@@ -103,6 +111,12 @@ async function runFetcher(account: Buffer | undefined, genesisHash: string, unbi
     // binding. `unbind` models a page that does not name the address.
     if (req.method === "GET") {
       const m = VERIFIED_XSTOCK_MINTS.find((x) => req.url === `/products/${x.productSlug}`);
+      if (pageStatus && m?.symbol === TARGET_SYMBOL) {
+        if (pageStatus >= 300 && pageStatus < 400) res.setHeader("location", "https://elsewhere.example/x");
+        res.statusCode = pageStatus;
+        res.end("");
+        return;
+      }
       res.setHeader("content-type", "text/html");
       res.end(
         m && m.symbol !== unbind
@@ -145,7 +159,7 @@ async function runFetcher(account: Buffer | undefined, genesisHash: string, unbi
       ...process.env,
       SOLANA_RPC_URL: `http://127.0.0.1:${port}`,
       OTHELLO_INSECURE_TEST_RPC: "1", // the seam is explicit, never implied
-      OTHELLO_BACKED_BASE: `http://127.0.0.1:${port}`,
+      OTHELLO_BACKED_BASE: backedBase ?? `http://127.0.0.1:${port}`,
     },
   });
   let out = "";
@@ -261,6 +275,27 @@ async function main() {
       expectFixture: false,
     },
     {
+      name: "issuer page redirects",
+      pageStatus: 302,
+      expectExit: 1,
+      expectText: "redirected (302",
+      expectFixture: false,
+    },
+    {
+      name: "issuer page returns a non-2xx",
+      pageStatus: 503,
+      expectExit: 1,
+      expectText: "returned 503",
+      expectFixture: false,
+    },
+    {
+      name: "issuer unreachable while a new fixture would be written",
+      backedBase: "http://127.0.0.1:9",
+      expectExit: 1,
+      expectText: "never created under a binding nobody could confirm",
+      expectFixture: false,
+    },
+    {
       name: "account has trailing bytes after the TLV region",
       account: writeTlv(nvdax, readTlv(nvdax), Buffer.alloc(2, 0xab)),
       expectExit: 1,
@@ -271,7 +306,13 @@ async function main() {
 
   const failures: string[] = [];
   for (const c of cases) {
-    const run = await runFetcher(c.account, c.genesisHash ?? MAINNET_GENESIS_HASH, c.unbind);
+    const run = await runFetcher(
+      c.account,
+      c.genesisHash ?? MAINNET_GENESIS_HASH,
+      c.unbind,
+      c.pageStatus,
+      c.backedBase,
+    );
     const target = join(run.runDir, "tests", "fixtures", `${TARGET_SYMBOL}.json`);
     const wrote = existsSync(target);
 
