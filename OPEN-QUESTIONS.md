@@ -24,3 +24,9 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
 - [ ] RPC transport is pinned to https + api.mainnet-beta.solana.com, because a
       genesis hash is public and authenticates nobody. A paid provider will need
       adding to TRUSTED_RPC_HOSTS as an explicit decision, not an env override.
+- [ ] Test runner: ARCHITECTURE's repository layout names ts-mocha, and T01 uses
+      mocha with the tsx loader (`mocha --import=tsx`) instead. The repo is ESM
+      (`"type": "module"`, `ops/*.ts` importing `./issuer.ts`), and ts-mocha drives
+      ts-node's CommonJS path, which does not load those imports. Same runner, same
+      spec files, different loader. Not blocking; recorded because ARCHITECTURE is
+      owned by the design session and the build must not edit it.

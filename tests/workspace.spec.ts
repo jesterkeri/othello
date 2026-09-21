@@ -2,30 +2,21 @@
  * T01 smoke test: the Anchor workspace is wired end to end.
  *
  * Proves the one program id is the same in lib.rs, Anchor.toml and the built
- * IDL, that the TypeScript client can consume that IDL, and that the harness
- * probe is absent from a default build.
+ * IDL, and that the TypeScript client can consume that IDL.
+ *
+ * The harness probe's real guard is tests/deploy-artifact.spec.ts, which reads
+ * the deployable binary. The IDL check below is kept as the cheaper, earlier
+ * signal, not as the control.
  *
  * Run: pnpm test   (or `anchor test`, which runs this via Anchor.toml [scripts])
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import * as anchor from "@coral-xyz/anchor";
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import { builtIdl, read } from "./artifacts.ts";
+
 const BASE58 = "[1-9A-HJ-NP-Za-km-z]+";
-
-type BuiltIdl = anchor.Idl & { address: string };
-
-function read(relativePath: string): string {
-  return readFileSync(resolve(REPO, relativePath), "utf8");
-}
-
-function builtIdl(): BuiltIdl {
-  return JSON.parse(read("target/idl/othello.json")) as BuiltIdl;
-}
 
 describe("T01 Anchor workspace", () => {
   it("declares one program id in lib.rs, Anchor.toml and the built IDL", () => {
@@ -50,9 +41,7 @@ describe("T01 Anchor workspace", () => {
     assert.equal(program.programId.toBase58(), idl.address);
   });
 
-  it("keeps the harness probe out of the default build", () => {
-    // read_clock exists only under the `harness` cargo feature, for P1. A default
-    // `anchor build` must never carry it, or a test-only instruction ships.
+  it("keeps the harness probe out of the default build's IDL", () => {
     const names = builtIdl().instructions.map((ix) => ix.name);
 
     assert.ok(!names.includes("read_clock"), `default build exposes ${names.join(", ")}`);
