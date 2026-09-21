@@ -20,10 +20,14 @@
     "newMultiplierEffectiveTimestamp": "1763337300",
     "newMultiplier": 10
   },
-  "fetchedAt": "2026-09-21T19:03:17.777Z",
-  "slot": 449143748,
+  "fetchedAt": "2026-09-21T19:09:29.860Z",
+  "slot": 449145146,
   "rpc": "https://api.mainnet-beta.solana.com",
   "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
   "endpointTrusted": true,
-  "issuerBinding": "https://assets.backed.fi/products/netflix-xstock"
+  "issuerBinding": {
+    "url": "https://assets.backed.fi/products/netflix-xstock",
+    "live": false,
+    "verifiedAt": "2026-09-21T19:06:27.742Z"
+  }
 }

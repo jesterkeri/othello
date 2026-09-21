@@ -20,10 +20,14 @@
     "newMultiplierEffectiveTimestamp": "1786149000",
     "newMultiplier": 1.0032690125398187
   },
-  "fetchedAt": "2026-09-21T19:03:17.777Z",
-  "slot": 449143745,
+  "fetchedAt": "2026-09-21T19:09:29.860Z",
+  "slot": 449145133,
   "rpc": "https://api.mainnet-beta.solana.com",
   "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
   "endpointTrusted": true,
-  "issuerBinding": "https://assets.backed.fi/products/apple-xstock"
+  "issuerBinding": {
+    "url": "https://assets.backed.fi/products/apple-xstock",
+    "live": false,
+    "verifiedAt": "2026-09-21T19:06:27.540Z"
+  }
 }

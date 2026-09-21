@@ -255,7 +255,7 @@ async function main() {
       name: "the issuer does not bind this address to this symbol",
       unbind: TARGET_SYMBOL,
       expectExit: 1,
-      expectText: `does not state data-network-address="${
+      expectText: `no longer states data-network-address="${
         VERIFIED_XSTOCK_MINTS.find((m) => m.symbol === TARGET_SYMBOL)!.address
       }"`,
       expectFixture: false,
@@ -316,9 +316,9 @@ async function main() {
           `produced against a trusted endpoint and must not be used by T03/T06`,
       );
     }
-    if (f.issuerBinding !== `https://assets.backed.fi/products/${m.productSlug}`) {
+    if (f.issuerBinding?.url !== `https://assets.backed.fi/products/${m.productSlug}`) {
       failures.push(
-        `committed fixture ${m.symbol}.json records issuerBinding=${f.issuerBinding}, expected https://assets.backed.fi/products/${m.productSlug}`,
+        `committed fixture ${m.symbol}.json records issuerBinding.url=${f.issuerBinding?.url}, expected https://assets.backed.fi/products/${m.productSlug}`,
       );
     }
   }

@@ -11,6 +11,9 @@
  */
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+import { BACKED_ORIGIN, BACKED_NETWORK_ATTR, productPageUrl, fetchOrExplain } from "./issuer.ts";
 import {
   VERIFIED_XSTOCK_MINTS,
   MINTS_AWAITING_ADDRESS,
@@ -44,31 +47,6 @@ const MAINNET_GENESIS_HASH = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d";
  * binding; forging it needs backed.fi's TLS or DNS. Named as the trust root in
  * OPEN-QUESTIONS.md rather than left implicit.
  */
-const BACKED_NETWORK_ATTR = "data-network-address";
-const BACKED_ORIGIN = "https://assets.backed.fi";
-
-/**
- * Bounded retry for transport-level failures only. This is not a fallback: a
- * retry never invents data, and an HTTP status error, a redirect or a missing
- * attribute is a real answer and is never retried. Without this a one-second
- * network blip fails the whole task, and node's `fetch failed` names neither the
- * URL nor the cause.
- */
-async function fetchOrExplain(url: string, init?: RequestInit): Promise<Response> {
-  let last: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      return await fetch(url, init);
-    } catch (err) {
-      last = err;
-      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 500));
-    }
-  }
-  const e = last as { message?: string; cause?: { message?: string; code?: string } };
-  const cause = e?.cause?.message ?? e?.cause?.code ?? "no cause reported";
-  throw new Error(`could not reach ${url} after 3 attempts: ${e?.message ?? String(last)} (${cause})`);
-}
-
 /**
  * Integrity and drift values, NOT provenance. Every known xStock mint carries these,
  * so a mismatch means the account has changed shape or the address points at
@@ -206,33 +184,70 @@ async function assertTrustedMainnetEndpoint() {
  * The URL comes from the allowlist in this repo, never from the mint, so a hostile
  * mint cannot redirect the check at itself.
  */
-async function assertIssuerBinding(symbol: string, address: string, productSlug: string) {
-  const origin = BACKED_BASE_OVERRIDE ?? BACKED_ORIGIN;
-  const url = `${origin}/products/${encodeURIComponent(productSlug)}`;
-  if (new URL(url).origin !== new URL(origin).origin) {
-    throw new Error(`${symbol}: product URL ${url} escaped the pinned origin ${origin}`);
-  }
-
-  // Redirects are refused rather than followed: a followed redirect can land on a
-  // host that is not the issuer while the request still looks pinned.
-  const res = await fetchOrExplain(url, { redirect: "manual" });
-  if (res.status >= 300 && res.status < 400) {
+/**
+ * The issuer binding, required from recorded evidence and re-checked live when the
+ * site is reachable.
+ *
+ * An address cannot enter without a real live verification: ops/issuer-bindings.json
+ * is written only by ops/verify-issuer-bindings.ts, and a mint with no record here is
+ * refused. A page that is reachable and disagrees is still a hard failure. What is no
+ * longer fatal is the site being briefly unreachable, which was failing this task
+ * half the time while proving nothing about the binding.
+ */
+async function resolveIssuerBinding(symbol: string, address: string, productSlug: string) {
+  const file = join(dirname(fileURLToPath(import.meta.url)), "issuer-bindings.json");
+  let record: { address?: string; url?: string; verifiedAt?: string } | undefined;
+  try {
+    const doc = JSON.parse(readFileSync(file, "utf8"));
+    if (doc.origin !== BACKED_ORIGIN) {
+      throw new Error(`records a different origin (${doc.origin}) than ${BACKED_ORIGIN}`);
+    }
+    record = doc.bindings?.[symbol];
+  } catch (err) {
     throw new Error(
-      `${symbol}: ${url} redirected (${res.status} to ${res.headers.get("location") ?? "unknown"}); ` +
-        `the issuer binding must come from ${origin} itself`,
+      `${symbol}: ops/issuer-bindings.json unusable (${err instanceof Error ? err.message : String(err)}). ` +
+        `Run: pnpm tsx ops/verify-issuer-bindings.ts`,
     );
   }
-  if (!res.ok) throw new Error(`${symbol}: ${url} returned ${res.status} ${res.statusText}`);
-
-  const html = await res.text();
-  if (!html.includes(`${BACKED_NETWORK_ATTR}="${address}"`)) {
+  const url = productPageUrl(productSlug, BACKED_BASE_OVERRIDE);
+  if (!record) {
+    throw new Error(`${symbol}: no recorded issuer binding. Run: pnpm tsx ops/verify-issuer-bindings.ts`);
+  }
+  if (record.address !== address) {
     throw new Error(
-      `${symbol}: ${url} does not state ${BACKED_NETWORK_ATTR}="${address}". The issuer does ` +
-        `not bind this address to ${symbol}, so it does not enter the allowlist (ADR-012).`,
+      `${symbol}: recorded binding is for ${record.address}, allowlist says ${address}. ` +
+        `Re-run ops/verify-issuer-bindings.ts after any address change.`,
     );
   }
-  return url;
+  if (!BACKED_BASE_OVERRIDE && record.url !== url) {
+    throw new Error(`${symbol}: recorded binding url ${record.url} is not ${url}`);
+  }
+
+  // Re-check live. Reachable and wrong is fatal; unreachable falls back to the record.
+  try {
+    const res = await fetchOrExplain(url, { redirect: "manual" });
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error(
+        `${symbol}: ${url} redirected (${res.status} to ${res.headers.get("location") ?? "unknown"})`,
+      );
+    }
+    if (!res.ok) throw new Error(`${symbol}: ${url} returned ${res.status} ${res.statusText}`);
+    const html = await res.text();
+    if (!html.includes(`${BACKED_NETWORK_ATTR}="${address}"`)) {
+      throw new Error(
+        `${symbol}: ${url} no longer states ${BACKED_NETWORK_ATTR}="${address}". The issuer has ` +
+          `changed or withdrawn this binding (ADR-012).`,
+      );
+    }
+    return { url, live: true, verifiedAt: new Date().toISOString() };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.startsWith("could not reach ")) throw err; // a real answer, not a blip
+    console.error(`NOTE: ${msg}. Using the binding recorded at ${record.verifiedAt}.`);
+    return { url, live: false, verifiedAt: record.verifiedAt ?? "unknown" };
+  }
 }
+
 async function getAccountInfo(address: string) {
   const body = await rpcCall("getAccountInfo", [
     address,
@@ -341,9 +356,9 @@ async function main() {
 
   for (const mint of VERIFIED_XSTOCK_MINTS) {
     // The issuer's binding is checked before anything the mint says about itself.
-    let issuerBinding: string;
+    let issuerBinding: { url: string; live: boolean; verifiedAt: string };
     try {
-      issuerBinding = await assertIssuerBinding(mint.symbol, mint.address, mint.productSlug);
+      issuerBinding = await resolveIssuerBinding(mint.symbol, mint.address, mint.productSlug);
     } catch (err) {
       failures.push(err instanceof Error ? err.message : String(err));
       continue;

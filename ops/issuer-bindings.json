@@ -1,0 +1,37 @@
+{
+  "origin": "https://assets.backed.fi",
+  "bindings": {
+    "AAPLx": {
+      "symbol": "AAPLx",
+      "address": "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
+      "url": "https://assets.backed.fi/products/apple-xstock",
+      "attribute": "data-network-address=\"XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp\"",
+      "bodySha256": "2ed040a9c4090f0f6f74e85a07ffdbd60f89854da7e4ec108b71fd95c5229820",
+      "verifiedAt": "2026-09-21T19:06:27.540Z"
+    },
+    "NFLXx": {
+      "symbol": "NFLXx",
+      "address": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+      "url": "https://assets.backed.fi/products/netflix-xstock",
+      "attribute": "data-network-address=\"XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL\"",
+      "bodySha256": "35c314606f29ab24a49df0b0d539168895ba12ac0705ae5156cda6e0d8ed6654",
+      "verifiedAt": "2026-09-21T19:06:27.742Z"
+    },
+    "SPYx": {
+      "symbol": "SPYx",
+      "address": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+      "url": "https://assets.backed.fi/products/sp500-xstock",
+      "attribute": "data-network-address=\"XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W\"",
+      "bodySha256": "95510311d147009329e8de2ff78e64f1711703fea673f199e8330b1f267cc2ea",
+      "verifiedAt": "2026-09-21T19:06:27.926Z"
+    },
+    "NVDAx": {
+      "symbol": "NVDAx",
+      "address": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+      "url": "https://assets.backed.fi/products/nvidia-xstock",
+      "attribute": "data-network-address=\"Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh\"",
+      "bodySha256": "d58647318a06ef45de74d3377e1aae9bc222a7bd55144b64549bec926c288799",
+      "verifiedAt": "2026-09-21T19:06:28.113Z"
+    }
+  }
+}
