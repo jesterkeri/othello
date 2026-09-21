@@ -252,9 +252,20 @@ Refusals (coverage, reserve, grace, repricing) use neutral styling with the numb
 ---
 
 
+## 9b. Corrections after the design review (2026-09-21, ADR-011, ADR-012)
+
+These supersede anything above that conflicts.
+
+1. **No invented stock data.** Gate 1 tests run against **real mainnet mint account bytes** saved as fixtures (`tests/fixtures/*.json`, fetched with `getAccountInfo` base64): AAPLx `XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp` and NFLXx `XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL`. Verified live 2026-09-21: AAPLx multiplier 1.0026642075893797 → newMultiplier 1.0032690125398187 at 1786149000; **NFLXx multiplier 1 → newMultiplier 10 at 1763337300 (a real 10-for-1 split, 2025-11-16)**. Its `multiplier` field still reads 1, so any reader that ignores the effective timestamp values NFLXx at a tenth.
+2. **Jupiter price units (ADR-011).** The Jupiter token API `usdPrice` is **per UI (scaled) unit**, i.e. per share: NFLXx usdPrice 71.59 vs NFLX 71.79. The swap quote API is **per raw unit**: 0.01 raw NFLXx → 7.07 USDC. So the non-scaled wrapper price = swap-quote price per raw token, or `usdPrice × effective multiplier`. Never use `usdPrice` directly as `wrapper_price`. Applies to `ops/set-prices.ts` and `/api/live`.
+3. **Collateral is identified by mint address (ADR-012).** A circle's `stock_mint` must be on a program-level allowlist of xStock mints. Symbols are never trusted (Jupiter returns five tokens named "NFLXx"; one is real). The UI shows company name, then `symbol · xStock by Backed`, then the mint address.
+4. **Demo split evidence = NFLXx's real split**, read from its real mint. Circle collateral must pass the depth rule; NFLXx (~$2.1K liquidity) does not, AAPLx/SPYx/NVDAx do.
+5. **Network is undecided** (devnet mirror / mainnet fork / mainnet): see OPEN-QUESTIONS. Gates 1-3 are network-independent (local validator + real fixtures). Nothing is deployed anywhere until it is decided.
+6. **Rent correction:** a 300 KB program needs 1.5247 SOL rent-exempt (mainnet `getMinimumBalanceForRentExemption(300000)`, 2026-09-21), not 2.09.
+
 ## 10. Acceptance criteria per gate
 
-- **G1 (go/no-go):** `anchor test` green with: PodF64 vectors (1.0026642075893797 → 1002664207, 1.0032690125398187 → 1003269012, 1.0000003 → 1000000299); NaN, ±Inf, negative, subnormal edge rejected or handled as specified; TLV byte-layout fallback test against the verified AAPLx layout; Clock-selected multiplier before/after effectiveTimestamp; I12 split (1.1 token, 150/150 → multiplier 10, share 15: H = 132 both sides); I13; I17. CU of `quote_valuation` recorded in DONE.md.
+- **G1 (go/no-go):** `anchor test` green, using the real AAPLx and NFLXx mint fixtures (9b.1), with: effective multiplier from the NFLXx fixture = 10.000000000 (fixed 10_000_000_000) after its timestamp and 1 before; AAPLx = 1003269012 after 1786149000; PodF64 vectors (1.0026642075893797 → 1002664207, 1.0032690125398187 → 1003269012, 1.0000003 → 1000000299); NaN, ±Inf, negative, subnormal edge rejected or handled as specified; TLV byte-layout fallback test against the verified AAPLx layout; Clock-selected multiplier before/after effectiveTimestamp; I12 split (1.1 token, 150/150 → multiplier 10, share 15: H = 132 both sides); I13; I17. CU of `quote_valuation` recorded in DONE.md.
 - **G2:** I1-I4, I6, I10, I11, I16 and the healthy-payout half of I18 green; SPEC §3 peak table reproduced (needs 140, 150, 30, 0) including the peak-guarantee check refusing g = 29 for the demo params; every section 5 refusal code has a negative test.
 - **G3:** I7, I9, I14, I15, I18 green; SPEC §7 halt example reproduced (needed 75, remaining 70, short_by 5), then a top-up of 5 resumes; escrow-deficit case (shortfall > reserve) curable; declare_default during Repricing keeps I2.
 - **G4:** every place in design/FLOWS.md §7 renders each of its states; viewer path needs no wallet; UX acceptance test (design/UX-REVIEW.md) run on one real person and the answer pasted into DONE.md.

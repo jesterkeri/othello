@@ -4,12 +4,13 @@ One line per task. A task is not complete until its verification command has run
 Format: `- [ ] Txx <what> | verify: <exact command> | done when: <observable condition>`
 
 ## Gate 1: valuation spike (GO / NO-GO). Do not start gate 2 until G1 is reviewed.
+- [ ] T00 Fetch real mint fixtures (AAPLx, NFLXx, plus SPYx and NVDAx) into tests/fixtures via getAccountInfo base64, with fetch date and slot | verify: `pnpm tsx ops/fetch-fixtures.ts && ls tests/fixtures` | done when: four fixture files; NFLXx fixture decodes multiplier 1, newMultiplier 10, ts 1763337300
 - [ ] T01 Anchor workspace per ARCHITECTURE layout; pin toolchain files; record resolved anchor-spl and spl-token-2022-interface versions | verify: `anchor build` | done when: builds; versions pasted in DONE.md
 - [ ] T02 PodF64 exact decoder (ADR-001) with unit tests | verify: `cargo test -p othello decode` | done when: SPEC §10 G1 vectors pass; NaN/Inf/negative rejected
-- [ ] T03 Read ScaledUiAmountConfig via StateWithExtensions; TLV-offset fallback as a test only | verify: `anchor test` | done when: both parsers agree on a mock mint and on the verified AAPLx bytes
+- [ ] T03 Read ScaledUiAmountConfig via StateWithExtensions; TLV-offset fallback as a test only | verify: `anchor test` | done when: both parsers agree on the real AAPLx and NFLXx fixtures
 - [ ] T04 PriceFeed: init_price_feed, set_prices(stamp, expected_multiplier_fixed), touch_prices | verify: `anchor test` | done when: I17 tests green
 - [ ] T05 quote_valuation (Clock-selected multiplier, FUND/EXEC/H, return data) | verify: `anchor test` | done when: I5, I12, I13 green; CU logged in DONE.md
-- [ ] T06 ops/create-mock-mint.ts and ops/schedule-split.ts against localnet | verify: `pnpm tsx ops/create-mock-mint.ts --cluster localnet` | done when: mint shows scaledUiAmountConfig; split schedules
+- [ ] T06 Load the real fixtures into the local validator / LiteSVM at their real addresses and run quote_valuation against them; mint allowlist check (ADR-012) | verify: `anchor test` | done when: NFLXx values at ~10x a naive raw×share read; non-allowlisted mint refused
 - [ ] T07 Gate 1 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: reviews/gate-1-review.md verdict implementation-ready
 
 ## Gate 2: circle core

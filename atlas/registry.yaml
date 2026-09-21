@@ -1,0 +1,87 @@
+# Othello atlas registry. Single model: every other atlas page references names from here.
+# STATUS 2026-09-21: nothing below is deployed. lifecycle: planned means "does not exist yet".
+- name: othello-program
+  kind: contract
+  type: service
+  lifecycle: planned
+  owner: joshua
+  system: othello
+  providesApis: [circle-ixs, admin-ixs, quote_valuation]
+  consumesApis: [token-2022, spl-token, clock-sysvar]
+  dependsOn: [solana-devnet, mock-aaplx-mint, mock-usdc-mint]
+  tier: T0
+  links: {repo: "Stocklana/othello/programs/othello", dashboard: null, runbook: null, alerts: null}
+  addresses: {devnet: null, mainnet: null}
+- name: othello-app
+  kind: component
+  type: frontend
+  lifecycle: planned
+  owner: joshua
+  system: othello
+  consumesApis: [circle-ixs, live-api]
+  dependsOn: [othello-program, solana-devnet-rpc, wallet, vercel]
+  tier: T0
+  links: {repo: "Stocklana/othello/app", dashboard: null, runbook: null, alerts: null}
+- name: live-api
+  kind: api
+  type: service
+  lifecycle: planned
+  owner: joshua
+  system: othello
+  providesApis: [live-api]
+  dependsOn: [jupiter-lite-api, yahoo-chart-api, vercel]
+  tier: T2
+  links: {repo: "Stocklana/othello/app/app/api/live", runbook: null}
+- name: price-feed
+  kind: resource
+  type: oracle
+  lifecycle: planned
+  owner: demo-admin
+  system: othello
+  dependsOn: [othello-program]
+  tier: T0
+- name: liquidation-pool
+  kind: resource
+  type: service
+  lifecycle: planned
+  owner: demo-admin
+  system: othello
+  dependsOn: [othello-program, mock-usdc-mint]
+  tier: T1
+- name: mock-aaplx-mint
+  kind: resource
+  type: service
+  lifecycle: planned
+  owner: demo-admin
+  system: othello
+  dependsOn: [token-2022]
+  tier: T0
+- name: mock-usdc-mint
+  kind: resource
+  type: service
+  lifecycle: planned
+  owner: demo-admin
+  system: othello
+  dependsOn: [spl-token]
+  tier: T0
+- name: ops-scripts
+  kind: component
+  type: keeper
+  lifecycle: planned
+  owner: joshua
+  system: othello
+  consumesApis: [admin-ixs, token-2022]
+  dependsOn: [solana-devnet-rpc, demo-admin-key]
+  tier: T1
+- {name: solana-devnet, kind: external, type: rpc, lifecycle: production, tier: T0}
+- {name: solana-devnet-rpc, kind: external, type: rpc, lifecycle: production, tier: T0}
+- {name: token-2022, kind: external, type: service, lifecycle: production, tier: T0}
+- {name: spl-token, kind: external, type: service, lifecycle: production, tier: T0}
+- {name: clock-sysvar, kind: external, type: service, lifecycle: production, tier: T0}
+- {name: wallet, kind: external, type: frontend, lifecycle: production, tier: T0}
+- {name: vercel, kind: external, type: service, lifecycle: production, tier: T0}
+- {name: jupiter-lite-api, kind: external, type: oracle, lifecycle: production, tier: T2}
+- {name: yahoo-chart-api, kind: external, type: oracle, lifecycle: production, tier: T2}
+- {name: devnet-faucet, kind: external, type: service, lifecycle: production, tier: T1}
+- {name: demo-admin-key, kind: resource, type: service, lifecycle: planned, owner: joshua, tier: T1}
+- {name: upgrade-authority-key, kind: resource, type: service, lifecycle: planned, owner: joshua, tier: T0}

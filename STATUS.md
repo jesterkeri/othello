@@ -19,3 +19,5 @@
 - 4 adversarial review: 4 rounds (fable). r1 C2 M10 m10, r2 C1 M6 m8, r3 C0 M3 m4, r4 C0 M0 m4 -> implementation-ready; r4 minors fixed. design/reviews/. 2026-09-21
 - 5 harness installed + pack written (SPEC, INVARIANTS, ARCHITECTURE, GLOSSARY, adr/001-010, PIPELINE, TASKS T01-T26, KNOWN-LIMITS L1-L14, PREFLIGHT). 2026-09-21
 - 6 build: handed to Claude Code at gate 1 (T01). 2026-09-21
+- 7 (early) atlas + blueprint published from atlas/*.md. Atlas is design-only: every page verified_by nothing until gates land; republish after each gate. 2026-09-21
+- corrections: no mock stock (ADR-012), Jupiter units (ADR-011), rent 1.5247 SOL/300KB, T00 real fixtures. Delta not independently reviewed; Codex gate-1 review covers it. Network choice BLOCKING before any deploy. 2026-09-21
