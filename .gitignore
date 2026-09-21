@@ -1,0 +1,16 @@
+node_modules/
+target/
+.anchor/
+test-ledger/
+dist/
+.next/
+out/
+
+# never commit key material (PREFLIGHT: no keypair file inside the repo)
+*.pem
+*.key
+id.json
+*keypair*.json
+.env
+.env.*
+!.env.example
