@@ -459,6 +459,33 @@ async function main() {
     }
 
     written.set(mint.symbol, scaled);
+
+    // Keep the existing file when the account bytes are unchanged. Rewriting it to
+    // move only slot and fetchedAt dirties the tree on every verification run, which
+    // makes "the working tree is clean" stop meaning anything before a merge. The
+    // recorded timestamp stays the moment these bytes were captured, which is still
+    // true of them.
+    const existingPath = join(OUT_DIR, `${mint.symbol}.json`);
+    let unchanged = false;
+    if (existsSync(existingPath)) {
+      try {
+        const prev = JSON.parse(readFileSync(existingPath, "utf8"));
+        unchanged = prev.dataBase64 === value.data[0] && prev.address === mint.address;
+        if (unchanged) {
+          staged.push({
+            symbol: mint.symbol,
+            json: readFileSync(existingPath, "utf8"),
+            line:
+              `${mint.symbol.padEnd(6)} ${mint.address}  unchanged since slot ${prev.slot} ` +
+              `(${prev.fetchedAt})`,
+          });
+        }
+      } catch {
+        unchanged = false;
+      }
+    }
+    if (unchanged) continue;
+
     staged.push({
       symbol: mint.symbol,
       json:
