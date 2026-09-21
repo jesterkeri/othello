@@ -1,0 +1,72 @@
+# Harness checks. These are the rules the design decided, enforced.
+# Make every job here a REQUIRED status check in your branch ruleset, or this file
+# is documentation rather than a control.
+name: harness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege by default. Grant more only in the job that needs it.
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guardrails:
+    name: guardrails
+    runs-on: ubuntu-latest
+    steps:
+      # Pin third-party actions to a full sha. actions/* is first-party; a tag is acceptable there.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false   # the token is otherwise left in .git/config and can leak via artifacts
+
+      - name: Workflow hygiene
+        run: ./scripts/check-workflows.sh
+
+      - name: Destructive migration guard
+        env:
+          BASE_REF: origin/${{ github.base_ref || 'main' }}
+        run: ./scripts/check-migrations.sh
+
+      - name: Review integrity
+        run: ./scripts/check-reviews.sh
+
+      - name: Design pack integrity
+        run: |
+          set -e
+          # A checked-off task with no verification evidence is the single most
+          # common agent failure. Refuse the merge rather than trusting the claim.
+          if [ -f TASKS.md ]; then
+            [ -f DONE.md ] || { echo "TASKS.md exists but DONE.md does not"; exit 1; }
+            miss=""
+            while IFS= read -r l; do
+              id=$(printf '%s' "$l" | grep -oE '\b[A-Z]+[0-9]+\b' | head -1) || true
+              [ -n "$id" ] && ! grep -q "$id" DONE.md && miss="$miss $id"
+            done < <(grep '^- \[x\]' TASKS.md || true)
+            if [ -n "$miss" ]; then
+              echo "Tasks checked off with no DONE.md evidence:$miss"; exit 1
+            fi
+          fi
+          # Open questions must be answered or explicitly deferred before merge.
+          if [ -f OPEN-QUESTIONS.md ] && grep -qE '^- \[ \].*BLOCKING' OPEN-QUESTIONS.md; then
+            echo "A blocking open question is unresolved"; exit 1
+          fi
+          echo "pack integrity ok"
+
+  secrets:
+    name: no secrets in client output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      # Replace with your real build. The check is only meaningful against built output.
+      # - run: npm ci --ignore-scripts && npm run build
+      - name: Scan build output
+        run: ./scripts/check-secrets.sh .next dist build out || true   # set to blocking once a build step exists above
