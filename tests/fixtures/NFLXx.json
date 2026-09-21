@@ -20,8 +20,8 @@
     "newMultiplierEffectiveTimestamp": "1763337300",
     "newMultiplier": 10
   },
-  "fetchedAt": "2026-09-21T18:50:01.778Z",
-  "slot": 449140779,
+  "fetchedAt": "2026-09-21T19:03:17.777Z",
+  "slot": 449143748,
   "rpc": "https://api.mainnet-beta.solana.com",
   "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
   "endpointTrusted": true,

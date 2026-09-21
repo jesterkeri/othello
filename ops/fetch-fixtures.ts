@@ -48,6 +48,28 @@ const BACKED_NETWORK_ATTR = "data-network-address";
 const BACKED_ORIGIN = "https://assets.backed.fi";
 
 /**
+ * Bounded retry for transport-level failures only. This is not a fallback: a
+ * retry never invents data, and an HTTP status error, a redirect or a missing
+ * attribute is a real answer and is never retried. Without this a one-second
+ * network blip fails the whole task, and node's `fetch failed` names neither the
+ * URL nor the cause.
+ */
+async function fetchOrExplain(url: string, init?: RequestInit): Promise<Response> {
+  let last: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      last = err;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 500));
+    }
+  }
+  const e = last as { message?: string; cause?: { message?: string; code?: string } };
+  const cause = e?.cause?.message ?? e?.cause?.code ?? "no cause reported";
+  throw new Error(`could not reach ${url} after 3 attempts: ${e?.message ?? String(last)} (${cause})`);
+}
+
+/**
  * Integrity and drift values, NOT provenance. Every known xStock mint carries these,
  * so a mismatch means the account has changed shape or the address points at
  * something unrelated. A counterfeit mint can copy all three, which is why they
@@ -127,7 +149,7 @@ type ScaledUiAmountConfig = {
 };
 
 async function rpcCall(method: string, params: unknown[]) {
-  const res = await fetch(RPC, {
+  const res = await fetchOrExplain(RPC, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -193,7 +215,7 @@ async function assertIssuerBinding(symbol: string, address: string, productSlug:
 
   // Redirects are refused rather than followed: a followed redirect can land on a
   // host that is not the issuer while the request still looks pinned.
-  const res = await fetch(url, { redirect: "manual" });
+  const res = await fetchOrExplain(url, { redirect: "manual" });
   if (res.status >= 300 && res.status < 400) {
     throw new Error(
       `${symbol}: ${url} redirected (${res.status} to ${res.headers.get("location") ?? "unknown"}); ` +
