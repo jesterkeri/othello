@@ -6,7 +6,7 @@ name: harness
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, staging]
 
 # Least privilege by default. Grant more only in the job that needs it.
 permissions:
