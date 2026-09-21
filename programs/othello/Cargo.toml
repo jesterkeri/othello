@@ -1,0 +1,32 @@
+[package]
+name = "othello"
+version = "0.1.0"
+description = "Othello: xStock-backed mutual credit circle"
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "othello"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+# Test-only instructions. Never enabled for a deployed build; see lib.rs.
+harness = []
+
+[dependencies]
+anchor-lang = "~1.1"
+# Default features already carry token_2022, token_2022_extensions,
+# spl-token-2022-interface and spl-pod, which T02/T03 need for
+# ScaledUiAmountConfig and PodF64. Resolved versions are recorded in DONE.md.
+anchor-spl = "~1.1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
