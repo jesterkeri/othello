@@ -44,12 +44,11 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       ts-node's CommonJS path, which does not load those imports. Same runner, same
       spec files, different loader. Not blocking; recorded because ARCHITECTURE is
       owned by the design session and the build must not edit it.
-- [ ] BLOCKING before T08. DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo, and
-      specify group pairing. The build cannot act on this: SPEC, ARCHITECTURE and the ADRs
-      are design-owned, so the design session rules and the pack is re-handed. Scoped to T08
-      because gate 1 does not depend on member count, so T04 to T07 continue unaffected,
-      while T08 create_circle is the first task the ruling would invalidate. Three findings
-      the design session needs:
+- [ ] BLOCKING before T08: DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo. The
+      build cannot act on this: SPEC, ARCHITECTURE and the ADRs are design-owned, so the
+      design session rules and the pack is re-handed. Scoped to T08 because gate 1 does not
+      depend on member count, so T04 to T07 continue unaffected, while T08 create_circle is
+      the first task the ruling would invalidate. The design session needs these findings:
       (a) PAIRING BY PEOPLE YOU KNOW IS ALREADY THE DESIGN. ADR-003 and FLOWS D3: the creator
           names every member wallet and the turn order at create, and join_and_lock is that
           member's consent. Open join, a separate approval instruction and order voting were
@@ -68,6 +67,18 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
           FRAME.md:38. Valuation, the whole of gate 1, is shared by both modes and is
           already built, so solo is not blocked by anything technical here; it is blocked on
           naming the lender.
+- [ ] DEFERRED DESIGN BACKLOG, after the current private-circle build is complete: specify an
+      **Open circle** mode with system matching and persistent-identity memory. This does not
+      change, delay, or retroactively reinterpret the private T08 circle: friends continue to
+      form that circle themselves. Work out the Open-mode logic only after the private flow is
+      built end to end. The design must keep the domains asymmetric: private completion never
+      earns positive Open standing; a final, objective on-chain default may create a
+      identity-bound consequence that cannot be cleared by changing wallets. Before any build,
+      decide the identity-proof trust boundary and privacy model, matching epoch/randomness and
+      liveness, score recovery and appeal policy, tier shortage behaviour, and the exact
+      collateral/guarantee bound for every new Open participant. "High score" at entry must
+      mean eligible at the conservative, fully loss-covered limit, not elevated unsecured
+      credit.
 - [ ] Borrow Solo history: raised 2026-09-22, relaying a planner session that believed
       it had silently dropped a solo borrowing mode. CHECKED AGAINST THE PACK, and that is
       not what happened: `design/FRAME.md:38` lists "Borrow solo" first in `## 4. Non-goals
