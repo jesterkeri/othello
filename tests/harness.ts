@@ -26,13 +26,17 @@ export { Clock };
 export const FIXTURE_MINTS = {
   AAPLx: "XsbEhLAtcf6HdfpFZ5xEMdqW8nfAvcsP5bdudRLJzJp",
   NFLXx: "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+  SPYx: "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+  NVDAx: "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
 } as const;
+
+export type FixtureSymbol = keyof typeof FIXTURE_MINTS;
 
 export const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 
 type Fixture = { address: string; owner: string; dataLen: number; dataBase64: string };
 
-export function fixture(symbol: keyof typeof FIXTURE_MINTS): Fixture {
+export function fixture(symbol: FixtureSymbol): Fixture {
   const parsed = JSON.parse(
     readFileSync(resolve(REPO, `tests/fixtures/${symbol}.json`), "utf8"),
   ) as Fixture;
@@ -49,12 +53,13 @@ export type Harness = {
   authority: anchor.web3.Keypair;
   setClock: (unixTimestamp: number) => Promise<void>;
   fund: (lamports?: number) => anchor.web3.Keypair;
+  placeMint: (symbol: FixtureSymbol, at?: anchor.web3.PublicKey) => void;
   /** The refusal code name a rejected instruction carried. */
   refusal: (promise: Promise<unknown>) => Promise<string>;
 };
 
 /** Starts bankrun with the program loaded and the named real mints in place. */
-export async function harness(mints: (keyof typeof FIXTURE_MINTS)[]): Promise<Harness> {
+export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   const context = await startAnchor(REPO, [], []);
   const provider = new BankrunProvider(context);
   const idl = JSON.parse(readFileSync(resolve(REPO, PROGRAM_IDL), "utf8")) as anchor.Idl & {
@@ -62,18 +67,29 @@ export async function harness(mints: (keyof typeof FIXTURE_MINTS)[]): Promise<Ha
   };
   const program = new anchor.Program(idl, provider);
 
-  for (const symbol of mints) {
+  /**
+   * Places a fixture's real bytes at an address.
+   *
+   * `at` defaults to the mint's own mainnet address. Passing a different one is
+   * how the counterfeit case is built: byte-identical to a real xStock, sitting
+   * somewhere else, which is exactly what ADR-012's allowlist exists to refuse.
+   */
+  const placeMint = (symbol: FixtureSymbol, at?: anchor.web3.PublicKey): void => {
     const source = fixture(symbol);
     const data = Buffer.from(source.dataBase64, "base64");
 
     assert.equal(data.length, source.dataLen, `${symbol}: dataBase64 does not decode to dataLen`);
 
-    context.setAccount(new anchor.web3.PublicKey(source.address), {
+    context.setAccount(at ?? new anchor.web3.PublicKey(source.address), {
       lamports: 10 * anchor.web3.LAMPORTS_PER_SOL,
       data,
       owner: new anchor.web3.PublicKey(source.owner),
       executable: false,
     });
+  };
+
+  for (const symbol of mints) {
+    placeMint(symbol);
   }
 
   const fund = (lamports = anchor.web3.LAMPORTS_PER_SOL): anchor.web3.Keypair => {
@@ -145,6 +161,7 @@ export async function harness(mints: (keyof typeof FIXTURE_MINTS)[]): Promise<Ha
     authority: fund(100 * anchor.web3.LAMPORTS_PER_SOL),
     setClock,
     fund,
+    placeMint,
     refusal,
   };
 }

@@ -5,6 +5,7 @@
 //! `touch_prices` in T04, `quote_valuation` in T05. Nothing is declared here
 //! before the task that implements it.
 
+pub mod allowlist;
 pub mod errors;
 pub mod instructions;
 pub mod state;

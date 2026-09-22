@@ -20,4 +20,6 @@ pub enum OthelloError {
     PriceStale,
     #[msg("That position is too large to value")]
     ValuationOverflow,
+    #[msg("That mint is not an accepted xStock")]
+    MintNotAllowed,
 }

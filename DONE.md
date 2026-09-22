@@ -653,3 +653,155 @@ One divergence between the two readers is known and left: Token-2022 refuses a b
 exactly Multisig::LEN and the byte reader does not model that rule. Unreachable on a mint
 Token-2022 wrote, since it pads around that length, and the divergence is in the safe
 direction.
+
+## T04 - 2026-09-22
+commit: d14e2fb
+verified: `anchor test`
+output: see the T06 entry below; that run covers T04, T05 and T06 together, since
+they share one suite and one branch.
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: running at time of writing on d14e2fb; result appended when it reports
+notes: init_price_feed, set_prices and touch_prices. Othello reads no oracle, so the
+program's whole job here is that a price can never be bound to the wrong multiplier.
+
+D5 is two checks, not one. set_prices recomputes from the mint's own bytes what the given
+stamp WOULD bind and refuses unless it equals expected_multiplier_fixed, so the script
+names the multiplier its prices were quoted for and the program verifies rather than
+guesses. Separately a Current stamp is refused while a Scheduled one is still pending,
+which is the case SPEC section 10 names: putting the old share price back as Current
+before the split lands would value the collateral at a tenth. touch_prices moves
+updated_at and nothing else, which is why the refresh script can keep a demo alive
+without ever re-binding a price. Both halves of I17 are covered.
+
+Tests are real Anchor calls against bankrun with the REAL NFLXx mint at its real mainnet
+address, so the multiplier the program stamps comes from mainnet bytes rather than from
+anything the test invented.
+
+tests/harness.ts is shared with T05 and T06. It also resolves refusal codes through the
+BUILT IDL rather than a hand-written table, because bankrun's processTransaction throws a
+raw `custom program error: 0x1773` where .rpc() throws a decoded AnchorError. A renamed or
+renumbered refusal now fails a test instead of passing silently.
+
+`BN` is not reachable as a named ESM export from @coral-xyz/anchor, only on the CJS
+default, because it is re-exported from bn.js. Reaching it through the default beats
+adding bn.js as a direct dependency it is not.
+
+## T05 - 2026-09-22
+commit: 06bf98f
+verified: `anchor test`
+output: see the T06 entry below.
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: pending (queued behind the T04 pass on the shared suite)
+notes: FUND, EXEC and H from SPEC section 4, u128 and checked throughout, returned as
+Anchor return data. FUND is the position at the share price through the multiplier; EXEC
+is the position at the wrapper price, which is what someone would actually pay for the raw
+token. They disagree while a split is being priced and SPEC counts the lower, which is why
+a multiplier alone can never inflate collateral past what the raw token would fetch.
+
+I12 HOLDS, on the real NFLXx mint, and this is the gate's go/no-go: 1.1 token at wrapper
+150 and share 150 before the split, wrapper 150 and share 15 after, haircut 2000. H is
+132 USDC on both sides, to the base unit, across a real 10-for-1. A reader that ignores
+the multiplier reads the same position's FUND as 16.5 USDC instead of 165, and the suite
+asserts that factor of ten explicitly rather than describing it.
+
+I13 holds: while the feed's stamp and the effective multiplier disagree, the position is
+Repricing and the quote refuses rather than returning a number wrong by the size of the
+split.
+
+CU: quote_valuation costs 4842 against the 200k default, recorded for SPEC section 10.
+The figure moves by a few dozen between runs with the account set; it is nowhere near the
+limit.
+
+Also covered: an unpriced feed and a price one second past max_price_age both refuse; the
+haircut floors, so a 1-raw-unit position counts as 0 rather than rounding up; u64::MAX raw
+refuses with ValuationOverflow rather than wrapping.
+
+SPEC:112 writes the signature as quote_valuation(raw) with accounts mint and feed, but h
+is defined in terms of haircut_bps and price_stale in terms of max_price_age, and neither
+is reachable from a mint or a feed: both live on Circle. The pack under-lists argument
+lists elsewhere too (TASKS:13 writes set_prices(stamp, expected_multiplier_fixed) where
+SPEC:113 has four), so this reads it as under-listing, keeps the accounts exactly as SPEC
+states, and records the reading in OPEN-QUESTIONS for the design session.
+
+## T06 - 2026-09-22
+commit: see below
+verified: `anchor test`
+output:
+```
+$ anchor test
+running 22 tests
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+    ✔ greps for a marker the program actually declares
+    ✔ keeps the harness probe out of the deployable program binary
+    ✔ starts unpriced, bound to its own mint
+    ✔ stamps Current with the multiplier in force, read from the real mint
+    ✔ stamps Scheduled with the multiplier that is coming, not the one in force
+    ✔ refuses prices whose named multiplier is not the one the stamp would write
+    ✔ refuses a Current stamp while a Scheduled stamp is still pending
+    ✔ accepts a Current stamp once the split second has arrived
+    ✔ touch_prices moves only updated_at
+    ✔ refuses a zero price
+    ✔ refuses both admin instructions from a wallet that is not the authority
+    ✔ values the demo position before the split
+    ✔ I12: H is unchanged across the split, to the base unit
+    ✔ is worth ten times what a reader that ignores the multiplier would say
+    ✔ I13: refuses while the stamp and the effective multiplier disagree
+    ✔ refuses a price older than max_price_age, and an unpriced feed
+    ✔ counts the lower of FUND and EXEC, and floors the haircut
+    ✔ refuses a position too large to value, rather than wrapping
+    ✔ refuses a haircut of 100% or more, and a non-positive max age
+      quote_valuation compute units: 4842
+    ✔ records the compute units SPEC section 10 asks for
+    ✔ values all four real mints, at their real mainnet addresses (95ms)
+    ✔ refuses a byte-perfect copy of a real xStock at an unvetted address
+    ✔ still refuses at quote time, even if a feed for an unvetted mint existed
+    ✔ keeps the program allowlist and ops/xstock-mints.ts in step
+    ✔ every allowlisted mint has a committed fixture, and vice versa
+    ✔ declares one program id in lib.rs, Anchor.toml and the built IDL
+    ✔ loads the built IDL into the TypeScript client
+    ✔ keeps the manifests saying the things the program depends on
+    ✔ keeps the harness probe out of the default build's IDL
+  29 passing (8s)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ cargo fmt --check; cargo clippy --all-targets -- -D warnings; pnpm typecheck
+fmt clean
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.77s
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: pending (queued behind the T04 pass on the shared suite)
+notes: The ADR-012 allowlist, hardcoded rather than admin-managed, per the ADR and
+OPEN-QUESTIONS. An admin-managed list would be one more thing the demo admin key could do,
+and SPEC's threat model accepts that key only for prices and the pool.
+
+Enforced at both points a mint enters the program: init_price_feed, because a feed is
+where a mint first appears, and quote_valuation again, because quoting a value for a mint
+Othello would not accept as collateral says it is acceptable collateral. The second check
+is unreachable through normal instructions, so the test writes a feed account directly
+into the harness to exercise it: defence in depth is only worth having if it is exercised.
+
+THE CASE THAT MATTERS is not a malformed mint, it is a perfect one. The test copies NFLXx's
+real bytes to an address nobody vetted, asserts the two accounts are byte-identical, and
+shows the program refuses it. Nothing on-chain distinguishes them (SPEC 9b.6): same
+authorities, same metadata, same multiplier. Only the address does. That is ADR-012's
+whole claim, demonstrated rather than asserted.
+
+All four real mints are valued at their real mainnet addresses, with the multiplier
+checked against what the T00 fetcher recorded in each fixture rather than against a
+hand-written expectation.
+
+One assertion in that test was wrong before it was right, and the program was correct:
+with share = wrapper, any mint whose multiplier is above 1 has FUND above EXEC, so H comes
+off EXEC. AAPLx caught it at 1.0026642075893797. The test now asserts min(FUND, EXEC)
+explicitly and that EXEC is the lower, which documents the behaviour instead of hiding it.
+
+A drift guard compares the four addresses in programs/othello/src/allowlist.rs against
+ops/xstock-mints.ts and against the fixtures, because the same four addresses now live in
+three places and nothing else would stop them diverging.
+
+Branch note: T04, T05 and T06 share the branch task/T04 and one test suite. That departs
+from one-branch-per-task. They are a single sequence against one shared harness and the
+deadline is Friday; recorded here rather than left implicit.

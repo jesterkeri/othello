@@ -13,6 +13,7 @@ use anchor_spl::token_2022::spl_token_2022::{
     state::Mint as MintState,
 };
 
+use crate::allowlist;
 use crate::errors::OthelloError;
 use crate::state::{PriceFeed, PriceStamp};
 use crate::valuation::decode_multiplier_fixed;
@@ -21,8 +22,8 @@ use crate::valuation::decode_multiplier_fixed;
 pub struct InitPriceFeed<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
-    /// CHECK: read only, and only to bind the feed's PDA to a mint. Whether the
-    /// mint is an allowed collateral is the allowlist's job (ADR-012, T06).
+    /// CHECK: read only, and only to bind the feed's PDA to a mint. The handler
+    /// refuses any mint outside the ADR-012 allowlist.
     pub stock_mint: UncheckedAccount<'info>,
     #[account(
         init,
@@ -64,6 +65,13 @@ pub struct TouchPrices<'info> {
 }
 
 pub fn handle_init_price_feed(ctx: Context<InitPriceFeed>) -> Result<()> {
+    // ADR-012. A feed is where a mint first enters the program, so refusing
+    // here keeps every later instruction from having to wonder.
+    require!(
+        allowlist::is_allowed(&ctx.accounts.stock_mint.key()),
+        OthelloError::MintNotAllowed
+    );
+
     let feed = &mut ctx.accounts.feed;
 
     feed.authority = ctx.accounts.authority.key();

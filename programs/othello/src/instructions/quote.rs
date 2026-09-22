@@ -14,6 +14,7 @@ use anchor_spl::token_2022::spl_token_2022::{
     state::Mint as MintState,
 };
 
+use crate::allowlist;
 use crate::errors::OthelloError;
 use crate::state::PriceFeed;
 use crate::valuation::{
@@ -48,6 +49,14 @@ pub fn handle_quote_valuation(
     max_price_age: i64,
 ) -> Result<Valuation> {
     require!(max_price_age > 0, OthelloError::InvalidParams);
+
+    // ADR-012, checked again here rather than trusted from feed creation:
+    // quoting a value for a mint Othello would not accept as collateral says it
+    // is acceptable collateral.
+    require!(
+        allowlist::is_allowed(&ctx.accounts.stock_mint.key()),
+        OthelloError::MintNotAllowed
+    );
 
     let feed = &ctx.accounts.feed;
     let now = Clock::get()?.unix_timestamp;
