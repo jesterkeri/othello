@@ -934,3 +934,64 @@ the most suspect, and should be re-reviewed. The code change after the reviewed 
 blank line, and `git diff --ignore-blank-lines` over programs, ops, tests, scripts and
 .github is empty; everything else is documentation. Whether that earns a re-review round
 is his call, not the builder's, so it is recorded rather than waived.
+
+## S3 - 2026-09-22
+
+reviewed: n/a (frontend, no money path; the design was supplied finished and this task installs it. Codex reviews the program, not the app)
+adversary: not run, attacks run: 0, test: none. The adversary writes a failing test against a spec, and there is no test suite in app/. Recorded as a gap rather than claimed as a pass
+
+Landing, from Joshua's own design handoff. Four earlier attempts re-authored the
+design from a reading of it and each lost most of it: the nav, the tab control, the
+three step tiles, both tapes and every decorative motif. Joshua's question, "didnt
+the markup come with code?", was the fix. The zip carried the screen as plain React
+(Landing.tsx, Landing.module.css, theme.ts), so the work became installing it, not
+rebuilding it.
+
+theme.ts is marked "port verbatim" by the handoff and is unchanged in content at
+app/src/lib/theme.ts, shared with S4 and S5. Landing.tsx and its module sit at
+app/src/components/landing/. Two edits and no others: the theme import path, and
+eight non-null assertions this repo's noUncheckedIndexedAccess demands of indexes
+into fixed-length tuples.
+
+verify: `pnpm -C app build && pnpm -C app typecheck`
+  ✓ Compiled successfully in 6.3s
+  ✓ Generating static pages (4/4)
+  Route (app)        Size  First Load JS
+  ┌ ○ /           8.23 kB         110 kB
+  tsc --noEmit, clean
+
+Fidelity checked against the artifact rather than asserted, after Joshua said twice
+it still did not match. The kit's Landing.dc.html and the 846KB original decode to
+the same markup, differing only in attribute naming. Against that source: all 53
+text nodes match in order, the colour engine is byte-identical, all 8 keyframes are
+present and applied, the fonts resolve (Archivo 100-900 variable, italic, stretch
+62-125%, covering the 68-82% the design sets), and 317 of 334 style declarations
+match, the 17 being ones the handoff moved into JSX inline styles.
+
+Three real defects, all in the handoff, all found from Joshua's screenshots:
+
+1. The Home pill rendered black on black. `.root button { color: inherit }` is
+   (0,1,1) and beat `.navItemActive { color: var(--paper) }` at (0,1,0). The
+   handoff had already patched six rules with !important and missed this one plus
+   four more. Fixed at the cause with `:where(.root) button`, which contributes no
+   specificity, so all six latent cases go with it.
+2. Borders and offset shadows were var(--ink), the text colour, so the whole
+   outline system inverted in dark mode. 49 declarations moved to --line, constant
+   #0B0B0B. Joshua's call, and it departs from the artifact, which does invert.
+3. The round card's pills rendered cream. The handoff wrote currentColor where the
+   artifact writes literal #0B0B0B, and .round sets color: var(--clayInk); clay's
+   luminance is 0.316 against inkFor's 0.32 threshold, so clayInk is cream.
+
+Frame width is 1440px, Joshua's number, chosen from the rendered page. The design
+system still records 1240px in design/OTHELLO-STYLE.md, so the two disagree until
+that design-owned file is updated.
+
+done when, honestly: the premise reads in one screen and the demo entry point is
+the most prominent control on it. NOT yet backed: "Open demo circle" routes to
+/circle/demo, which is 404 until S4. The sticker "One click, no wallet, nothing to
+sign" is accurate to design/FLOWS.md:195 ("none (no wallet)") and SPEC.md:272 G4,
+but nothing implements it yet. Joshua raised this; the copy is design-owned and was
+not changed.
+
+Not wired: the four nav items are buttons with no routes, and onConnectWallet is
+unset. design/OTHELLO-STYLE.md was added as the visual spec S4 and S5 build from.
