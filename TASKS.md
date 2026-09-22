@@ -16,9 +16,12 @@ Format: `- [ ] Txx <what> | verify: <exact command> | done when: <observable con
 - [x] R1 Refactor pass before review: fold duplication between the decoder and valuation paths, name every magic number, split any function doing two jobs, delete dead code. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 test still green, before/after diffstat in DONE.md
 - [x] T07 Gate 1 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: reviews/gate-1-review.md verdict implementation-ready AND the brief states gate 1 is locally implementation-ready, not deploy-ready (the init_price_feed oracle-takeover block in OPEN-QUESTIONS stands until T23)
 
-## Gate 4 slice, pulled forward (Joshua, 2026-09-22): the Split lab
-Built in parallel with gate 2 because it needs only `quote_valuation`, which gate 1 finished and Codex reviewed.
-- [ ] S1 Split lab: naive vault vs Othello side by side on the real NFLXx split, no wallet needed | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: both columns render from the committed NFLXx fixture; naive FUND 16.5 USDC vs Othello 165; H 132 on both sides of 1763337300; the page states whether it is showing recorded mainnet bytes or live devnet
+## Frontend, built in parallel with gate 2 (Joshua, 2026-09-22)
+It is a wallet app, and `HACKATHON.md` records the only published criterion: "could this be a real app that people will actually use?". No correctness proof is required in the app, so the user-facing product is the whole score. All of these render from fixtures and none needs gate 2 finished.
+- [ ] S3 Landing: the premise in one screen, per design/FRAME.md:24 | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: a reader with no crypto background can say what Othello is after one screen, and the seven-step demo's entry point is obvious
+- [ ] S4 Circle place, read-only, no wallet: timeline, member table, reserve, whose turn, the countdown | verify: `pnpm -C app build` | done when: every FLOWS section 7 Circle state renders from a fixture
+- [ ] S5 Join and Position: what you put in and what comes back, stated before the button (design/UX-REVIEW.md STOP) | verify: `pnpm -C app build` | done when: Join names both amounts and the max loss before the action
+- [ ] S1 DEMOTED 2026-09-22, build only after S3 to S5. Split lab: naive vault vs Othello side by side on the real NFLXx split, no wallet needed | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: both columns render from the committed NFLXx fixture; naive FUND 16.5 USDC vs Othello 165; H 132 on both sides of 1763337300; the page states whether it is showing recorded mainnet bytes or live devnet
 - [ ] S2 Devnet mirror mints: Token-2022 mints with ScaledUiAmountConfig, a labelled devnet allowlist entry that cannot coexist with the mainnet one (ADR-012) | verify: `anchor test` | done when: the mirror set is refused on the mainnet allowlist and accepted on the devnet one, and the label is asserted by a test
 
 ## Gate 2: circle core

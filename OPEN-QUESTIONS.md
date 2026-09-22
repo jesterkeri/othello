@@ -172,3 +172,49 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       max_price_age` and says nothing about the negative case. Decide whether a
       future-stamped feed is fresh, stale, or `invalid_params`; the build will implement
       whichever, and the T05 suite has a place for it.
+- [ ] Gate 1 emits no events at all, and `ARCHITECTURE.md:85` requires one per state
+      change: "Repudiation: an event per state change (CircleCreated, MemberJoined,
+      Activated, Contributed, PotReleased, CoverageUpdated, DefaultDeclared,
+      ReserveToppedUp, StockAdded, Withdrawn, PricesSet)". Found by the T08 scout pass.
+      Three adversary passes and the Codex gate-1 review all missed it, because none was
+      pointed at ARCHITECTURE's STRIDE table. `PricesSet` is now emitted by `set_prices`
+      as part of T08's event surface; that is additive, changes no refusal and no
+      arithmetic, and the gate-1 verdict predates it. Noting rather than hiding it: gate
+      1 was reviewed without this event and the review is not re-run for it.
+- [ ] `mint_not_allowed` is missing from SPEC section 9's error table. ADR-012 defines the
+      refusal and SPEC 9b.3 requires the allowlist, but section 9's user-facing error
+      contract, which the UI reads, has no row for it. The build emits the code; the copy
+      for it does not exist. Design session.
+- [ ] SPEC specifies no INITIAL value for most `Circle` fields: the five bitmaps, `round`,
+      `round_deadline`, `escrow`, `escrow_deficit`, `withdrawn_usdc`, `deposits_total`,
+      `forfeited_total`, `next_gate_short_by`, `held_contributions`, `last_coverage_at`.
+      T08 sets every one to zero and `status` to Forming, which is what makes I2, I3 and
+      I4 hold from the first instruction. `activate` sets `round` 0 and the deadline
+      (SPEC:105), so `round_deadline` stays 0 while Forming. Recorded as a reading.
+- [ ] SPEC does not say who pays rent for the `Circle` account, nor whether the circle's
+      two vaults are created at create or at first join. T08 has the creator pay and
+      creates both vaults at create, because I3 and I4 are stated in terms of vault
+      balances and must hold after every instruction; deferring them to the first join
+      would mean the invariants name accounts that do not exist. ARCHITECTURE:68 sizes
+      Circle at ~0.0054 SOL. Recorded as a reading.
+- [x] RESOLVED 2026-09-22: the rules are now in `HACKATHON.md`, fetched from
+      hackathons.solana.com. The criterion is one question, "could this be a real app that
+      people will actually use?", and there is NO requirement to demonstrate correctness in
+      the app, no code audit and no proof artifact. Submission needs "at least one link:
+      GitHub, live demo, or video", so the submission cannot be lost, but a repo link does
+      not score. Five bounties exist and Othello is eligible for none of them as built; the
+      main $100k track is the target. One residue: the rules page does not state which
+      network is required, so devnet is unconfirmed rather than confirmed. Check the
+      submission form itself, which may ask for more than the rules page publishes.
+      Original entry follows.
+      THE ACTUAL STOCKLANA RULES WERE NOT IN THIS REPO.
+      The only record of what is scored is `design/FRAME.md:28`, a one-line paraphrase:
+      "judged on 'could this be a real app people will use', working end-to-end demo,
+      reason it belongs on Solana, execution quality". That is somebody's summary, not the
+      rubric. Nothing here states the required submission format, the eligibility gate, the
+      weighting between criteria, whether a demo video is mandatory, whether the repo must
+      be public, whether a specific track must be named, or whether any judging multiplier
+      exists. Raised 2026-09-22 when Joshua asked whether an in-app correctness proof is
+      required; that question cannot be answered from what is recorded.
+      Get the rules, paste them in, and check the build against them line by line before
+      anything else is prioritised. A missed format or multiplier has cost a finish before.
