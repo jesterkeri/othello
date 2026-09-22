@@ -10,4 +10,10 @@ use anchor_lang::prelude::*;
 pub enum OthelloError {
     #[msg("This stock's multiplier can't be read safely")]
     MultiplierInvalid,
+    #[msg("Only the feed authority can do that")]
+    Unauthorized,
+    #[msg("Those parameters are outside the allowed range")]
+    InvalidParams,
+    #[msg("These prices were quoted for a different multiplier than the one in force")]
+    MultiplierPriceMismatch,
 }
