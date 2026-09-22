@@ -28,30 +28,75 @@ read-only and needs no wallet.
 
 ## S1, the Split lab
 
-`design/FLOWS.md:160` — "naive vault vs Othello side by side", plus a Recheck
-action. It is the most demo-legible screen in the product and it needs nothing
-from gate 2.
+`design/FLOWS.md:160`. The most demo-legible screen in the product, and it
+needs nothing from gate 2.
 
-The numbers, all verified in `tests/t05-quote-valuation.spec.ts` against the
-real NFLXx mint:
+### Read this first, because the first attempt got it wrong
 
-| | before the split | at the split second |
+Othello is a consumer app. A person who has never heard of Solana has to look
+at this screen and understand it. `design/FLOWS.md` has a vocabulary table with
+a **"Never say"** column, and `design/UX-REVIEW.md` shows the register: plain
+sentences about money, like "You lock 0.42 AAPLx and put 30 USDC into the
+circle's shared reserve."
+
+**None of these words may appear anywhere a user can see them:**
+`multiplier`, `newMultiplierEffectiveTimestamp`, `mint`, `bytes`, `fixture`,
+`unix`, any raw timestamp, `NFLXx` on its own, `naive vault`, `devnet` outside
+the one provenance line, `IDL`, `program id`, `raw`, `FUND`, `EXEC`, `H`.
+
+That list exists because the first version of this handoff was written to an
+engineer and those words went straight onto the screen. The numbers below are
+engineering facts; the words below are what the screen says.
+
+### Copy deck, use these strings
+
+| slot | copy |
+|---|---|
+| page title | Split lab |
+| headline | On 16 November 2025, Netflix split its stock 10 for 1. |
+| standfirst | The position below did not change. A lender that misses the split thinks nine tenths of it vanished. |
+| toggle | Before the split · After the split |
+| position | 1.1 Netflix xStock |
+| position note, muted | A tokenised Netflix share, issued by Backed. |
+| left card | A lender that misses the split |
+| left card note | Uses the new share price with the old share count. |
+| right card | Othello |
+| right card note | Uses the new share price with the new share count. |
+| row 1 | What it is worth |
+| row 2 | What you can borrow against it |
+| left delta, after | Down 90% |
+| right delta, after | Unchanged |
+| provenance, recorded | Real Netflix xStock data, recorded from Solana on 21 September 2026. |
+| provenance, live | Reading Solana devnet now. |
+
+"Uses the new share price with the old share count" is the whole bug in plain
+English, and it is true: a ten for one split multiplies the share count by ten
+and divides the price by ten. Miss the first half and you have divided by ten.
+
+### The numbers
+
+All verified in `tests/t05-quote-valuation.spec.ts` against the real mint.
+Position is 1.1 Netflix xStock.
+
+| | before the split | after the split |
 |---|---|---|
-| clock | 1763337299 | 1763337300 |
-| multiplier | 1.000000000 | 10.000000000 |
-| wrapper price | 150 USDC | 150 USDC |
-| share price | 150 USDC | 15 USDC |
-| **Othello FUND** | 165 USDC | **165 USDC** |
-| **Othello H** (haircut 2000) | 132 USDC | **132 USDC** |
-| **naive FUND** (ignores the multiplier) | 165 USDC | **16.5 USDC** |
+| **Othello**, what it is worth | 165.00 USDC | **165.00 USDC** |
+| **Othello**, what you can borrow | 132.00 USDC | **132.00 USDC** |
+| **Lender that misses it**, worth | 165.00 USDC | **16.50 USDC** |
+| **Lender that misses it**, borrow | 132.00 USDC | **13.20 USDC** |
 
-Position is 1.1 token = `110_000_000` raw. The naive column is
-`raw x share_price / 1e8`, which is what a reader that ignores
-`newMultiplierEffectiveTimestamp` computes. That is the whole story: same
-position, same second, and the naive vault says the borrower lost 90%.
+The split took effect at 16 November 2025, 23:55 UTC. Show a date if you show
+anything; never the second count.
 
-**The page must say which it is showing.** Recorded mainnet bytes from the
-committed fixture, or live devnet. Do not let a reader assume live.
+Borrowable is 80% of worth, because the circle's haircut is 20%. Do not
+recompute these. If you need a number that is not here, ask.
+
+### The one thing the page must be honest about
+
+A reader must never assume the figures are live when they are recorded. One
+muted line at the foot of the page, in the copy deck above. Not a banner, not a
+badge, not a coloured block: the screen is about a stock split, not about where
+its data came from.
 
 ## Devnet, decided 2026-09-22
 
