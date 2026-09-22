@@ -20,7 +20,6 @@ import {
   FIXTURE_MINTS,
   harness,
   priceFeedAddress,
-  refusal,
   type Harness,
 } from "./harness.ts";
 
@@ -125,12 +124,12 @@ describe("T04 PriceFeed (I17)", () => {
   // I17, first half: the script names the multiplier and the program checks it.
   it("refuses prices whose named multiplier is not the one the stamp would write", async () => {
     assert.equal(
-      await refusal(setPrices(WRAPPER_BEFORE, SHARE_BEFORE, CURRENT, TEN_X)),
+      await h.refusal(setPrices(WRAPPER_BEFORE, SHARE_BEFORE, CURRENT, TEN_X)),
       "MultiplierPriceMismatch",
       "Current stamp, but the script claimed the post-split multiplier",
     );
     assert.equal(
-      await refusal(setPrices(WRAPPER_BEFORE, SHARE_AFTER, SCHEDULED, ONE_X)),
+      await h.refusal(setPrices(WRAPPER_BEFORE, SHARE_AFTER, SCHEDULED, ONE_X)),
       "MultiplierPriceMismatch",
       "Scheduled stamp, but the script claimed the pre-split multiplier",
     );
@@ -143,7 +142,7 @@ describe("T04 PriceFeed (I17)", () => {
     await setPrices(WRAPPER_BEFORE, SHARE_AFTER, SCHEDULED, TEN_X);
 
     assert.equal(
-      await refusal(setPrices(WRAPPER_BEFORE, SHARE_BEFORE, CURRENT, ONE_X)),
+      await h.refusal(setPrices(WRAPPER_BEFORE, SHARE_BEFORE, CURRENT, ONE_X)),
       "MultiplierPriceMismatch",
     );
 
@@ -183,19 +182,19 @@ describe("T04 PriceFeed (I17)", () => {
   });
 
   it("refuses a zero price", async () => {
-    assert.equal(await refusal(setPrices(0, SHARE_BEFORE, CURRENT, ONE_X)), "InvalidParams");
-    assert.equal(await refusal(setPrices(WRAPPER_BEFORE, 0, CURRENT, ONE_X)), "InvalidParams");
+    assert.equal(await h.refusal(setPrices(0, SHARE_BEFORE, CURRENT, ONE_X)), "InvalidParams");
+    assert.equal(await h.refusal(setPrices(WRAPPER_BEFORE, 0, CURRENT, ONE_X)), "InvalidParams");
   });
 
   it("refuses both admin instructions from a wallet that is not the authority", async () => {
     const stranger = h.fund();
 
     assert.equal(
-      await refusal(setPrices(WRAPPER_BEFORE, SHARE_BEFORE, CURRENT, ONE_X, stranger)),
+      await h.refusal(setPrices(WRAPPER_BEFORE, SHARE_BEFORE, CURRENT, ONE_X, stranger)),
       "Unauthorized",
     );
     assert.equal(
-      await refusal(touch(stranger)),
+      await h.refusal(touch(stranger)),
       "Unauthorized",
     );
   });

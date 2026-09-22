@@ -12,6 +12,7 @@ pub mod valuation;
 
 pub use instructions::*;
 pub use state::*;
+pub use valuation::Valuation;
 
 use anchor_lang::prelude::*;
 
@@ -60,6 +61,16 @@ pub mod othello {
     /// Moves `updated_at` and nothing else (I17).
     pub fn touch_prices(ctx: Context<TouchPrices>) -> Result<()> {
         instructions::price_feed::handle_touch_prices(ctx)
+    }
+
+    /// Read-only valuation quote: FUND, EXEC and the counted value H (T05).
+    pub fn quote_valuation(
+        ctx: Context<QuoteValuation>,
+        raw: u64,
+        haircut_bps: u16,
+        max_price_age: i64,
+    ) -> Result<Valuation> {
+        instructions::quote::handle_quote_valuation(ctx, raw, haircut_bps, max_price_age)
     }
 
     /// Harness probe for P1: returns the Clock sysvar's `unix_timestamp`.

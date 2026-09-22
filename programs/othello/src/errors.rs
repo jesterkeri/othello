@@ -16,4 +16,8 @@ pub enum OthelloError {
     InvalidParams,
     #[msg("These prices were quoted for a different multiplier than the one in force")]
     MultiplierPriceMismatch,
+    #[msg("This price is too old to value collateral with")]
+    PriceStale,
+    #[msg("That position is too large to value")]
+    ValuationOverflow,
 }

@@ -30,6 +30,14 @@ use crate::errors::OthelloError;
 /// Multipliers are carried through the program as integers scaled by 1e9 (SPEC §4).
 pub const MULTIPLIER_SCALE: u64 = 1_000_000_000;
 
+/// Raw base units in one whole token. SPEC §4 quotes prices per whole token,
+/// and stock amounts are 8-dp raw, so every price-times-raw product divides by
+/// this to land back in USDC base units.
+pub const RAW_PER_TOKEN: u64 = 100_000_000;
+
+/// Basis points. Haircut, coverage and warn thresholds are all bps (SPEC §4).
+pub const BPS_DENOMINATOR: u64 = 10_000;
+
 // IEEE-754 binary64 field layout.
 const SIGN_MASK: u64 = 0x8000_0000_0000_0000;
 const EXPONENT_MASK: u64 = 0x7FF0_0000_0000_0000;
@@ -154,6 +162,75 @@ pub fn effective_multiplier_fixed(mint_data: &[u8], unix_timestamp: i64) -> Resu
         .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
 
     decode_multiplier_fixed(effective_multiplier_bits(config, unix_timestamp))
+}
+
+/// The two values of a stock position, and the counted value after the haircut.
+///
+/// `FUND` is what the position is worth at the share price, through the
+/// multiplier. `EXEC` is what it is worth at the wrapper price, which is the
+/// price someone would actually pay for the raw token. They disagree while a
+/// split is being priced, and SPEC §4 counts the lower of the two, which is why
+/// a split cannot be used to inflate collateral.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Valuation {
+    pub mult_fixed: u64,
+    pub fund: u64,
+    pub exec: u64,
+    pub h: u64,
+}
+
+/// `floor( raw x mult_fixed x share_price / (1e9 x 1e8) )`, SPEC §4.
+///
+/// u128 throughout and checked, because `raw x mult_fixed x share_price` passes
+/// 2^64 for ordinary demo numbers: 1.1 tokens at a 10x multiplier and a $15
+/// share is already 1.65e25.
+pub fn fund_value(raw: u64, mult_fixed: u64, share_price: u64) -> Result<u64> {
+    let scaled = (raw as u128)
+        .checked_mul(mult_fixed as u128)
+        .and_then(|v| v.checked_mul(share_price as u128))
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    let divisor = (MULTIPLIER_SCALE as u128)
+        .checked_mul(RAW_PER_TOKEN as u128)
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    u64::try_from(scaled / divisor).map_err(|_| error!(OthelloError::ValuationOverflow))
+}
+
+/// `floor( raw x wrapper_price / 1e8 )`, SPEC §4.
+///
+/// The wrapper price is the NON-scaled price of one whole raw token, so the
+/// multiplier does not appear here. That is what makes this value usable during
+/// Repricing, when the share price and the multiplier disagree.
+pub fn exec_value(raw: u64, wrapper_price: u64) -> Result<u64> {
+    let scaled = (raw as u128)
+        .checked_mul(wrapper_price as u128)
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    u64::try_from(scaled / RAW_PER_TOKEN as u128)
+        .map_err(|_| error!(OthelloError::ValuationOverflow))
+}
+
+/// `floor( min(fund, exec) x (10000 - haircut_bps) / 10000 )`, SPEC §4.
+///
+/// Rounds down, because this is collateral and collateral rounds in the
+/// protocol's favour.
+pub fn counted_value(fund: u64, exec: u64, haircut_bps: u16) -> Result<u64> {
+    require!(
+        (haircut_bps as u64) < BPS_DENOMINATOR,
+        OthelloError::InvalidParams
+    );
+
+    let kept = BPS_DENOMINATOR
+        .checked_sub(haircut_bps as u64)
+        .ok_or(OthelloError::InvalidParams)?;
+
+    let scaled = (fund.min(exec) as u128)
+        .checked_mul(kept as u128)
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    u64::try_from(scaled / BPS_DENOMINATOR as u128)
+        .map_err(|_| error!(OthelloError::ValuationOverflow))
 }
 
 /// A second reader for the scaled-UI extension, by raw byte offsets.

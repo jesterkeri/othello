@@ -49,6 +49,8 @@ export type Harness = {
   authority: anchor.web3.Keypair;
   setClock: (unixTimestamp: number) => Promise<void>;
   fund: (lamports?: number) => anchor.web3.Keypair;
+  /** The refusal code name a rejected instruction carried. */
+  refusal: (promise: Promise<unknown>) => Promise<string>;
 };
 
 /** Starts bankrun with the program loaded and the named real mints in place. */
@@ -101,7 +103,50 @@ export async function harness(mints: (keyof typeof FIXTURE_MINTS)[]): Promise<Ha
     );
   };
 
-  return { context, program, authority: fund(100 * anchor.web3.LAMPORTS_PER_SOL), setClock, fund };
+  // Resolved from the BUILT IDL, not from a hand-written table, so a renamed or
+  // renumbered refusal shows up as a test failure rather than as a silent pass.
+  const errorNames = new Map<number, string>(
+    ((idl as { errors?: { code: number; name: string }[] }).errors ?? []).map((e) => [
+      e.code,
+      e.name,
+    ]),
+  );
+
+  const refusal = async (promise: Promise<unknown>): Promise<string> => {
+    try {
+      await promise;
+    } catch (thrown) {
+      // `.rpc()` through the provider throws a decoded AnchorError.
+      const decoded = (thrown as { error?: { errorCode?: { code?: string } } }).error?.errorCode
+        ?.code;
+
+      if (decoded) {
+        return decoded;
+      }
+
+      // banksClient.processTransaction throws the raw program error instead.
+      const raw = /custom program error: 0x([0-9a-f]+)/i.exec(String(thrown));
+
+      if (raw?.[1]) {
+        const code = Number.parseInt(raw[1], 16);
+
+        return errorNames.get(code) ?? `unmapped custom program error ${code}`;
+      }
+
+      return String(thrown);
+    }
+
+    throw new Error("expected the instruction to be refused, but it succeeded");
+  };
+
+  return {
+    context,
+    program,
+    authority: fund(100 * anchor.web3.LAMPORTS_PER_SOL),
+    setClock,
+    fund,
+    refusal,
+  };
 }
 
 /**
@@ -116,6 +161,14 @@ export type Callable = {
   accounts(accounts: Record<string, anchor.web3.PublicKey>): Callable;
   signers(signers: anchor.web3.Keypair[]): Callable;
   rpc(): Promise<string>;
+  instruction(): Promise<anchor.web3.TransactionInstruction>;
+};
+
+/** Transaction metadata bankrun returns, narrowed to what the tests read. */
+export type SentMeta = {
+  returnData: { data: Uint8Array } | null;
+  computeUnitsConsumed: bigint;
+  logMessages: string[];
 };
 
 export function call(
@@ -147,6 +200,28 @@ export async function fetchAccount<T>(
   return (await account.fetch(address)) as T;
 }
 
+/**
+ * Sends one instruction and hands back its metadata.
+ *
+ * `.rpc()` throws away the return data and the compute units, and T05 needs
+ * both: the quote's answer comes back as return data, and SPEC §10 asks for the
+ * instruction's CU to be recorded.
+ */
+export async function send(
+  h: Harness,
+  instruction: anchor.web3.TransactionInstruction,
+  payer = h.fund(),
+): Promise<SentMeta> {
+  const tx = new anchor.web3.Transaction();
+
+  tx.recentBlockhash = h.context.lastBlockhash;
+  tx.feePayer = payer.publicKey;
+  tx.add(instruction);
+  tx.sign(payer);
+
+  return (await h.context.banksClient.processTransaction(tx)) as unknown as SentMeta;
+}
+
 export function priceFeedAddress(
   program: anchor.Program<anchor.Idl>,
   stockMint: anchor.web3.PublicKey,
@@ -157,15 +232,3 @@ export function priceFeedAddress(
   )[0];
 }
 
-/** The Anchor error name a rejected instruction carried, or the raw message. */
-export async function refusal(promise: Promise<unknown>): Promise<string> {
-  try {
-    await promise;
-  } catch (thrown) {
-    const anchorError = thrown as { error?: { errorCode?: { code?: string } } };
-
-    return anchorError.error?.errorCode?.code ?? String(thrown);
-  }
-
-  throw new Error("expected the instruction to be refused, but it succeeded");
-}

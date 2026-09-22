@@ -81,3 +81,12 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       allocate across, so a solo borrow is a collateralised loan sharing only the valuation
       layer, which is why "generic lending" sits beside it in the same cut list. Not blocking:
       the build proceeds on the frozen spec until the design session says otherwise.
+- [ ] `quote_valuation` signature: SPEC:112 writes it as `quote_valuation(raw)` with
+      accounts "mint + feed", but its `h` is defined in SPEC section 4 in terms of
+      `haircut_bps` and its `price_stale` refusal in terms of `max_price_age`, and
+      neither is reachable from a mint or a feed: both live on `Circle`. T05 reads this
+      as the pack under-listing arguments, which it does elsewhere too (TASKS:13 writes
+      `set_prices(stamp, expected_multiplier_fixed)` where SPEC:113 has four arguments),
+      and implements `quote_valuation(raw, haircut_bps, max_price_age)` with the accounts
+      exactly as SPEC states. Not blocking, and no invariant depends on which way it is
+      resolved; recorded so the design session can ratify or correct the reading.
