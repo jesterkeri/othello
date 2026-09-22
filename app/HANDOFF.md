@@ -26,6 +26,49 @@ Separate branches, both into `staging` by PR. `staging` rejects direct pushes.
 data, little-endian in this order: `mult_fixed`, `fund`, `exec`, `h`. It is
 read-only and needs no wallet.
 
+## What this app is, in shape
+
+**A wallet app.** Not a dashboard, not an explorer, not a developer tool.
+Joshua's words, 2026-09-22: "its basically just us building a wallet app so
+that's what it should be like".
+
+The published criterion is one question (`HACKATHON.md`):
+
+> "could this be a real app that people will actually use?"
+
+So the shape is the score. Someone opens Othello to see four things and do one:
+
+| | |
+|---|---|
+| what I have | locked stock, and what it is worth today |
+| what I owe | contributions left, and when the next one is due |
+| am I safe | Healthy, Warning or Critical, in those words |
+| what happens next | the round, the countdown, whose turn it is |
+| one action | the single thing this screen is for |
+
+Mobile first. Big numbers, small labels, thumb-reachable actions. A balance and
+a countdown, not a table of fields. If a screen shows more than one primary
+action, it is the wrong screen.
+
+The style stays neubrutalist (`design/FRAME.md`), which is design-owned and not
+mine to change. Neubrutalism and a wallet shape are compatible: bold blocks,
+high contrast, one loud number per card.
+
+## Build order, set by the rules
+
+`HACKATHON.md` records no correctness requirement and no code audit. The
+user-facing product is the whole score, so:
+
+1. **Landing.** `design/FRAME.md:24` makes the judge's first job "understand the
+   premise in one screen". That screen is this one.
+2. **Circle.** The spine of the seven-step demo a judge watches end to end.
+3. **Join and Position.** Where "a real app people will use" is actually proved:
+   real money in, health visible, max loss stated before the button.
+4. **Split lab.** Demoted, and deliberately. It is a proof for developers, and
+   judges can read that in the README. Build it only if the four above are done.
+
+All four can be built from fixtures now. None of them needs gate 2 finished.
+
 ## S1, the Split lab
 
 `design/FLOWS.md:160`. The most demo-legible screen in the product, and it
