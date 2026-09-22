@@ -995,3 +995,92 @@ not changed.
 
 Not wired: the four nav items are buttons with no routes, and onConnectWallet is
 unset. design/OTHELLO-STYLE.md was added as the visual spec S4 and S5 build from.
+
+## S4 - 2026-09-22
+
+reviewed: n/a (frontend, read-only, no money path and no wallet; Codex reviews the program)
+adversary: not run, attacks run: 0, test: none. Same gap as S3: the adversary returns a failing test and app/ has no test suite. The fixture's arithmetic is instead pinned against the program's own unit tests, below
+
+Circle place, viewer state. design/FLOWS.md §2.4 gives Viewer exactly one verb,
+view, so this screen carries no action controls at all rather than disabled ones.
+
+verify: `pnpm -C app build`
+  ✓ Generating static pages (12/12)
+  Route (app)                    Size  First Load JS
+  ┌ ○ /                       8.42 kB         110 kB
+  └ ● /circle/[id]              10 kB         112 kB
+  tsc --noEmit, clean
+
+done when: every FLOWS §7 Circle state renders from a fixture. Each one has its
+own URL, so this is checked rather than claimed:
+
+  /circle/demo        200   what "Open demo circle" opens, no longer a 404
+  /circle/forming     200   /circle/active     200   /circle/paused      200
+  /circle/repricing   200   /circle/completed  200   /circle/cancelled   200
+  /circle/stale       200   the demo circle read past max_price_age (D6)
+  /circle/nonsense    404
+
+Copy checked in the served HTML, all FLOWS §8 verbatim:
+  forming    "Waiting for 3 members to join"
+  active     "Round 2 of 5 · Tunde's turn", "1 contributions still missing"
+  paused     "The next payout needs 75.00 USDC of reserve and 70.00 remains",
+             "Top up 5.00 USDC"
+  repricing  "Repricing. Price and split disagree."
+  completed  "This circle isn't running right now (Completed)"
+  cancelled  "This circle isn't running right now (Cancelled)"
+  stale      "Prices are 8d 1h old"
+  active     "Coverage uses prices from ... ago"
+
+"1 contributions" is FLOWS' own "{k} contributions still missing" and is left
+verbatim rather than corrected, because the handoff rule is that design/ wins.
+
+THE FIXTURE IS DERIVED, NOT INVENTED. SPEC §10 G2 states the peak table as
+"needs 140, 150, 30, 0" and requires g = 29 refused. Four terms means n = 5 and
+the peak is 150, so n x g >= peak puts the guarantee at 30 USDC exactly.
+Solving the four terms with coverage_bps 13000 (SPEC.md:44) gives
+contribution x coverage = 65 USDC, so contribution 50 USDC and min_stock_cover
+120 USDC. I12's worked example (1.1 token, 150/150, multiplier 10, share 15,
+H = 132) fixes haircut_bps at 2000. D10 gives 120 s rounds and 60 s grace,
+SPEC.md:48 gives max_price_age 691_200.
+
+Those were derived from the documents before reading the program, then checked
+against it. programs/othello/src/instructions/create_circle.rs:273-277 declares
+N 5, CONTRIBUTION 50 USDC, COVERAGE_BPS 13_000, MIN_STOCK_COVER 120 USDC. Every
+one matches.
+
+  cargo test -p othello peak
+  test peak_reproduces_the_spec_demo_table ... ok
+  test peak_is_the_boundary_between_g29_and_g30 ... ok
+  test result: ok. 6 passed; 0 failed
+
+The paused fixture reproduces SPEC §7's halt example rather than inventing a
+shortfall: reserve 150, losses 80, so 70 remains, next_gate_short_by 5, and the
+screen prints needs 75 and 70 remains.
+
+Paused and Repricing are rendered as facts about an Active circle, not as
+statuses, because that is what they are: Paused is next_gate_short_by > 0
+(I18) and Repricing is the feed's stamped multiplier disagreeing with the
+mint's effective one (D5). The status pill shows the derived word; the account's
+own status is unchanged underneath.
+
+The countdown starts at the fixture's own moment, one minute before the real
+NFLXx 10-for-1 at 1763337300, and ticks, so a round runs open -> overdue ->
+grace elapsed without a reload. Starting from the fixture's clock rather than
+Date.now() is also what keeps the server and first client paint identical.
+
+app/src/lib/circle.ts mirrors the on-chain account field for field, so a fixture
+and a decoded account are the same shape. It computes no collateral: coverage is
+quote_valuation's answer and the app displays it, which is what
+design/reviews/design-review-r2.md:69 warned against duplicating.
+
+NEW COMPONENT, not from the handoff: components/theme/ThemeRoot.tsx applies the
+stored profile to a screen that is not Landing. It reads the same othello.theme
+key through lib/theme, so a palette chosen on Landing is the one Circle opens
+with. Landing keeps its own copy because it also owns the picker that writes it;
+folding the two together is a frontend refactor pass, not a change to make
+inside a faithful port.
+
+NOT DONE: no live devnet read. The screen says so on its face, "This circle
+renders from a committed fixture, not from a live devnet account", rather than
+letting a judge assume otherwise. Wiring it to a real account is T23 and needs
+S2's devnet mints first.
