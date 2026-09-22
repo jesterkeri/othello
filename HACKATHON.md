@@ -33,7 +33,7 @@ requirements are what disqualifies you.
 
 | requirement | published wording | status |
 |---|---|---|
-| **Register** | "Register, then **Submit Project** before the deadline" | **REQUIRED, and not yet done** |
+| **Register** | "Register, then **Submit Project** before the deadline" | **DONE 2026-09-22**, @jester_keri, confirmed by the Registered badge on the hackathon page |
 | Team | "Invite teammates from the submit form" | n/a, solo |
 | One submission per team | "Individuals and teams, one submission per team, original work" | fine |
 | Pre-existing code | "Open-source components are fine if you say so" | allowed, must be disclosed |
@@ -62,6 +62,22 @@ discovered at 20:00 Lagos on the deadline is the failure mode that has cost a
 finish before. Registering also costs nothing and removes lock-out risk, and
 `design/FRAME.md:32` already records that edits are allowed after submitting,
 so a stub submission can go in early and be improved.
+
+## What the page shows once registered (2026-09-22)
+
+| | |
+|---|---|
+| prize pool, total | **$126,000** (the $100,000 main track plus the five bounties) |
+| registered | 818 |
+| **submissions already in** | **169** |
+| bounty tracks | 5 |
+| deadline, as the site renders it in Lagos time | **Sep 25, 2026, 9:00 PM**, "in 3 days" |
+| build window | "One week to build something innovative with stocks on Solana", so it opened around 18 September |
+
+169 submissions against 818 registered says most entrants have not submitted
+yet and will arrive late. That is an argument for a stub submission early
+rather than a reason to relax: the form is the only place the real requirements
+are written, and it is worth opening before the queue.
 
 ## Deadline
 
@@ -96,8 +112,10 @@ bounty, not for the main track.
 - [ ] the reason it belongs on Solana is stated, not implied
 - [ ] original work declared; open-source components named
 - [ ] submitted before Fri 25 Sep 21:00 Lagos, with edits allowed after
-- [ ] **REGISTER** (required, "Register, then Submit Project before the deadline")
-- [ ] open the submission form and record every field it asks for, in this file
+- [x] **REGISTER** — done 2026-09-22, @jester_keri
+- [ ] **open the Submit Project form and record every field it asks for, here**. This is
+      the last unknown: the form is the authoritative source for requirements and cannot
+      be read from outside
 - [ ] NOT STATED items above confirmed against that form, which may ask for more
       than the rules page publishes
 - [ ] a stub submission in early, since edits are allowed after (design/FRAME.md:32)
