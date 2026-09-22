@@ -92,7 +92,7 @@ function programSources(): string[] {
  * to describe. Without this, deleting `target/` or editing a source and
  * skipping the build leaves both guards passing on yesterday's bytes.
  */
-function assertFresh(artifact: string): void {
+export function assertFresh(artifact: string): void {
   const built = statSync(resolve(REPO, artifact)).mtimeMs;
 
   for (const source of programSources()) {

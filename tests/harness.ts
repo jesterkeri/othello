@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 
 import * as anchor from "@coral-xyz/anchor";
 
-import { DEPLOY_DIR, PROGRAM_IDL, PROGRAM_NAME, REPO } from "./artifacts.ts";
+import { assertFresh, DEPLOY_DIR, PROGRAM_IDL, PROGRAM_NAME, PROGRAM_SO, REPO } from "./artifacts.ts";
 
 // Read inside startAnchor, so setting them at import time is early enough.
 process.env.BPF_OUT_DIR = resolve(REPO, DEPLOY_DIR);
@@ -60,6 +60,12 @@ export type Harness = {
 
 /** Starts bankrun with the program loaded and the named real mints in place. */
 export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
+  // bankrun loads target/deploy/othello.so, so these specs are exactly as
+  // trustworthy as that file is current. Running one spec on its own used to
+  // skip this and could test bytes that no longer matched the source.
+  assertFresh(PROGRAM_SO);
+  assertFresh(PROGRAM_IDL);
+
   const context = await startAnchor(REPO, [], []);
   const provider = new BankrunProvider(context);
   const idl = JSON.parse(readFileSync(resolve(REPO, PROGRAM_IDL), "utf8")) as anchor.Idl & {

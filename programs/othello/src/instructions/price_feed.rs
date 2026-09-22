@@ -109,7 +109,14 @@ fn scheduled_stamp_pending(feed: &PriceFeed, mint_data: &[u8], now: i64) -> Resu
         .get_extension::<ScaledUiAmountConfig>()
         .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
 
-    let scheduled = decode_multiplier_fixed(u64::from_le_bytes(config.new_multiplier.0))?;
+    // A new_multiplier that will not decode means nothing is pending, rather
+    // than meaning this call fails. `feed.priced_for_multiplier` only ever holds
+    // a value that DID decode, so it can never equal an undecodable one; and
+    // refusing here would make a mint with a malformed scheduled multiplier
+    // unpriceable for its perfectly readable current one.
+    let Ok(scheduled) = decode_multiplier_fixed(u64::from_le_bytes(config.new_multiplier.0)) else {
+        return Ok(false);
+    };
     let effective_at: i64 = config.new_multiplier_effective_timestamp.into();
 
     Ok(feed.priced_for_multiplier == scheduled && effective_at > now)

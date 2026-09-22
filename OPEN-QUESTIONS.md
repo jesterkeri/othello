@@ -90,3 +90,23 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       and implements `quote_valuation(raw, haircut_bps, max_price_age)` with the accounts
       exactly as SPEC states. Not blocking, and no invariant depends on which way it is
       resolved; recorded so the design session can ratify or correct the reading.
+- [ ] BLOCKING before T23 (any deploy). `init_price_feed` has no authority gate, and
+      SPEC cannot currently give it one. SPEC:113 puts `init_price_feed` on the admin row
+      and lists `unauthorized` among its refusals, but SPEC section 4 defines no admin or
+      config account for the program to check a signer against: `PriceFeed.authority` is
+      written BY that instruction, so it cannot also gate it. So today whoever calls it
+      first becomes the authority for that mint, and there is no transfer or close
+      instruction, so the claim is permanent. The feed PDA is `["price", stock_mint]`, one
+      deterministic address per mint, so on a shared cluster a stranger can squat every
+      allowlisted mint's feed before the admin does and lock the demo out. Found by the T04
+      adversary pass, reproduced: a funded stranger called init_price_feed for NFLXx, the
+      feed came back with the stranger as authority, and the intended admin's set_prices
+      then refused `Unauthorized`.
+      Not exploitable in gate 1: nothing is deployed and every test creates its own feed in
+      a fresh harness. It becomes real the moment anything is on a cluster, hence the T23
+      scope. The build cannot fix it without inventing an account SPEC does not have.
+      Options for the design session: a single Config PDA holding the admin, created once
+      by the deployer and checked by init_price_feed; or constrain init_price_feed's signer
+      to the program's upgrade authority; or accept it and have the deploy script create
+      all four feeds in the same transaction batch as the deploy, which shrinks the window
+      rather than closing it.
