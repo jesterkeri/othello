@@ -428,3 +428,117 @@ is worth someone's attention: the mint check is a round trip through one file, s
 still reads XsEH7w... but whose bytes were altered would pass P1. Authenticity of those
 bytes is T00's job and T00 proves it (tests/t00-*.ts, SPEC 9b.6), so P1 is within its
 contract, but P1 alone is not evidence the bytes are NFLXx's.
+
+## T02 - 2026-09-22
+commit: 4a05888 (decoder in 3b1c74d, adversary fix in 4a05888)
+verified: `cargo test -p othello decode`
+output:
+```
+$ cargo test -p othello decode
+running 9 tests
+test valuation::tests::decode_accepts_the_largest_multiplier_that_still_fits ... ok
+test valuation::tests::decode_agrees_with_an_independent_decimal_expansion ... ok
+test valuation::tests::decode_floors_rather_than_rounds ... ok
+test valuation::tests::decode_is_monotonic_across_the_usable_range ... ok
+test valuation::tests::decode_is_not_a_float_multiply ... ok
+test valuation::tests::decode_is_not_a_float_multiply_below_one ... ok
+test valuation::tests::decode_matches_the_spec_vectors ... ok
+test valuation::tests::decode_refuses_every_non_finite_pattern ... ok
+test valuation::tests::decode_refuses_values_that_cannot_be_a_multiplier ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+$ cargo test -p othello        # whole crate
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+$ cargo fmt --check && cargo clippy --all-targets -- -D warnings
+fmt clean
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.20s
+$ anchor build
+     Running unittests src/lib.rs (/home/hr/myvscode_linux/othello/target/debug/deps/othello-995034df92de9df1)
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: DEFECT fixed in 4a05888, attacks run: 9, test: programs/othello/src/valuation.rs (below-one vectors)
+notes: `decode_multiplier_fixed(bits) -> floor(multiplier x 1e9)`, computed from the
+IEEE-754 fields as integers. A binary64 is significand x 2^exponent with both integral,
+so the floor is an exact shift of significand x 1e9 in u128. The value is never
+materialised as a float; every f64 in valuation.rs sits inside `#[cfg(test)]`, which
+satisfies AGENTS.md's "no floats in the program".
+
+SPEC section 10's three vectors hold: 1.0026642075893797 -> 1002664207,
+1.0032690125398187 -> 1003269012, 1.0000003 -> 1000000299. Measured against the four
+real mints, a float multiply disagrees with the exact floor on five of the nine recorded
+values. ADR-001's case is the one that survives truncation as well as rounding:
+1.0000003_f64 * 1e9 is exactly 1000000300.0, so even a truncating cast reads 1000000300
+where the floor is 1000000299.
+
+Refusals: NaN, both infinities, anything negative including -0.0, anything that scales
+past u64, and anything that floors to zero. Zero is refused rather than returned. A zero
+multiplier is not "worth nothing", it is the mint failing to say what the asset is worth,
+which SPEC section 9's error table calls asset ineligible. Every subnormal floors to zero
+and is refused by the same route, which is the "subnormal edge handled as specified" that
+SPEC section 10 asks for.
+
+MUTATION CHECK. INVARIANTS names I5 as one that must be mutation-checked, so it was,
+twice. First round, six mutants, one survivor. Second round after the adversary pass,
+nine mutants, no survivors:
+
+```
+  KILLED   ceil below 1.0 (the adversary's M9)     5 passed; 4 failed
+  KILLED   refuse every multiplier below 1.0       6 passed; 3 failed
+  KILLED   narrow the small-value guard to 64 bits 6 passed; 3 failed
+  KILLED   floor -> round                          4 passed; 5 failed
+  KILLED   drop the implicit leading one           2 passed; 7 failed
+  KILLED   exponent bias off by one                3 passed; 6 failed
+  KILLED   drop the zero refusal                   8 passed; 1 failed
+  KILLED   drop the sign refusal                   8 passed; 1 failed
+  KILLED   drop the u64 overflow refusal           8 passed; 1 failed
+  survivors: none
+```
+
+One equivalent survivor is known and kept: deleting the NaN/infinity branch leaves the
+suite green, because every non-finite pattern has exponent field 0x7FF, which becomes a
+2^972 shift that the u64 overflow guard refuses anyway with the same error. The adversary
+confirmed the equivalence independently. The branch stays because it makes the refusal
+say what it means and survives any later change to the output width, and the source says
+so at the branch.
+
+ADVERSARY DEFECT, real, found on 3b1c74d, against INVARIANTS:3. The decoder itself held
+under a differential sweep of 309,612 bit patterns against exact rationals, in dev and in
+release with overflow-checks on, with zero disagreements. The suite was the defect: every
+accepted vector sat in [1.0, 10.0], so nothing pinned the floor below 1 and three
+non-equivalent mutants passed all eight tests. The first of them, ceil below 1, is
+ADR-001's own overvaluation defect mirrored, and it is not a hypothetical range: a
+multiplier below 1 is what a reverse split writes, the mirror of the real NFLXx 10-for-1
+the gate is built around. Direction matters here, because an overvalued FUND (SPEC
+section 4) lets release_pot pass a coverage gate it should fail.
+
+Fixed with six below-one vectors, computed on exact rationals rather than with this
+decoder: 0.1 -> 100000000 where ceil would say 100000001, 0.001 -> 1000000, 1e-6 -> 999,
+0.9999999999 -> 999999999, 0.5 -> 500000000, and 1e-9 -> 1, the smallest multiplier that
+is not refused. 9.9e-10 joins the refusal list as the step below it. Both table-driven
+tests now walk every vector, and ADR-001's anti-float case gained a below-one twin: the
+double nearest 1e-6 is under it, but 1e-6_f64 * 1e9 is exactly 1000.0, so even a
+truncating cast overvalues by a whole unit.
+
+The adversary also raised one unproven suspicion that became load-bearing the moment 1e-6
+was added: `decode_agrees_with_an_independent_decimal_expansion` cut `format!("{:.40}")`
+at nine places, but that expansion is ROUNDED, so a run of nines past the cut carries into
+digit 9 and accuses a correct decoder. 1e-6 has thirteen such nines. The reference now
+formats to 1100 places, past where any binary64 expansion terminates, so the digits are
+exact and the cut is sound. Caught before it could produce a false failure.
+
+The adversary independently decoded the ScaledUiAmount extension (TLV type 25) straight
+out of `dataBase64` in all four committed fixtures and confirmed all eight real bit
+patterns and all eight expected integers in the test table match the mint bytes,
+`decodedScaledUiAmountConfig`, and SPEC 9b.1. It also confirmed
+`u32::from(OthelloError::MultiplierInvalid) == 6000` and that the message matches SPEC
+section 9's copy verbatim.
+
+Errors are append-only. Anchor numbers variants by declaration order and that number goes
+on chain, so inserting one silently renumbers every code after it; each task appends the
+codes it implements.
+
+Carried to T03: this function takes raw u64 bits rather than a PodF64, so it stays
+independent of the Token-2022 layout. T03 reads the bits out of ScaledUiAmountConfig and
+passes them in.
