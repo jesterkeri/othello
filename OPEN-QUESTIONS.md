@@ -218,3 +218,23 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       required; that question cannot be answered from what is recorded.
       Get the rules, paste them in, and check the build against them line by line before
       anything else is prioritised. A missed format or multiplier has cost a finish before.
+- [ ] T27 repo tidy: WHAT IS ACTUALLY DELETABLE. Joshua asked on 2026-09-22 that the
+      unimportant information be removed once the build is done, because the repo becomes
+      a judged artifact: `HACKATHON.md` records that a GitHub link satisfies the
+      submission, so judges may read it.
+      CANNOT BE DELETED WITHOUT BREAKING CI. The harness workflow's pack-integrity step
+      reads `TASKS.md`, `DONE.md` and `OPEN-QUESTIONS.md`, and `scripts/check-reviews.sh`
+      reads `DONE.md` and `reviews/*review*.md`. Deleting any of them fails a required
+      status check and blocks the merge. If they are to go, the workflow goes first, and
+      that is a security-boundary change that needs a human to approve the diff.
+      SHOULD PROBABLY STAY, because it is evidence of rigour rather than clutter:
+      `DONE.md`, `reviews/`, `adr/`, `INVARIANTS.md`, `SPEC.md`, `design/`. A judge asking
+      "could this be a real app people will use" is not hurt by seeing four design review
+      rounds and a mutation-checked decoder.
+      REAL CANDIDATES, all process scaffolding rather than product: `app/HANDOFF.md` (a
+      brief between two build sessions), `PROPOSAL-solo-mode.md` (a design draft for a
+      mode that does not exist), the resolved entries in this file, `PREFLIGHT.md` and
+      `PIPELINE.md` if they read as internal process, and `AGENTS.md`/`CLAUDE.md` if
+      Joshua would rather not advertise how it was built.
+      NOT THE BUILD'S CALL. Joshua approves the list before anything is deleted, and it
+      lands as one commit so it can be reverted whole.
