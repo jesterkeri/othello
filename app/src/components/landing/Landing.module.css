@@ -2,11 +2,11 @@
 
 .root { min-height: 100vh; background: var(--desk); color: var(--ink); padding: clamp(8px, 1.1vw, 14px); overflow-x: clip; font-family: var(--font-jakarta), 'Plus Jakarta Sans', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
 .root *, .root *::before, .root *::after { box-sizing: border-box; }
-.root button { font-family: inherit; cursor: pointer; color: inherit; }
+:where(.root) button { font-family: inherit; cursor: pointer; color: inherit; }
 .root a { color: var(--ink); text-underline-offset: 3px; }
 .root a:hover { color: var(--sky); }
 
-.frame { max-width: 1660px; margin: 0 auto; border: 5px solid var(--ink); border-radius: clamp(24px, 3.2vw, 44px); background: var(--paper); color: var(--ink); }
+.frame { max-width: 1440px; margin: 0 auto; border: 5px solid var(--ink); border-radius: clamp(24px, 3.2vw, 44px); background: var(--paper); color: var(--ink); }
 
 .display { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; text-transform: uppercase; }
 .micro { font-size: 9.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
