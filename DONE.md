@@ -542,3 +542,114 @@ codes it implements.
 Carried to T03: this function takes raw u64 bits rather than a PodF64, so it stays
 independent of the Token-2022 layout. T03 reads the bits out of ScaledUiAmountConfig and
 passes them in.
+
+## T03 - 2026-09-22
+commit: bb5bc5a (reader in 118ba66, adversary fixes in bb5bc5a)
+verified: `anchor test`
+output:
+```
+$ anchor test
+running 20 tests
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+    ✔ greps for a marker the program actually declares
+    ✔ keeps the harness probe out of the deployable program binary
+    ✔ declares one program id in lib.rs, Anchor.toml and the built IDL
+    ✔ loads the built IDL into the TypeScript client (40ms)
+    ✔ keeps the manifests saying the things the program depends on
+    ✔ keeps the harness probe out of the default build's IDL
+  6 passing (49ms)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ cargo fmt --check; cargo clippy --all-targets -- -D warnings; pnpm typecheck
+fmt clean
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.30s
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: DEFECT fixed in bb5bc5a, attacks run: 13, test: programs/othello/src/valuation.rs (t03_both_readers_agree_on_a_mint_with_an_uninitialized_tlv_entry)
+notes: `effective_multiplier_fixed(mint_data, unix_timestamp)` unpacks the mint with
+Token-2022's own StateWithExtensions, takes the scaled-UI extension, selects `multiplier`
+or `new_multiplier` on the Clock, and hands raw bits to T02's decoder. Token-2022's
+`current_multiplier` is private and returns f64, so the selection is reimplemented on
+bits and the value is never a float. The boundary is inclusive, byte for byte the rule in
+the library.
+
+Both parsers agree on AAPLx, NFLXx, SPYx and NVDAx, field by field, and a third parse
+agrees too: the values ops/fetch-fixtures.ts recorded in each fixture's
+decodedScaledUiAmountConfig, compared on bits rather than on decimal text. That is a
+third parse of the same bytes, not a third source of truth, and is recorded as such.
+
+SPEC section 10's clock cases hold on the real bytes: NFLXx 1000000000 at 1763337299 and
+10000000000 at 1763337300; AAPLx 1002664207 at 1786148999 and 1003269012 at 1786149000.
+Every fixture is also checked at both sides of its own boundary, and all four have
+multiplier != new_multiplier, so that test is not vacuous.
+
+ADVERSARY DEFECT 1, real, found on 118ba66, and it hollowed out the point of the task.
+tlv_fallback::find did not implement Token-2022's rule that the TLV walk stops at an
+Uninitialized entry, so on a mint carrying one the program refused the mint while the
+reader that exists to corroborate the program reported a multiplier. 28 single-byte
+overwrites of the real AAPLx fixture diverge this way. Always in the safe direction and
+never wrong money, but the cross-check TASKS T03 asks for was thinner than it read.
+
+Worse: three mutants survived the whole suite, and the load-bearing one was replacing the
+byte reader's body with a call to StateWithExtensions. Nothing in the suite could tell a
+second reader from a wrapper around the first, which is precisely the property being
+claimed as evidence.
+
+Fixed, and now pinned. The adversary's test is integrated verbatim. A second test builds
+a TLV buffer by hand with a distinct sentinel in every field, on a mint base Token-2022
+refuses as uninitialised: the official parser cannot answer there, so a delegating
+implementation fails, and field order is covered independently of the fixtures. A third
+covers the account-type and declared-length refusals.
+
+MUTATION CHECK, second round, all killed:
+```
+  KILLED   M7  byte reader delegates to the official parser   19 passed; 1 failed
+  KILLED   M8  drop the account-type check                    19 passed; 1 failed
+  KILLED   M9  drop the declared-length check                 19 passed; 1 failed
+  KILLED   M13 drop the Uninitialized stop                    19 passed; 1 failed
+  KILLED   M14 swap the authority and multiplier slots        18 passed; 2 failed
+  survivors: none
+```
+The adversary's own first round had killed M1 to M6 and M10 to M12: the boundary flipped
+four ways, the hardcoded type and length changed, header-skipping, the timestamp read
+from the wrong slot, and assuming 1.0 when the extension is absent.
+
+ADVERSARY DEFECT 2, real, and the first fix for it was wrong. The freshness guard omitted
+the workspace Cargo.toml, rust-toolchain.toml and Anchor.toml, so both artifact guards
+would certify a binary older than three of its inputs. Adding them to the mtime list broke
+worse: cargo skips relinking when content has not changed, so a manifest whose mtime moved
+without its content moving leaves the artifact permanently stale and no rebuild clears it.
+That failure mode was reproduced here, not assumed. An unclearable guard is worse than
+none, so the manifests are guarded on content instead: default features stay empty, the
+harness feature exists and is opt-in, overflow-checks stays on, resolver 2 keeps
+dev-dependency features out of the program, and the toolchain pins an exact compiler. That
+guard needs no build at all and catches the real failure, the harness feature reaching
+default, at the source rather than in bytes that may not have been rebuilt. Confirmed by
+setting default = ["harness"], which fails five tests. The mtime guard keeps the .rs
+sources, where a content change does force a relink.
+
+Also fixed, from an unproven suspicion that was correct: both P1 scripts called an
+asserting anchorBuild inside a `finally`, and a throw there replaces the error already
+propagating, losing the finding the script exists to report. Both now catch and print.
+
+Attacks that found nothing, worth recording because they are the ones a reviewer will
+ask about: the boundary at i64::MIN and i64::MAX and on negative timestamps; floats on the
+program path (`PodF64.0` is read as [u8; 8] and nothing calls `From<PodF64> for f64`);
+dev-dependencies reaching the program (`resolver = "2"`); overflow, wrap or out-of-bounds
+reads in the byte reader (`entry_len` is u16 and every read is `data.get(..)?`); duplicate,
+overlong, truncated and wrongly-typed TLV entries; 3,108 hostile single-byte overwrites
+through effective_multiplier_fixed with zero panics and zero cases where both readers
+succeed with different multiplier bits.
+
+Carried forward: anchor-bankrun 0.5.0 does drive @coral-xyz/anchor 0.32.1 over bankrun,
+settled by spike rather than left for T06 as P1's entry said. `program.methods.readClock()`
+over a BankrunProvider returns a signature. T04 onwards can use real Anchor calls instead
+of hand-encoded instruction data.
+
+One divergence between the two readers is known and left: Token-2022 refuses a buffer of
+exactly Multisig::LEN and the byte reader does not model that rule. Unreachable on a mint
+Token-2022 wrote, since it pads around that length, and the divergence is in the safe
+direction.
