@@ -26,6 +26,7 @@ use anchor_spl::token_2022::spl_token_2022::{
 };
 
 use crate::errors::OthelloError;
+use crate::state::PriceFeed;
 
 /// Multipliers are carried through the program as integers scaled by 1e9 (SPEC §4).
 pub const MULTIPLIER_SCALE: u64 = 1_000_000_000;
@@ -146,14 +147,14 @@ pub fn effective_multiplier_bits(config: &ScaledUiAmountConfig, unix_timestamp: 
     u64::from_le_bytes(selected.0)
 }
 
-/// `floor(effective multiplier × 1e9)` read from a Token-2022 mint account.
+/// The scaled-UI extension of a Token-2022 mint, or a refusal.
 ///
 /// Refuses a mint that will not unpack and a mint with no scaled-UI extension.
 /// The second is not pedantry: without it a plain SPL mint, which has no
 /// multiplier at all, would have to be given an assumed one, and an assumed
 /// multiplier is invented stock data. Which mints are allowed at all is the
-/// allowlist's job (ADR-012, T06), not this function's.
-pub fn effective_multiplier_fixed(mint_data: &[u8], unix_timestamp: i64) -> Result<u64> {
+/// allowlist's job (ADR-012), not this function's.
+pub fn scaled_ui_config(mint_data: &[u8]) -> Result<ScaledUiAmountConfig> {
     let mint = StateWithExtensions::<Mint>::unpack(mint_data)
         .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
 
@@ -161,7 +162,68 @@ pub fn effective_multiplier_fixed(mint_data: &[u8], unix_timestamp: i64) -> Resu
         .get_extension::<ScaledUiAmountConfig>()
         .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
 
-    decode_multiplier_fixed(effective_multiplier_bits(config, unix_timestamp))
+    Ok(*config)
+}
+
+/// `floor(effective multiplier × 1e9)` read from a Token-2022 mint account.
+pub fn effective_multiplier_fixed(mint_data: &[u8], unix_timestamp: i64) -> Result<u64> {
+    let config = scaled_ui_config(mint_data)?;
+
+    decode_multiplier_fixed(effective_multiplier_bits(&config, unix_timestamp))
+}
+
+/// Values a position against a feed, or refuses (SPEC §4 and §5, D5, I13).
+///
+/// Lives here rather than in `quote_valuation` because gate 2 needs exactly
+/// this sequence three more times: `join_and_lock`, `release_pot` and
+/// `update_coverage` all value collateral and all refuse on the same
+/// conditions (I13). One copy, or it becomes four.
+///
+/// The ORDER of the refusals is asserted by the T05 tests and must not move.
+/// Callers check their own preconditions first; for `quote_valuation` those are
+/// `InvalidParams` and then `MintNotAllowed`.
+pub fn value_position(
+    feed: &PriceFeed,
+    mint_data: &[u8],
+    raw: u64,
+    haircut_bps: u16,
+    now: i64,
+    max_price_age: i64,
+) -> Result<Valuation> {
+    // Freshness, SPEC §5: fresh iff now - updated_at <= max_price_age. A feed
+    // that has never been priced has updated_at 0 and fails this on any real
+    // clock, which is the intent: an unpriced feed values nothing.
+    let age = now
+        .checked_sub(feed.updated_at)
+        .ok_or(OthelloError::PriceStale)?;
+
+    require!(age <= max_price_age, OthelloError::PriceStale);
+    require!(
+        feed.wrapper_price > 0 && feed.share_price > 0,
+        OthelloError::PriceStale
+    );
+
+    let config = scaled_ui_config(mint_data)?;
+    let mult_fixed = decode_multiplier_fixed(effective_multiplier_bits(&config, now))?;
+
+    // D5 / I13. The share price was quoted against SOME multiplier and the feed
+    // records which. If that is not the one in force, the position is Repricing
+    // and FUND would be wrong by the whole size of the split.
+    require!(
+        feed.priced_for_multiplier == mult_fixed,
+        OthelloError::MultiplierPriceMismatch
+    );
+
+    let fund = fund_value(raw, mult_fixed, feed.share_price)?;
+    let exec = exec_value(raw, feed.wrapper_price)?;
+    let h = counted_value(fund, exec, haircut_bps)?;
+
+    Ok(Valuation {
+        mult_fixed,
+        fund,
+        exec,
+        h,
+    })
 }
 
 /// The two values of a stock position, and the counted value after the haircut.
@@ -385,6 +447,19 @@ mod tests {
 
     // ---- T03: reading the multiplier out of a real mint account ----
 
+    /// Offset of the ScaledUiAmount TLV header in the real AAPLx fixture.
+    const SCALED_UI_HEADER: usize = 275;
+
+    /// A plain SPL mint, with no extensions and no account-type byte.
+    const PLAIN_MINT_LEN: usize = 82;
+
+    // The account-type index, the TLV start and the Mint type byte are spelled
+    // out as literals below rather than imported from `tlv_fallback`. That is
+    // deliberate: a hand-built buffer that uses the reader's own constants is
+    // built wrong and read wrong together, which would make the buffer agree
+    // with a broken reader. Independence is the whole reason the byte reader
+    // exists, and it has to reach the test data too.
+
     /// The four committed mainnet fixtures (SPEC §9b.1), as the T00 fetcher
     /// wrote them.
     const FIXTURES: [&str; 4] = ["AAPLx", "NFLXx", "SPYx", "NVDAx"];
@@ -562,9 +637,6 @@ mod tests {
     /// the program reported a multiplier.
     #[test]
     fn t03_both_readers_agree_on_a_mint_with_an_uninitialized_tlv_entry() {
-        /// Offset of the ScaledUiAmount TLV header in the real AAPLx fixture.
-        const SCALED_UI_HEADER: usize = 275;
-
         let mut data = mint_bytes("AAPLx");
 
         assert_eq!(
@@ -637,7 +709,6 @@ mod tests {
     #[test]
     fn t03_the_byte_reader_refuses_a_malformed_tlv() {
         let good = mint_bytes("AAPLx");
-        const SCALED_UI_HEADER: usize = 275;
 
         let mut wrong_account_type = good.clone();
         wrong_account_type[165] = 2; // Account, not Mint
@@ -663,7 +734,7 @@ mod tests {
         // The first 82 bytes of a real mint are a valid plain SPL mint with no
         // extensions at all. It has no multiplier, and inventing one for it
         // would be invented stock data.
-        let plain = &mint_bytes("AAPLx")[..82];
+        let plain = &mint_bytes("AAPLx")[..PLAIN_MINT_LEN];
 
         assert!(effective_multiplier_fixed(plain, 0).is_err());
         assert!(tlv_fallback::find(plain).is_none());

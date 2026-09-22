@@ -136,3 +136,13 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       CARRIED INTO T07: the gate-1 brief must state that gate 1 is LOCALLY
       implementation-ready, not deploy-ready, so a passing gate-1 review cannot be read as
       clearing this block.
+- [ ] Price freshness treats a FUTURE `updated_at` as fresh. `valuation::value_position`
+      computes `age = now - feed.updated_at` and requires `age <= max_price_age`; a feed
+      stamped ahead of the clock gives a negative age, which passes. Raised by the R1
+      refactor pass as a suspicion and left unfixed there, because R1 must not change
+      behaviour. Only `set_prices` and `touch_prices` write that field and both write
+      `Clock::get()`, so it needs the validator clock to move backwards, which bankrun can
+      do and a real cluster should not. SPEC §5 defines fresh as `now - updated_at <=
+      max_price_age` and says nothing about the negative case. Decide whether a
+      future-stamped feed is fresh, stale, or `invalid_params`; the build will implement
+      whichever, and the T05 suite has a place for it.

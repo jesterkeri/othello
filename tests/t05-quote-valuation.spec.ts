@@ -18,25 +18,25 @@ import assert from "node:assert/strict";
 import * as anchor from "@coral-xyz/anchor";
 
 import {
-  call,
+  BEFORE_SPLIT,
+  CURRENT,
+  decodeValuation,
   FIXTURE_MINTS,
   harness,
-  priceFeedAddress,
+  initFeed,
+  ONE_X,
+  quoteIx as quoteIxOn,
+  RAW_PER_TOKEN,
+  SCHEDULED,
   send,
+  setPrices as setPricesOn,
+  SPLIT_AT,
+  TEN_X,
+  USDC,
   type Harness,
+  type QuotedValuation,
 } from "./harness.ts";
 
-const { BN } = (anchor as unknown as { default: { BN: new (value: number | string) => unknown } })
-  .default;
-
-const SPLIT_AT = 1_763_337_300;
-const BEFORE_SPLIT = SPLIT_AT - 1;
-
-const ONE_X = 1_000_000_000;
-const TEN_X = 10_000_000_000;
-
-/** USDC base units, 6 dp. */
-const USDC = 1_000_000;
 /** Raw base units, 8 dp. 1.1 token. */
 const RAW = 110_000_000;
 
@@ -50,55 +50,26 @@ const MAX_PRICE_AGE = 691_200;
 const EXPECTED_FUND = 165 * USDC;
 const EXPECTED_H = 132 * USDC;
 
-const CURRENT = { current: {} };
-const SCHEDULED = { scheduled: {} };
-
-type Quote = { multFixed: bigint; fund: bigint; exec: bigint; h: bigint; computeUnits: bigint };
-
 describe("T05 quote_valuation (I12, I13)", () => {
   let h: Harness;
   let mint: anchor.web3.PublicKey;
-  let feed: anchor.web3.PublicKey;
 
   beforeEach(async () => {
     h = await harness(["NFLXx"]);
     mint = new anchor.web3.PublicKey(FIXTURE_MINTS.NFLXx);
-    feed = priceFeedAddress(h.program, mint);
 
     await h.setClock(BEFORE_SPLIT);
-    await call(h.program, "initPriceFeed")
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed })
-      .signers([h.authority])
-      .rpc();
+    await initFeed(h, mint);
   });
 
   const setPrices = (share: number, stamp: unknown, expected: number) =>
-    call(h.program, "setPrices", [new BN(WRAPPER), new BN(share), stamp, new BN(expected)])
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed })
-      .signers([h.authority])
-      .rpc();
+    setPricesOn(h, mint, { wrapper: WRAPPER, share, stamp, expected });
 
   const quoteIx = (raw: number | string = RAW, haircutBps = HAIRCUT_BPS, maxAge = MAX_PRICE_AGE) =>
-    call(h.program, "quoteValuation", [new BN(raw), haircutBps, new BN(maxAge)])
-      .accounts({ stockMint: mint, feed })
-      .instruction();
+    quoteIxOn(h, mint, { raw, haircutBps, maxPriceAge: maxAge });
 
-  async function quote(raw = RAW): Promise<Quote> {
-    const meta = await send(h, await quoteIx(raw));
-
-    assert.ok(meta.returnData, "quote_valuation returned no data");
-
-    const bytes = Buffer.from(meta.returnData.data);
-    assert.equal(bytes.length, 32, "expected four u64s");
-
-    return {
-      multFixed: bytes.readBigUInt64LE(0),
-      fund: bytes.readBigUInt64LE(8),
-      exec: bytes.readBigUInt64LE(16),
-      h: bytes.readBigUInt64LE(24),
-      computeUnits: meta.computeUnitsConsumed,
-    };
-  }
+  const quote = async (raw = RAW): Promise<QuotedValuation> =>
+    decodeValuation(await send(h, await quoteIx(raw)));
 
   it("values the demo position before the split", async () => {
     await setPrices(SHARE_BEFORE, CURRENT, ONE_X);
@@ -133,7 +104,7 @@ describe("T05 quote_valuation (I12, I13)", () => {
     await h.setClock(SPLIT_AT);
 
     const q = await quote();
-    const naive = BigInt(RAW) * BigInt(SHARE_AFTER) / 100_000_000n;
+    const naive = (BigInt(RAW) * BigInt(SHARE_AFTER)) / RAW_PER_TOKEN;
 
     assert.equal(naive, 16_500_000n, "the naive read is 16.5 USDC");
     assert.equal(q.fund, naive * 10n, "the correct read is ten times it");

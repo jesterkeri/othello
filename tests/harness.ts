@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 
 import * as anchor from "@coral-xyz/anchor";
 
-import { assertFresh, DEPLOY_DIR, PROGRAM_IDL, PROGRAM_NAME, PROGRAM_SO, REPO } from "./artifacts.ts";
+import { assertFresh, DEPLOY_DIR, PROGRAM_IDL, PROGRAM_SO, REPO } from "./artifacts.ts";
 
 // Read inside startAnchor, so setting them at import time is early enough.
 process.env.BPF_OUT_DIR = resolve(REPO, DEPLOY_DIR);
@@ -21,6 +21,54 @@ const { startAnchor, Clock } = await import("solana-bankrun");
 const { BankrunProvider } = await import("anchor-bankrun");
 
 export { Clock };
+
+/**
+ * `BN` is re-exported from bn.js and the ESM interop does not surface it as a
+ * named export, only on the CJS default. bn.js is not a direct dependency, so
+ * reaching it through the default is the honest route rather than adding one.
+ *
+ * Exported from here because four specs had their own copy and they had already
+ * drifted: two typed the argument `number`, two `number | string`.
+ */
+export const { BN } = (
+  anchor as unknown as { default: { BN: new (value: number | string) => unknown } }
+).default;
+
+/** SPEC §9b.1: NFLXx multiplier 1 -> newMultiplier 10 at this second. */
+export const SPLIT_AT = 1_763_337_300;
+export const BEFORE_SPLIT = SPLIT_AT - 1;
+
+/** Multipliers, fixed x1e9 (SPEC §4). */
+export const ONE_X = 1_000_000_000;
+export const TEN_X = 10_000_000_000;
+
+/** USDC base units, 6 dp. */
+export const USDC = 1_000_000;
+/** Raw base units in one whole token, 8 dp (SPEC §4). */
+export const RAW_PER_TOKEN = 100_000_000n;
+
+/** `PriceStamp`, as the Anchor client encodes a Rust enum variant. */
+export const CURRENT = { current: {} };
+export const SCHEDULED = { scheduled: {} };
+
+export type BigNumber = { toNumber(): number };
+
+export type PriceFeedState = {
+  authority: anchor.web3.PublicKey;
+  stockMint: anchor.web3.PublicKey;
+  wrapperPrice: BigNumber;
+  sharePrice: BigNumber;
+  pricedForMultiplier: BigNumber;
+  updatedAt: BigNumber;
+};
+
+export type QuotedValuation = {
+  multFixed: bigint;
+  fund: bigint;
+  exec: bigint;
+  h: bigint;
+  computeUnits: bigint;
+};
 
 /** SPEC §9b.1. The real mint, at its real mainnet address. */
 export const FIXTURE_MINTS = {
@@ -243,6 +291,91 @@ export async function send(
   tx.sign(payer);
 
   return (await h.context.banksClient.processTransaction(tx)) as unknown as SentMeta;
+}
+
+/**
+ * Decodes `quote_valuation`'s return data: four u64s, little-endian.
+ *
+ * The length assertion is here rather than in one spec, because it was in one
+ * spec and missing from another.
+ */
+export function decodeValuation(meta: SentMeta): QuotedValuation {
+  assert.ok(meta.returnData, "the instruction returned no data");
+
+  const bytes = Buffer.from(meta.returnData.data);
+
+  assert.equal(bytes.length, 32, "expected four u64s of return data");
+
+  return {
+    multFixed: bytes.readBigUInt64LE(0),
+    fund: bytes.readBigUInt64LE(8),
+    exec: bytes.readBigUInt64LE(16),
+    h: bytes.readBigUInt64LE(24),
+    computeUnits: meta.computeUnitsConsumed,
+  };
+}
+
+/**
+ * The three instruction builders the specs share.
+ *
+ * Everything each spec varies stays a parameter: the signer, the mint, the
+ * prices, the stamp and the quote's own arguments. Only the shape is shared.
+ */
+export function initFeed(h: Harness, mint: anchor.web3.PublicKey, signer = h.authority) {
+  return call(h.program, "initPriceFeed")
+    .accounts({
+      authority: signer.publicKey,
+      stockMint: mint,
+      feed: priceFeedAddress(h.program, mint),
+    })
+    .signers([signer])
+    .rpc();
+}
+
+export function setPrices(
+  h: Harness,
+  mint: anchor.web3.PublicKey,
+  prices: {
+    wrapper: number;
+    share: number;
+    stamp: unknown;
+    expected: number | string;
+    signer?: anchor.web3.Keypair;
+  },
+) {
+  const signer = prices.signer ?? h.authority;
+
+  return call(h.program, "setPrices", [
+    new BN(prices.wrapper),
+    new BN(prices.share),
+    prices.stamp,
+    new BN(prices.expected),
+  ])
+    .accounts({
+      authority: signer.publicKey,
+      stockMint: mint,
+      feed: priceFeedAddress(h.program, mint),
+    })
+    .signers([signer])
+    .rpc();
+}
+
+export function quoteIx(
+  h: Harness,
+  mint: anchor.web3.PublicKey,
+  quote: { raw: number | string; haircutBps: number; maxPriceAge: number },
+) {
+  return call(h.program, "quoteValuation", [
+    new BN(quote.raw),
+    quote.haircutBps,
+    new BN(quote.maxPriceAge),
+  ])
+    .accounts({ stockMint: mint, feed: priceFeedAddress(h.program, mint) })
+    .instruction();
+}
+
+export function readFeed(h: Harness, mint: anchor.web3.PublicKey): Promise<PriceFeedState> {
+  return fetchAccount<PriceFeedState>(h.program, "priceFeed", priceFeedAddress(h.program, mint));
 }
 
 export function priceFeedAddress(

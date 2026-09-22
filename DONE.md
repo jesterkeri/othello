@@ -805,3 +805,81 @@ three places and nothing else would stop them diverging.
 Branch note: T04, T05 and T06 share the branch task/T04 and one test suite. That departs
 from one-branch-per-task. They are a single sequence against one shared harness and the
 deadline is Friday; recorded here rather than left implicit.
+
+## R1 - 2026-09-22
+commit: see below
+verified: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test`
+output:
+```
+$ cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+fmt: clean
+running 22 tests
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      quote_valuation compute units: 4789
+    ✔ records the compute units SPEC section 10 asks for
+  31 passing (6s)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ git diff --stat ac067bc  # R1 before/after
+ programs/othello/src/instructions/price_feed.rs |  22 +---
+ programs/othello/src/instructions/quote.rs      |  74 +++----------
+ programs/othello/src/valuation.rs               |  89 ++++++++++++++--
+ tests/harness.ts                                | 135 +++++++++++++++++++++++-
+ tests/t04-price-feed-repricing.spec.ts          |  58 +++-------
+ tests/t04-price-feed.spec.ts                    |  58 +++-------
+ tests/t05-quote-valuation.spec.ts               |  67 ++++--------
+ tests/t06-allowlist.spec.ts                     |  46 +++-----
+ 8 files changed, 302 insertions(+), 247 deletions(-)
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: n/a (no behaviour changed; the same 22 Rust and 31 mocha tests pass before and
+after, and the pass is verified by that rather than by a new attack)
+refactor: 4 applied, 1 declined in part
+
+APPLIED 1. The Token-2022 unpack + `get_extension` pair was written five times. Extracted
+as `valuation::scaled_ui_config`, which `effective_multiplier_fixed`, both `price_feed`
+helpers and the quote now share. Down to two occurrences: the extraction itself, and the
+test module's own copy, which is deliberately the official parser used as the comparison
+baseline for the byte reader.
+
+APPLIED 2, and this is the one that matters for gate 2. The freshness check, the D5 stamp
+check and the FUND/EXEC/H sequence moved out of `quote_valuation` into
+`valuation::value_position`. I13 requires exactly that sequence in `join_and_lock`,
+`release_pot` and `update_coverage`, so leaving it in the instruction would have meant
+copying it three more times in T09 to T11, with three more chances to get the refusal
+order wrong. The order is asserted by the T05 suite and did not move:
+`InvalidParams`, `MintNotAllowed`, `PriceStale`, `MultiplierPriceMismatch`.
+
+APPLIED 3. The TypeScript specs had four copies of the `BN` interop shim, the split
+constants, the price-setting helpers and the return-data decoder, and they had already
+drifted: two shims typed their argument `number` and two `number | string`, and t05
+asserted the 32-byte return-data length that t06 omitted. All hoisted into
+`tests/harness.ts`. Sharing the decoder gives t06 that length assertion, so this pass made
+one test stricter rather than looser. Each spec's own variation stayed a parameter: the
+signer, the mint, the prices, the stamp and the quote's arguments.
+
+APPLIED 5. Dropped an unused import, and named two bare SPEC §4 denominators in files that
+already named their others: `100_000_000n` became `RAW_PER_TOKEN` and `8000n` became
+`10_000 - HAIRCUT_BPS`, same integer result, floor division unchanged.
+
+DECLINED IN PART, 4. Hoisting the repeated test constants was applied: `SCALED_UI_HEADER`
+is declared once and the plain-mint length 82 is named. But the proposal also asked the
+tests to reuse `tlv_fallback`'s own `ACCOUNT_TYPE_INDEX`, `TLV_START` and
+`ACCOUNT_TYPE_MINT` instead of the literals 165, 166 and 1. Declined: a hand-built buffer
+that uses the reader's own constants is built wrong and read wrong together, so it would
+agree with a broken reader. That is exactly the independence the byte reader exists for,
+and it has to reach the test data too. The literals stay, with a comment saying why.
+
+NOT FIXED, recorded instead. The refactor pass raised one unproven suspicion:
+`value_position` computes `age = now - feed.updated_at` and a feed stamped ahead of the
+clock gives a negative age, which passes the freshness check. R1 must not change
+behaviour, so it is in OPEN-QUESTIONS for the design session rather than patched here.
+Both writers of that field write `Clock::get()`, so it needs the validator clock to move
+backwards.
+
+Nothing was weakened, skipped or deleted. Test counts are identical either side of the
+pass: 22 Rust, 31 mocha, 26 T00 cases.

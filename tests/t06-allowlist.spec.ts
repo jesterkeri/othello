@@ -17,27 +17,29 @@ import * as anchor from "@coral-xyz/anchor";
 
 import { REPO } from "./artifacts.ts";
 import {
-  call,
+  BN,
+  CURRENT,
+  decodeValuation,
   FIXTURE_MINTS,
   fixture,
   harness,
+  initFeed,
   priceFeedAddress,
   send,
+  setPrices as setPricesOn,
+  USDC,
   type FixtureSymbol,
   type Harness,
+  quoteIx as quoteIxOn,
 } from "./harness.ts";
-
-const { BN } = (anchor as unknown as { default: { BN: new (value: number | string) => unknown } })
-  .default;
 
 const SYMBOLS = Object.keys(FIXTURE_MINTS) as FixtureSymbol[];
 
-const USDC = 1_000_000;
 const RAW = 110_000_000;
 const WRAPPER = 150 * USDC;
 const HAIRCUT_BPS = 2000;
+const KEPT_BPS = BigInt(10_000 - HAIRCUT_BPS);
 const MAX_PRICE_AGE = 691_200;
-const CURRENT = { current: {} };
 
 /** Before every fixture's own scheduled change, so Current means `multiplier`. */
 const BEFORE_ANY_CHANGE = 1_700_000_000;
@@ -50,22 +52,11 @@ describe("T06 real fixtures and the mint allowlist (ADR-012)", () => {
     await h.setClock(BEFORE_ANY_CHANGE);
   });
 
-  const initFeed = (mint: anchor.web3.PublicKey) =>
-    call(h.program, "initPriceFeed")
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed: priceFeedAddress(h.program, mint) })
-      .signers([h.authority])
-      .rpc();
-
   const setPrices = (mint: anchor.web3.PublicKey, share: number, expected: string) =>
-    call(h.program, "setPrices", [new BN(WRAPPER), new BN(share), CURRENT, new BN(expected)])
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed: priceFeedAddress(h.program, mint) })
-      .signers([h.authority])
-      .rpc();
+    setPricesOn(h, mint, { wrapper: WRAPPER, share, stamp: CURRENT, expected });
 
   const quoteIx = (mint: anchor.web3.PublicKey) =>
-    call(h.program, "quoteValuation", [new BN(RAW), HAIRCUT_BPS, new BN(MAX_PRICE_AGE)])
-      .accounts({ stockMint: mint, feed: priceFeedAddress(h.program, mint) })
-      .instruction();
+    quoteIxOn(h, mint, { raw: RAW, haircutBps: HAIRCUT_BPS, maxPriceAge: MAX_PRICE_AGE });
 
   /** The multiplier the T00 fetcher recorded, as the program's fixed-point integer. */
   function recordedMultiplierFixed(symbol: FixtureSymbol): bigint {
@@ -86,19 +77,14 @@ describe("T06 real fixtures and the mint allowlist (ADR-012)", () => {
     for (const symbol of SYMBOLS) {
       const mint = new anchor.web3.PublicKey(FIXTURE_MINTS[symbol]);
 
-      await initFeed(mint);
+      await initFeed(h, mint);
 
       const expected = recordedMultiplierFixed(symbol);
       await setPrices(mint, 150 * USDC, expected.toString());
 
-      const meta = await send(h, await quoteIx(mint));
-      assert.ok(meta.returnData, `${symbol}: no quote`);
-
-      const bytes = Buffer.from(meta.returnData.data);
-      const multFixed = bytes.readBigUInt64LE(0);
-      const fund = bytes.readBigUInt64LE(8);
-      const exec = bytes.readBigUInt64LE(16);
-      const counted = bytes.readBigUInt64LE(24);
+      const { multFixed, fund, exec, h: counted } = decodeValuation(
+        await send(h, await quoteIx(mint)),
+      );
 
       assert.equal(multFixed, expected, `${symbol}: multiplier disagrees with the fixture`);
       assert.ok(fund > 0n && exec > 0n, `${symbol}: valued at nothing`);
@@ -109,7 +95,7 @@ describe("T06 real fixtures and the mint allowlist (ADR-012)", () => {
       // collateral past what the raw token would actually fetch.
       const lower = fund < exec ? fund : exec;
 
-      assert.equal(counted, (lower * 8000n) / 10_000n, `${symbol}: haircut not applied to min`);
+      assert.equal(counted, (lower * KEPT_BPS) / 10_000n, `${symbol}: haircut not applied to min`);
       assert.equal(
         lower,
         exec,
@@ -137,7 +123,7 @@ describe("T06 real fixtures and the mint allowlist (ADR-012)", () => {
       "the counterfeit is supposed to be byte-identical",
     );
 
-    assert.equal(await h.refusal(initFeed(counterfeit)), "MintNotAllowed");
+    assert.equal(await h.refusal(initFeed(h, counterfeit)), "MintNotAllowed");
   });
 
   it("still refuses at quote time, even if a feed for an unvetted mint existed", async () => {

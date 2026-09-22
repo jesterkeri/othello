@@ -25,68 +25,44 @@ import assert from "node:assert/strict";
 import * as anchor from "@coral-xyz/anchor";
 
 import {
-  call,
-  fetchAccount,
+  BEFORE_SPLIT,
+  CURRENT,
   FIXTURE_MINTS,
   harness,
-  priceFeedAddress,
+  initFeed,
+  ONE_X,
+  readFeed as readFeedOf,
+  SCHEDULED,
+  setPrices as setPricesOn,
+  TEN_X,
+  USDC,
   type Harness,
 } from "./harness.ts";
 
-type BigNumber = { toNumber(): number };
-
-type PriceFeedState = {
-  wrapperPrice: BigNumber;
-  sharePrice: BigNumber;
-  pricedForMultiplier: BigNumber;
-  updatedAt: BigNumber;
-};
-
-/** See the note in t04-price-feed.spec.ts: BN is only on the CJS default. */
-const { BN } = (anchor as unknown as { default: { BN: new (value: number) => unknown } }).default;
-
-/** SPEC §9b.1: NFLXx multiplier 1 -> newMultiplier 10 at this second. */
-const SPLIT_AT = 1_763_337_300;
-const BEFORE_SPLIT = SPLIT_AT - 1;
-
-const ONE_X = 1_000_000_000;
-const TEN_X = 10_000_000_000;
-
-const WRAPPER_BEFORE = 150_000_000;
-const SHARE_BEFORE = 150_000_000;
-const SHARE_AFTER = 15_000_000;
+const WRAPPER_BEFORE = 150 * USDC;
+const SHARE_BEFORE = 150 * USDC;
+const SHARE_AFTER = 15 * USDC;
 
 /** A later quote of the same stock, so the second call is a real re-quote. */
-const WRAPPER_MOVED = 151_000_000;
-const SHARE_BEFORE_MOVED = 151_000_000;
+const WRAPPER_MOVED = 151 * USDC;
+const SHARE_BEFORE_MOVED = 151 * USDC;
 const SHARE_AFTER_MOVED = 15_100_000;
-
-const CURRENT = { current: {} };
-const SCHEDULED = { scheduled: {} };
 
 describe("T04 PriceFeed: what repricing must still permit (I17)", () => {
   let h: Harness;
   let mint: anchor.web3.PublicKey;
-  let feed: anchor.web3.PublicKey;
 
   const setPrices = (wrapper: number, share: number, stamp: unknown, expected: number) =>
-    call(h.program, "setPrices", [new BN(wrapper), new BN(share), stamp, new BN(expected)])
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed })
-      .signers([h.authority])
-      .rpc();
+    setPricesOn(h, mint, { wrapper, share, stamp, expected });
 
-  const readFeed = () => fetchAccount<PriceFeedState>(h.program, "priceFeed", feed);
+  const readFeed = () => readFeedOf(h, mint);
 
   beforeEach(async () => {
     h = await harness(["NFLXx"]);
     mint = new anchor.web3.PublicKey(FIXTURE_MINTS.NFLXx);
-    feed = priceFeedAddress(h.program, mint);
 
     await h.setClock(BEFORE_SPLIT);
-    await call(h.program, "initPriceFeed")
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed })
-      .signers([h.authority])
-      .rpc();
+    await initFeed(h, mint);
   });
 
   // Only Current is refused while a Scheduled stamp is pending. A Scheduled

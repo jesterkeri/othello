@@ -15,47 +15,28 @@ import assert from "node:assert/strict";
 import * as anchor from "@coral-xyz/anchor";
 
 import {
+  BEFORE_SPLIT,
   call,
-  fetchAccount,
+  CURRENT,
   FIXTURE_MINTS,
   harness,
+  initFeed,
+  ONE_X,
   priceFeedAddress,
+  readFeed as readFeedOf,
+  SCHEDULED,
+  setPrices as setPricesOn,
+  SPLIT_AT,
+  TEN_X,
+  USDC,
   type Harness,
 } from "./harness.ts";
 
-type BigNumber = { toNumber(): number };
-
-type PriceFeedState = {
-  authority: anchor.web3.PublicKey;
-  stockMint: anchor.web3.PublicKey;
-  wrapperPrice: BigNumber;
-  sharePrice: BigNumber;
-  pricedForMultiplier: BigNumber;
-  updatedAt: BigNumber;
-};
-
-/**
- * `BN` is re-exported from bn.js and the ESM interop does not surface it as a
- * named export, only on the CJS default. bn.js is not a direct dependency, so
- * reaching it through the default is the honest route rather than adding one.
- */
-const { BN } = (anchor as unknown as { default: { BN: new (value: number) => unknown } }).default;
-
-/** SPEC §9b.1: NFLXx multiplier 1 -> newMultiplier 10 at this second. */
-const SPLIT_AT = 1_763_337_300;
-const BEFORE_SPLIT = SPLIT_AT - 1;
-
-const ONE_X = 1_000_000_000;
-const TEN_X = 10_000_000_000;
-
 /** The demo's pre-split prices (SPEC §5): wrapper 150, share 150. */
-const WRAPPER_BEFORE = 150_000_000;
-const SHARE_BEFORE = 150_000_000;
+const WRAPPER_BEFORE = 150 * USDC;
+const SHARE_BEFORE = 150 * USDC;
 /** After a 10-for-1, the same wrapper is ten times as many shares. */
-const SHARE_AFTER = 15_000_000;
-
-const CURRENT = { current: {} };
-const SCHEDULED = { scheduled: {} };
+const SHARE_AFTER = 15 * USDC;
 
 describe("T04 PriceFeed (I17)", () => {
   let h: Harness;
@@ -68,10 +49,7 @@ describe("T04 PriceFeed (I17)", () => {
     feed = priceFeedAddress(h.program, mint);
 
     await h.setClock(BEFORE_SPLIT);
-    await call(h.program, "initPriceFeed")
-      .accounts({ authority: h.authority.publicKey, stockMint: mint, feed })
-      .signers([h.authority])
-      .rpc();
+    await initFeed(h, mint);
   }
 
   const setPrices = (
@@ -80,11 +58,7 @@ describe("T04 PriceFeed (I17)", () => {
     stamp: unknown,
     expected: number,
     signer = h.authority,
-  ) =>
-    call(h.program, "setPrices", [new BN(wrapper), new BN(share), stamp, new BN(expected)])
-      .accounts({ authority: signer.publicKey, stockMint: mint, feed })
-      .signers([signer])
-      .rpc();
+  ) => setPricesOn(h, mint, { wrapper, share, stamp, expected, signer });
 
   const touch = (signer = h.authority) =>
     call(h.program, "touchPrices")
@@ -92,7 +66,7 @@ describe("T04 PriceFeed (I17)", () => {
       .signers([signer])
       .rpc();
 
-  const readFeed = () => fetchAccount<PriceFeedState>(h.program, "priceFeed", feed);
+  const readFeed = () => readFeedOf(h, mint);
 
   beforeEach(openFeed);
 

@@ -6,17 +6,11 @@
 //! split from looking like a 90% crash.
 
 use anchor_lang::prelude::*;
-use anchor_spl::token_2022::spl_token_2022::{
-    extension::{
-        scaled_ui_amount::ScaledUiAmountConfig, BaseStateWithExtensions, StateWithExtensions,
-    },
-    state::Mint as MintState,
-};
 
 use crate::allowlist;
 use crate::errors::OthelloError;
 use crate::state::{PriceFeed, PriceStamp};
-use crate::valuation::decode_multiplier_fixed;
+use crate::valuation::{decode_multiplier_fixed, effective_multiplier_bits, scaled_ui_config};
 
 #[derive(Accounts)]
 pub struct InitPriceFeed<'info> {
@@ -87,14 +81,10 @@ pub fn handle_init_price_feed(ctx: Context<InitPriceFeed>) -> Result<()> {
 
 /// The multiplier a given stamp would bind these prices to, read from the mint.
 fn multiplier_for_stamp(mint_data: &[u8], stamp: PriceStamp, now: i64) -> Result<u64> {
-    let mint = StateWithExtensions::<MintState>::unpack(mint_data)
-        .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
-    let config = mint
-        .get_extension::<ScaledUiAmountConfig>()
-        .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
+    let config = scaled_ui_config(mint_data)?;
 
     let bits = match stamp {
-        PriceStamp::Current => crate::valuation::effective_multiplier_bits(config, now),
+        PriceStamp::Current => effective_multiplier_bits(&config, now),
         PriceStamp::Scheduled => u64::from_le_bytes(config.new_multiplier.0),
     };
 
@@ -103,11 +93,7 @@ fn multiplier_for_stamp(mint_data: &[u8], stamp: PriceStamp, now: i64) -> Result
 
 /// True when the feed already carries a scheduled stamp that has not arrived.
 fn scheduled_stamp_pending(feed: &PriceFeed, mint_data: &[u8], now: i64) -> Result<bool> {
-    let mint = StateWithExtensions::<MintState>::unpack(mint_data)
-        .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
-    let config = mint
-        .get_extension::<ScaledUiAmountConfig>()
-        .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
+    let config = scaled_ui_config(mint_data)?;
 
     // A new_multiplier that will not decode means nothing is pending, rather
     // than meaning this call fails. `feed.priced_for_multiplier` only ever holds
