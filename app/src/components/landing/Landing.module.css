@@ -159,15 +159,15 @@
 
 .round { flex: 1 1 290px; background: var(--clay); color: var(--clayInk); padding: clamp(18px, 2.4vw, 26px); gap: 15px; justify-content: center; }
 .roundHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.rangePill { display: flex; align-items: center; gap: 8px; border: 2px solid currentColor; border-radius: 999px; padding: 5px 11px; white-space: nowrap; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.rangePill { display: flex; align-items: center; gap: 8px; border: 2px solid var(--line); border-radius: 999px; padding: 5px 11px; white-space: nowrap; font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .rangeDots { display: flex; gap: 3px; }
-.rangeDots span { width: 7px; height: 7px; border: 2px solid currentColor; border-radius: 999px; }
-.rangeDots span:nth-child(-n+3) { background: currentColor; }
+.rangeDots span { width: 7px; height: 7px; border: 2px solid var(--line); border-radius: 999px; }
+.rangeDots span:nth-child(-n+3) { background: var(--line); }
 .seatLine { display: flex; align-items: center; gap: 13px; }
 .seatBig { flex: 0 0 auto; width: clamp(50px, 6vw, 60px); aspect-ratio: 1; border: 3px solid var(--clay); border-radius: 999px; background: #0B0B0B; color: var(--clay); display: flex; align-items: center; justify-content: center; font-stretch: 82%; font-size: clamp(21px, 2.6vw, 25px); animation: ping 2.8s ease-out infinite; }
 .seatText { flex: 1 1 auto; min-width: 0; font-size: clamp(17px, 2vw, 22px); font-weight: 800; letter-spacing: -.025em; line-height: 1.14; text-wrap: pretty; }
 .seats { display: flex; gap: 5px; }
-.seat { flex: 1 1 0; min-width: 0; height: clamp(36px, 3.6vw, 40px); border: 3px solid currentColor; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: clamp(12px, 1.4vw, 14px); font-weight: 800; }
+.seat { flex: 1 1 0; min-width: 0; height: clamp(36px, 3.6vw, 40px); border: 3px solid var(--line); border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: clamp(12px, 1.4vw, 14px); font-weight: 800; color: var(--line); }
 .seatOn { background: #0B0B0B; color: var(--clay); border-color: #0B0B0B; }
 .roundNote { margin: 0; font-size: 12px; line-height: 1.45; font-weight: 700; text-wrap: pretty; }
 .plus { position: absolute; right: clamp(14px, 2vw, 22px); bottom: clamp(12px, 1.8vw, 18px); display: flex; gap: 9px; align-items: center; pointer-events: none; opacity: .32; }
