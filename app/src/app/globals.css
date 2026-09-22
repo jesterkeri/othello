@@ -1,6 +1,7 @@
 /*
- * Base styles. Every colour is a custom property written by the palette engine
- * in src/lib/theme.ts, so nothing here hard-codes a hue.
+ * Base only. Every colour and every component style belongs to the Landing
+ * module and the custom properties theme.ts writes onto its root, so nothing
+ * here hard-codes a hue or reaches inside the page.
  */
 * {
   margin: 0;
@@ -15,34 +16,15 @@ html {
 body {
   background: var(--desk);
   color: var(--ink);
-  font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  font-synthesis-weight: none;
-  -webkit-font-smoothing: antialiased;
-}
-
-button,
-a.button {
-  font: inherit;
-  cursor: pointer;
-}
-
-a {
-  color: inherit;
-}
-
-@keyframes wobble {
-  0%,
-  100% {
-    transform: rotate(-1.5deg);
-  }
-  50% {
-    transform: rotate(1.5deg);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,14 +1,27 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo } from "next/font/google";
+import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 
-import { SIGNAL, themeCss } from "@/lib/theme";
+import { PALETTES, themeVars } from "@/lib/theme";
 
 import "./globals.css";
 
+/**
+ * Archivo carries the wdth axis because the statement type sets font-stretch
+ * (OTHELLO-STYLE.md, Type): 68-70% for tapes and tile headlines, 82% on the
+ * logo and the ajo button.
+ */
 const archivo = Archivo({
   subsets: ["latin"],
-  weight: ["400", "500", "800"],
+  axes: ["wdth"],
+  style: ["normal", "italic"],
   variable: "--font-archivo",
+  display: "swap",
+});
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
   display: "swap",
 });
 
@@ -17,30 +30,23 @@ export const metadata: Metadata = {
   description: "Savings circles where nobody has to trust anybody.",
 };
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#EAE7F2" },
-    { media: "(prefers-color-scheme: dark)", color: "#0D0F1C" },
-  ],
-};
+export const viewport: Viewport = { themeColor: "#E4E8FF" };
 
 /**
- * The palette is emitted as CSS rather than inline style, so the dark variant
- * can be chosen by the media query with no JavaScript and no flash.
+ * Landing writes the live theme onto its own root element, so it owns every
+ * colour inside the page. This base only reaches what sits behind it: the body
+ * itself, and the overscroll area above and below the frame. Signal in light is
+ * the first-visit default in theme.ts, so the two agree on first paint.
  */
-const themeStyles = `
-:root { ${themeCss(SIGNAL, false)} }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { ${themeCss(SIGNAL, true)} }
-}
-:root[data-theme="dark"] { ${themeCss(SIGNAL, true)} }
-`;
+const baseVars = Object.entries(themeVars(PALETTES[0]!, false))
+  .map(([key, value]) => `${key}:${value}`)
+  .join(";");
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={archivo.variable}>
+    <html lang="en" className={`${archivo.variable} ${jakarta.variable}`}>
       <head>
-        <style dangerouslySetInnerHTML={{ __html: themeStyles }} />
+        <style dangerouslySetInnerHTML={{ __html: `:root{${baseVars}}` }} />
       </head>
       <body>{children}</body>
     </html>
