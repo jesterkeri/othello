@@ -10,13 +10,26 @@
  * This proves the harness and nothing else. No multiplier is decoded and no
  * valuation is asserted; that is T03 and T06, where the decoder exists.
  *
- * Harness: bankrun (`solana-bankrun`), not LiteSVM. Both were tried. The npm
- * `litesvm` bindings abort the process with `std::bad_alloc` on the SECOND
- * invocation of a loaded SBF program, on every version of its web3.js line
- * (0.5.0, 0.7.0, 0.8.0); builtin-program transactions are unaffected, so the
- * fault is in invoking a loaded program more than once. A gate that runs one
- * transaction per harness would hide it; T06 runs many. The result is reported
- * for OPEN-QUESTIONS.md. This script does not write an ADR.
+ * Harness: bankrun (`solana-bankrun`), not LiteSVM. Both were tried.
+ *
+ * bankrun ran this workload in every attempt. The npm `litesvm` bindings abort
+ * the process with `std::bad_alloc` shortly after the first transaction that
+ * invokes the loaded program: 0 of 8 runs survived, and the abort lands on
+ * whatever allocates next (observed in Keypair.generate, setAccount and
+ * sendTransaction), so it has no single stable call site. Ten consecutive
+ * builtin system-transfer transactions in one instance are unaffected.
+ *
+ * That abort is NOT a categorical property of LiteSVM, and an earlier version of
+ * this comment wrongly said it was. The adversary pass ran the same workload in
+ * a separate git worktree on 0.5.0, 0.7.0 and 0.8.0 and it completed. Running
+ * one identical probe against both installs settled it: the worktree's litesvm
+ * survived 5/5 and this tree's aborted 5/5, with byte-identical
+ * litesvm-linux-x64-gnu@0.8.0 native binaries (md5 bacf18e6cd02bf371b93a8ed4ceb03f7).
+ * So it is install-tree dependent and the cause is not established.
+ *
+ * The recorded reason for choosing bankrun is therefore reliability observed
+ * here, not a proven LiteSVM defect. Reported for OPEN-QUESTIONS.md line 1;
+ * this script does not write the ADR.
  *
  * Run: pnpm tsx tests/p1-harness-proof.ts
  */
@@ -109,14 +122,33 @@ function readFixture(): Fixture {
   return fixture;
 }
 
-const { programId, data } = buildHarnessProgram();
-const fixture = readFixture();
+/**
+ * Restores the deployable build. Every path that can run once the harness binary
+ * exists has to reach this, including a signal: an abandoned run that leaves the
+ * harness .so behind turns `pnpm test` red two steps away from what failed.
+ */
+function restoreDefaultBuild(): void {
+  anchorBuild();
+  console.log(`    (restored the default build in ${PROGRAM_SO.replace(`${REPO}/`, "")})`);
+}
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    restoreDefaultBuild();
+    process.exit(130);
+  });
+}
 
 console.log("P1 harness proof: bankrun loads the real NFLXx mint and warps the Clock to an exact second\n");
-console.log(`  harness built ${PROGRAM_SO.replace(`${REPO}/`, "")} carries ${HARNESS_BUILD_MARKER}`);
-console.log(`  program id    ${programId.toBase58()}`);
 
 try {
+  // Inside the try, not above it: from here on a throw must still restore.
+  const { programId, data } = buildHarnessProgram();
+  const fixture = readFixture();
+
+  console.log(`  harness built ${PROGRAM_SO.replace(`${REPO}/`, "")} carries ${HARNESS_BUILD_MARKER}`);
+  console.log(`  program id    ${programId.toBase58()}`);
+
   const context = await start([{ name: PROGRAM_NAME, programId }], []);
   const client = context.banksClient;
 
@@ -181,8 +213,5 @@ try {
   console.log("    1763337299 and 1763337300 exactly, with the T01 program reading each one back.");
   console.log("    No multiplier was decoded here; that is T03 and T06.");
 } finally {
-  // Leave target/deploy holding the deployable program, not the harness one, or
-  // tests/deploy-artifact.spec.ts is red for whoever runs the suite next.
-  anchorBuild();
-  console.log(`    (restored the default build in ${PROGRAM_SO.replace(`${REPO}/`, "")})`);
+  restoreDefaultBuild();
 }

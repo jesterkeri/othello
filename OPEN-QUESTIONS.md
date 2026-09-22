@@ -3,6 +3,20 @@
 Mark `BLOCKING` if the merge should not proceed without an answer.
 
 - [ ] Clock warp in tests: LiteSVM or bankrun with anchor 1.1.x (gate 1 decides; record as ADR-011 via the design session)
+      P1 ANSWERED THE BUILD HALF, 2026-09-22: bankrun (`solana-bankrun` 0.4.0). It
+      loads the real NFLXx mint at its canonical address byte for byte and places the
+      Clock on 1763337299 and 1763337300 exactly, with the program reading each back
+      (`pnpm run test:p1`). LiteSVM was tried first, since anchor-cli 1.1.2's own
+      template ships it: in this repo's install it aborts the process with
+      `std::bad_alloc` shortly after the first transaction that invokes the loaded
+      program, 0 of 8 runs surviving. That is NOT a property of LiteSVM. The adversary
+      pass ran the same workload in a separate worktree on 0.5.0/0.7.0/0.8.0 and it
+      completed; one identical probe run against both installs gave 5/5 survival there
+      and 0/5 here, with byte-identical litesvm-linux-x64-gnu@0.8.0 binaries. So the
+      choice rests on reliability observed here, not on a proven LiteSVM defect, and
+      the ADR should say so. NOTE: this line says ADR-011, but ADR-011 is already
+      Jupiter price units (SPEC 9b.2), so that number is stale. The build does not
+      write ADRs; the design session picks the number and writes it.
 - [ ] Real CU of release_pot / update_coverage with n = 8 (NFR-3 assumes ≤ 60k)
 - [ ] Program binary size vs 2.5 devnet SOL (deploy with `--max-len`; faucet top-up)
 - [ ] BLOCKING before T23 (any deploy): network. Devnet mirror / mainnet fork / mainnet. Decided by Joshua in the design session, not by the builder.

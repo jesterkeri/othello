@@ -11,6 +11,7 @@
     "test": "pnpm run test:unit && pnpm run test:t00",
     "test:unit": "mocha --import=tsx --timeout 120000 \"tests/**/*.spec.ts\"",
     "test:t00": "tsx tests/t00-binding-record.ts && tsx tests/t00-mint-symbol-verification.ts",
+    "test:p1": "tsx tests/p1-harness-proof.ts && tsx tests/p1-restore-window.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
