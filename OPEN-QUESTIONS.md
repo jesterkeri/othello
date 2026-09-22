@@ -101,8 +101,8 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       and implements `quote_valuation(raw, haircut_bps, max_price_age)` with the accounts
       exactly as SPEC states. Not blocking, and no invariant depends on which way it is
       resolved; recorded so the design session can ratify or correct the reading.
-- [ ] BLOCKING before T23 (any deploy). `init_price_feed` has no authority gate, and
-      SPEC cannot currently give it one. SPEC:113 puts `init_price_feed` on the admin row
+- [ ] BLOCKING before T23 (any deploy). **Unauthenticated oracle takeover:**
+      `init_price_feed` has no authority gate, and SPEC cannot currently give it one. SPEC:113 puts `init_price_feed` on the admin row
       and lists `unauthorized` among its refusals, but SPEC section 4 defines no admin or
       config account for the program to check a signer against: `PriceFeed.authority` is
       written BY that instruction, so it cannot also gate it. So today whoever calls it
@@ -113,11 +113,26 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       adversary pass, reproduced: a funded stranger called init_price_feed for NFLXx, the
       feed came back with the stranger as authority, and the intended admin's set_prices
       then refused `Unauthorized`.
+      SEVERITY, corrected by Codex 2026-09-22: this is worse than squatting the address.
+      The first caller becomes `feed.authority`, and `set_prices` only verifies the
+      MULTIPLIER against the mint; `wrapper_price` and `share_price` are arbitrary beyond
+      being non-zero. So the squatter sets the price every valuation reads. Through
+      `quote_valuation` and, in gate 2, through coverage and the payout gate, that is
+      control of what collateral is worth. Unauthenticated oracle takeover on any deployed
+      cluster, not a denial of service. The build session first recorded it as griefing;
+      that was too soft.
+
       Not exploitable in gate 1: nothing is deployed and every test creates its own feed in
       a fresh harness. It becomes real the moment anything is on a cluster, hence the T23
       scope. The build cannot fix it without inventing an account SPEC does not have.
-      Options for the design session: a single Config PDA holding the admin, created once
-      by the deployer and checked by init_price_feed; or constrain init_price_feed's signer
-      to the program's upgrade authority; or accept it and have the deploy script create
-      all four feeds in the same transaction batch as the deploy, which shrinks the window
-      rather than closing it.
+
+      REQUIRED SHAPE, per Codex: a bootstrap authority root, for example a fixed
+      deploy-time authority or config PDA, which `init_price_feed` must then require.
+      "A first-caller-wins initializer cannot be part of the deployed trust model." The
+      third option previously listed here, batching feed creation with the deploy to shrink
+      the window, is therefore NOT a fix and is withdrawn: it narrows a race it cannot
+      close.
+
+      CARRIED INTO T07: the gate-1 brief must state that gate 1 is LOCALLY
+      implementation-ready, not deploy-ready, so a passing gate-1 review cannot be read as
+      clearing this block.
