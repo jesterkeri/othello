@@ -1,0 +1,21 @@
+skip_local_validator = true
+
+[toolchain]
+anchor_version = "1.1.2"
+solana_version = "3.1.10"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+othello = "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "pnpm run test"
+
+[hooks]

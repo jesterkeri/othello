@@ -175,3 +175,256 @@ The BLOCKING open question is marked RESOLVED with the decision and its date.
 SPEC.md is guard-protected and normally corrected in the design session. It was
 edited here on the design owner's explicit instruction, and the edit is confined to
 9b.1 and the new 9b.6.
+
+## T01 - 2026-09-21
+commit: 2144fe6 (workspace in e3b4e5d, adversary fix in 2144fe6)
+verified: `anchor build`
+output:
+```
+$ anchor build
+    Finished `release` profile [optimized] target(s) in 0.14s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.11s
+     Running unittests src/lib.rs (/home/hr/myvscode_linux/othello/target/debug/deps/othello-995034df92de9df1)
+exit=0
+
+$ ls -l target/deploy/othello.so target/idl/othello.json; md5sum target/deploy/othello.so
+57048 target/deploy/othello.so
+239 target/idl/othello.json
+1641cf74f70526a52100e894df136e98  target/deploy/othello.so
+
+$ cat target/idl/othello.json
+{
+  "address": "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT",
+  "metadata": {
+    "name": "othello",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Othello: xStock-backed mutual credit circle"
+  },
+  "instructions": []
+}
+$ cargo tree -p othello --depth 1   # resolved, the versions T01 exists to record
+othello v0.1.0 (/home/hr/myvscode_linux/othello/programs/othello)
+├── anchor-lang v1.1.2
+└── anchor-spl v1.1.2
+    (transitive, from Cargo.lock)
+    spl-token-2022-interface                 2.1.0
+    spl-pod                                  0.7.4
+    spl-token-metadata-interface             0.8.0
+    spl-token-interface                      2.0.0
+    spl-associated-token-account-interface   2.0.0
+
+$ anchor --version; solana --version; cargo-build-sbf --version; rustc --version; node --version; pnpm --version
+anchor-cli 1.1.2
+solana-cli 3.1.10 (src:7bc9c805; feat:1620780344, client:Agave)
+solana-cargo-build-sbf 3.1.10
+rustc 1.89.0 (29483883e 2025-08-04)
+v22.23.2
+10.32.1
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: DEFECT fixed in 2144fe6, attacks run: 12, test: tests/deploy-artifact.spec.ts
+notes: Resolved versions, which is what T01 exists to pin down: anchor-lang 1.1.2,
+anchor-spl 1.1.2, spl-token-2022-interface 2.1.0, spl-pod 0.7.4. ARCHITECTURE's
+pinned-versions line guessed spl-token-2022-interface 2.1.0 on 2026-09-21 and that
+is exactly what resolved, so T02's PodF64 work and T03's StateWithExtensions decode
+are against the version the design assumed. anchor-lang and anchor-spl are declared
+`~1.1`, not `1.1.2`: a plain caret resolved them to 1.2.0, outside the 1.1.x that
+ARCHITECTURE pins.
+
+Two corrections to what the session had recorded earlier. The installed Agave CLI is
+3.1.10, not 4.2.2. The build toolchain is pinned to rust 1.89.0, not 1.98.1: `stable`
+here carries neither clippy nor rustfmt, 1.89.0 carries both and matches the sbpf
+toolchain, and R1's verify command needs them.
+
+The SPEC section 5 instruction surface is deliberately absent, so the default build's
+IDL is `"instructions": []`. Each instruction arrives with the task that implements
+it rather than as a stub. The one addition is read_clock, the P1 harness probe,
+behind the `harness` cargo feature.
+
+ADVERSARY DEFECT, real, found on e3b4e5d. lib.rs documented read_clock as unable to
+"reach a deployed build", and the only check read target/idl/othello.json. But
+`anchor deploy` uploads target/deploy/othello.so, and the two artifacts are written
+by different build steps, so `cargo build-sbf --features harness` rewrote the .so
+with the probe in it and left the IDL untouched: the suite stayed green, 3 passing,
+over a binary that carried it. The adversary confirmed it live rather than by string
+match, loading the .so in LiteSVM at declare_id and calling the read_clock
+discriminator, which returned the clock. Not a contrived route: P1 needs a harness
+.so and cargo build-sbf is the obvious way to make one. Severity is low today because
+read_clock takes no accounts and moves nothing, but the stated control did not exist.
+
+Fixed by reading the artifact that actually ships. The adversary's test is integrated
+as tests/deploy-artifact.spec.ts and passes on the gate branch; the reproduction is
+recorded below. read_clock now logs a deliberate HARNESS_BUILD_MARKER literal, since
+the incidental "Instruction: ReadClock" string can be switched off by Anchor's
+no-log-ix-name feature. tests/artifacts.ts refuses to assert on an artifact older
+than lib.rs, Cargo.toml or Cargo.lock, because `pnpm test` never builds and a stale
+target/ would green either guard on old bytes.
+
+Reproduction of the defect and the fix, run on 2144fe6:
+```
+$ anchor build && md5sum target/deploy/othello.so
+1641cf74f70526a52100e894df136e98  target/deploy/othello.so
+$ pnpm run test:unit
+4 passing
+
+$ cargo build-sbf --features harness && md5sum target/deploy/othello.so
+4abba020c502c54b7a60d5a374172587  target/deploy/othello.so
+$ python3 -c "import json;print(json.load(open('target/idl/othello.json'))['instructions'])"
+[]                                          <- the IDL guard is blind, as before
+$ pnpm run test:unit
+AssertionError [ERR_ASSERTION]: target/deploy/othello.so carries the harness probe:
+OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY, Instruction: ReadClock, clock.unix_timestamp=
+1 failing
+
+$ anchor build && pnpm run test:unit
+4 passing
+
+$ touch programs/othello/src/lib.rs && pnpm run test:unit
+AssertionError [ERR_ASSERTION]: target/deploy/othello.so is older than
+programs/othello/src/lib.rs. Run `anchor build` before testing; this guard is
+meaningless on a stale artifact.
+4 failing
+```
+
+Three further things the adversary raised as unproven suspicions, all real, all
+fixed here. The two T00 suites were not reachable from `anchor test` at all, because
+mocha only globs *.spec.ts and they are tsx scripts; `pnpm test` now runs them, so
+the fixture-provenance proof is part of the gate rather than something run by hand.
+Anchor.toml pinned anchor_version but not solana_version, leaving the toolchain that
+produces the deployed bytes floating against PIPELINE's "toolchain pinned"; it now
+pins solana_version = "3.1.10". The mocha + tsx substitution for ts-mocha is recorded
+in OPEN-QUESTIONS.md rather than by editing the design-owned ARCHITECTURE.md.
+
+Full suite after the fix: `pnpm test` exit 0, 4 mocha cases plus 11 binding-record
+cases plus 15 mint-symbol cases. `cargo fmt --check` clean. `cargo clippy
+--all-targets -- -D warnings` clean with no features, with `--features harness`, and
+the adversary also confirmed it with `--features idl-build`. `pnpm typecheck` clean.
+
+The program id is machine-local. PREFLIGHT forbids a keypair file inside the repo, so
+target/deploy/othello-keypair.json is generated per clone and gitignored. A clean
+clone builds, exit 0, and prints "Program ID mismatch detected ... run `anchor keys
+sync`"; that one command restores it, and PREFLIGHT already checks all three copies
+before any deploy. The adversary verified the clean-clone build and did not treat the
+mismatch as a defect.
+
+Not done here, and deliberately: P1 chooses the clock-warp harness and reports the
+result for OPEN-QUESTIONS line 1. This task only makes the probe it will call. Note
+that OPEN-QUESTIONS asks for that decision to be recorded as ADR-011, but ADR-011 is
+already Jupiter price units, so the number in that line is stale. The build does not
+write ADRs.
+
+## P1 - 2026-09-22
+commit: 32b0bf5 (proof in 8bfe4a7, adversary fixes in 32b0bf5)
+verified: `pnpm tsx tests/p1-harness-proof.ts`
+output:
+```
+$ pnpm run test:p1
+P1 harness proof: bankrun loads the real NFLXx mint and warps the Clock to an exact second
+  harness built target/deploy/othello.so carries OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY
+  program id    DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT
+  mint loaded   XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL  680 bytes, owner Token-2022, base64 identical to the fixture
+  clock         set to 1763337299, program returned 1763337299
+  clock         set to 1763337300, program returned 1763337300
+OK: bankrun loads the real NFLXx mint at its canonical address and places the Clock on
+    1763337299 and 1763337300 exactly, with the T01 program reading each one back.
+    No multiplier was decoded here; that is T03 and T06.
+    (restored the default build in target/deploy/othello.so)
+OK: a failed P1 run leaves the default build in target/deploy
+exit=0
+
+$ pnpm test
+  4 passing (53ms)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ pnpm typecheck
+> tsc --noEmit
+
+typecheck exit=0
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: DEFECT fixed in 32b0bf5, attacks run: 9, test: tests/p1-restore-window.ts
+notes: The harness is bankrun (`solana-bankrun` 0.4.0), and that was not the expected
+answer. It loads the real NFLXx mint at XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL,
+680 bytes read back out of the harness and base64-identical to tests/fixtures/NFLXx.json
+with a Token-2022 owner, and places the Clock on 1763337299 and 1763337300 exactly, with
+the program returning each second through transaction return data. Those are the second
+before NFLXx's multiplier changes and the second it changes (SPEC 9b.1), so this is the
+boundary T03, T04 and T06 all turn on. No multiplier is decoded and no valuation is
+asserted here; that is T03 and T06. No ADR is written: OPEN-QUESTIONS line 1 carries the
+finding for the design session, and repeats that the "ADR-011" in that line is stale
+because ADR-011 is already Jupiter price units.
+
+LiteSVM was tried first, since anchor-cli 1.1.2's own project template ships it in
+dev-dependencies. In this repo's install it aborts the process with `std::bad_alloc`
+shortly after the first transaction that invokes the loaded program.
+
+ADVERSARY DEFECT 1, real, found on 8bfe4a7. `anchor build -- --features harness` ran at
+module top level, outside the try/finally that restores the deployable build. Every
+statement between the two could throw: the marker check, the IDL read and parse, the
+read_clock assertion, the instruction encode and both fixture assertions. On any of
+those paths the process exited leaving target/deploy/othello.so carrying the harness
+probe, which turns `pnpm test` and `anchor test` red two steps away from whatever
+actually failed. Fixed: the harness build and the fixture read are inside the try, and
+SIGINT and SIGTERM restore as well, which a plain `finally` never did.
+
+The adversary's test is integrated as tests/p1-restore-window.ts and passes on the gate
+branch. Both directions were verified here rather than taken on trust: swapped in the
+pre-fix proof from 8bfe4a7 and the test fails with `actual: true`, meaning the marker is
+still in the binary; swapped the fix back and it prints OK. The test drives the exact
+drift the proof's hardcoded NFLX_MINT constant exists to catch, by putting the repo's
+own real AAPLx fixture into NFLXx.json, and it now also asserts the fixture came back
+byte for byte.
+
+ADVERSARY DEFECT 2, real, and the wrong claim was mine. tests/p1-harness-proof.ts and
+8bfe4a7's message both said LiteSVM aborts "on the SECOND invocation of a loaded SBF
+program" and offered that as the whole basis for the harness decision. The adversary ran
+the same workload on 0.5.0, 0.7.0 and 0.8.0 in its own git worktree and it completed.
+Neither result was taken on trust; the experiment was rebuilt in an isolated project
+outside the repo:
+
+```
+$ node probe3.mjs        # 3 invocations, synchronous logging so the abort site is visible
+call#1: sendTransaction / sent, reading returnData / -> 0
+call#2: keypair
+terminate called after throwing an instance of 'std::bad_alloc'
+
+$ for i in 1..8: node probe3.mjs        survived 0/8 runs
+$ 10 consecutive builtin system-transfer transactions in one instance    SURVIVED
+```
+
+The abort is real and deterministic here, but it lands on whatever allocates next:
+Keypair.generate, setAccount and sendTransaction have each been the site across runs, so
+"the second invocation" was never the mechanism. One identical probe run against both
+installs settled it:
+
+```
+same script, same byte-identical native binary:
+  litesvm resolved from the adversary worktree store: survived 5/5
+  litesvm resolved from this probe's own store:        survived 0/5
+md5 litesvm.linux-x64-gnu.node, both trees: bacf18e6cd02bf371b93a8ed4ceb03f7
+```
+
+So the abort is install-tree dependent and its cause is not established. The decision,
+bankrun, is unchanged and is the right one: it ran this workload in every attempt. The
+reason recorded for the ADR is now reliability observed here, not a proven LiteSVM
+defect, because a design session reading the original wording would have written a false
+limitation into the ADR.
+
+`pnpm run test:p1` runs the proof and the regression test. It is deliberately NOT part of
+`pnpm test`: each run drives two anchor builds, and `anchor test` is the inner loop for
+T02 to T06.
+
+Carried to T06: this proof drives the program by hand-encoding the instruction with
+anchor's BorshInstructionCoder. `anchor-bankrun`, which would give T06 a full Anchor
+Provider over bankrun, was installed, went unused and was removed rather than left as
+dead wiring. T06 must confirm anchor-bankrun 0.5.0 against @coral-xyz/anchor 0.32.1, or
+keep hand-encoding.
+
+Also noted by the adversary and not a defect against the P1 contract, recorded because it
+is worth someone's attention: the mint check is a round trip through one file, since
+`dataBase64` is both what P1 writes and what it compares against. A fixture whose address
+still reads XsEH7w... but whose bytes were altered would pass P1. Authenticity of those
+bytes is T00's job and T00 proves it (tests/t00-*.ts, SPEC 9b.6), so P1 is within its
+contract, but P1 alone is not evidence the bytes are NFLXx's.

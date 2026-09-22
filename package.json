@@ -2,12 +2,24 @@
   "name": "othello",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "fetch-fixtures": "tsx ops/fetch-fixtures.ts"
+    "fetch-fixtures": "tsx ops/fetch-fixtures.ts",
+    "verify-issuer-bindings": "tsx ops/verify-issuer-bindings.ts",
+    "test": "pnpm run test:unit && pnpm run test:t00",
+    "test:unit": "mocha --import=tsx --timeout 120000 \"tests/**/*.spec.ts\"",
+    "test:t00": "tsx tests/t00-binding-record.ts && tsx tests/t00-mint-symbol-verification.ts",
+    "test:p1": "tsx tests/p1-harness-proof.ts && tsx tests/p1-restore-window.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@coral-xyz/anchor": "0.32.1",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^22.10.0",
+    "mocha": "^12.0.2",
+    "solana-bankrun": "0.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
