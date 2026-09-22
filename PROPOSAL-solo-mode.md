@@ -4,8 +4,9 @@ Status: DRAFT r3 for the design session. Not spec. Written by the build session
 on Joshua's ruling of 2026-09-22, which reverses the `Borrow solo` cut recorded
 in `design/FRAME.md:38` and inherited by `SPEC.md:27`.
 
-r3 answers Codex r2 (3 CRITICAL, 1 MAJOR, 1 MINOR); r2 answered Codex r1
-(2 CRITICAL, 3 MAJOR, 1 MINOR). Section 10 lists what moved in each round.
+r4 answers Codex r3 (1 CRITICAL, 2 MAJOR, 1 MINOR); r3 answered r2 (3 CRITICAL,
+1 MAJOR, 1 MINOR); r2 answered r1 (2 CRITICAL, 3 MAJOR, 1 MINOR). Sections 10 to
+12 list what moved in each round.
 
 The build session cannot amend `SPEC.md`, `INVARIANTS.md`, `ARCHITECTURE.md` or
 the ADRs. This is the concrete shape so the design session and Codex can rule on
@@ -117,12 +118,13 @@ and no circle instruction touches `SoloPool`.
 
 | Instruction | Signer | Preconditions | Effect | Refusals |
 |---|---|---|---|---|
+| `init_solo_pool(discount_bps)` | payer, becomes `authority` | the PDA for `["solo_pool", usdc_mint, stock_mint]` is empty; `stock_mint` is on the allowlist (ADR-012); `usdc_mint` is the circle's USDC mint; `0 <= discount_bps < 10000` | creates `SoloPool` and both vaults as PDAs of it, binds both mints, zeroes every counter | `invalid_params`, `mint_not_allowlisted` |
 | `init_loan_terms(version, ...)` | admin | `solo_pool.authority`; terms slot for `version` empty; `0 < ltv_bps < liquidation_bps <= 10000`; `0 <= haircut_bps < 10000`; `solo_pool.discount_bps <= haircut_bps`; `grace_secs >= 30`; `term_secs >= 60`; `max_price_age > 0`; `min_principal > 0` | terms written, never mutated | `unauthorized`, `invalid_params` |
 | `seed_solo_pool(amount)` | admin | `solo_pool.authority` | usdc -> solo usdc vault; `usdc_seeded += amount` | `unauthorized` |
 | `open_loan(nonce, stock_raw, principal)` | borrower | mint allowlisted; price fresh; multiplier matches the stamp (D5); `principal >= min_principal`; `principal x 10000 <= H(stock_raw) x ltv_bps`; `solo_usdc_vault >= principal` | stock -> solo stock vault; usdc solo vault -> borrower; `due_at = now + term_secs`; `drawn_total += principal` | `collateral_below_minimum`, `principal_below_minimum`, `pool_insufficient`, `price_stale`, `multiplier_price_mismatch`, `multiplier_invalid`, `insufficient_balance` |
-| `add_collateral(raw)` | borrower | Open | `stock_raw += raw`; voids any live call (`called_at = 0`) | `loan_not_open`, `insufficient_balance` |
-| `repay(amount)` | anyone | Open; `amount <= principal` | usdc -> solo vault; `principal -= amount`; `repaid_total += amount`; voids any live call; at zero, status Repaid and the stock becomes claimable | `loan_not_open`, `insufficient_balance` |
-| `mark_call()` | anyone | Open; price fresh; multiplier matches; `conservative > 0` | if unhealthy: records `called_at = now` **and** the observed `feed.updated_at` and effective multiplier. If healthy: clears `called_at` to 0. **Moves no tokens and touches neither `principal` nor `stock_raw`.** | `price_stale`, `multiplier_price_mismatch`, `conservative_price_unusable`, `loan_not_open` |
+| `add_collateral(raw)` | borrower | Open; `raw > 0` | `stock_raw += raw`; then section 4.3 | `loan_not_open`, `invalid_params`, `insufficient_balance` |
+| `repay(amount)` | anyone | Open; `0 < amount <= principal` | usdc -> solo vault; `principal -= amount`; `repaid_total += amount`; then section 4.3; at zero, status Repaid and the stock becomes claimable | `loan_not_open`, `invalid_params`, `insufficient_balance` |
+| `mark_call()` | anyone | Open; price fresh; multiplier matches; `conservative > 0` | section 4.3. **Moves no tokens and touches neither `principal` nor `stock_raw`.** | `price_stale`, `multiplier_price_mismatch`, `conservative_price_unusable`, `loan_not_open` |
 | `liquidate()` | anyone | section 4.2 | section 4.1 | `loan_not_open`, `loan_healthy`, `grace_not_elapsed`, `call_superseded`, `price_stale`, `multiplier_price_mismatch`, `conservative_price_unusable` |
 | `close_loan()` | borrower | status Repaid or Liquidated; `stock_raw > 0` | transfers `stock_raw` from the solo stock vault to the borrower, then sets `stock_raw = 0`, which is the one-shot marker | `loan_still_open`, `nothing_to_claim` |
 | `quote_loan(raw, principal)` | anyone, read only | mint + feed | `{mult_fixed, fund, exec, h, max_principal, health_bps, available_to_borrow}` | as `quote_valuation` |
@@ -150,9 +152,14 @@ Checked at open as well, so a loan can never exist that could not be liquidated.
 
 ### 4.1 Liquidation, copied from SPEC section 6
 
-Uses the **non-scaled wrapper price only**, like the circle's waterfall, so it
-works during Repricing. Staleness still applies. No USDC moves: the pool is the
-lender, so it does not buy from itself.
+Seizure is sized from the **non-scaled wrapper price only**, like the circle's
+waterfall, so a scheduled multiplier change cannot move what a given number of
+raw units is worth here. That is about the arithmetic, not about permission:
+section 4.2 still refuses to liquidate at all unless `feed.priced_for_multiplier`
+matches the effective multiplier, so D5 blocks liquidation during Repricing.
+r3's prose said this "works during Repricing" and contradicted its own rule.
+Staleness still applies. No USDC moves: the pool is the lender, so it does not
+buy from itself.
 
 ```
 conservative = floor( wrapper_price x (10000 - solo_pool.discount_bps) / 10000 )  // usdc per 1e8 raw
@@ -218,6 +225,49 @@ including a `touch_prices` that only moves `updated_at`. That delays liquidation
 and never accelerates it, so it fails safe, but an operator refreshing prices on
 a timer would keep cancelling calls. Recorded in section 7.
 
+### 4.3 The margin call, and why a borrower cannot reset it
+
+A call is `{called_at, called_price_updated_at, called_multiplier_fixed}`. It is
+**live** when `called_at != 0`, and its **observation matches** when
+`feed.updated_at == called_price_updated_at` and the effective multiplier equals
+`called_multiplier_fixed`.
+
+`mark_call()`, the only instruction that may set a call:
+
+| loan | live call | observation | effect |
+|---|---|---|---|
+| healthy | either | either | clear all three fields |
+| unhealthy | none | n/a | set `called_at = now`, record the observation |
+| unhealthy | live | matches | **nothing at all.** `called_at` is not rewritten |
+| unhealthy | live | differs | the old call is void; set `called_at = now` and record the new observation |
+
+`repay` and `add_collateral`, after applying their effect:
+
+| condition | effect on the call |
+|---|---|
+| price fresh, multiplier matches, and the loan is now healthy | clear all three fields |
+| anything else, including a loan still unhealthy | **leave all three untouched** |
+
+**Why this shape.** r3 let the borrower hold an undercollateralised loan open
+for ever, and Codex r3 was right to call it a borrower-controlled delay rather
+than a liveness limit. Two separate leaks: `mark_call` rewrote `called_at` every
+time it was called, and `repay`/`add_collateral` voided a live call
+unconditionally. Either way a borrower could repay one base unit a second before
+grace expired and buy a whole fresh `grace_secs`, indefinitely, for almost
+nothing.
+
+Both are closed above. Calling `mark_call` at an unchanged price is now a no-op,
+so repetition buys nothing. An action only clears the call by making the loan
+**demonstrably healthy**, which is the cure, not a delay. `amount` and `raw` must
+be positive, so a zero-value action cannot be used as a no-op that trips the
+clearing path.
+
+The clearing test needs a usable price, and if the price is stale or the
+multiplier does not match, the call is **preserved** rather than cleared. That
+fails safe in both directions: a preserved call cannot cause a wrongful
+liquidation, because `liquidate` independently re-checks that the loan is still
+unhealthy at that instant with a fresh price.
+
 ## 5. Invariants to add to INVARIANTS.md
 
 | # | Invariant | Checked by |
@@ -230,11 +280,12 @@ a timer would keep cancelling calls. Recorded in section 7.
 | S5 | A loan is liquidatable **iff** every condition in section 4.2 holds. Each of stale price, mismatched multiplier, `conservative == 0`, unelapsed grace, healthy again at this instant, and a superseded call refuses separately | unit, one passing and one refusing case per clause |
 | S6 | `seize_raw` is the smallest number of raw units whose conservative value covers the debt, capped at the collateral; `recovered` exceeds `extinguished` by less than one raw unit's conservative value; the borrower keeps `stock_raw - seize_raw` | unit, the I9 analogue |
 | S7 | **A scheduled multiplier change never makes a healthy loan liquidatable at the wrong second.** NFLXx at 1763337299 and 1763337300, with the price stamped for the matching multiplier, leaves `health_bps` unchanged | unit with clock warp (the headline) |
-| S8 | `repay` of exactly `principal` returns exactly `stock_raw` and leaves S2 and S3 true | unit |
+| S8 | `repay` of exactly `principal` sets status Repaid, moves **no stock**, and creates exactly one claim; `close_loan` then returns exactly `stock_raw` once and refuses a second time. S2 and S3 hold throughout | unit |
 | S9 | `due_at` never changes after `open_loan`, and a matured loan is liquidatable at any health | unit |
 | S10 | `mark_call` changes nothing but the three call fields; it never moves tokens and never touches `principal` or `stock_raw` | unit (the `touch_prices` analogue, I17) |
 | S11 | **A call does not survive the price it was made at.** Mark at P1, update the price, and `liquidate` refuses `call_superseded` however long the grace has run. Same for a multiplier epoch change | unit with clock warp |
 | S12 | **Every borrower's surplus is claimable exactly once.** After a partial liquidation, `close_loan` returns `stock_raw - seize_raw` and a second call refuses; no path leaves stock unreachable in the vault | unit + scenario |
+| S13 | **No borrower action extends the liquidation grace.** `mark_call` at an unchanged observation leaves `called_at` unchanged; a `repay` or `add_collateral` that leaves the loan unhealthy leaves all three call fields unchanged. A 1-unit repayment loop cannot postpone liquidation | unit: mark, warp to one second before grace, repay 1, warp one second, liquidate must succeed |
 
 S7 is the solo mirror of I12 and is why the mode is worth building: it is I13's
 epoch match doing its job for a single borrower.
@@ -284,7 +335,30 @@ specced and therefore the riskier work, and it reuses gate 1's valuation while
 that is still fresh. The circle gates keep the shape four review rounds
 hardened.
 
-## 10. What changed in r3, answering Codex r2
+## 10. What changed in r4, answering Codex r3
+
+- **CRITICAL, borrower-controlled liquidation delay.** r3's call could be reset
+  by the borrower two ways: `mark_call` rewrote `called_at` on every unhealthy
+  call, and `repay` or `add_collateral` voided a live call unconditionally, so
+  repaying one base unit just before grace expired bought a whole fresh window,
+  indefinitely, for almost nothing. Section 4.3 now states the call as an
+  explicit state machine: `mark_call` at an unchanged observation is a no-op, an
+  action clears the call only when it leaves the loan **demonstrably healthy**,
+  and `amount` and `raw` must be positive so a zero-value action cannot trip the
+  clearing path. S13 pins it with the 1-unit repayment loop as the test.
+- **MAJOR, no creation path.** `SoloPool` had no initialiser, so
+  `seed_solo_pool` assumed an authority, mints, a discount and PDA vaults that
+  nothing created. `init_solo_pool(discount_bps)` added, with mint binding, the
+  allowlist check, the discount range and vault creation.
+- **MAJOR, contradictory invariant.** S8 said full repayment "returns exactly
+  `stock_raw`" while section 4.1 said only `close_loan` transfers stock. Both
+  could not hold. S8 now asserts repayment creates exactly one claim and moves
+  no stock, and that `close_loan` returns it exactly once.
+- **MINOR, contradictory prose.** Section 4.1 claimed liquidation "works during
+  Repricing", which section 4.2 correctly forbids. The wrapper price governs the
+  seizure arithmetic; D5 still blocks the action. Prose amended, rule unchanged.
+
+## 11. What changed in r3, answering Codex r2
 
 - **CRITICAL, shared pool.** `LiquidationPool` is the circle's counterparty and
   `declare_default` moves its USDC and stock without touching any solo counter,
@@ -310,7 +384,7 @@ hardened.
   10000 / principal)`, display only, saturating, with the "Nothing owed"
   rendering rule. Every decision still cross-multiplies and never divides.
 
-## 11. What changed in r2, answering Codex r1
+## 12. What changed in r2, answering Codex r1
 
 - **CRITICAL, pool cash accounting.** r1's S2 counted written-off principal as
   if it returned cash. Replaced by three conservation equations, S2 cash, S3
