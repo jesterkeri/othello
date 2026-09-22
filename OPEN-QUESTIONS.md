@@ -19,7 +19,24 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       write ADRs; the design session picks the number and writes it.
 - [ ] Real CU of release_pot / update_coverage with n = 8 (NFR-3 assumes ≤ 60k)
 - [ ] Program binary size vs 2.5 devnet SOL (deploy with `--max-len`; faucet top-up)
-- [ ] BLOCKING before T23 (any deploy): network. Devnet mirror / mainnet fork / mainnet. Decided by Joshua in the design session, not by the builder.
+- [x] RESOLVED 2026-09-22 by Joshua: **devnet**. Original question: network. Devnet mirror /
+      mainnet fork / mainnet.
+      CONSEQUENCE, from ADR-012's own consequences section and not a new objection: "on
+      devnet the real addresses cannot exist, so a devnet deploy would need a mirror mint
+      and a separate allowlist entry, labelled as such." So devnet costs three things.
+      (a) Mirror mints. The four allowlisted addresses are mainnet-only, so on devnet the
+          program would refuse every mint with `mint_not_allowed`. Devnet needs Token-2022
+          mints carrying a ScaledUiAmountConfig, created by the admin, plus a separate
+          allowlist entry for them. ADR-012 requires that entry be LABELLED as mirrors, and
+          the site must say the demo trades mirrors, not real xStocks.
+      (b) A second allowlist path. `allowlist.rs` currently holds four mainnet consts. It
+          needs a devnet set that cannot be confused with them: a cargo feature or a
+          const chosen by cluster, never both lists live at once.
+      (c) The real data stays visible. ADR-007 already routes live mainnet prices through
+          /api/live, display only, so the Stock and Split lab places can show the real
+          NFLXx split while the program runs on mirrors. That is what keeps the demo
+          honest rather than invented.
+      Neither (a) nor (b) blocks gate 2. Both block T23.
 - [ ] Program-level mint allowlist: hardcoded constant or admin-managed account (ADR-012 prefers a hardcoded const list for the hackathon)
 - [x] RESOLVED 2026-09-21 by the design owner: Backed's HTTPS product-page assertion
       is accepted as the trust root, and SPYx and NVDAx are recorded in SPEC 9b.1 with
@@ -44,7 +61,16 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       ts-node's CommonJS path, which does not load those imports. Same runner, same
       spec files, different loader. Not blocking; recorded because ARCHITECTURE is
       owned by the design session and the build must not edit it.
-- [ ] BLOCKING before T08: DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo. The
+- [ ] T08 SCOPE RESOLVED 2026-09-22, the rest still open. This entry used to block T08,
+      on the reasoning that create_circle is the first task the solo ruling would
+      invalidate. The ruling came back and it does not: Joshua chose solo as a SEPARATE
+      mode funded from an admin-seeded pool, so `PROPOSAL-solo-mode.md:19` reads "the
+      circle is unchanged and both modes ship", and Codex's own Open-circle entry in this
+      file says it "explicitly keeps private T08 unchanged". `n: u8 // 3..=8` stands and
+      create_circle is unaffected, so gate 2 proceeds. What remains open is the solo
+      proposal's own design review, r4, which gates the SOLO build and nothing else.
+      Original entry follows.
+      DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo. The
       build cannot act on this: SPEC, ARCHITECTURE and the ADRs are design-owned, so the
       design session rules and the pack is re-handed. Scoped to T08 because gate 1 does not
       depend on member count, so T04 to T07 continue unaffected, while T08 create_circle is

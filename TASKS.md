@@ -16,6 +16,11 @@ Format: `- [ ] Txx <what> | verify: <exact command> | done when: <observable con
 - [x] R1 Refactor pass before review: fold duplication between the decoder and valuation paths, name every magic number, split any function doing two jobs, delete dead code. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 test still green, before/after diffstat in DONE.md
 - [x] T07 Gate 1 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: reviews/gate-1-review.md verdict implementation-ready AND the brief states gate 1 is locally implementation-ready, not deploy-ready (the init_price_feed oracle-takeover block in OPEN-QUESTIONS stands until T23)
 
+## Gate 4 slice, pulled forward (Joshua, 2026-09-22): the Split lab
+Built in parallel with gate 2 because it needs only `quote_valuation`, which gate 1 finished and Codex reviewed.
+- [ ] S1 Split lab: naive vault vs Othello side by side on the real NFLXx split, no wallet needed | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: both columns render from the committed NFLXx fixture; naive FUND 16.5 USDC vs Othello 165; H 132 on both sides of 1763337300; the page states whether it is showing recorded mainnet bytes or live devnet
+- [ ] S2 Devnet mirror mints: Token-2022 mints with ScaledUiAmountConfig, a labelled devnet allowlist entry that cannot coexist with the mainnet one (ADR-012) | verify: `anchor test` | done when: the mirror set is refused on the mainnet allowlist and accepted on the devnet one, and the label is asserted by a test
+
 ## Gate 2: circle core
 - [ ] T08 create_circle with param ranges and peak-guarantee check | verify: `anchor test` | done when: demo params pass, g=29 refused guarantee_below_peak_need, each range refused
 - [ ] T09 join_and_lock (scan members, ATA init), cancel_circle, activate | verify: `anchor test` | done when: refusal codes tested; I4 holds
