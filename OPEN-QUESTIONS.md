@@ -44,7 +44,31 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       ts-node's CommonJS path, which does not load those imports. Same runner, same
       spec files, different loader. Not blocking; recorded because ARCHITECTURE is
       owned by the design session and the build must not edit it.
-- [ ] Borrow Solo: raised 2026-09-22 by Joshua, relaying a planner session that believed
+- [ ] BLOCKING before T08. DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo, and
+      specify group pairing. The build cannot act on this: SPEC, ARCHITECTURE and the ADRs
+      are design-owned, so the design session rules and the pack is re-handed. Scoped to T08
+      because gate 1 does not depend on member count, so T04 to T07 continue unaffected,
+      while T08 create_circle is the first task the ruling would invalidate. Three findings
+      the design session needs:
+      (a) PAIRING BY PEOPLE YOU KNOW IS ALREADY THE DESIGN. ADR-003 and FLOWS D3: the creator
+          names every member wallet and the turn order at create, and join_and_lock is that
+          member's consent. Open join, a separate approval instruction and order voting were
+          all rejected. No work is needed for the friends case.
+      (b) PAIRING BY SCORE IS AN EXPLICIT NON-GOAL, twice: "cross-circle reputation (D9)" in
+          SPEC:27 and SYSTEM.md:30, and FLOWS.md:14 lists "removed from future circles" as a
+          no-go. A score built from how people use the app is cross-circle reputation. It
+          also needs per-wallet cross-circle state, history, and an answer to Sybil: nothing
+          stops one person opening ten wallets with clean scores, so a score that gates
+          entry is worth less than the creator naming someone they know.
+      (c) SOLO NEEDS A CAPITAL SOURCE, and that is the real question. A circle funds its
+          recipient from the other members' contributions, n x c. A solo borrower has no
+          other members, so the money must come from somewhere the spec does not yet have:
+          an admin-seeded protocol pool, or peer lenders depositing to earn. The second is
+          "generic lending", which sits next to "Borrow solo" in the same CUT list in
+          FRAME.md:38. Valuation, the whole of gate 1, is shared by both modes and is
+          already built, so solo is not blocked by anything technical here; it is blocked on
+          naming the lender.
+- [ ] Borrow Solo history: raised 2026-09-22, relaying a planner session that believed
       it had silently dropped a solo borrowing mode. CHECKED AGAINST THE PACK, and that is
       not what happened: `design/FRAME.md:38` lists "Borrow solo" first in `## 4. Non-goals
       (from SPEC "CUT")`, and `SPEC.md:29` inherits that list. The cut is recorded, was made
