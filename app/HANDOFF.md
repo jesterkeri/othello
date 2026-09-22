@@ -26,6 +26,25 @@ Separate branches, both into `staging` by PR. `staging` rejects direct pushes.
 data, little-endian in this order: `mult_fixed`, `fund`, `exec`, `h`. It is
 read-only and needs no wallet.
 
+## Which document wins, when they disagree
+
+Asked by the frontend session on 2026-09-22, and the answer is not what the S1
+section implied.
+
+**`design/` always wins.** `design/FLOWS.md` and `design/UX-REVIEW.md` are
+design-owned and committed. Nothing in this file supersedes them, ever. Where
+FLOWS gives copy, use FLOWS's copy verbatim and do not wait for a deck from me.
+
+A deck appears in this file **only where FLOWS has no copy at all**. That is why
+S1 has one: `design/FLOWS.md:160` says only "naive vault vs Othello side by
+side" and gives not a single string, so somebody had to write them and it fell
+to me. Landing is the opposite case: FLOWS §8 carries the committed heading,
+both buttons and the helper line, so **there is nothing for me to add and
+nothing to wait for**.
+
+If a deck here ever contradicts `design/`, `design/` is right and this file is
+a bug. Say so rather than following it.
+
 ## What this app is, in shape
 
 **A wallet app.** Not a dashboard, not an explorer, not a developer tool.
