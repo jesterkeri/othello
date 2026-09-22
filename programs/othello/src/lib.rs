@@ -5,6 +5,9 @@
 //! `touch_prices` in T04, `quote_valuation` in T05. Nothing is declared here
 //! before the task that implements it.
 
+pub mod errors;
+pub mod valuation;
+
 use anchor_lang::prelude::*;
 
 // Machine-local program id. PREFLIGHT forbids a keypair file inside the repo,
