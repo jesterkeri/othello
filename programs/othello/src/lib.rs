@@ -7,6 +7,7 @@
 
 pub mod allowlist;
 pub mod errors;
+pub mod events;
 pub mod instructions;
 pub mod state;
 pub mod valuation;
@@ -62,6 +63,15 @@ pub mod othello {
     /// Moves `updated_at` and nothing else (I17).
     pub fn touch_prices(ctx: Context<TouchPrices>) -> Result<()> {
         instructions::price_feed::handle_touch_prices(ctx)
+    }
+
+    /// Creates a circle in Forming (T08, SPEC §5).
+    pub fn create_circle(
+        ctx: Context<CreateCircle>,
+        params: CircleParams,
+        members: Vec<Pubkey>,
+    ) -> Result<()> {
+        instructions::create_circle::handle_create_circle(ctx, params, members)
     }
 
     /// Read-only valuation quote: FUND, EXEC and the counted value H (T05).

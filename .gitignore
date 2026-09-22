@@ -19,3 +19,8 @@ id.json
 .claude/worktrees/
 .fixtures-staging-*/
 .fixtures-previous-*/
+
+# next
+app/.next/
+app/node_modules/
+app/next-env.d.ts

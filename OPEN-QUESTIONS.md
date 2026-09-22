@@ -194,9 +194,28 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
 - [ ] SPEC does not say who pays rent for the `Circle` account, nor whether the circle's
       two vaults are created at create or at first join. T08 has the creator pay and
       creates both vaults at create, because I3 and I4 are stated in terms of vault
-      balances and must hold after every instruction; deferring them to the first join
-      would mean the invariants name accounts that do not exist. ARCHITECTURE:68 sizes
-      Circle at ~0.0054 SOL. Recorded as a reading.
+      balances and must hold after every instruction. CORRECTED 2026-09-22 while building
+      T08: the vaults are created at JOIN, not at create, which is what SPEC's own pattern
+      does ("creates the member's USDC ATA if missing", SPEC:102). Creating them at create
+      was tried first and the real mints refused it, which is the more interesting half:
+
+        Program log: Instruction: InitializeAccount3
+        Program log: Warning: Mint has a permanent delegate, so tokens in this account
+                     may be seized at any time
+        Program log: Error: InvalidAccountData
+
+      A Token-2022 account for a mint carrying extensions needs more than the base 165
+      bytes and Anchor's `init` allocates the base, so T09 must size the vaults from the
+      mint's required account extensions, or use the ATA program which does it. Until a
+      vault exists, I3 and I4 are vacuous rather than false. ARCHITECTURE:68 sizes Circle
+      at ~0.0054 SOL and the creator pays.
+- [ ] KNOWN-LIMITS L7 CONFIRMED ON CHAIN, not assumed. L7 accepts that "issuer powers of
+      real xStocks (pause, freeze, permanent delegate) are not handled". Token-2022 itself
+      warned while initialising an account for the real NFLXx mint: "Mint has a permanent
+      delegate, so tokens in this account may be seized at any time". So Backed can seize
+      stock out of a circle's vault, and no instruction Othello has can stop it. L7 is
+      correct as written and needs no change; this is evidence for it, and the site copy
+      that states the limit can now say it is observed rather than believed.
 - [x] RESOLVED 2026-09-22: the rules are now in `HACKATHON.md`, fetched from
       hackathons.solana.com. The criterion is one question, "could this be a real app that
       people will actually use?", and there is NO requirement to demonstrate correctness in
@@ -218,3 +237,23 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       required; that question cannot be answered from what is recorded.
       Get the rules, paste them in, and check the build against them line by line before
       anything else is prioritised. A missed format or multiplier has cost a finish before.
+- [ ] T27 repo tidy: WHAT IS ACTUALLY DELETABLE. Joshua asked on 2026-09-22 that the
+      unimportant information be removed once the build is done, because the repo becomes
+      a judged artifact: `HACKATHON.md` records that a GitHub link satisfies the
+      submission, so judges may read it.
+      CANNOT BE DELETED WITHOUT BREAKING CI. The harness workflow's pack-integrity step
+      reads `TASKS.md`, `DONE.md` and `OPEN-QUESTIONS.md`, and `scripts/check-reviews.sh`
+      reads `DONE.md` and `reviews/*review*.md`. Deleting any of them fails a required
+      status check and blocks the merge. If they are to go, the workflow goes first, and
+      that is a security-boundary change that needs a human to approve the diff.
+      SHOULD PROBABLY STAY, because it is evidence of rigour rather than clutter:
+      `DONE.md`, `reviews/`, `adr/`, `INVARIANTS.md`, `SPEC.md`, `design/`. A judge asking
+      "could this be a real app people will use" is not hurt by seeing four design review
+      rounds and a mutation-checked decoder.
+      REAL CANDIDATES, all process scaffolding rather than product: `app/HANDOFF.md` (a
+      brief between two build sessions), `PROPOSAL-solo-mode.md` (a design draft for a
+      mode that does not exist), the resolved entries in this file, `PREFLIGHT.md` and
+      `PIPELINE.md` if they read as internal process, and `AGENTS.md`/`CLAUDE.md` if
+      Joshua would rather not advertise how it was built.
+      NOT THE BUILD'S CALL. Joshua approves the list before anything is deleted, and it
+      lands as one commit so it can be reverted whole.

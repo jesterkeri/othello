@@ -24,6 +24,27 @@ It is a wallet app, and `HACKATHON.md` records the only published criterion: "co
 - [ ] S1 DEMOTED 2026-09-22, build only after S3 to S5. Split lab: naive vault vs Othello side by side on the real NFLXx split, no wallet needed | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: both columns render from the committed NFLXx fixture; naive FUND 16.5 USDC vs Othello 165; H 132 on both sides of 1763337300; the page states whether it is showing recorded mainnet bytes or live devnet
 - [ ] S2 Devnet mirror mints: Token-2022 mints with ScaledUiAmountConfig, a labelled devnet allowlist entry that cannot coexist with the mainnet one (ADR-012) | verify: `anchor test` | done when: the mirror set is refused on the mainnet allowlist and accepted on the devnet one, and the label is asserted by a test
 
+## Sequencing decision, 2026-09-22 (Joshua, with Codex)
+
+Nothing in the product is cut. What is cut is DEMO SCOPE, decided at the recording
+deadline rather than now.
+
+- Build in task order and keep every adversary pass. They have found a real defect in
+  every task so far, including two in gate 1 that the external review then missed.
+- Keep gate 2 and gate 3 as SEPARATE Codex reviews (Codex, r1 on this plan): a combined
+  review makes the diff larger exactly when money movement and default logic arrive.
+- Keep T14, T15 AND T16. Cutting T16 removes I14, "escrow deficit is curable", which
+  leaves a defaulted circle permanently Paused and lets the demo visibly deadlock. That
+  undercuts the pitch almost as badly as having no default path at all.
+- R2 and R3 merge into ONE refactor pass before the last review, but every task still runs
+  its own tests immediately after it is implemented, and the final `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings` and full suite all stay.
+- **Recording deadline: Friday 12:00 Lagos.** Stop building, record T25 against whatever
+  is done, submit. That reserves nine hours for the demo, the video and the submission.
+  Whatever has not landed by then is described in the README rather than shown.
+- T27, the repo tidy, runs after the last code review and before T26, as one approved
+  revertible commit.
+
 ## Gate 2: circle core
 - [ ] T08 create_circle with param ranges and peak-guarantee check | verify: `anchor test` | done when: demo params pass, g=29 refused guarantee_below_peak_need, each range refused
 - [ ] T09 join_and_lock (scan members, ATA init), cancel_circle, activate | verify: `anchor test` | done when: refusal codes tested; I4 holds
@@ -52,4 +73,5 @@ It is a wallet app, and `HACKATHON.md` records the only published criterion: "co
 - [ ] T23 Devnet deploy by Joshua (PREFLIGHT first) | verify: `solana program show <PROGRAM_ID> --url devnet` | done when: program id recorded
 - [ ] T24 ops/seed-demo-circle.ts with SPEC §5 demo parameters | verify: `pnpm tsx ops/seed-demo-circle.ts --cluster devnet` | done when: circle address recorded; all five joined before the split
 - [ ] T25 Seven-step demo run + video | verify: n/a (human) | done when: video link in DONE.md
+- [ ] T27 Repo tidy before the repo is a judged artifact (Joshua, 2026-09-22: "after we are done building you'll have to delete all the unimportant information"). Joshua approves the list before anything is deleted | verify: `anchor test && ./scripts/check-reviews.sh && git log --oneline -1` | done when: the list is approved, the deletions are one commit, and CI is still green
 - [ ] T26 Submit on Stocklana; run ops/touch-prices.ts at submission | verify: n/a (human) | done when: submission link in DONE.md before Fri 25 Sep 21:00 Lagos

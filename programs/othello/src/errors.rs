@@ -22,4 +22,6 @@ pub enum OthelloError {
     ValuationOverflow,
     #[msg("That mint is not an accepted xStock")]
     MintNotAllowed,
+    #[msg("The guarantee is too small for the worst round this circle can reach")]
+    GuaranteeBelowPeakNeed,
 }

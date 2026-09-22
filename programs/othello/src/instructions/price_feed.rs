@@ -9,6 +9,7 @@ use anchor_lang::prelude::*;
 
 use crate::allowlist;
 use crate::errors::OthelloError;
+use crate::events::PricesSet;
 use crate::state::{PriceFeed, PriceStamp};
 use crate::valuation::{decode_multiplier_fixed, effective_multiplier_bits, scaled_ui_config};
 
@@ -147,6 +148,15 @@ pub fn handle_set_prices(
     feed.share_price = share_price;
     feed.priced_for_multiplier = stamped;
     feed.updated_at = now;
+
+    emit!(PricesSet {
+        feed: feed.key(),
+        stock_mint: feed.stock_mint,
+        wrapper_price: feed.wrapper_price,
+        share_price: feed.share_price,
+        priced_for_multiplier: feed.priced_for_multiplier,
+        updated_at: feed.updated_at,
+    });
 
     Ok(())
 }
