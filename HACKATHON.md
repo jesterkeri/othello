@@ -26,6 +26,43 @@ it looks like an app people would use, which a repo link alone does not show.
 NOT STATED: demo video length, whether the repo must be public, whether a live
 deployment is mandatory, which network is required.
 
+## Requirements, as distinct from the criteria
+
+Checked separately on 2026-09-22 because criteria are what you are scored on and
+requirements are what disqualifies you.
+
+| requirement | published wording | status |
+|---|---|---|
+| **Register** | "Register, then **Submit Project** before the deadline" | **REQUIRED, and not yet done** |
+| Team | "Invite teammates from the submit form" | n/a, solo |
+| One submission per team | "Individuals and teams, one submission per team, original work" | fine |
+| Pre-existing code | "Open-source components are fine if you say so" | allowed, must be disclosed |
+| Links | "Include at least one link: GitHub, live demo, or video" | GitHub satisfies it |
+
+**NOT STATED anywhere on the site**, and therefore unknown rather than absent:
+the start date and whether work must be done inside the window; which track or
+bounty you select at submission; the submission form's actual fields; whether a
+demo video is required and how long; whether the repo must be public or
+licensed; whether a live URL is required; which network is required; KYC,
+wallet, email, GitHub-account, residency, age or jurisdiction restrictions;
+prohibited countries; any Discord or social requirement.
+
+There is **no site-wide terms, rules, eligibility, legal or FAQ page** linked
+from hackathons.solana.com. The footer carries only BUILD, SPONSOR and ABOUT.
+
+### What this means
+
+The rules page is the shape; **the submission form is the authoritative source
+for requirements**, and it sits behind registration where it cannot be read
+from outside. Everything in the NOT STATED list above is knowable only by
+opening that form.
+
+**Register and open the submission form now, not on Friday.** A required field
+discovered at 20:00 Lagos on the deadline is the failure mode that has cost a
+finish before. Registering also costs nothing and removes lock-out risk, and
+`design/FRAME.md:32` already records that edits are allowed after submitting,
+so a stub submission can go in early and be improved.
+
 ## Deadline
 
 > "Friday 25 September, 4:00pm ET"
@@ -59,5 +96,8 @@ bounty, not for the main track.
 - [ ] the reason it belongs on Solana is stated, not implied
 - [ ] original work declared; open-source components named
 - [ ] submitted before Fri 25 Sep 21:00 Lagos, with edits allowed after
-- [ ] NOT STATED items above confirmed against the submission form itself, which
-      may ask for more than the rules page publishes
+- [ ] **REGISTER** (required, "Register, then Submit Project before the deadline")
+- [ ] open the submission form and record every field it asks for, in this file
+- [ ] NOT STATED items above confirmed against that form, which may ask for more
+      than the rules page publishes
+- [ ] a stub submission in early, since edits are allowed after (design/FRAME.md:32)
