@@ -24,3 +24,5 @@ id.json
 app/.next/
 app/node_modules/
 app/next-env.d.ts
+
+app/tsconfig.tsbuildinfo

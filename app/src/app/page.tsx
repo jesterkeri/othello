@@ -1,86 +1,107 @@
 import Link from "next/link";
 
-/**
- * Landing.
- *
- * Every string below is the committed copy from SPEC §9's "Copy per place"
- * table, or a plain restatement of a mechanic SPEC and design/FLOWS.md already
- * define. Nothing here is invented, and no number appears that the program has
- * not been shown to produce.
- *
- * The three steps are FLOWS J1 and J2 (design/FLOWS.md:135-137) in the words a
- * person would use, per the vocabulary table's "Never say" column.
- */
+import styles from "./landing.module.css";
+
+/** SPEC §5 demo circle: five seats, and seat 3 is this round's recipient. */
+const SEATS = [1, 2, 3, 4, 5] as const;
+const RECIPIENT = 3;
+
+const BLOCKS = [
+  { bg: "var(--clay)", rotate: -12 },
+  { bg: "var(--acid)", rotate: 8 },
+  { bg: "var(--sky)", rotate: -5 },
+] as const;
+
 export default function Landing() {
   return (
-    <main>
-      <h1>Savings circles where nobody has to trust anybody</h1>
-
-      <p className="lede">
-        Lock tokenized stock as a promise. You still own it. You get it back when the circle
-        ends.
-      </p>
-
-      <div className="actions">
-        <Link className="button button--primary" href="/circle">
-          Open demo circle
-        </Link>
-        <Link className="button" href="/create">
-          Create a circle
-        </Link>
-      </div>
-
-      <hr className="rule" />
-
-      <h2>How a circle runs</h2>
-
-      <ol className="steps">
-        <li>
-          <b>1</b>
-          <span>
-            One person names the members and the order they get paid. Each member confirms by
-            joining.
+    <div className={styles.desk}>
+      <div className={styles.card}>
+        <header className={styles.header}>
+          <span className={styles.logo} aria-label="Othello">
+            {BLOCKS.map((b, i) => (
+              <span
+                key={b.bg}
+                className={styles.logoBlock}
+                style={{ background: b.bg, transform: `rotate(${b.rotate}deg)`, marginLeft: i ? -6 : 0 }}
+              />
+            ))}
           </span>
-        </li>
-        <li>
-          <b>2</b>
-          <span>
-            Every round, each member pays their contribution, and whoever&rsquo;s turn it is
-            receives the pot.
-          </span>
-        </li>
-        <li>
-          <b>3</b>
-          <span>
-            A payout only happens while everyone still has enough locked stock and reserve to
-            cover what they owe.
-          </span>
-        </li>
-      </ol>
 
-      <hr className="rule" />
+          <span className={styles.wordmark}>Othello</span>
 
-      <h2>Why the stock stays yours</h2>
+          <button type="button" className={styles.connect}>
+            Connect wallet
+          </button>
+        </header>
 
-      <div className="card">
-        <p>
-          Your stock is held as cover, not sold. It is counted at the lower of its market price
-          and its share price, minus a safety margin, so a good week never lets someone borrow
-          more than the stock would really fetch.
+        <p className={styles.provenance}>
+          <span className={styles.chip}>Devnet demo</span>
+          The demo trades labelled mirrors of these shares, not the real xStocks.
         </p>
-        <p style={{ marginBottom: 0 }}>
-          When a company splits its stock, your holding is worth exactly what it was worth a
-          second earlier. Othello reads the split. A system that does not would think most of
-          your cover had vanished.
-        </p>
+
+        <section className={styles.hero}>
+          <span className={styles.eyebrow}>Tokenised stock as a promise</span>
+
+          <h1 className={styles.title}>Savings circles where nobody has to trust anybody</h1>
+
+          <p className={styles.lede}>
+            Lock tokenized stock as a promise. You still own it. You get it back when the circle
+            ends.
+          </p>
+
+          <div className={styles.actions}>
+            <Link className={`${styles.button} ${styles.buttonPrimary}`} href="/circle">
+              Open demo circle
+            </Link>
+            <Link className={styles.button} href="/create">
+              Create a circle
+            </Link>
+          </div>
+
+          <p className={styles.actionNote}>One click, no wallet, nothing to sign</p>
+        </section>
+
+        <section className={styles.panel}>
+          <h2 className={styles.kicker}>The problem</h2>
+          <p className={styles.panelLead}>
+            Today the only protection is <em className={styles.mark}>reputation</em>
+          </p>
+          <p className={styles.panelBody}>
+            Circles break when an early recipient takes the pot and stops paying. Othello makes
+            the promise checkable instead.
+          </p>
+        </section>
+
+        <section className={styles.panel}>
+          <h2 className={styles.kicker}>This round</h2>
+
+          <ol className={styles.seats} aria-label="Five seats, seat three receives this round">
+            {SEATS.map((n) => (
+              <li
+                key={n}
+                className={n === RECIPIENT ? `${styles.seat} ${styles.seatPaid}` : styles.seat}
+                aria-current={n === RECIPIENT ? "step" : undefined}
+              >
+                {n}
+              </li>
+            ))}
+          </ol>
+
+          <p className={styles.panelLead}>Seat {RECIPIENT} gets the whole pot</p>
+          <p className={styles.panelBody}>
+            Everyone else pays in. Each seat gets the pot once, then the order comes back around.
+            Three to eight seats.
+          </p>
+        </section>
+
+        <section className={styles.panel}>
+          <p className={styles.panelBody}>
+            It&rsquo;s an ajo where everyone locks some stock as a promise, so if someone takes the
+            pot and disappears, their stock pays for it. Every member can check at any moment that
+            each obligation is covered.
+          </p>
+        </section>
       </div>
-
-      <hr className="rule" />
-
-      <p className="foot">
-        A prototype on Solana devnet, for the Stocklana hackathon. The demo uses labelled mirror
-        tokens, not real xStocks.
-      </p>
-    </main>
+    </div>
   );
 }
