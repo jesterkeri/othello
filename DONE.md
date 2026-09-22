@@ -883,3 +883,54 @@ backwards.
 
 Nothing was weakened, skipped or deleted. Test counts are identical either side of the
 pass: 22 Rust, 31 mocha, 26 T00 cases.
+
+## T07 - 2026-09-22
+commit: b7c68df (reviewed), fixes in the commit below
+verified: `./scripts/check-reviews.sh`
+output:
+```
+$ ./scripts/check-reviews.sh
+reviews ok
+
+$ head -1 reviews/gate-1-review.md
+VERDICT: implementation-ready
+
+$ git diff --ignore-blank-lines --stat b7c68df..HEAD -- programs ops tests scripts .github
+(empty)
+```
+reviewed: reviews/gate-1-review.md | verdict: implementation-ready | commit: b7c68df | C0 M0 m2 (both OUTSIDE)
+adversary: n/a (T07 produces a document; the code it describes was adversarially reviewed at T00 to T06)
+notes: GATE 1 PASSES. Codex returned implementation-ready with two MINORs, both marked
+OUTSIDE the review's stated concerns, neither touching the program.
+
+Both were real and both are fixed. The first was an error in my own brief: it said
+`pnpm run test:t00` reaches mainnet RPC and assets.backed.fi. It reaches nothing. The
+suite serves JSON-RPC and the issuer's product pages from a localhost server and runs the
+fetcher against it with OTHELLO_INSECURE_TEST_RPC=1
+(tests/t00-mint-symbol-verification.ts:155,172-174, verified before correcting rather than
+taken on trust). The live command is ops/fetch-fixtures.ts, which rewrites tests/fixtures/.
+Section 5 of the brief repeated the same mistake while listing where the tests are thin,
+so a stated weakness was not a weakness. Both corrected. The second was a blank line at
+EOF in tests/harness.ts, deleted.
+
+INDEPENDENT CONFIRMATION, worth more than either finding: the reviewer fetched current
+mainnet data into an isolated directory and found all four scaled-UI configurations match
+the committed fixtures, with only the mutable supply bytes differing. That is T00's
+provenance chain checked by a second party against the live chain. No test in this repo
+does that, because the suite is offline by design, so this is the only end-to-end
+confirmation the fixtures are still what they claim to be.
+
+WHAT THE REVIEWER DID NOT DO, from its own U8: it did not deploy to a cluster, did not
+test the known init_price_feed takeover, and did not rerun the mutation campaigns
+independently. It also recorded that a single-prompt review is not blind under U1. Those
+are limits on this verdict and are recorded here rather than left in the terminal.
+
+GATE 1 IS LOCALLY IMPLEMENTATION-READY AND NOT DEPLOY-READY. The init_price_feed
+oracle-takeover block in OPEN-QUESTIONS stands until T23 and this verdict does not clear
+it; the brief said so in section 7 item 1 and the review repeats it.
+
+OPEN, for Joshua: REVIEWS.md says a fix after a review is the newest code and therefore
+the most suspect, and should be re-reviewed. The code change after the reviewed SHA is one
+blank line, and `git diff --ignore-blank-lines` over programs, ops, tests, scripts and
+.github is empty; everything else is documentation. Whether that earns a re-review round
+is his call, not the builder's, so it is recorded rather than waived.

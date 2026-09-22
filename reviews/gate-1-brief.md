@@ -59,7 +59,12 @@ pnpm run test:p1     # the harness proof and its regression test
 cargo clippy --all-targets -- -D warnings && cargo fmt --check
 ```
 
-`pnpm run test:t00` reaches mainnet RPC and `assets.backed.fi`.
+`pnpm run test:t00` reaches nothing. It is the hostile-endpoint stub suite: it
+serves both JSON-RPC and the issuer's product pages from a localhost server and
+runs the fetcher against it with `OTHELLO_INSECURE_TEST_RPC=1`. The live command
+is `pnpm run fetch-fixtures` (`ops/fetch-fixtures.ts`), which reaches
+`api.mainnet-beta.solana.com` and `assets.backed.fi` AND REWRITES
+`tests/fixtures/`. Do not run it if you want the committed fixtures left alone.
 
 ## 4. What to review
 
@@ -100,8 +105,10 @@ The claims this gate rests on, each to be checked rather than accepted:
   Gate 2's three consumers do not exist, so the shared sequence has one caller.
 - Compute units are recorded for `quote_valuation` only, at ~4800. `SPEC.md`
   NFR-3's n = 8 claim is gate 2's to measure.
-- The T00 suites reach the network and are excluded from `anchor test`'s
-  offline path by nothing; they run in it.
+- The T00 suites run inside `anchor test` and are fully offline; every endpoint
+  they exercise is a localhost stub. Nothing in the test path ever contacts the
+  real RPC or the real issuer, so the fixtures' provenance is asserted by
+  recorded evidence rather than re-verified on each run.
 
 ## 6. Out of scope for this review
 
