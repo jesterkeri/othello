@@ -13,11 +13,11 @@
  */
 import assert from "node:assert/strict";
 
-import { deployedProgram } from "./artifacts.ts";
+import { deployedProgram, HARNESS_BUILD_MARKER, read } from "./artifacts.ts";
 
 const HARNESS_MARKERS = [
   // Deliberate: programs/othello/src/lib.rs logs this from read_clock.
-  "OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY",
+  HARNESS_BUILD_MARKER,
   // Incidental, and kept because two independent markers are harder to lose
   // than one. Anchor emits the first unless `no-log-ix-name` is set.
   "Instruction: ReadClock",
@@ -25,6 +25,14 @@ const HARNESS_MARKERS = [
 ];
 
 describe("T01 deploy artifact", () => {
+  it("greps for a marker the program actually declares", () => {
+    // A guard that searches for a literal the program no longer contains passes
+    // by finding nothing. Pin the two copies together.
+    const declared = /HARNESS_BUILD_MARKER: &str = "([^"]+)"/.exec(read("programs/othello/src/lib.rs"));
+
+    assert.equal(declared?.[1], HARNESS_BUILD_MARKER, "lib.rs and tests/artifacts.ts disagree");
+  });
+
   it("keeps the harness probe out of the deployable program binary", () => {
     const program = deployedProgram();
 

@@ -34,15 +34,22 @@
  * Run: pnpm tsx tests/p1-harness-proof.ts
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
 import * as anchor from "@coral-xyz/anchor";
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import {
+    anchorBuild,
+    carriesHarnessMarker,
+    DEPLOY_DIR,
+    HARNESS_BUILD_MARKER,
+    PROGRAM_IDL,
+    PROGRAM_NAME,
+    PROGRAM_SO,
+    REPO,
+    TOOLCHAIN_PATH,
+} from "./artifacts.ts";
 
 /** SPEC 9b.1, hardcoded so the fixture cannot quietly become a different mint. */
 const NFLX_MINT = "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL";
@@ -51,44 +58,15 @@ const TOKEN_2022_PROGRAM = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 /** One second before NFLXx's multiplier changes, and the second itself. */
 const BOUNDARY_SECONDS = [1_763_337_299, 1_763_337_300] as const;
 
-/** programs/othello/src/lib.rs logs this from read_clock under `harness`. */
-const HARNESS_BUILD_MARKER = "OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY";
-
-const PROGRAM_NAME = "othello";
-const DEPLOY_DIR = resolve(REPO, "target/deploy");
-const PROGRAM_SO = resolve(DEPLOY_DIR, `${PROGRAM_NAME}.so`);
-const PROGRAM_IDL = resolve(REPO, "target/idl", `${PROGRAM_NAME}.json`);
-
-// The shell this runs from does not necessarily source the user profile.
-const TOOLCHAIN_PATH = [
-  resolve(homedir(), ".cargo/bin"),
-  resolve(homedir(), ".local/share/solana/install/active_release/bin"),
-  process.env.PATH ?? "",
-].join(":");
-
 // bankrun reads the program from BPF_OUT_DIR, and target/deploy is already that
 // layout. Both are read inside start(), so setting them here is early enough.
-process.env.BPF_OUT_DIR = DEPLOY_DIR;
+process.env.BPF_OUT_DIR = resolve(REPO, DEPLOY_DIR);
 process.env.RUST_LOG = process.env.RUST_LOG ?? "off";
 
 // Dynamic, so RUST_LOG is set before the native logger initialises on load.
 const { start, Clock } = await import("solana-bankrun");
 
 type Fixture = { address: string; owner: string; dataLen: number; dataBase64: string };
-
-function anchorBuild(...extraArgs: string[]): void {
-  const result = spawnSync("anchor", ["build", ...extraArgs], {
-    cwd: REPO,
-    env: { ...process.env, PATH: TOOLCHAIN_PATH },
-    encoding: "utf8",
-  });
-
-  assert.equal(
-    result.status,
-    0,
-    `anchor build ${extraArgs.join(" ")} failed: ${result.stderr || result.stdout || result.error}`,
-  );
-}
 
 /**
  * Builds the harness artifact and refuses to go on unless it really is one.
@@ -99,11 +77,11 @@ function buildHarnessProgram(): { programId: anchor.web3.PublicKey; data: Buffer
   anchorBuild("--", "--features", "harness");
 
   assert.ok(
-    readFileSync(PROGRAM_SO).includes(HARNESS_BUILD_MARKER, 0, "latin1"),
+    carriesHarnessMarker(),
     `${PROGRAM_SO} is not a harness build: it does not carry ${HARNESS_BUILD_MARKER}`,
   );
 
-  const idl = JSON.parse(readFileSync(PROGRAM_IDL, "utf8")) as anchor.Idl & { address: string };
+  const idl = JSON.parse(readFileSync(resolve(REPO, PROGRAM_IDL), "utf8")) as anchor.Idl & { address: string };
   const names = idl.instructions.map((ix) => ix.name);
   assert.ok(names.includes("read_clock"), `harness IDL has no read_clock, only: ${names.join(", ") || "(none)"}`);
 
@@ -129,7 +107,7 @@ function readFixture(): Fixture {
  */
 function restoreDefaultBuild(): void {
   anchorBuild();
-  console.log(`    (restored the default build in ${PROGRAM_SO.replace(`${REPO}/`, "")})`);
+  console.log(`    (restored the default build in ${PROGRAM_SO})`);
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -146,7 +124,7 @@ try {
   const { programId, data } = buildHarnessProgram();
   const fixture = readFixture();
 
-  console.log(`  harness built ${PROGRAM_SO.replace(`${REPO}/`, "")} carries ${HARNESS_BUILD_MARKER}`);
+  console.log(`  harness built ${PROGRAM_SO} carries ${HARNESS_BUILD_MARKER}`);
   console.log(`  program id    ${programId.toBase58()}`);
 
   const context = await start([{ name: PROGRAM_NAME, programId }], []);

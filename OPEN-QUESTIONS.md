@@ -44,3 +44,16 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       ts-node's CommonJS path, which does not load those imports. Same runner, same
       spec files, different loader. Not blocking; recorded because ARCHITECTURE is
       owned by the design session and the build must not edit it.
+- [ ] Borrow Solo: raised 2026-09-22 by Joshua, relaying a planner session that believed
+      it had silently dropped a solo borrowing mode. CHECKED AGAINST THE PACK, and that is
+      not what happened: `design/FRAME.md:38` lists "Borrow solo" first in `## 4. Non-goals
+      (from SPEC "CUT")`, and `SPEC.md:29` inherits that list. The cut is recorded, was made
+      upstream in the original spec, and the pack is coherent with it everywhere (`n: u8 //
+      3..=8`, create_circle refuses outside 3..=8 with invalid_params, and G2 requires that
+      refusal to be tested). Nothing is half-built. Whether to RESTORE it is still Joshua's
+      call, so this stays open. Cost if restored: gate 1 is untouched, because valuation does
+      not depend on member count. Gate 2 is not a parameter change: at n = 1 there is no
+      rotation, no turn order, no peak-guarantee check, and update_coverage has nothing to
+      allocate across, so a solo borrow is a collateralised loan sharing only the valuation
+      layer, which is why "generic lending" sits beside it in the same cut list. Not blocking:
+      the build proceeds on the frozen spec until the design session says otherwise.
