@@ -1084,3 +1084,70 @@ NOT DONE: no live devnet read. The screen says so on its face, "This circle
 renders from a committed fixture, not from a live devnet account", rather than
 letting a judge assume otherwise. Wiring it to a real account is T23 and needs
 S2's devnet mints first.
+
+## S4 correction - 2026-09-22
+
+reviewed: n/a (same frontend scope as S4)
+adversary: not run, attacks run: 0, test: none. Same gap as S3 and S4
+
+Two defects in the S4 commit, both found by reading SPEC §4 more carefully
+while starting S5, and both fixed before building anything on top.
+
+1. THE FIXTURE CONTRADICTED THE PROGRAM. SPEC §4 defines the derived
+   quantities exactly:
+
+     O_i  = received_i ? contribution x (n - rounds_paid_i) : 0
+     FUND = floor( raw x mult_fixed x share_price / (1e9 x 1e8) )
+     EXEC = floor( raw x wrapper_price / 1e8 )
+     H_i  = floor( min(FUND, EXEC) x (10000 - haircut_bps) / 10000 )
+     need_i = max(0, ceil(O_i x coverage_bps / 10000) - H_i)
+
+   The active fixture had reserve_allocated 0 while Ada had already received
+   her pot. Her O is 50 x (5 - 2) = 150, so need_i is ceil(150 x 1.3) - 132 =
+   63, and an allocation of 0 is impossible. reserve_allocated is now 63 USDC
+   and free reserve reads 87 rather than 150.
+
+   The paused fixture had the same problem in reverse: it needed free reserve
+   to be exactly 70 to reproduce SPEC §7, but losses of 80 imply a default,
+   and a default implies a member who had received. It is now round 2 with Ada
+   received-then-defaulted and Tunde received. Ada's allocation is released and
+   her obligations prepaid; Tunde owes 100 and ceil(100 x 1.3) = 130 is under
+   his 132 of cover, so he needs no reserve. Nothing is allocated, 150 - 80
+   leaves 70, the gate needs 75, short by 5. SPEC §7's numbers now follow from
+   the waterfall instead of being asserted next to it.
+
+2. STOCK COVER WAS A STORED NUMBER. MemberView carried `stockCover` as a
+   field, which made it unfalsifiable: it could hold any value and nothing
+   would disagree. It is now computed by lib/circle.ts from raw, the prices,
+   the multiplier and the haircut, in BigInt, with the program's own rounding.
+   The fixture states raw and prices only, so 132 is now a result rather than
+   a claim. MemberView gained rounds_paid and allocated, the two Member fields
+   O_i and coverage actually read.
+
+The screen now renders Owed and Coverage per member, and honours SPEC.md:70:
+coverage saturates rather than dividing by zero, and the UI prints "Nothing
+owed" when O_i is 0 and "Prepaid" for a defaulted member, never a percentage.
+
+D5 is now honoured on the member table too. During Repricing the program
+refuses to compute fundamental value, so stock cover and coverage render as
+"Not countable" instead of a number computed from a multiplier the prices were
+never stamped for. Without this the repricing screen showed a confident 132
+derived from a mismatched pair.
+
+verify: `pnpm -C app build` green, `tsc --noEmit` clean, and the derived
+quantities read back out of the served HTML:
+
+  active     132.00 USDC   H_i, computed not stated
+  active     150.00 USDC   O_i for the member who has received
+  active     Nothing owed  the four who have not
+  active     130%          (132 + 63) / 150, exactly the coverage target
+  paused     Prepaid       the defaulted member
+  paused     "The next payout needs 75.00 USDC of reserve and 70.00 remains"
+  repricing  Not countable
+  completed  Nothing owed
+
+ALSO: design/OTHELLO-STYLE.md moved to app/OTHELLO-STYLE.md. AGENTS.md says
+"design/ is read-only history; never edit it", and adding a file to it in the
+S3 commit was a violation of that even though nothing existing was changed. The
+reference in Circle.module.css was updated with it. If the design session wants
+it under design/, that is theirs to place, not the build's.

@@ -7,10 +7,16 @@
  * 8-dp stock base units, prices are USDC base units per whole token, and the
  * multiplier is fixed-point x1e9.
  *
- * Nothing here computes collateral. Coverage is the program's answer
- * (quote_valuation), and the app displays what it is given rather than
- * re-deriving money, which design/reviews/design-review-r2.md:69 warned would
- * duplicate the valuation in the frontend.
+ * The derived section at the foot of this file reproduces SPEC §4's formulas so
+ * the screen can LABEL a position, not so it can decide one. The chain remains
+ * the authority: quote_valuation returns the valuation and
+ * Member.last_coverage_bps is the coverage of record. Where the two disagree,
+ * the chain is right and this file has a display bug.
+ *
+ * That distinction is the one design/reviews/design-review-r2.md:69 raised: a
+ * frontend that decides coverage has duplicated the protocol, and the moat with
+ * it. A frontend that cannot name the number it is showing is no better, so the
+ * formulas live here, marked, rather than being guessed at the call site.
  */
 
 /** programs/othello/src/state.rs: MAX_MEMBERS. */
@@ -37,10 +43,12 @@ export type MemberView = {
   address: string;
   /** Display name. The chain stores only the address. */
   name: string;
-  /** Counted value of their locked stock, in usdc. From quote_valuation. */
-  stockCover: number;
-  /** Raw stock base units locked. */
+  /** Raw stock base units locked. Member.stock_raw. */
   lockedRaw: number;
+  /** Member.rounds_paid, including escrow-paid. Feeds O_i. */
+  roundsPaid: number;
+  /** Member.allocated, G_i at the last recompute. 0 once defaulted. */
+  allocated: number;
 };
 
 export type CircleView = {
@@ -210,4 +218,83 @@ export function derive(c: CircleView, now: number): CircleDerived {
     coverageAge: now - c.lastCoverageAt,
     priceAge: now - c.feed.updatedAt,
   };
+}
+
+/* ------------------------------------------------------------------------- *
+ * SPEC §4, "Derived, never stored as truth". These are the program's own
+ * formulas, in the program's own order, with the program's own rounding:
+ *
+ *   O_i  = received_i ? contribution x (n - rounds_paid_i) : 0
+ *   FUND = floor( raw x mult_fixed x share_price / (1e9 x 1e8) )
+ *   EXEC = floor( raw x wrapper_price / 1e8 )
+ *   H_i  = floor( min(FUND, EXEC) x (10000 - haircut_bps) / 10000 )
+ *   need_i = max(0, ceil(O_i x coverage_bps / 10000) - H_i)
+ *   reserve_free = reserve_total - reserve_losses - reserve_allocated
+ *
+ * The app recomputes these only to LABEL what the chain already decided. The
+ * authority is quote_valuation and Member.last_coverage_bps; if the two ever
+ * disagree the chain is right and this is a display bug.
+ *
+ * BigInt throughout, because raw x mult_fixed x share_price overflows a double
+ * long before it overflows the u128 the program uses.
+ * ------------------------------------------------------------------------- */
+
+const ONE_E9 = 1_000_000_000n;
+const ONE_E8 = 100_000_000n;
+const BPS = 10_000n;
+
+/** u32::MAX. SPEC.md:70: coverage saturates here when nothing is owed, or when
+ *  the member defaulted and their obligations were prepaid. Never a percentage. */
+export const COVERAGE_SATURATED = 4_294_967_295;
+
+/** O_i. Zero until a member has received their pot: Othello cannot default a
+ *  member before their turn (KNOWN-LIMITS L3), so before it they owe nothing. */
+export function obligations(c: CircleView, m: MemberView): number {
+  if (!seatSet(c.receivedBitmap, m.turn)) return 0;
+  return c.contribution * (c.n - m.roundsPaid);
+}
+
+export function fundValue(m: MemberView, c: CircleView): number {
+  const raw = BigInt(m.lockedRaw);
+  const mult = BigInt(c.effectiveMultiplier);
+  const share = BigInt(c.feed.sharePrice);
+  return Number((raw * mult * share) / (ONE_E9 * ONE_E8));
+}
+
+export function execValue(m: MemberView, c: CircleView): number {
+  return Number((BigInt(m.lockedRaw) * BigInt(c.feed.wrapperPrice)) / ONE_E8);
+}
+
+/** H_i, the counted value of locked stock: the lower of the two values, less
+ *  the safety margin. UX-REVIEW calls this "stock cover" on the surface. */
+export function stockCover(m: MemberView, c: CircleView): number {
+  const lower = BigInt(Math.min(fundValue(m, c), execValue(m, c)));
+  return Number((lower * (BPS - BigInt(c.haircutBps))) / BPS);
+}
+
+/** need_i, the reserve a member requires to reach the coverage target. */
+export function needG(c: CircleView, m: MemberView): number {
+  const o = BigInt(obligations(c, m));
+  if (o === 0n) return 0;
+  const required = (o * BigInt(c.coverageBps) + BPS - 1n) / BPS; // ceil
+  const have = BigInt(stockCover(m, c));
+  return required > have ? Number(required - have) : 0;
+}
+
+/**
+ * The member's coverage, in bps. Saturates rather than dividing by zero, which
+ * is the case SPEC.md:70 tells the UI to render as words instead of a number.
+ */
+export function coverageBpsOf(c: CircleView, m: MemberView): number {
+  if (seatSet(c.defaultedBitmap, m.turn)) return COVERAGE_SATURATED;
+  const o = obligations(c, m);
+  if (o === 0) return COVERAGE_SATURATED;
+  return Number((BigInt(stockCover(m, c) + m.allocated) * BPS) / BigInt(o));
+}
+
+/** SPEC.md:70's own wording for the saturated cases. */
+export function coverageLabel(c: CircleView, m: MemberView): string {
+  if (seatSet(c.defaultedBitmap, m.turn)) return "Prepaid";
+  if (obligations(c, m) === 0) return "Nothing owed";
+  return `${(coverageBpsOf(c, m) / 100).toFixed(0)}%`;
 }

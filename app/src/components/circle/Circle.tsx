@@ -5,12 +5,15 @@ import { useEffect, useState } from "react";
 
 import { ThemeRoot } from "@/components/theme/ThemeRoot";
 import {
+  coverageLabel,
   derive,
   formatDuration,
   formatRaw,
   formatUsdc,
+  obligations,
   seatSet,
   shortAddress,
+  stockCover,
   type CircleView,
 } from "@/lib/circle";
 import { STATE_KEYS, type CircleStateKey } from "@/fixtures/circles";
@@ -297,7 +300,9 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
           <div className={s.cardCoverage}>
             <span className={s.micro}>Cover per member</span>
             <span className={`${s.display} ${s.cardBig}`}>
-              {formatUsdc(c.members[0]?.stockCover ?? 0, 0)} {USDC_SUFFIX}
+              {d.repricing
+                ? "Not countable"
+                : `${formatUsdc(c.members[0] ? stockCover(c.members[0], c) : 0, 0)} ${USDC_SUFFIX}`}
             </span>
             <div className={s.rows}>
               <span className={s.row}>
@@ -336,6 +341,8 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
                   <th scope="col">Pot</th>
                   <th scope="col">Locked {c.stockSymbol}</th>
                   <th scope="col">Stock cover</th>
+                  <th scope="col">Owed</th>
+                  <th scope="col">Coverage</th>
                 </tr>
               </thead>
               <tbody>
@@ -381,7 +388,17 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
                       </td>
                       <td className={s.num}>{joined ? formatRaw(m.lockedRaw) : "—"}</td>
                       <td className={s.num}>
-                        {joined ? `${formatUsdc(m.stockCover)} ${USDC_SUFFIX}` : "—"}
+                        {!joined
+                          ? "—"
+                          : d.repricing
+                            ? "Not countable"
+                            : `${formatUsdc(stockCover(m, c))} ${USDC_SUFFIX}`}
+                      </td>
+                      <td className={s.num}>
+                        {joined ? `${formatUsdc(obligations(c, m))} ${USDC_SUFFIX}` : "—"}
+                      </td>
+                      <td className={s.num}>
+                        {!joined ? "—" : d.repricing ? "Not countable" : coverageLabel(c, m)}
                       </td>
                     </tr>
                   );

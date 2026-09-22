@@ -35,10 +35,11 @@ export const FIXTURE_NOW = 1_763_337_240;
 const ONE_X = 1_000_000_000;
 const TEN_X = 10_000_000_000;
 
-/** 1.1 NFLXx each. At 150/150 and multiplier 1 that counts for 132 USDC,
- *  clearing the 120 USDC minimum. This is I12's own example. */
+/** 1.1 NFLXx each. At 150/150 and multiplier 1 SPEC §4 gives FUND = EXEC = 165
+ *  and H = floor(165 x 0.8) = 132 USDC, clearing the 120 USDC minimum. This is
+ *  I12's own example, so the cover is computed from the formulas rather than
+ *  stated. */
 const LOCKED = 110_000_000;
-const COVER = 132 * USDC;
 
 const SEATS: ReadonlyArray<{ name: string; address: string }> = [
   { name: "Ada", address: "Fx7mAdaK3pQ1rS9tUvWxYz2bC4dE6fG8hJ1kL3mN5pQr" },
@@ -48,13 +49,18 @@ const SEATS: ReadonlyArray<{ name: string; address: string }> = [
   { name: "Nneka", address: "Kb2rNne7tU5vW4xYzAbCd6fG8hJ1kL3mN5pQ7rS9tUvw" },
 ];
 
-function members(count: number): MemberView[] {
+function members(
+  count: number,
+  roundsPaid: (turn: number) => number,
+  allocated: (turn: number) => number = () => 0,
+): MemberView[] {
   return SEATS.slice(0, count).map((s, turn) => ({
     turn,
     address: s.address,
     name: s.name,
-    stockCover: COVER,
     lockedRaw: LOCKED,
+    roundsPaid: roundsPaid(turn),
+    allocated: allocated(turn),
   }));
 }
 
@@ -68,7 +74,14 @@ const base: CircleView = {
   stockSymbol: "NFLXx",
 
   n: 5,
-  members: members(5),
+  // Round 1 (0-based). Seats 0-3 have paid this round, seat 4 has not, which is
+  // paidBitmap 0b01111. Ada received in round 0, so she is the only member with
+  // an obligation: O = 50 x (5 - 2) = 150, need = ceil(150 x 1.3) - 132 = 63.
+  members: members(
+    5,
+    (turn) => (turn === 4 ? 1 : 2),
+    (turn) => (turn === 0 ? 63 * USDC : 0),
+  ),
 
   contribution: 50 * USDC,
   roundSecs: 120,
@@ -92,7 +105,8 @@ const base: CircleView = {
   // 5 members x 30 USDC guarantee.
   reserveTotal: 150 * USDC,
   reserveLosses: 0,
-  reserveAllocated: 0,
+  // Ada's need_i, the only non-zero one at this round.
+  reserveAllocated: 63 * USDC,
 
   escrow: 0,
   escrowDeficit: 0,
@@ -127,8 +141,9 @@ export const CIRCLE_STATES = {
     receivedBitmap: 0,
     reserveTotal: 60 * USDC,
     heldContributions: 0,
-    members: members(5).map((m) =>
-      m.turn < 2 ? m : { ...m, stockCover: 0, lockedRaw: 0 },
+    reserveAllocated: 0,
+    members: members(5, () => 0).map((m) =>
+      m.turn < 2 ? m : { ...m, lockedRaw: 0 },
     ),
   },
 
@@ -141,9 +156,21 @@ export const CIRCLE_STATES = {
    */
   paused: {
     ...base,
-    reserveLosses: 80 * USDC,
-    nextGateShortBy: 5 * USDC,
+    round: 2,
+    roundDeadline: FIXTURE_NOW + 74,
     paidBitmap: ALL,
+    // Ada received in round 0 then defaulted; Tunde received in round 1.
+    receivedBitmap: 0b00011,
+    defaultedBitmap: 0b00001,
+    // The waterfall took Ada's own 30 USDC guarantee first, then 50 from the
+    // pooled reserve, so 70 of the 150 remains.
+    reserveLosses: 80 * USDC,
+    // Ada is defaulted, so her allocation is released and her obligations are
+    // prepaid. Tunde owes 50 x (5 - 3) = 100, and ceil(100 x 1.3) = 130 is under
+    // his 132 of stock cover, so he needs no reserve. Nothing is allocated.
+    reserveAllocated: 0,
+    nextGateShortBy: 5 * USDC,
+    members: members(5, (turn) => (turn === 0 ? 5 : 3)),
   },
 
   /**
@@ -168,6 +195,10 @@ export const CIRCLE_STATES = {
     receivedBitmap: ALL,
     withdrawnBitmap: 0b00011,
     heldContributions: 0,
+    // Every seat has paid all five rounds, so O_i is zero for everyone and no
+    // reserve is allocated against anything.
+    reserveAllocated: 0,
+    members: members(5, () => 5),
   },
 
   /** Cancelled while Forming, so every deposit goes back untouched. */
@@ -180,7 +211,9 @@ export const CIRCLE_STATES = {
     paidBitmap: 0,
     receivedBitmap: 0,
     reserveTotal: 60 * USDC,
+    reserveAllocated: 0,
     heldContributions: 0,
+    members: members(5, () => 0),
   },
 } satisfies Record<string, CircleView>;
 
