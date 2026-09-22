@@ -1,0 +1,188 @@
+/*
+ * Brand tokens. Neubrutalist, per design/FRAME.md: flat colour, heavy rules,
+ * hard offset shadows, no gradients and no soft blur.
+ *
+ * Every surface renders in light and dark, and nothing below hard-codes a
+ * colour: components reference these tokens only.
+ */
+:root {
+  --paper: #f4f1ea;
+  --ink: #12110f;
+  --ink-muted: #56514a;
+  --rule: #12110f;
+  --card: #ffffff;
+  --accent: #ffd74a;
+  --accent-ink: #12110f;
+  --good: #3fa66a;
+  --warn: #e4572e;
+
+  --rule-width: 2.5px;
+  --shadow: 6px 6px 0 var(--rule);
+  --shadow-press: 2px 2px 0 var(--rule);
+  --radius: 4px;
+  --gutter: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #14130f;
+    --ink: #f4f1ea;
+    --ink-muted: #a49d92;
+    --rule: #f4f1ea;
+    --card: #1e1c17;
+    --accent: #ffd74a;
+    --accent-ink: #12110f;
+    --good: #58c98a;
+    --warn: #ff7a53;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #14130f;
+  --ink: #f4f1ea;
+  --ink-muted: #a49d92;
+  --rule: #f4f1ea;
+  --card: #1e1c17;
+  --accent: #ffd74a;
+  --accent-ink: #12110f;
+  --good: #58c98a;
+  --warn: #ff7a53;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px var(--gutter) 64px;
+}
+
+h1 {
+  font-size: clamp(32px, 8vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0 0 20px;
+  font-weight: 800;
+}
+
+h2 {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 16px;
+  font-weight: 700;
+}
+
+p {
+  margin: 0 0 20px;
+}
+
+.lede {
+  font-size: clamp(17px, 4.5vw, 20px);
+  color: var(--ink-muted);
+  max-width: 34em;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 32px 0 0;
+}
+
+@media (min-width: 560px) {
+  .actions {
+    flex-direction: row;
+  }
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 24px;
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 80ms linear, box-shadow 80ms linear;
+}
+
+.button:active {
+  transform: translate(4px, 4px);
+  box-shadow: var(--shadow-press);
+}
+
+.button--primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.card {
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--card);
+  padding: 20px;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.steps b {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: var(--rule-width) solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.rule {
+  border: 0;
+  border-top: var(--rule-width) solid var(--rule);
+  margin: 44px 0;
+}
+
+.foot {
+  font-size: 14px;
+  color: var(--ink-muted);
+}
