@@ -44,7 +44,16 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       ts-node's CommonJS path, which does not load those imports. Same runner, same
       spec files, different loader. Not blocking; recorded because ARCHITECTURE is
       owned by the design session and the build must not edit it.
-- [ ] BLOCKING before T08: DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo. The
+- [ ] T08 SCOPE RESOLVED 2026-09-22, the rest still open. This entry used to block T08,
+      on the reasoning that create_circle is the first task the solo ruling would
+      invalidate. The ruling came back and it does not: Joshua chose solo as a SEPARATE
+      mode funded from an admin-seeded pool, so `PROPOSAL-solo-mode.md:19` reads "the
+      circle is unchanged and both modes ship", and Codex's own Open-circle entry in this
+      file says it "explicitly keeps private T08 unchanged". `n: u8 // 3..=8` stands and
+      create_circle is unaffected, so gate 2 proceeds. What remains open is the solo
+      proposal's own design review, r4, which gates the SOLO build and nothing else.
+      Original entry follows.
+      DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo. The
       build cannot act on this: SPEC, ARCHITECTURE and the ADRs are design-owned, so the
       design session rules and the pack is re-handed. Scoped to T08 because gate 1 does not
       depend on member count, so T04 to T07 continue unaffected, while T08 create_circle is
