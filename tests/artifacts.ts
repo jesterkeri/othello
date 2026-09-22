@@ -64,10 +64,18 @@ export function carriesHarnessMarker(): boolean {
 }
 
 /**
- * Everything an `anchor build` consumes. Enumerated rather than listed, because
- * a hand-written list silently stops covering each new source file: it named
- * only lib.rs until valuation.rs and errors.rs arrived, which left both guards
- * able to pass on bytes that predate the decoder.
+ * The sources whose bytes the artifact literally embeds. Enumerated rather than
+ * listed, because a hand-written list silently stops covering each new file: it
+ * named only lib.rs until valuation.rs and errors.rs arrived, which left both
+ * guards able to pass on bytes that predate the decoder.
+ *
+ * Deliberately only `.rs`. The manifests are build inputs too, and the adversary
+ * pass on 118ba66 was right that omitting them leaves a hole, but they cannot be
+ * guarded by mtime: cargo skips relinking when content has not changed, so a
+ * manifest whose mtime moved without its content moving leaves the artifact
+ * permanently "stale" and no rebuild can clear it. An unclearable guard is worse
+ * than none. What the manifests are actually load-bearing FOR is asserted on
+ * their content instead, in tests/workspace.spec.ts, which needs no build at all.
  */
 function programSources(): string[] {
   const sources = readdirSync(resolve(REPO, PROGRAM_SRC), { recursive: true, withFileTypes: true })
@@ -76,7 +84,7 @@ function programSources(): string[] {
 
   assert.ok(sources.length > 0, `no .rs files under ${PROGRAM_SRC}; the freshness guard is blind`);
 
-  return [...sources, resolve(REPO, "programs/othello/Cargo.toml"), resolve(REPO, "Cargo.lock")];
+  return sources;
 }
 
 /**

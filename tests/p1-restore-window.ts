@@ -85,5 +85,13 @@ try {
   console.log("OK: a failed P1 run leaves the default build in target/deploy");
 } finally {
   // Leave the worktree as it was found, whatever the assertion said.
-  anchorBuild();
+  //
+  // Caught, because a throw inside `finally` REPLACES the error that is already
+  // propagating, and that error is the finding this script exists to report.
+  try {
+    anchorBuild();
+  } catch (restoreFailure) {
+    console.error("could not restore the default build:", restoreFailure);
+    console.error("run `anchor build` before the next `pnpm test`.");
+  }
 }

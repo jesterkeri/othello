@@ -170,6 +170,11 @@ mod tlv_fallback {
     const TLV_START: usize = 166;
     const ACCOUNT_TYPE_MINT: u8 = 1;
 
+    /// `ExtensionType::Uninitialized`. Token-2022 writes nothing after one of
+    /// these and stops searching when it hits one, so a reader that walks past
+    /// it can report an extension the program will never see.
+    const UNINITIALIZED_TYPE: u16 = 0;
+
     /// `ExtensionType::ScaledUiAmount`. Hardcoded on purpose, and cross-checked
     /// against the library's own discriminant in the tests: that check is the
     /// whole point of having a second reader.
@@ -209,6 +214,11 @@ mod tlv_fallback {
 
         while offset + TLV_HEADER_LEN <= data.len() {
             let entry_type = u16_at(data, offset)?;
+
+            if entry_type == UNINITIALIZED_TYPE {
+                return None;
+            }
+
             let entry_len = u16_at(data, offset + 2)? as usize;
             let value = offset + TLV_HEADER_LEN;
 
@@ -465,6 +475,108 @@ mod tests {
                 effective_multiplier_fixed(&data, effective_at).unwrap(),
                 after,
                 "{symbol}: on the second"
+            );
+        }
+    }
+
+    /// From the adversary pass on 118ba66. Token-2022 stops its TLV walk at an
+    /// Uninitialized entry; the byte reader walked past it, so on these bytes
+    /// the program refused the mint while the reader that exists to corroborate
+    /// the program reported a multiplier.
+    #[test]
+    fn t03_both_readers_agree_on_a_mint_with_an_uninitialized_tlv_entry() {
+        /// Offset of the ScaledUiAmount TLV header in the real AAPLx fixture.
+        const SCALED_UI_HEADER: usize = 275;
+
+        let mut data = mint_bytes("AAPLx");
+
+        assert_eq!(
+            u16::from_le_bytes(
+                data[SCALED_UI_HEADER..SCALED_UI_HEADER + 2]
+                    .try_into()
+                    .unwrap()
+            ),
+            tlv_fallback::SCALED_UI_AMOUNT_TYPE,
+            "the AAPLx fixture no longer carries its scaled-UI entry at {SCALED_UI_HEADER}"
+        );
+
+        data.splice(SCALED_UI_HEADER..SCALED_UI_HEADER, [0u8, 0, 0, 0]);
+
+        assert_eq!(
+            tlv_fallback::find(&data).is_some(),
+            effective_multiplier_fixed(&data, 0).is_ok(),
+            "the two readers disagree on the same bytes"
+        );
+    }
+
+    /// Builds a TLV buffer by hand, with a sentinel in every field, on a mint
+    /// base Token-2022 itself refuses because it is not initialised.
+    ///
+    /// This is what makes the second reader a second reader. Field order inside
+    /// the 56 bytes was otherwise only covered by comparing the two readers on
+    /// real fixtures, and that comparison cannot tell an independent reader from
+    /// one that delegates to `StateWithExtensions`: both agree trivially. Here
+    /// the official parser refuses and the byte reader must still produce the
+    /// four values, each distinct, so a delegating implementation fails and so
+    /// does any permutation of the fields.
+    #[test]
+    fn t03_the_byte_reader_parses_fields_the_official_parser_never_sees() {
+        const AUTHORITY: [u8; 32] = [0xAA; 32];
+        const MULTIPLIER_BITS: u64 = 0x3FF0_0000_0000_0000; // 1.0
+        const EFFECTIVE_AT: i64 = 1_234_567_890;
+        const NEW_MULTIPLIER_BITS: u64 = 0x4024_0000_0000_0000; // 10.0
+
+        let mut data = vec![0u8; 165];
+        data.push(1); // account type: Mint
+        data.extend_from_slice(&tlv_fallback::SCALED_UI_AMOUNT_TYPE.to_le_bytes());
+        data.extend_from_slice(&tlv_fallback::SCALED_UI_AMOUNT_LEN.to_le_bytes());
+        data.extend_from_slice(&AUTHORITY);
+        data.extend_from_slice(&MULTIPLIER_BITS.to_le_bytes());
+        data.extend_from_slice(&EFFECTIVE_AT.to_le_bytes());
+        data.extend_from_slice(&NEW_MULTIPLIER_BITS.to_le_bytes());
+
+        assert!(
+            effective_multiplier_fixed(&data, 0).is_err(),
+            "the base is all zeroes, so Token-2022 must refuse it as uninitialised"
+        );
+
+        let read = tlv_fallback::find(&data).expect("the byte reader found nothing");
+
+        assert_eq!(read.authority, AUTHORITY, "authority");
+        assert_eq!(read.multiplier_bits, MULTIPLIER_BITS, "multiplier");
+        assert_eq!(
+            read.new_multiplier_effective_timestamp, EFFECTIVE_AT,
+            "effective timestamp"
+        );
+        assert_eq!(
+            read.new_multiplier_bits, NEW_MULTIPLIER_BITS,
+            "new multiplier"
+        );
+    }
+
+    /// The byte reader's own refusals, each load-bearing: without them it would
+    /// read an extension out of bytes that are not a mint, or out of an entry
+    /// whose declared length says it is something else.
+    #[test]
+    fn t03_the_byte_reader_refuses_a_malformed_tlv() {
+        let good = mint_bytes("AAPLx");
+        const SCALED_UI_HEADER: usize = 275;
+
+        let mut wrong_account_type = good.clone();
+        wrong_account_type[165] = 2; // Account, not Mint
+        assert!(
+            tlv_fallback::find(&wrong_account_type).is_none(),
+            "read an extension out of something that is not a mint"
+        );
+
+        for declared in [55u16, 57] {
+            let mut wrong_length = good.clone();
+            wrong_length[SCALED_UI_HEADER + 2..SCALED_UI_HEADER + 4]
+                .copy_from_slice(&declared.to_le_bytes());
+
+            assert!(
+                tlv_fallback::find(&wrong_length).is_none(),
+                "accepted a scaled-UI entry declaring {declared} bytes"
             );
         }
     }

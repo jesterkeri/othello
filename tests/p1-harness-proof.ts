@@ -191,5 +191,12 @@ try {
   console.log("    1763337299 and 1763337300 exactly, with the T01 program reading each one back.");
   console.log("    No multiplier was decoded here; that is T03 and T06.");
 } finally {
-  restoreDefaultBuild();
+  // Caught for the same reason as in tests/p1-restore-window.ts: a throw here
+  // would replace whichever assertion actually failed.
+  try {
+    restoreDefaultBuild();
+  } catch (restoreFailure) {
+    console.error("could not restore the default build:", restoreFailure);
+    console.error("run `anchor build` before the next `pnpm test`.");
+  }
 }
