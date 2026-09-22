@@ -31,3 +31,104 @@ pub struct PriceFeed {
 impl PriceFeed {
     pub const SEED: &'static [u8] = b"price";
 }
+
+/// SPEC §4. A circle's lifecycle.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug, InitSpace)]
+pub enum CircleStatus {
+    Forming,
+    Active,
+    Completed,
+    Cancelled,
+}
+
+/// The most members a circle can have (SPEC §4, `members: [Pubkey; 8]`).
+///
+/// Every bitmap on `Circle` is a `u8`, one bit per seat, so this bound is not
+/// cosmetic: it is the width of `paid_bitmap` and its four siblings.
+pub const MAX_MEMBERS: usize = 8;
+/// SPEC §5 parameter ranges: `3 <= n <= 8`.
+pub const MIN_MEMBERS: usize = 3;
+
+#[account]
+#[derive(InitSpace)]
+pub struct Circle {
+    pub creator: Pubkey,
+    pub circle_id: u64,
+    pub bump: u8,
+
+    pub stock_mint: Pubkey,
+    pub usdc_mint: Pubkey,
+    pub price_feed: Pubkey,
+    pub pool: Pubkey,
+
+    /// 3..=8.
+    pub n: u8,
+    /// Index is the turn, 0-based. Unused seats are `Pubkey::default()`.
+    pub members: [Pubkey; MAX_MEMBERS],
+
+    /// USDC per member per round.
+    pub contribution: u64,
+    pub round_secs: i64,
+    pub grace_secs: i64,
+    /// e.g. 2000 = 20% off.
+    pub haircut_bps: u16,
+    pub coverage_bps: u16,
+    pub warn_bps: u16,
+    pub guarantee_per_member: u64,
+    /// USDC, checked at join.
+    pub min_stock_cover: u64,
+    pub max_price_age: i64,
+
+    pub status: CircleStatus,
+    /// 0-based current round.
+    pub round: u8,
+    pub round_deadline: i64,
+
+    /// Contributions received this round.
+    pub paid_bitmap: u8,
+    pub joined_bitmap: u8,
+    pub withdrawn_bitmap: u8,
+    pub received_bitmap: u8,
+    pub defaulted_bitmap: u8,
+
+    pub reserve_total: u64,
+    pub reserve_losses: u64,
+    pub reserve_allocated: u64,
+
+    /// Replacement escrow (USDC).
+    pub escrow: u64,
+    /// Obligations not fundable at default time.
+    pub escrow_deficit: u64,
+    /// Cumulative paid out by withdraw.
+    pub withdrawn_usdc: u64,
+    /// Sum of guarantees and top-ups ever deposited.
+    pub deposits_total: u64,
+    /// Sum of `Member.forfeited`.
+    pub forfeited_total: u64,
+    /// Greater than zero means Paused (SPEC §5).
+    pub next_gate_short_by: u64,
+    /// This round's contributions, not yet released.
+    pub held_contributions: u64,
+    pub last_coverage_at: i64,
+}
+
+impl Circle {
+    pub const SEED: &'static [u8] = b"circle";
+}
+
+/// SPEC §4. The only buyer of seized stock (ADR-004).
+///
+/// Declared here because `create_circle` must read `discount_bps` to enforce
+/// `pool.discount_bps <= haircut_bps`. `init_pool` and `seed_pool` are T14.
+#[account]
+#[derive(InitSpace)]
+pub struct LiquidationPool {
+    pub authority: Pubkey,
+    pub bump: u8,
+    /// Conservative sale price = wrapper_price x (1 - discount).
+    pub discount_bps: u16,
+}
+
+impl LiquidationPool {
+    pub const SEED: &'static [u8] = b"pool";
+}

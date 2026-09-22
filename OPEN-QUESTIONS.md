@@ -194,9 +194,28 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
 - [ ] SPEC does not say who pays rent for the `Circle` account, nor whether the circle's
       two vaults are created at create or at first join. T08 has the creator pay and
       creates both vaults at create, because I3 and I4 are stated in terms of vault
-      balances and must hold after every instruction; deferring them to the first join
-      would mean the invariants name accounts that do not exist. ARCHITECTURE:68 sizes
-      Circle at ~0.0054 SOL. Recorded as a reading.
+      balances and must hold after every instruction. CORRECTED 2026-09-22 while building
+      T08: the vaults are created at JOIN, not at create, which is what SPEC's own pattern
+      does ("creates the member's USDC ATA if missing", SPEC:102). Creating them at create
+      was tried first and the real mints refused it, which is the more interesting half:
+
+        Program log: Instruction: InitializeAccount3
+        Program log: Warning: Mint has a permanent delegate, so tokens in this account
+                     may be seized at any time
+        Program log: Error: InvalidAccountData
+
+      A Token-2022 account for a mint carrying extensions needs more than the base 165
+      bytes and Anchor's `init` allocates the base, so T09 must size the vaults from the
+      mint's required account extensions, or use the ATA program which does it. Until a
+      vault exists, I3 and I4 are vacuous rather than false. ARCHITECTURE:68 sizes Circle
+      at ~0.0054 SOL and the creator pays.
+- [ ] KNOWN-LIMITS L7 CONFIRMED ON CHAIN, not assumed. L7 accepts that "issuer powers of
+      real xStocks (pause, freeze, permanent delegate) are not handled". Token-2022 itself
+      warned while initialising an account for the real NFLXx mint: "Mint has a permanent
+      delegate, so tokens in this account may be seized at any time". So Backed can seize
+      stock out of a circle's vault, and no instruction Othello has can stop it. L7 is
+      correct as written and needs no change; this is evidence for it, and the site copy
+      that states the limit can now say it is observed rather than believed.
 - [x] RESOLVED 2026-09-22: the rules are now in `HACKATHON.md`, fetched from
       hackathons.solana.com. The criterion is one question, "could this be a real app that
       people will actually use?", and there is NO requirement to demonstrate correctness in

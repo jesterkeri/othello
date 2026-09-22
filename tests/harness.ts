@@ -102,6 +102,7 @@ export type Harness = {
   setClock: (unixTimestamp: number) => Promise<void>;
   fund: (lamports?: number) => anchor.web3.Keypair;
   placeMint: (symbol: FixtureSymbol, at?: anchor.web3.PublicKey) => void;
+  putAccount: (address: anchor.web3.PublicKey, data: Buffer, owner: anchor.web3.PublicKey) => void;
   /** The refusal code name a rejected instruction carried. */
   refusal: (promise: Promise<unknown>) => Promise<string>;
 };
@@ -145,6 +146,20 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   for (const symbol of mints) {
     placeMint(symbol);
   }
+
+  /** Writes any account straight into the harness. */
+  const putAccount = (
+    address: anchor.web3.PublicKey,
+    data: Buffer,
+    owner: anchor.web3.PublicKey,
+  ): void => {
+    context.setAccount(address, {
+      lamports: 10 * anchor.web3.LAMPORTS_PER_SOL,
+      data,
+      owner,
+      executable: false,
+    });
+  };
 
   const fund = (lamports = anchor.web3.LAMPORTS_PER_SOL): anchor.web3.Keypair => {
     const keypair = anchor.web3.Keypair.generate();
@@ -216,6 +231,7 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
     setClock,
     fund,
     placeMint,
+    putAccount,
     refusal,
   };
 }
@@ -376,6 +392,66 @@ export function quoteIx(
 
 export function readFeed(h: Harness, mint: anchor.web3.PublicKey): Promise<PriceFeedState> {
   return fetchAccount<PriceFeedState>(h.program, "priceFeed", priceFeedAddress(h.program, mint));
+}
+
+/** SPL Token, for the USDC side. Token-2022 is the stock side. */
+export const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+/**
+ * Writes a plain SPL mint by hand, because gate 1 committed no USDC fixture and
+ * `create_circle` needs a real one to bind to.
+ *
+ * The 82-byte layout, from the SPL Token program:
+ * mint_authority COption<Pubkey> (4 + 32), supply u64, decimals u8,
+ * is_initialized bool, freeze_authority COption<Pubkey> (4 + 32).
+ */
+export function splMintAccount(decimals = 6): { data: Buffer; owner: anchor.web3.PublicKey } {
+  const data = Buffer.alloc(82);
+
+  data.writeUInt32LE(0, 0); // mint_authority: None
+  data.writeBigUInt64LE(0n, 36); // supply
+  data[44] = decimals;
+  data[45] = 1; // is_initialized
+  data.writeUInt32LE(0, 46); // freeze_authority: None
+
+  return { data, owner: new anchor.web3.PublicKey(SPL_TOKEN_PROGRAM) };
+}
+
+/** PDA helpers for the accounts gate 2 introduces. */
+export function circleAddress(
+  program: anchor.Program<anchor.Idl>,
+  creator: anchor.web3.PublicKey,
+  circleId: bigint,
+): anchor.web3.PublicKey {
+  const id = Buffer.alloc(8);
+  id.writeBigUInt64LE(circleId);
+
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("circle"), creator.toBuffer(), id],
+    program.programId,
+  )[0];
+}
+
+export function poolAddress(
+  program: anchor.Program<anchor.Idl>,
+  usdcMint: anchor.web3.PublicKey,
+  stockMint: anchor.web3.PublicKey,
+): [anchor.web3.PublicKey, number] {
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from("pool"), usdcMint.toBuffer(), stockMint.toBuffer()],
+    program.programId,
+  );
+}
+
+export function vaultAddress(
+  program: anchor.Program<anchor.Idl>,
+  seed: "stock_vault" | "usdc_vault",
+  circle: anchor.web3.PublicKey,
+): anchor.web3.PublicKey {
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from(seed), circle.toBuffer()],
+    program.programId,
+  )[0];
 }
 
 export function priceFeedAddress(
