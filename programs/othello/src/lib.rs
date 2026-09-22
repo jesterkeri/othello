@@ -5,8 +5,15 @@
 //! `touch_prices` in T04, `quote_valuation` in T05. Nothing is declared here
 //! before the task that implements it.
 
+pub mod allowlist;
 pub mod errors;
+pub mod instructions;
+pub mod state;
 pub mod valuation;
+
+pub use instructions::*;
+pub use state::*;
+pub use valuation::Valuation;
 
 use anchor_lang::prelude::*;
 
@@ -28,9 +35,44 @@ pub const HARNESS_BUILD_MARKER: &str = "OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY";
 
 #[program]
 pub mod othello {
-    // Used by every instruction from T04 on; today only the harness probe needs it.
-    #[cfg(feature = "harness")]
     use super::*;
+
+    /// Creates the price feed for one stock mint (T04, SPEC §5).
+    pub fn init_price_feed(ctx: Context<InitPriceFeed>) -> Result<()> {
+        instructions::price_feed::handle_init_price_feed(ctx)
+    }
+
+    /// Sets both prices and stamps the multiplier they were quoted for (D5).
+    pub fn set_prices(
+        ctx: Context<SetPrices>,
+        wrapper_price: u64,
+        share_price: u64,
+        stamp: PriceStamp,
+        expected_multiplier_fixed: u64,
+    ) -> Result<()> {
+        instructions::price_feed::handle_set_prices(
+            ctx,
+            wrapper_price,
+            share_price,
+            stamp,
+            expected_multiplier_fixed,
+        )
+    }
+
+    /// Moves `updated_at` and nothing else (I17).
+    pub fn touch_prices(ctx: Context<TouchPrices>) -> Result<()> {
+        instructions::price_feed::handle_touch_prices(ctx)
+    }
+
+    /// Read-only valuation quote: FUND, EXEC and the counted value H (T05).
+    pub fn quote_valuation(
+        ctx: Context<QuoteValuation>,
+        raw: u64,
+        haircut_bps: u16,
+        max_price_age: i64,
+    ) -> Result<Valuation> {
+        instructions::quote::handle_quote_valuation(ctx, raw, haircut_bps, max_price_age)
+    }
 
     /// Harness probe for P1: returns the Clock sysvar's `unix_timestamp`.
     ///

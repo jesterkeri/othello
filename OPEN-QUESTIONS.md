@@ -44,3 +44,105 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       ts-node's CommonJS path, which does not load those imports. Same runner, same
       spec files, different loader. Not blocking; recorded because ARCHITECTURE is
       owned by the design session and the build must not edit it.
+- [ ] BLOCKING before T08: DESIGN REQUEST from Joshua, 2026-09-22: add Borrow Solo. The
+      build cannot act on this: SPEC, ARCHITECTURE and the ADRs are design-owned, so the
+      design session rules and the pack is re-handed. Scoped to T08 because gate 1 does not
+      depend on member count, so T04 to T07 continue unaffected, while T08 create_circle is
+      the first task the ruling would invalidate. The design session needs these findings:
+      (a) PAIRING BY PEOPLE YOU KNOW IS ALREADY THE DESIGN. ADR-003 and FLOWS D3: the creator
+          names every member wallet and the turn order at create, and join_and_lock is that
+          member's consent. Open join, a separate approval instruction and order voting were
+          all rejected. No work is needed for the friends case.
+      (b) PAIRING BY SCORE IS AN EXPLICIT NON-GOAL, twice: "cross-circle reputation (D9)" in
+          SPEC:27 and SYSTEM.md:30, and FLOWS.md:14 lists "removed from future circles" as a
+          no-go. A score built from how people use the app is cross-circle reputation. It
+          also needs per-wallet cross-circle state, history, and an answer to Sybil: nothing
+          stops one person opening ten wallets with clean scores, so a score that gates
+          entry is worth less than the creator naming someone they know.
+      (c) SOLO NEEDS A CAPITAL SOURCE, and that is the real question. A circle funds its
+          recipient from the other members' contributions, n x c. A solo borrower has no
+          other members, so the money must come from somewhere the spec does not yet have:
+          an admin-seeded protocol pool, or peer lenders depositing to earn. The second is
+          "generic lending", which sits next to "Borrow solo" in the same CUT list in
+          FRAME.md:38. Valuation, the whole of gate 1, is shared by both modes and is
+          already built, so solo is not blocked by anything technical here; it is blocked on
+          naming the lender.
+- [ ] DEFERRED DESIGN BACKLOG, after the current private-circle build is complete: specify an
+      **Open circle** mode with system matching and persistent-identity memory. This does not
+      change, delay, or retroactively reinterpret the private T08 circle: friends continue to
+      form that circle themselves. Work out the Open-mode logic only after the private flow is
+      built end to end. The design must keep the domains asymmetric: private completion never
+      earns positive Open standing; a final, objective on-chain default may create a
+      identity-bound consequence that cannot be cleared by changing wallets. Before any build,
+      decide the identity-proof trust boundary and privacy model, matching epoch/randomness and
+      liveness, score recovery and appeal policy, tier shortage behaviour, and the exact
+      collateral/guarantee bound for every new Open participant. "High score" at entry must
+      mean eligible at the conservative, fully loss-covered limit, not elevated unsecured
+      credit.
+- [ ] Borrow Solo history: raised 2026-09-22, relaying a planner session that believed
+      it had silently dropped a solo borrowing mode. CHECKED AGAINST THE PACK, and that is
+      not what happened: `design/FRAME.md:38` lists "Borrow solo" first in `## 4. Non-goals
+      (from SPEC "CUT")`, and `SPEC.md:29` inherits that list. The cut is recorded, was made
+      upstream in the original spec, and the pack is coherent with it everywhere (`n: u8 //
+      3..=8`, create_circle refuses outside 3..=8 with invalid_params, and G2 requires that
+      refusal to be tested). Nothing is half-built. Whether to RESTORE it is still Joshua's
+      call, so this stays open. Cost if restored: gate 1 is untouched, because valuation does
+      not depend on member count. Gate 2 is not a parameter change: at n = 1 there is no
+      rotation, no turn order, no peak-guarantee check, and update_coverage has nothing to
+      allocate across, so a solo borrow is a collateralised loan sharing only the valuation
+      layer, which is why "generic lending" sits beside it in the same cut list. Not blocking:
+      the build proceeds on the frozen spec until the design session says otherwise.
+- [ ] `quote_valuation` signature: SPEC:112 writes it as `quote_valuation(raw)` with
+      accounts "mint + feed", but its `h` is defined in SPEC section 4 in terms of
+      `haircut_bps` and its `price_stale` refusal in terms of `max_price_age`, and
+      neither is reachable from a mint or a feed: both live on `Circle`. T05 reads this
+      as the pack under-listing arguments, which it does elsewhere too (TASKS:13 writes
+      `set_prices(stamp, expected_multiplier_fixed)` where SPEC:113 has four arguments),
+      and implements `quote_valuation(raw, haircut_bps, max_price_age)` with the accounts
+      exactly as SPEC states. Not blocking, and no invariant depends on which way it is
+      resolved; recorded so the design session can ratify or correct the reading.
+- [ ] BLOCKING before T23 (any deploy). **Unauthenticated oracle takeover:**
+      `init_price_feed` has no authority gate, and SPEC cannot currently give it one. SPEC:113 puts `init_price_feed` on the admin row
+      and lists `unauthorized` among its refusals, but SPEC section 4 defines no admin or
+      config account for the program to check a signer against: `PriceFeed.authority` is
+      written BY that instruction, so it cannot also gate it. So today whoever calls it
+      first becomes the authority for that mint, and there is no transfer or close
+      instruction, so the claim is permanent. The feed PDA is `["price", stock_mint]`, one
+      deterministic address per mint, so on a shared cluster a stranger can squat every
+      allowlisted mint's feed before the admin does and lock the demo out. Found by the T04
+      adversary pass, reproduced: a funded stranger called init_price_feed for NFLXx, the
+      feed came back with the stranger as authority, and the intended admin's set_prices
+      then refused `Unauthorized`.
+      SEVERITY, corrected by Codex 2026-09-22: this is worse than squatting the address.
+      The first caller becomes `feed.authority`, and `set_prices` only verifies the
+      MULTIPLIER against the mint; `wrapper_price` and `share_price` are arbitrary beyond
+      being non-zero. So the squatter sets the price every valuation reads. Through
+      `quote_valuation` and, in gate 2, through coverage and the payout gate, that is
+      control of what collateral is worth. Unauthenticated oracle takeover on any deployed
+      cluster, not a denial of service. The build session first recorded it as griefing;
+      that was too soft.
+
+      Not exploitable in gate 1: nothing is deployed and every test creates its own feed in
+      a fresh harness. It becomes real the moment anything is on a cluster, hence the T23
+      scope. The build cannot fix it without inventing an account SPEC does not have.
+
+      REQUIRED SHAPE, per Codex: a bootstrap authority root, for example a fixed
+      deploy-time authority or config PDA, which `init_price_feed` must then require.
+      "A first-caller-wins initializer cannot be part of the deployed trust model." The
+      third option previously listed here, batching feed creation with the deploy to shrink
+      the window, is therefore NOT a fix and is withdrawn: it narrows a race it cannot
+      close.
+
+      CARRIED INTO T07: the gate-1 brief must state that gate 1 is LOCALLY
+      implementation-ready, not deploy-ready, so a passing gate-1 review cannot be read as
+      clearing this block.
+- [ ] Price freshness treats a FUTURE `updated_at` as fresh. `valuation::value_position`
+      computes `age = now - feed.updated_at` and requires `age <= max_price_age`; a feed
+      stamped ahead of the clock gives a negative age, which passes. Raised by the R1
+      refactor pass as a suspicion and left unfixed there, because R1 must not change
+      behaviour. Only `set_prices` and `touch_prices` write that field and both write
+      `Clock::get()`, so it needs the validator clock to move backwards, which bankrun can
+      do and a real cluster should not. SPEC §5 defines fresh as `now - updated_at <=
+      max_price_age` and says nothing about the negative case. Decide whether a
+      future-stamped feed is fresh, stale, or `invalid_params`; the build will implement
+      whichever, and the T05 suite has a place for it.

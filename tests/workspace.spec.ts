@@ -41,6 +41,26 @@ describe("T01 Anchor workspace", () => {
     assert.equal(program.programId.toBase58(), idl.address);
   });
 
+  /// What the manifests are load-bearing for, asserted on their content rather
+  /// than through the artifact's mtime. These hold whether or not anything has
+  /// been built, which is the point: the `harness` feature reaching `default`
+  /// is the failure the deploy guard exists to catch, and this catches it at the
+  /// source rather than only in bytes that may not have been rebuilt yet.
+  it("keeps the manifests saying the things the program depends on", () => {
+    const programManifest = read("programs/othello/Cargo.toml");
+    const workspaceManifest = read("Cargo.toml");
+
+    assert.match(programManifest, /^default = \[\]$/m, "programs/othello/Cargo.toml: default features must stay empty");
+    assert.match(programManifest, /^harness = \[\]$/m, "programs/othello/Cargo.toml: the harness feature must exist and be opt-in");
+
+    // Money code: a silent wrap is a wrong balance, not a warning.
+    assert.match(workspaceManifest, /^overflow-checks = true$/m, "Cargo.toml: release builds must keep overflow checks on");
+    // Keeps dev-dependency features out of the program build.
+    assert.match(workspaceManifest, /^resolver = "2"$/m, "Cargo.toml: resolver 2 keeps dev-dependency features out of the program");
+
+    assert.match(read("rust-toolchain.toml"), /^channel = "\d+\.\d+\.\d+"$/m, "rust-toolchain.toml must pin an exact compiler");
+  });
+
   it("keeps the harness probe out of the default build's IDL", () => {
     const names = builtIdl().instructions.map((ix) => ix.name);
 

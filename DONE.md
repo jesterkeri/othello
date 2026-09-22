@@ -542,3 +542,395 @@ codes it implements.
 Carried to T03: this function takes raw u64 bits rather than a PodF64, so it stays
 independent of the Token-2022 layout. T03 reads the bits out of ScaledUiAmountConfig and
 passes them in.
+
+## T03 - 2026-09-22
+commit: bb5bc5a (reader in 118ba66, adversary fixes in bb5bc5a)
+verified: `anchor test`
+output:
+```
+$ anchor test
+running 20 tests
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+    ✔ greps for a marker the program actually declares
+    ✔ keeps the harness probe out of the deployable program binary
+    ✔ declares one program id in lib.rs, Anchor.toml and the built IDL
+    ✔ loads the built IDL into the TypeScript client (40ms)
+    ✔ keeps the manifests saying the things the program depends on
+    ✔ keeps the harness probe out of the default build's IDL
+  6 passing (49ms)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ cargo fmt --check; cargo clippy --all-targets -- -D warnings; pnpm typecheck
+fmt clean
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.30s
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: DEFECT fixed in bb5bc5a, attacks run: 13, test: programs/othello/src/valuation.rs (t03_both_readers_agree_on_a_mint_with_an_uninitialized_tlv_entry)
+notes: `effective_multiplier_fixed(mint_data, unix_timestamp)` unpacks the mint with
+Token-2022's own StateWithExtensions, takes the scaled-UI extension, selects `multiplier`
+or `new_multiplier` on the Clock, and hands raw bits to T02's decoder. Token-2022's
+`current_multiplier` is private and returns f64, so the selection is reimplemented on
+bits and the value is never a float. The boundary is inclusive, byte for byte the rule in
+the library.
+
+Both parsers agree on AAPLx, NFLXx, SPYx and NVDAx, field by field, and a third parse
+agrees too: the values ops/fetch-fixtures.ts recorded in each fixture's
+decodedScaledUiAmountConfig, compared on bits rather than on decimal text. That is a
+third parse of the same bytes, not a third source of truth, and is recorded as such.
+
+SPEC section 10's clock cases hold on the real bytes: NFLXx 1000000000 at 1763337299 and
+10000000000 at 1763337300; AAPLx 1002664207 at 1786148999 and 1003269012 at 1786149000.
+Every fixture is also checked at both sides of its own boundary, and all four have
+multiplier != new_multiplier, so that test is not vacuous.
+
+ADVERSARY DEFECT 1, real, found on 118ba66, and it hollowed out the point of the task.
+tlv_fallback::find did not implement Token-2022's rule that the TLV walk stops at an
+Uninitialized entry, so on a mint carrying one the program refused the mint while the
+reader that exists to corroborate the program reported a multiplier. 28 single-byte
+overwrites of the real AAPLx fixture diverge this way. Always in the safe direction and
+never wrong money, but the cross-check TASKS T03 asks for was thinner than it read.
+
+Worse: three mutants survived the whole suite, and the load-bearing one was replacing the
+byte reader's body with a call to StateWithExtensions. Nothing in the suite could tell a
+second reader from a wrapper around the first, which is precisely the property being
+claimed as evidence.
+
+Fixed, and now pinned. The adversary's test is integrated verbatim. A second test builds
+a TLV buffer by hand with a distinct sentinel in every field, on a mint base Token-2022
+refuses as uninitialised: the official parser cannot answer there, so a delegating
+implementation fails, and field order is covered independently of the fixtures. A third
+covers the account-type and declared-length refusals.
+
+MUTATION CHECK, second round, all killed:
+```
+  KILLED   M7  byte reader delegates to the official parser   19 passed; 1 failed
+  KILLED   M8  drop the account-type check                    19 passed; 1 failed
+  KILLED   M9  drop the declared-length check                 19 passed; 1 failed
+  KILLED   M13 drop the Uninitialized stop                    19 passed; 1 failed
+  KILLED   M14 swap the authority and multiplier slots        18 passed; 2 failed
+  survivors: none
+```
+The adversary's own first round had killed M1 to M6 and M10 to M12: the boundary flipped
+four ways, the hardcoded type and length changed, header-skipping, the timestamp read
+from the wrong slot, and assuming 1.0 when the extension is absent.
+
+ADVERSARY DEFECT 2, real, and the first fix for it was wrong. The freshness guard omitted
+the workspace Cargo.toml, rust-toolchain.toml and Anchor.toml, so both artifact guards
+would certify a binary older than three of its inputs. Adding them to the mtime list broke
+worse: cargo skips relinking when content has not changed, so a manifest whose mtime moved
+without its content moving leaves the artifact permanently stale and no rebuild clears it.
+That failure mode was reproduced here, not assumed. An unclearable guard is worse than
+none, so the manifests are guarded on content instead: default features stay empty, the
+harness feature exists and is opt-in, overflow-checks stays on, resolver 2 keeps
+dev-dependency features out of the program, and the toolchain pins an exact compiler. That
+guard needs no build at all and catches the real failure, the harness feature reaching
+default, at the source rather than in bytes that may not have been rebuilt. Confirmed by
+setting default = ["harness"], which fails five tests. The mtime guard keeps the .rs
+sources, where a content change does force a relink.
+
+Also fixed, from an unproven suspicion that was correct: both P1 scripts called an
+asserting anchorBuild inside a `finally`, and a throw there replaces the error already
+propagating, losing the finding the script exists to report. Both now catch and print.
+
+Attacks that found nothing, worth recording because they are the ones a reviewer will
+ask about: the boundary at i64::MIN and i64::MAX and on negative timestamps; floats on the
+program path (`PodF64.0` is read as [u8; 8] and nothing calls `From<PodF64> for f64`);
+dev-dependencies reaching the program (`resolver = "2"`); overflow, wrap or out-of-bounds
+reads in the byte reader (`entry_len` is u16 and every read is `data.get(..)?`); duplicate,
+overlong, truncated and wrongly-typed TLV entries; 3,108 hostile single-byte overwrites
+through effective_multiplier_fixed with zero panics and zero cases where both readers
+succeed with different multiplier bits.
+
+Carried forward: anchor-bankrun 0.5.0 does drive @coral-xyz/anchor 0.32.1 over bankrun,
+settled by spike rather than left for T06 as P1's entry said. `program.methods.readClock()`
+over a BankrunProvider returns a signature. T04 onwards can use real Anchor calls instead
+of hand-encoded instruction data.
+
+One divergence between the two readers is known and left: Token-2022 refuses a buffer of
+exactly Multisig::LEN and the byte reader does not model that rule. Unreachable on a mint
+Token-2022 wrote, since it pads around that length, and the divergence is in the safe
+direction.
+
+## T04 - 2026-09-22
+commit: d14e2fb
+verified: `anchor test`
+output: see the T06 entry below; that run covers T04, T05 and T06 together, since
+they share one suite and one branch.
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: running at time of writing on d14e2fb; result appended when it reports
+notes: init_price_feed, set_prices and touch_prices. Othello reads no oracle, so the
+program's whole job here is that a price can never be bound to the wrong multiplier.
+
+D5 is two checks, not one. set_prices recomputes from the mint's own bytes what the given
+stamp WOULD bind and refuses unless it equals expected_multiplier_fixed, so the script
+names the multiplier its prices were quoted for and the program verifies rather than
+guesses. Separately a Current stamp is refused while a Scheduled one is still pending,
+which is the case SPEC section 10 names: putting the old share price back as Current
+before the split lands would value the collateral at a tenth. touch_prices moves
+updated_at and nothing else, which is why the refresh script can keep a demo alive
+without ever re-binding a price. Both halves of I17 are covered.
+
+Tests are real Anchor calls against bankrun with the REAL NFLXx mint at its real mainnet
+address, so the multiplier the program stamps comes from mainnet bytes rather than from
+anything the test invented.
+
+tests/harness.ts is shared with T05 and T06. It also resolves refusal codes through the
+BUILT IDL rather than a hand-written table, because bankrun's processTransaction throws a
+raw `custom program error: 0x1773` where .rpc() throws a decoded AnchorError. A renamed or
+renumbered refusal now fails a test instead of passing silently.
+
+`BN` is not reachable as a named ESM export from @coral-xyz/anchor, only on the CJS
+default, because it is re-exported from bn.js. Reaching it through the default beats
+adding bn.js as a direct dependency it is not.
+
+## T05 - 2026-09-22
+commit: 06bf98f
+verified: `anchor test`
+output: see the T06 entry below.
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: pending (queued behind the T04 pass on the shared suite)
+notes: FUND, EXEC and H from SPEC section 4, u128 and checked throughout, returned as
+Anchor return data. FUND is the position at the share price through the multiplier; EXEC
+is the position at the wrapper price, which is what someone would actually pay for the raw
+token. They disagree while a split is being priced and SPEC counts the lower, which is why
+a multiplier alone can never inflate collateral past what the raw token would fetch.
+
+I12 HOLDS, on the real NFLXx mint, and this is the gate's go/no-go: 1.1 token at wrapper
+150 and share 150 before the split, wrapper 150 and share 15 after, haircut 2000. H is
+132 USDC on both sides, to the base unit, across a real 10-for-1. A reader that ignores
+the multiplier reads the same position's FUND as 16.5 USDC instead of 165, and the suite
+asserts that factor of ten explicitly rather than describing it.
+
+I13 holds: while the feed's stamp and the effective multiplier disagree, the position is
+Repricing and the quote refuses rather than returning a number wrong by the size of the
+split.
+
+CU: quote_valuation costs 4842 against the 200k default, recorded for SPEC section 10.
+The figure moves by a few dozen between runs with the account set; it is nowhere near the
+limit.
+
+Also covered: an unpriced feed and a price one second past max_price_age both refuse; the
+haircut floors, so a 1-raw-unit position counts as 0 rather than rounding up; u64::MAX raw
+refuses with ValuationOverflow rather than wrapping.
+
+SPEC:112 writes the signature as quote_valuation(raw) with accounts mint and feed, but h
+is defined in terms of haircut_bps and price_stale in terms of max_price_age, and neither
+is reachable from a mint or a feed: both live on Circle. The pack under-lists argument
+lists elsewhere too (TASKS:13 writes set_prices(stamp, expected_multiplier_fixed) where
+SPEC:113 has four), so this reads it as under-listing, keeps the accounts exactly as SPEC
+states, and records the reading in OPEN-QUESTIONS for the design session.
+
+## T06 - 2026-09-22
+commit: see below
+verified: `anchor test`
+output:
+```
+$ anchor test
+running 22 tests
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+    ✔ greps for a marker the program actually declares
+    ✔ keeps the harness probe out of the deployable program binary
+    ✔ starts unpriced, bound to its own mint
+    ✔ stamps Current with the multiplier in force, read from the real mint
+    ✔ stamps Scheduled with the multiplier that is coming, not the one in force
+    ✔ refuses prices whose named multiplier is not the one the stamp would write
+    ✔ refuses a Current stamp while a Scheduled stamp is still pending
+    ✔ accepts a Current stamp once the split second has arrived
+    ✔ touch_prices moves only updated_at
+    ✔ refuses a zero price
+    ✔ refuses both admin instructions from a wallet that is not the authority
+    ✔ values the demo position before the split
+    ✔ I12: H is unchanged across the split, to the base unit
+    ✔ is worth ten times what a reader that ignores the multiplier would say
+    ✔ I13: refuses while the stamp and the effective multiplier disagree
+    ✔ refuses a price older than max_price_age, and an unpriced feed
+    ✔ counts the lower of FUND and EXEC, and floors the haircut
+    ✔ refuses a position too large to value, rather than wrapping
+    ✔ refuses a haircut of 100% or more, and a non-positive max age
+      quote_valuation compute units: 4842
+    ✔ records the compute units SPEC section 10 asks for
+    ✔ values all four real mints, at their real mainnet addresses (95ms)
+    ✔ refuses a byte-perfect copy of a real xStock at an unvetted address
+    ✔ still refuses at quote time, even if a feed for an unvetted mint existed
+    ✔ keeps the program allowlist and ops/xstock-mints.ts in step
+    ✔ every allowlisted mint has a committed fixture, and vice versa
+    ✔ declares one program id in lib.rs, Anchor.toml and the built IDL
+    ✔ loads the built IDL into the TypeScript client
+    ✔ keeps the manifests saying the things the program depends on
+    ✔ keeps the harness probe out of the default build's IDL
+  29 passing (8s)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ cargo fmt --check; cargo clippy --all-targets -- -D warnings; pnpm typecheck
+fmt clean
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.77s
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: pending (queued behind the T04 pass on the shared suite)
+notes: The ADR-012 allowlist, hardcoded rather than admin-managed, per the ADR and
+OPEN-QUESTIONS. An admin-managed list would be one more thing the demo admin key could do,
+and SPEC's threat model accepts that key only for prices and the pool.
+
+Enforced at both points a mint enters the program: init_price_feed, because a feed is
+where a mint first appears, and quote_valuation again, because quoting a value for a mint
+Othello would not accept as collateral says it is acceptable collateral. The second check
+is unreachable through normal instructions, so the test writes a feed account directly
+into the harness to exercise it: defence in depth is only worth having if it is exercised.
+
+THE CASE THAT MATTERS is not a malformed mint, it is a perfect one. The test copies NFLXx's
+real bytes to an address nobody vetted, asserts the two accounts are byte-identical, and
+shows the program refuses it. Nothing on-chain distinguishes them (SPEC 9b.6): same
+authorities, same metadata, same multiplier. Only the address does. That is ADR-012's
+whole claim, demonstrated rather than asserted.
+
+All four real mints are valued at their real mainnet addresses, with the multiplier
+checked against what the T00 fetcher recorded in each fixture rather than against a
+hand-written expectation.
+
+One assertion in that test was wrong before it was right, and the program was correct:
+with share = wrapper, any mint whose multiplier is above 1 has FUND above EXEC, so H comes
+off EXEC. AAPLx caught it at 1.0026642075893797. The test now asserts min(FUND, EXEC)
+explicitly and that EXEC is the lower, which documents the behaviour instead of hiding it.
+
+A drift guard compares the four addresses in programs/othello/src/allowlist.rs against
+ops/xstock-mints.ts and against the fixtures, because the same four addresses now live in
+three places and nothing else would stop them diverging.
+
+Branch note: T04, T05 and T06 share the branch task/T04 and one test suite. That departs
+from one-branch-per-task. They are a single sequence against one shared harness and the
+deadline is Friday; recorded here rather than left implicit.
+
+## R1 - 2026-09-22
+commit: see below
+verified: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test`
+output:
+```
+$ cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s
+fmt: clean
+running 22 tests
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+      quote_valuation compute units: 4789
+    ✔ records the compute units SPEC section 10 asks for
+  31 passing (6s)
+OK: 11 binding-record cases, every field is load-bearing
+OK: 15 cases, only a mint that proves its identity becomes a fixture
+
+$ git diff --stat ac067bc  # R1 before/after
+ programs/othello/src/instructions/price_feed.rs |  22 +---
+ programs/othello/src/instructions/quote.rs      |  74 +++----------
+ programs/othello/src/valuation.rs               |  89 ++++++++++++++--
+ tests/harness.ts                                | 135 +++++++++++++++++++++++-
+ tests/t04-price-feed-repricing.spec.ts          |  58 +++-------
+ tests/t04-price-feed.spec.ts                    |  58 +++-------
+ tests/t05-quote-valuation.spec.ts               |  67 ++++--------
+ tests/t06-allowlist.spec.ts                     |  46 +++-----
+ 8 files changed, 302 insertions(+), 247 deletions(-)
+```
+reviewed: n/a (covered by Codex Gate 1 review at T07)
+adversary: n/a (no behaviour changed; the same 22 Rust and 31 mocha tests pass before and
+after, and the pass is verified by that rather than by a new attack)
+refactor: 4 applied, 1 declined in part
+
+APPLIED 1. The Token-2022 unpack + `get_extension` pair was written five times. Extracted
+as `valuation::scaled_ui_config`, which `effective_multiplier_fixed`, both `price_feed`
+helpers and the quote now share. Down to two occurrences: the extraction itself, and the
+test module's own copy, which is deliberately the official parser used as the comparison
+baseline for the byte reader.
+
+APPLIED 2, and this is the one that matters for gate 2. The freshness check, the D5 stamp
+check and the FUND/EXEC/H sequence moved out of `quote_valuation` into
+`valuation::value_position`. I13 requires exactly that sequence in `join_and_lock`,
+`release_pot` and `update_coverage`, so leaving it in the instruction would have meant
+copying it three more times in T09 to T11, with three more chances to get the refusal
+order wrong. The order is asserted by the T05 suite and did not move:
+`InvalidParams`, `MintNotAllowed`, `PriceStale`, `MultiplierPriceMismatch`.
+
+APPLIED 3. The TypeScript specs had four copies of the `BN` interop shim, the split
+constants, the price-setting helpers and the return-data decoder, and they had already
+drifted: two shims typed their argument `number` and two `number | string`, and t05
+asserted the 32-byte return-data length that t06 omitted. All hoisted into
+`tests/harness.ts`. Sharing the decoder gives t06 that length assertion, so this pass made
+one test stricter rather than looser. Each spec's own variation stayed a parameter: the
+signer, the mint, the prices, the stamp and the quote's arguments.
+
+APPLIED 5. Dropped an unused import, and named two bare SPEC §4 denominators in files that
+already named their others: `100_000_000n` became `RAW_PER_TOKEN` and `8000n` became
+`10_000 - HAIRCUT_BPS`, same integer result, floor division unchanged.
+
+DECLINED IN PART, 4. Hoisting the repeated test constants was applied: `SCALED_UI_HEADER`
+is declared once and the plain-mint length 82 is named. But the proposal also asked the
+tests to reuse `tlv_fallback`'s own `ACCOUNT_TYPE_INDEX`, `TLV_START` and
+`ACCOUNT_TYPE_MINT` instead of the literals 165, 166 and 1. Declined: a hand-built buffer
+that uses the reader's own constants is built wrong and read wrong together, so it would
+agree with a broken reader. That is exactly the independence the byte reader exists for,
+and it has to reach the test data too. The literals stay, with a comment saying why.
+
+NOT FIXED, recorded instead. The refactor pass raised one unproven suspicion:
+`value_position` computes `age = now - feed.updated_at` and a feed stamped ahead of the
+clock gives a negative age, which passes the freshness check. R1 must not change
+behaviour, so it is in OPEN-QUESTIONS for the design session rather than patched here.
+Both writers of that field write `Clock::get()`, so it needs the validator clock to move
+backwards.
+
+Nothing was weakened, skipped or deleted. Test counts are identical either side of the
+pass: 22 Rust, 31 mocha, 26 T00 cases.
+
+## T07 - 2026-09-22
+commit: b7c68df (reviewed), fixes in the commit below
+verified: `./scripts/check-reviews.sh`
+output:
+```
+$ ./scripts/check-reviews.sh
+reviews ok
+
+$ head -1 reviews/gate-1-review.md
+VERDICT: implementation-ready
+
+$ git diff --ignore-blank-lines --stat b7c68df..HEAD -- programs ops tests scripts .github
+(empty)
+```
+reviewed: reviews/gate-1-review.md | verdict: implementation-ready | commit: b7c68df | C0 M0 m2 (both OUTSIDE)
+adversary: n/a (T07 produces a document; the code it describes was adversarially reviewed at T00 to T06)
+notes: GATE 1 PASSES. Codex returned implementation-ready with two MINORs, both marked
+OUTSIDE the review's stated concerns, neither touching the program.
+
+Both were real and both are fixed. The first was an error in my own brief: it said
+`pnpm run test:t00` reaches mainnet RPC and assets.backed.fi. It reaches nothing. The
+suite serves JSON-RPC and the issuer's product pages from a localhost server and runs the
+fetcher against it with OTHELLO_INSECURE_TEST_RPC=1
+(tests/t00-mint-symbol-verification.ts:155,172-174, verified before correcting rather than
+taken on trust). The live command is ops/fetch-fixtures.ts, which rewrites tests/fixtures/.
+Section 5 of the brief repeated the same mistake while listing where the tests are thin,
+so a stated weakness was not a weakness. Both corrected. The second was a blank line at
+EOF in tests/harness.ts, deleted.
+
+INDEPENDENT CONFIRMATION, worth more than either finding: the reviewer fetched current
+mainnet data into an isolated directory and found all four scaled-UI configurations match
+the committed fixtures, with only the mutable supply bytes differing. That is T00's
+provenance chain checked by a second party against the live chain. No test in this repo
+does that, because the suite is offline by design, so this is the only end-to-end
+confirmation the fixtures are still what they claim to be.
+
+WHAT THE REVIEWER DID NOT DO, from its own U8: it did not deploy to a cluster, did not
+test the known init_price_feed takeover, and did not rerun the mutation campaigns
+independently. It also recorded that a single-prompt review is not blind under U1. Those
+are limits on this verdict and are recorded here rather than left in the terminal.
+
+GATE 1 IS LOCALLY IMPLEMENTATION-READY AND NOT DEPLOY-READY. The init_price_feed
+oracle-takeover block in OPEN-QUESTIONS stands until T23 and this verdict does not clear
+it; the brief said so in section 7 item 1 and the review repeats it.
+
+OPEN, for Joshua: REVIEWS.md says a fix after a review is the newest code and therefore
+the most suspect, and should be re-reviewed. The code change after the reviewed SHA is one
+blank line, and `git diff --ignore-blank-lines` over programs, ops, tests, scripts and
+.github is empty; everything else is documentation. Whether that earns a re-review round
+is his call, not the builder's, so it is recorded rather than waived.

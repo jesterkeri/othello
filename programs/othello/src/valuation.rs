@@ -12,16 +12,32 @@
 //! a binary64 is `significand × 2^exponent` with both integral, so
 //! `floor(value × 1e9)` is an exact shift of `significand × 1e9`.
 //!
-//! This module takes raw bits rather than a `PodF64` so it stays independent of
-//! the Token-2022 layout; T03 reads the bits out of `ScaledUiAmountConfig` and
-//! passes them in.
+//! Two layers, deliberately separable. `decode_multiplier_fixed` takes raw bits
+//! and knows nothing about Token-2022, so it can be tested against bit patterns
+//! no mint would ever hold. `effective_multiplier_fixed` sits on top and knows
+//! where those bits live in a mint account.
 
 use anchor_lang::prelude::*;
+use anchor_spl::token_2022::spl_token_2022::{
+    extension::{
+        scaled_ui_amount::ScaledUiAmountConfig, BaseStateWithExtensions, StateWithExtensions,
+    },
+    state::Mint,
+};
 
 use crate::errors::OthelloError;
+use crate::state::PriceFeed;
 
 /// Multipliers are carried through the program as integers scaled by 1e9 (SPEC §4).
 pub const MULTIPLIER_SCALE: u64 = 1_000_000_000;
+
+/// Raw base units in one whole token. SPEC §4 quotes prices per whole token,
+/// and stock amounts are 8-dp raw, so every price-times-raw product divides by
+/// this to land back in USDC base units.
+pub const RAW_PER_TOKEN: u64 = 100_000_000;
+
+/// Basis points. Haircut, coverage and warn thresholds are all bps (SPEC §4).
+pub const BPS_DENOMINATOR: u64 = 10_000;
 
 // IEEE-754 binary64 field layout.
 const SIGN_MASK: u64 = 0x8000_0000_0000_0000;
@@ -109,6 +125,262 @@ pub fn decode_multiplier_fixed(bits: u64) -> Result<u64> {
     Ok(fixed)
 }
 
+/// The multiplier the Clock selects, as raw IEEE-754 bits (SPEC §9b.1, I13).
+///
+/// Token-2022 schedules a multiplier change: `multiplier` applies until
+/// `new_multiplier_effective_timestamp`, `new_multiplier` from that second on.
+/// The boundary is inclusive, matching Token-2022's own `current_multiplier`,
+/// which is private and returns an f64. This is the same rule expressed on
+/// bits, so the value is never materialised as a float.
+///
+/// A reader that ignores the timestamp values NFLXx at a tenth of its worth:
+/// its `multiplier` field still reads 1 while `new_multiplier` is 10.
+pub fn effective_multiplier_bits(config: &ScaledUiAmountConfig, unix_timestamp: i64) -> u64 {
+    let effective_at: i64 = config.new_multiplier_effective_timestamp.into();
+
+    let selected = if unix_timestamp >= effective_at {
+        config.new_multiplier
+    } else {
+        config.multiplier
+    };
+
+    u64::from_le_bytes(selected.0)
+}
+
+/// The scaled-UI extension of a Token-2022 mint, or a refusal.
+///
+/// Refuses a mint that will not unpack and a mint with no scaled-UI extension.
+/// The second is not pedantry: without it a plain SPL mint, which has no
+/// multiplier at all, would have to be given an assumed one, and an assumed
+/// multiplier is invented stock data. Which mints are allowed at all is the
+/// allowlist's job (ADR-012), not this function's.
+pub fn scaled_ui_config(mint_data: &[u8]) -> Result<ScaledUiAmountConfig> {
+    let mint = StateWithExtensions::<Mint>::unpack(mint_data)
+        .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
+
+    let config = mint
+        .get_extension::<ScaledUiAmountConfig>()
+        .map_err(|_| error!(OthelloError::MultiplierInvalid))?;
+
+    Ok(*config)
+}
+
+/// `floor(effective multiplier × 1e9)` read from a Token-2022 mint account.
+pub fn effective_multiplier_fixed(mint_data: &[u8], unix_timestamp: i64) -> Result<u64> {
+    let config = scaled_ui_config(mint_data)?;
+
+    decode_multiplier_fixed(effective_multiplier_bits(&config, unix_timestamp))
+}
+
+/// Values a position against a feed, or refuses (SPEC §4 and §5, D5, I13).
+///
+/// Lives here rather than in `quote_valuation` because gate 2 needs exactly
+/// this sequence three more times: `join_and_lock`, `release_pot` and
+/// `update_coverage` all value collateral and all refuse on the same
+/// conditions (I13). One copy, or it becomes four.
+///
+/// The ORDER of the refusals is asserted by the T05 tests and must not move.
+/// Callers check their own preconditions first; for `quote_valuation` those are
+/// `InvalidParams` and then `MintNotAllowed`.
+pub fn value_position(
+    feed: &PriceFeed,
+    mint_data: &[u8],
+    raw: u64,
+    haircut_bps: u16,
+    now: i64,
+    max_price_age: i64,
+) -> Result<Valuation> {
+    // Freshness, SPEC §5: fresh iff now - updated_at <= max_price_age. A feed
+    // that has never been priced has updated_at 0 and fails this on any real
+    // clock, which is the intent: an unpriced feed values nothing.
+    let age = now
+        .checked_sub(feed.updated_at)
+        .ok_or(OthelloError::PriceStale)?;
+
+    require!(age <= max_price_age, OthelloError::PriceStale);
+    require!(
+        feed.wrapper_price > 0 && feed.share_price > 0,
+        OthelloError::PriceStale
+    );
+
+    let config = scaled_ui_config(mint_data)?;
+    let mult_fixed = decode_multiplier_fixed(effective_multiplier_bits(&config, now))?;
+
+    // D5 / I13. The share price was quoted against SOME multiplier and the feed
+    // records which. If that is not the one in force, the position is Repricing
+    // and FUND would be wrong by the whole size of the split.
+    require!(
+        feed.priced_for_multiplier == mult_fixed,
+        OthelloError::MultiplierPriceMismatch
+    );
+
+    let fund = fund_value(raw, mult_fixed, feed.share_price)?;
+    let exec = exec_value(raw, feed.wrapper_price)?;
+    let h = counted_value(fund, exec, haircut_bps)?;
+
+    Ok(Valuation {
+        mult_fixed,
+        fund,
+        exec,
+        h,
+    })
+}
+
+/// The two values of a stock position, and the counted value after the haircut.
+///
+/// `FUND` is what the position is worth at the share price, through the
+/// multiplier. `EXEC` is what it is worth at the wrapper price, which is the
+/// price someone would actually pay for the raw token. They disagree while a
+/// split is being priced, and SPEC §4 counts the lower of the two, which is why
+/// a split cannot be used to inflate collateral.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Valuation {
+    pub mult_fixed: u64,
+    pub fund: u64,
+    pub exec: u64,
+    pub h: u64,
+}
+
+/// `floor( raw x mult_fixed x share_price / (1e9 x 1e8) )`, SPEC §4.
+///
+/// u128 throughout and checked, because `raw x mult_fixed x share_price` passes
+/// 2^64 for ordinary demo numbers: 1.1 tokens at a 10x multiplier and a $15
+/// share is already 1.65e25.
+pub fn fund_value(raw: u64, mult_fixed: u64, share_price: u64) -> Result<u64> {
+    let scaled = (raw as u128)
+        .checked_mul(mult_fixed as u128)
+        .and_then(|v| v.checked_mul(share_price as u128))
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    let divisor = (MULTIPLIER_SCALE as u128)
+        .checked_mul(RAW_PER_TOKEN as u128)
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    u64::try_from(scaled / divisor).map_err(|_| error!(OthelloError::ValuationOverflow))
+}
+
+/// `floor( raw x wrapper_price / 1e8 )`, SPEC §4.
+///
+/// The wrapper price is the NON-scaled price of one whole raw token, so the
+/// multiplier does not appear here. That is what makes this value usable during
+/// Repricing, when the share price and the multiplier disagree.
+pub fn exec_value(raw: u64, wrapper_price: u64) -> Result<u64> {
+    let scaled = (raw as u128)
+        .checked_mul(wrapper_price as u128)
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    u64::try_from(scaled / RAW_PER_TOKEN as u128)
+        .map_err(|_| error!(OthelloError::ValuationOverflow))
+}
+
+/// `floor( min(fund, exec) x (10000 - haircut_bps) / 10000 )`, SPEC §4.
+///
+/// Rounds down, because this is collateral and collateral rounds in the
+/// protocol's favour.
+pub fn counted_value(fund: u64, exec: u64, haircut_bps: u16) -> Result<u64> {
+    require!(
+        (haircut_bps as u64) < BPS_DENOMINATOR,
+        OthelloError::InvalidParams
+    );
+
+    let kept = BPS_DENOMINATOR
+        .checked_sub(haircut_bps as u64)
+        .ok_or(OthelloError::InvalidParams)?;
+
+    let scaled = (fund.min(exec) as u128)
+        .checked_mul(kept as u128)
+        .ok_or(OthelloError::ValuationOverflow)?;
+
+    u64::try_from(scaled / BPS_DENOMINATOR as u128)
+        .map_err(|_| error!(OthelloError::ValuationOverflow))
+}
+
+/// A second reader for the scaled-UI extension, by raw byte offsets.
+///
+/// Kept as a test only, per TASKS T03: the program uses Token-2022's own
+/// `StateWithExtensions`, and this exists so a library upgrade that moved a
+/// field or renumbered an extension could not pass silently. Two readers that
+/// agree on four real mainnet mints are evidence; one reader is a claim.
+#[cfg(test)]
+mod tlv_fallback {
+    /// Token-2022 pads a mint that carries extensions out to the length of a
+    /// token account, writes an account-type byte, then starts the TLV list.
+    const ACCOUNT_TYPE_INDEX: usize = 165;
+    const TLV_START: usize = 166;
+    const ACCOUNT_TYPE_MINT: u8 = 1;
+
+    /// `ExtensionType::Uninitialized`. Token-2022 writes nothing after one of
+    /// these and stops searching when it hits one, so a reader that walks past
+    /// it can report an extension the program will never see.
+    const UNINITIALIZED_TYPE: u16 = 0;
+
+    /// `ExtensionType::ScaledUiAmount`. Hardcoded on purpose, and cross-checked
+    /// against the library's own discriminant in the tests: that check is the
+    /// whole point of having a second reader.
+    pub const SCALED_UI_AMOUNT_TYPE: u16 = 25;
+    /// authority(32) + multiplier(8) + effective timestamp(8) + new multiplier(8)
+    pub const SCALED_UI_AMOUNT_LEN: u16 = 56;
+
+    const TLV_HEADER_LEN: usize = 4;
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct ScaledUiAmount {
+        pub authority: [u8; 32],
+        pub multiplier_bits: u64,
+        pub new_multiplier_effective_timestamp: i64,
+        pub new_multiplier_bits: u64,
+    }
+
+    fn u16_at(data: &[u8], offset: usize) -> Option<u16> {
+        Some(u16::from_le_bytes(
+            data.get(offset..offset + 2)?.try_into().ok()?,
+        ))
+    }
+
+    fn u64_at(data: &[u8], offset: usize) -> Option<u64> {
+        Some(u64::from_le_bytes(
+            data.get(offset..offset + 8)?.try_into().ok()?,
+        ))
+    }
+
+    /// Walks the TLV list and returns the scaled-UI entry, or None.
+    pub fn find(data: &[u8]) -> Option<ScaledUiAmount> {
+        if *data.get(ACCOUNT_TYPE_INDEX)? != ACCOUNT_TYPE_MINT {
+            return None;
+        }
+
+        let mut offset = TLV_START;
+
+        while offset + TLV_HEADER_LEN <= data.len() {
+            let entry_type = u16_at(data, offset)?;
+
+            if entry_type == UNINITIALIZED_TYPE {
+                return None;
+            }
+
+            let entry_len = u16_at(data, offset + 2)? as usize;
+            let value = offset + TLV_HEADER_LEN;
+
+            if entry_type == SCALED_UI_AMOUNT_TYPE {
+                if entry_len != SCALED_UI_AMOUNT_LEN as usize {
+                    return None;
+                }
+
+                return Some(ScaledUiAmount {
+                    authority: data.get(value..value + 32)?.try_into().ok()?,
+                    multiplier_bits: u64_at(data, value + 32)?,
+                    new_multiplier_effective_timestamp: u64_at(data, value + 40)? as i64,
+                    new_multiplier_bits: u64_at(data, value + 48)?,
+                });
+            }
+
+            offset = value + entry_len;
+        }
+
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +444,312 @@ mod tests {
             "NVDAx newMultiplier",
         ),
     ];
+
+    // ---- T03: reading the multiplier out of a real mint account ----
+
+    /// Offset of the ScaledUiAmount TLV header in the real AAPLx fixture.
+    const SCALED_UI_HEADER: usize = 275;
+
+    /// A plain SPL mint, with no extensions and no account-type byte.
+    const PLAIN_MINT_LEN: usize = 82;
+
+    // The account-type index, the TLV start and the Mint type byte are spelled
+    // out as literals below rather than imported from `tlv_fallback`. That is
+    // deliberate: a hand-built buffer that uses the reader's own constants is
+    // built wrong and read wrong together, which would make the buffer agree
+    // with a broken reader. Independence is the whole reason the byte reader
+    // exists, and it has to reach the test data too.
+
+    /// The four committed mainnet fixtures (SPEC §9b.1), as the T00 fetcher
+    /// wrote them.
+    const FIXTURES: [&str; 4] = ["AAPLx", "NFLXx", "SPYx", "NVDAx"];
+
+    fn fixture(symbol: &str) -> serde_json::Value {
+        let path = format!(
+            "{}/../../tests/fixtures/{symbol}.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    fn mint_bytes(symbol: &str) -> Vec<u8> {
+        use base64::Engine as _;
+
+        let encoded = fixture(symbol)["dataBase64"].as_str().unwrap().to_owned();
+
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap()
+    }
+
+    fn official_config(data: &[u8]) -> ScaledUiAmountConfig {
+        *StateWithExtensions::<Mint>::unpack(data)
+            .unwrap()
+            .get_extension::<ScaledUiAmountConfig>()
+            .unwrap()
+    }
+
+    /// The point of keeping a second reader: Token-2022's own parser and a walk
+    /// of the raw TLV bytes must see the same extension, on every real mint.
+    #[test]
+    fn t03_both_parsers_agree_on_the_real_fixtures() {
+        for symbol in FIXTURES {
+            let data = mint_bytes(symbol);
+            let official = official_config(&data);
+            let manual = tlv_fallback::find(&data).unwrap_or_else(|| {
+                panic!("{symbol}: the byte reader found no scaled-UI extension")
+            });
+
+            assert_eq!(
+                manual.authority,
+                Into::<Option<Pubkey>>::into(official.authority)
+                    .unwrap()
+                    .to_bytes(),
+                "{symbol}: authority"
+            );
+            assert_eq!(
+                manual.multiplier_bits,
+                u64::from_le_bytes(official.multiplier.0),
+                "{symbol}: multiplier"
+            );
+            assert_eq!(
+                manual.new_multiplier_effective_timestamp,
+                Into::<i64>::into(official.new_multiplier_effective_timestamp),
+                "{symbol}: effective timestamp"
+            );
+            assert_eq!(
+                manual.new_multiplier_bits,
+                u64::from_le_bytes(official.new_multiplier.0),
+                "{symbol}: new multiplier"
+            );
+        }
+    }
+
+    /// A third source: the values the T00 fetcher recorded alongside the bytes.
+    /// If the bytes and the record ever disagree, one of them is not what the
+    /// chain returned.
+    #[test]
+    fn t03_agrees_with_the_values_recorded_in_the_fixture_json() {
+        for symbol in FIXTURES {
+            let recorded = fixture(symbol)["decodedScaledUiAmountConfig"].clone();
+            let config = official_config(&mint_bytes(symbol));
+
+            assert_eq!(
+                u64::from_le_bytes(config.multiplier.0),
+                recorded["multiplier"].as_f64().unwrap().to_bits(),
+                "{symbol}: multiplier"
+            );
+            assert_eq!(
+                u64::from_le_bytes(config.new_multiplier.0),
+                recorded["newMultiplier"].as_f64().unwrap().to_bits(),
+                "{symbol}: newMultiplier"
+            );
+            assert_eq!(
+                Into::<i64>::into(config.new_multiplier_effective_timestamp).to_string(),
+                recorded["newMultiplierEffectiveTimestamp"]
+                    .as_str()
+                    .unwrap(),
+                "{symbol}: newMultiplierEffectiveTimestamp"
+            );
+        }
+    }
+
+    /// The byte reader hardcodes the extension discriminant. If a Token-2022
+    /// upgrade renumbered it, the two readers would quietly stop describing the
+    /// same thing, so pin the hardcoded value to the library's own.
+    #[test]
+    fn t03_hardcoded_extension_type_matches_the_library() {
+        use anchor_spl::token_2022::spl_token_2022::extension::ExtensionType;
+
+        assert_eq!(
+            tlv_fallback::SCALED_UI_AMOUNT_TYPE,
+            ExtensionType::ScaledUiAmount as u16
+        );
+        assert_eq!(
+            tlv_fallback::SCALED_UI_AMOUNT_LEN as usize,
+            core::mem::size_of::<ScaledUiAmountConfig>()
+        );
+    }
+
+    /// SPEC §10 G1, on the real bytes: NFLXx is a real 10-for-1 split, and its
+    /// `multiplier` field still reads 1. A reader that ignores the effective
+    /// timestamp values it at a tenth.
+    #[test]
+    fn t03_clock_selects_the_multiplier_at_the_exact_second() {
+        let nflx = mint_bytes("NFLXx");
+
+        assert_eq!(
+            effective_multiplier_fixed(&nflx, 1_763_337_299).unwrap(),
+            1_000_000_000,
+            "one second before the split"
+        );
+        assert_eq!(
+            effective_multiplier_fixed(&nflx, 1_763_337_300).unwrap(),
+            10_000_000_000,
+            "the split second itself: the boundary is inclusive"
+        );
+
+        let aapl = mint_bytes("AAPLx");
+
+        assert_eq!(
+            effective_multiplier_fixed(&aapl, 1_786_148_999).unwrap(),
+            1_002_664_207,
+            "AAPLx before its scheduled change"
+        );
+        assert_eq!(
+            effective_multiplier_fixed(&aapl, 1_786_149_000).unwrap(),
+            1_003_269_012,
+            "AAPLx at its scheduled change"
+        );
+    }
+
+    /// Every fixture, at both sides of its own boundary, against the recorded
+    /// values rather than against hand-written expectations.
+    #[test]
+    fn t03_selects_across_the_boundary_for_every_fixture() {
+        for symbol in FIXTURES {
+            let data = mint_bytes(symbol);
+            let config = official_config(&data);
+            let effective_at: i64 = config.new_multiplier_effective_timestamp.into();
+
+            let before = decode_multiplier_fixed(u64::from_le_bytes(config.multiplier.0)).unwrap();
+            let after =
+                decode_multiplier_fixed(u64::from_le_bytes(config.new_multiplier.0)).unwrap();
+
+            assert_eq!(
+                effective_multiplier_fixed(&data, effective_at - 1).unwrap(),
+                before,
+                "{symbol}: one second early"
+            );
+            assert_eq!(
+                effective_multiplier_fixed(&data, effective_at).unwrap(),
+                after,
+                "{symbol}: on the second"
+            );
+        }
+    }
+
+    /// From the adversary pass on 118ba66. Token-2022 stops its TLV walk at an
+    /// Uninitialized entry; the byte reader walked past it, so on these bytes
+    /// the program refused the mint while the reader that exists to corroborate
+    /// the program reported a multiplier.
+    #[test]
+    fn t03_both_readers_agree_on_a_mint_with_an_uninitialized_tlv_entry() {
+        let mut data = mint_bytes("AAPLx");
+
+        assert_eq!(
+            u16::from_le_bytes(
+                data[SCALED_UI_HEADER..SCALED_UI_HEADER + 2]
+                    .try_into()
+                    .unwrap()
+            ),
+            tlv_fallback::SCALED_UI_AMOUNT_TYPE,
+            "the AAPLx fixture no longer carries its scaled-UI entry at {SCALED_UI_HEADER}"
+        );
+
+        data.splice(SCALED_UI_HEADER..SCALED_UI_HEADER, [0u8, 0, 0, 0]);
+
+        assert_eq!(
+            tlv_fallback::find(&data).is_some(),
+            effective_multiplier_fixed(&data, 0).is_ok(),
+            "the two readers disagree on the same bytes"
+        );
+    }
+
+    /// Builds a TLV buffer by hand, with a sentinel in every field, on a mint
+    /// base Token-2022 itself refuses because it is not initialised.
+    ///
+    /// This is what makes the second reader a second reader. Field order inside
+    /// the 56 bytes was otherwise only covered by comparing the two readers on
+    /// real fixtures, and that comparison cannot tell an independent reader from
+    /// one that delegates to `StateWithExtensions`: both agree trivially. Here
+    /// the official parser refuses and the byte reader must still produce the
+    /// four values, each distinct, so a delegating implementation fails and so
+    /// does any permutation of the fields.
+    #[test]
+    fn t03_the_byte_reader_parses_fields_the_official_parser_never_sees() {
+        const AUTHORITY: [u8; 32] = [0xAA; 32];
+        const MULTIPLIER_BITS: u64 = 0x3FF0_0000_0000_0000; // 1.0
+        const EFFECTIVE_AT: i64 = 1_234_567_890;
+        const NEW_MULTIPLIER_BITS: u64 = 0x4024_0000_0000_0000; // 10.0
+
+        let mut data = vec![0u8; 165];
+        data.push(1); // account type: Mint
+        data.extend_from_slice(&tlv_fallback::SCALED_UI_AMOUNT_TYPE.to_le_bytes());
+        data.extend_from_slice(&tlv_fallback::SCALED_UI_AMOUNT_LEN.to_le_bytes());
+        data.extend_from_slice(&AUTHORITY);
+        data.extend_from_slice(&MULTIPLIER_BITS.to_le_bytes());
+        data.extend_from_slice(&EFFECTIVE_AT.to_le_bytes());
+        data.extend_from_slice(&NEW_MULTIPLIER_BITS.to_le_bytes());
+
+        assert!(
+            effective_multiplier_fixed(&data, 0).is_err(),
+            "the base is all zeroes, so Token-2022 must refuse it as uninitialised"
+        );
+
+        let read = tlv_fallback::find(&data).expect("the byte reader found nothing");
+
+        assert_eq!(read.authority, AUTHORITY, "authority");
+        assert_eq!(read.multiplier_bits, MULTIPLIER_BITS, "multiplier");
+        assert_eq!(
+            read.new_multiplier_effective_timestamp, EFFECTIVE_AT,
+            "effective timestamp"
+        );
+        assert_eq!(
+            read.new_multiplier_bits, NEW_MULTIPLIER_BITS,
+            "new multiplier"
+        );
+    }
+
+    /// The byte reader's own refusals, each load-bearing: without them it would
+    /// read an extension out of bytes that are not a mint, or out of an entry
+    /// whose declared length says it is something else.
+    #[test]
+    fn t03_the_byte_reader_refuses_a_malformed_tlv() {
+        let good = mint_bytes("AAPLx");
+
+        let mut wrong_account_type = good.clone();
+        wrong_account_type[165] = 2; // Account, not Mint
+        assert!(
+            tlv_fallback::find(&wrong_account_type).is_none(),
+            "read an extension out of something that is not a mint"
+        );
+
+        for declared in [55u16, 57] {
+            let mut wrong_length = good.clone();
+            wrong_length[SCALED_UI_HEADER + 2..SCALED_UI_HEADER + 4]
+                .copy_from_slice(&declared.to_le_bytes());
+
+            assert!(
+                tlv_fallback::find(&wrong_length).is_none(),
+                "accepted a scaled-UI entry declaring {declared} bytes"
+            );
+        }
+    }
+
+    #[test]
+    fn t03_refuses_a_mint_with_no_scaled_ui_extension() {
+        // The first 82 bytes of a real mint are a valid plain SPL mint with no
+        // extensions at all. It has no multiplier, and inventing one for it
+        // would be invented stock data.
+        let plain = &mint_bytes("AAPLx")[..PLAIN_MINT_LEN];
+
+        assert!(effective_multiplier_fixed(plain, 0).is_err());
+        assert!(tlv_fallback::find(plain).is_none());
+    }
+
+    #[test]
+    fn t03_refuses_bytes_that_are_not_a_mint() {
+        for bad in [vec![], vec![0u8; 10], vec![0xFF; 400]] {
+            assert!(
+                effective_multiplier_fixed(&bad, 0).is_err(),
+                "{} bytes of rubbish were accepted",
+                bad.len()
+            );
+        }
+    }
 
     /// Multipliers below 1, which a reverse split writes: the mirror of the
     /// real NFLXx 10-for-1 that SPEC 9b.1 is built around. The committed suite

@@ -29,39 +29,27 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+import {
+    anchorBuild,
+    carriesHarnessMarker,
+    HARNESS_BUILD_MARKER,
+    PROGRAM_SO,
+    REPO,
+    TOOLCHAIN_PATH,
+} from "./artifacts.ts";
 
-/** programs/othello/src/lib.rs logs this from read_clock under `harness`. */
-const HARNESS_BUILD_MARKER = "OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY";
-
-const PROGRAM_SO = resolve(REPO, "target/deploy/othello.so");
 const NFLX_FIXTURE = resolve(REPO, "tests/fixtures/NFLXx.json");
 const AAPL_FIXTURE = resolve(REPO, "tests/fixtures/AAPLx.json");
 const PROOF = resolve(REPO, "tests/p1-harness-proof.ts");
 
-// The shell this runs from does not necessarily source the user profile.
-const TOOLCHAIN_PATH = [
-  resolve(homedir(), ".cargo/bin"),
-  resolve(homedir(), ".local/share/solana/install/active_release/bin"),
-  process.env.PATH ?? "",
-].join(":");
-
 const env = { ...process.env, PATH: TOOLCHAIN_PATH };
 
-function anchorBuild(): number {
-  return spawnSync("anchor", ["build"], { cwd: REPO, env, encoding: "utf8" }).status ?? 1;
-}
-
-function carriesHarnessMarker(): boolean {
-  return readFileSync(PROGRAM_SO).includes(HARNESS_BUILD_MARKER, 0, "latin1");
-}
-
 // Start from the state the suite expects: the deployable, default build.
-assert.equal(anchorBuild(), 0, "could not produce the default build to start from");
+// anchorBuild asserts its own exit status; the local copy this replaced
+// returned it and then discarded it.
+anchorBuild();
 assert.equal(carriesHarnessMarker(), false, "precondition: target/deploy/othello.so starts as the default build");
 
 const savedFixture = readFileSync(NFLX_FIXTURE);
@@ -97,5 +85,13 @@ try {
   console.log("OK: a failed P1 run leaves the default build in target/deploy");
 } finally {
   // Leave the worktree as it was found, whatever the assertion said.
-  anchorBuild();
+  //
+  // Caught, because a throw inside `finally` REPLACES the error that is already
+  // propagating, and that error is the finding this script exists to report.
+  try {
+    anchorBuild();
+  } catch (restoreFailure) {
+    console.error("could not restore the default build:", restoreFailure);
+    console.error("run `anchor build` before the next `pnpm test`.");
+  }
 }

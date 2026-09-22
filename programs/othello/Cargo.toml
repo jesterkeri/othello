@@ -28,5 +28,13 @@ anchor-lang = "~1.1"
 # ScaledUiAmountConfig and PodF64. Resolved versions are recorded in DONE.md.
 anchor-spl = "~1.1"
 
+# Test-only. The fixture-agreement test reads tests/fixtures/*.json, which the
+# T00 fetcher wrote as base64 inside JSON. Both crates are already in the
+# lockfile as transitive dependencies of anchor-spl, so this adds no new code
+# to the dependency tree and none of it reaches the program.
+[dev-dependencies]
+base64 = "0.22"
+serde_json = "1"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
