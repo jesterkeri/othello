@@ -173,9 +173,59 @@ mod tests {
         ),
     ];
 
+    /// Multipliers below 1, which a reverse split writes: the mirror of the
+    /// real NFLXx 10-for-1 that SPEC 9b.1 is built around. The committed suite
+    /// had no accepted vector under 1.0 until the adversary pass on 3b1c74d,
+    /// which meant a decoder that ceiled everywhere below 1, ADR-001's
+    /// overvaluation defect exactly, passed every test.
+    ///
+    /// Computed on exact rationals, not with this decoder.
+    const BELOW_ONE_VECTORS: &[(u64, f64, u64, &str)] = &[
+        (
+            0x3FB9_9999_9999_999A,
+            0.1,
+            100_000_000,
+            "0.1, a 1-for-10 reverse split; the double is above 0.1, so ceil would say 100000001",
+        ),
+        (
+            0x3F50_624D_D2F1_A9FC,
+            0.001,
+            1_000_000,
+            "0.001, a 1-for-1000 reverse split",
+        ),
+        (
+            0x3EB0_C6F7_A0B5_ED8D,
+            1e-6,
+            999,
+            "1e-6; the double is below 1e-6, so a float multiply overvalues to 1000",
+        ),
+        (
+            0x3FEF_FFFF_FFF2_4190,
+            0.9999999999,
+            999_999_999,
+            "just under 1.0, where ceil would reach the scale itself",
+        ),
+        (
+            0x3FE0_0000_0000_0000,
+            0.5,
+            500_000_000,
+            "0.5, exactly representable, so floor and ceil agree",
+        ),
+        (
+            0x3E11_2E0B_E826_D695,
+            1e-9,
+            1,
+            "1e-9, the smallest multiplier that is not refused",
+        ),
+    ];
+
+    fn every_vector() -> impl Iterator<Item = &'static (u64, f64, u64, &'static str)> {
+        VECTORS.iter().chain(BELOW_ONE_VECTORS.iter())
+    }
+
     #[test]
     fn decode_matches_the_spec_vectors() {
-        for &(bits, literal, expected, name) in VECTORS {
+        for &(bits, literal, expected, name) in every_vector() {
             assert_eq!(
                 f64::from_bits(bits).to_bits(),
                 literal.to_bits(),
@@ -190,8 +240,13 @@ mod tests {
     /// places. Two different routes to the same integer.
     #[test]
     fn decode_agrees_with_an_independent_decimal_expansion() {
-        for &(bits, _, expected, name) in VECTORS {
-            let exact = format!("{:.40}", f64::from_bits(bits));
+        for &(bits, _, expected, name) in every_vector() {
+            // 1100 places, not 40: a binary64's decimal expansion terminates
+            // within 1074 fractional digits, so at this precision the formatter
+            // is exact and pads with zeros. Cutting a ROUNDED expansion is
+            // unsound, because a run of nines past the cut carries into digit 9
+            // and accuses a correct decoder. 1e-6 has thirteen such nines.
+            let exact = format!("{:.1100}", f64::from_bits(bits));
             let (whole, fraction) = exact.split_once('.').unwrap();
             let floored: u64 = format!("{whole}{}", &fraction[..9]).parse().unwrap();
 
@@ -218,6 +273,21 @@ mod tests {
     /// signalling NaNs carry a payload, and any of them could arrive from a
     /// mint. This widens coverage; it does not make the explicit non-finite
     /// branch load-bearing, because the overflow guard refuses these too.
+    /// ADR-001's failure below 1. The double nearest 1e-6 is just under it, but
+    /// `1e-6_f64 * 1e9` rounds to exactly 1000.0, so even a truncating cast
+    /// overvalues by a whole unit.
+    #[test]
+    fn decode_is_not_a_float_multiply_below_one() {
+        let bits = 0x3EB0_C6F7_A0B5_ED8D; // 1e-6
+        let naive = (f64::from_bits(bits) * MULTIPLIER_SCALE as f64) as u64;
+
+        assert_eq!(
+            naive, 1_000,
+            "the naive path no longer overvalues; vector is stale"
+        );
+        assert_eq!(decode_multiplier_fixed(bits).unwrap(), 999);
+    }
+
     #[test]
     fn decode_refuses_every_non_finite_pattern() {
         for payload in [
@@ -247,6 +317,10 @@ mod tests {
             (0xBFF0_0000_0000_0000, "-1.0"),
             (0x8000_0000_0000_0000, "-0.0"),
             (0x0000_0000_0000_0000, "0.0"),
+            (
+                0x3E11_0210_E863_E3CC,
+                "9.9e-10, just under the smallest accepted multiplier",
+            ),
             (0x0000_0000_0000_0001, "smallest subnormal"),
             (0x000F_FFFF_FFFF_FFFF, "largest subnormal"),
             (0x7FEF_FFFF_FFFF_FFFF, "f64::MAX, overflows u64 once scaled"),
