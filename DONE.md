@@ -1221,3 +1221,74 @@ Merge stays held. Joshua's decision: stack S5 on this branch and merge the
 frontend as one piece, then one targeted frontend review plus the real-person
 UX check SPEC G4 requires, before submission. A broad Codex pass now would be
 stale the moment the join flow lands.
+
+## S5 - 2026-09-23
+
+reviewed: n/a (frontend, read-only, no wallet; Codex reviews the program)
+adversary: not run, attacks run: 0, test: none. Same gap as S3 and S4, now three tasks old and worth fixing before the frontend grows again
+
+Join and Position, both viewer-state. Nested under the circle state so every
+Data state of both places comes from a fixture that already existed rather than
+from a second set written to flatter the screen:
+
+  /circle/forming/join/3        the open invite
+  /circle/forming/join/1        a seat that has already joined
+  /circle/active/join/3         "This circle already started" (circle_not_forming)
+  /circle/forming/position/3    before join
+  /circle/active/position/1     locked
+  /circle/completed/position/1  withdrawn
+  /circle/repricing/position/1  D5, nothing fundamental is countable
+  /circle/active/position/9     404
+
+verify: `pnpm -C app build`
+  ● /circle/[id]/join/[seat]       2.15 kB   111 kB   35 paths
+  ● /circle/[id]/position/[seat]   2.41 kB   111 kB   35 paths
+  tsc --noEmit, clean
+
+done when: Join names both amounts and the max loss before the action. It does,
+as three blocks ABOVE the button rather than a helper line beneath it, which is
+what design/UX-REVIEW.md's only STOP asked for. Read back from the served HTML:
+
+  "Turn 3 of 5. 50.00 USDC per round."
+  "You lock 1.1000 NFLXx and put 35.00 USDC into the circle's shared reserve."
+  "Most you could lose ... only if other members default and their stock
+   doesn't cover it"
+  "You need stock worth 120.00 USDC of cover to join"
+
+TWO THINGS FOUND WHILE VERIFYING, both real:
+
+1. The invite first offered the BARE MINIMUM to lock. rawForCover inverts H, and
+   at 150 a token with a 20% margin exactly 1.0000 token counts for 120.00 USDC,
+   which IS min_stock_cover. Telling a joiner to lock that is telling them to
+   start with zero headroom, and the first tick of price drift puts them under
+   their own minimum. SPEC.md:134 seeds 1.1 for the same reason the guarantee is
+   35 and not 30. The screen now offers 1.1 and states the 1.0 floor next to it,
+   so the slack is visible rather than silent.
+
+2. My own verification was wrong before it was right. The checker stripped tags
+   by replacing them with a space, and React separates adjacent text nodes with
+   an SSR comment, so "5. 50.00" read back as "5 . 50.00" and a correct line
+   looked broken. Comments are now stripped without a space. Worth recording
+   because the first reading would have had me "fix" copy that was already
+   right.
+
+Position renders the full FLOWS §4 list: raw, the scaled figure a wallet shows,
+multiplier, both prices, haircut, stock cover with the two values it is the
+lower of, reserve cover, owed, coverage, max loss and last checked. D5 is
+honoured here too: under Repricing stock cover and coverage read "Not
+countable" rather than a number built from a multiplier the prices were never
+stamped for.
+
+design/FLOWS.md §4's "member row -> [Position]" is wired: the member table's
+seat cell links to that seat's position, and an unjoined seat links to its
+invite instead.
+
+Screen.module.css is shared by Join and Position; both also import
+Circle.module.css for the shell. Folding the shared primitives out of the Circle
+module into one ui module is a refactor pass, deliberately not done mid-task.
+
+NOT DONE: no wallet, so "Join and lock" and "Lock more stock" render disabled
+with the reason stated next to them. FLOWS §2.4 gives Viewer one verb, view, and
+both of these are transactions. The async axis (submitting, confirming) and the
+wrong-network and low-balance states are not rendered, because none of them can
+occur without a wallet. They arrive with the wallet, not before it.

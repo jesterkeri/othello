@@ -317,3 +317,29 @@ export function coverageLabel(c: CircleView, m: MemberView): string {
   if (obligations(c, m) === 0) return "Nothing owed";
   return `${(coverageBpsOf(c, m) / 100).toFixed(0)}%`;
 }
+
+/** The scaled balance a wallet displays: raw x multiplier. Token-2022's
+ *  ScaledUiAmount is exactly this, which is why a naive vault reading the
+ *  display figure after a split sees ten times the tokens at a tenth the price
+ *  and can get the value right only if it also re-reads the price. */
+export function scaledRaw(m: MemberView, c: CircleView): number {
+  return Number((BigInt(m.lockedRaw) * BigInt(c.effectiveMultiplier)) / ONE_E9);
+}
+
+/** What a joiner must lock to clear min_stock_cover, in raw base units.
+ *  Inverts H: raw = ceil(min_cover / ((1 - haircut) x price_per_whole_token)). */
+export function rawForCover(c: CircleView, cover: number): number {
+  const perToken = Math.min(
+    Number((BigInt(c.effectiveMultiplier) * BigInt(c.feed.sharePrice)) / ONE_E9),
+    c.feed.wrapperPrice,
+  );
+  const afterHaircut = Math.floor((perToken * (10_000 - c.haircutBps)) / 10_000);
+  if (afterHaircut <= 0) return 0;
+  return Math.ceil((cover * Number(ONE_E8)) / afterHaircut);
+}
+
+/** The member a seat number refers to. Seats are 1-based on screen, turns are
+ *  0-based on chain, and mixing them up moves someone's money to a neighbour. */
+export function memberBySeat(c: CircleView, seat: number): MemberView | undefined {
+  return c.members.find((m) => m.turn === seat - 1);
+}

@@ -365,7 +365,11 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
                   return (
                     <tr key={m.address}>
                       <td>
-                        <span className={s.seatCell}>
+                        {/* design/FLOWS.md §4: member row -> [Position]. */}
+                        <Link
+                          href={`/circle/${stateKey}/position/${m.turn + 1}`}
+                          className={s.seatCell}
+                        >
                           <span className={`${s.seatDisc} ${isNow ? s.seatDiscNow : ""}`}>
                             {m.turn + 1}
                           </span>
@@ -373,13 +377,18 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
                             <span>{m.name}</span>
                             <span className={s.seatAddr}>{shortAddress(m.address)}</span>
                           </span>
-                        </span>
+                        </Link>
                       </td>
                       <td>
                         {defaulted ? (
                           <span className={`${s.tag} ${s.tagGone}`}>Defaulted</span>
                         ) : !joined ? (
-                          <span className={`${s.tag} ${s.tagNo}`}>Not joined</span>
+                          <Link
+                            href={`/circle/${stateKey}/join/${m.turn + 1}`}
+                            className={`${s.tag} ${s.tagNo}`}
+                          >
+                            Not joined
+                          </Link>
                         ) : !isActive ? (
                           <span className={`${s.tag} ${s.tagDone}`}>
                             {withdrawn ? "Withdrawn" : "To withdraw"}

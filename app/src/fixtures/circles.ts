@@ -233,4 +233,15 @@ export const DEMO_STATE: CircleStateKey = "active";
  *  produced by reading the demo circle far enough after its last refresh. */
 export const STALE_NOW = FIXTURE_NOW + 691_200 + 3_600;
 
+/**
+ * What a joiner is told to lock. SPEC.md:134: "Each member locks 1.1 token".
+ *
+ * Not the same as the minimum. At 150 a token with a 20% margin, exactly 1.0
+ * token counts for 120 USDC, which IS min_stock_cover, so a joiner locking the
+ * minimum starts with zero headroom and the first tick of price drift puts them
+ * under it. The demo seeds 1.1 for the same reason the guarantee is 35 rather
+ * than 30: slack.
+ */
+export const DEMO_LOCK_RAW = LOCKED;
+
 export { USDC, RAW };
