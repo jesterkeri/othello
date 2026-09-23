@@ -1454,3 +1454,46 @@ release_pot, reserve_losses > 0, forfeited > 0, escrow_deficit > 0 and therefore
 the non-degenerate pro-rata in withdraw all unexecuted by anyone. It read them
 against SPEC §6 and §7 and reports they match, and says plainly that it did not
 prove it by execution. I14, I15 and the unhealthy half of I18 remain untested.
+
+## T13 - 2026-09-23
+
+reviewed: PENDING. reviews/gate-2-brief.md written at 62d5f74; the verdict line and its findings land in reviews/gate-2-review.md when Joshua has run it
+adversary: two passes, both NO DEFECT FOUND, 23 attacks on T09 and ~40 on T10-T12; their tests are integrated as tests/t09-adversary.spec.ts and tests/t10-adversary.spec.ts
+
+The gate 2 brief. Written and STOPPED, per AGENTS.md: the build does not review
+its own diff.
+
+verify: `./scripts/check-reviews.sh` passes.
+
+Scope of the brief: origin/staging..62d5f74, which is T08 through T12 and 5,112
+insertions across 23 files. It FOLDS IN the early T09 structural review, as
+TASKS.md required, because T10 to T12 landed after that pass and invalidated it
+by design. Without that, a brief written now would naturally cover T10 to T12
+and quietly skip the shape they were built on: the ATA vaults, init-if-needed,
+the Member layout and the two-token-program question.
+
+G2's THIRD CLAUSE IS NOT FULLY MET AND THE BRIEF SAYS SO. "Every section 5
+refusal code has a negative test." Two do not have one. `MultiplierInvalid` is
+unreachable through an allowlisted mint, because all four fixtures decode.
+`AlreadyDefaulted` needs declare_default, which is T15. Both are structural
+rather than oversights, and neither is fixed rather than quietly reworded. An
+audit of every declared error against every code asserted in the suite is what
+found them; 20 of 22 are covered.
+
+The brief also states, rather than leaving to be discovered: that everything
+downstream of a default is unexecuted by anyone, including the escrow branch of
+release_pot and the non-degenerate pro-rata in withdraw; that I3 is asserted as
+a band with a dust allowance and not an equality; that the compute figures are
+bankrun's and not a validator's; and that the two adversarial passes are what
+has already been swept and not a claim of correctness, including that the T09
+pass PASSED a finding an external reviewer later called a bricked circle.
+
+Seven open items are listed so they are not re-reported, including the one that
+still blocks deployment: init_price_feed has no authority gate, so the first
+caller becomes the oracle for that mint. BLOCKING before T23.
+
+The prompt for Joshua to run is in the session; the brief cites
+/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md by ABSOLUTE path,
+because it is a cross-project standard living in another repo and a relative
+path resolves only if the reviewer starts a directory above this one. Gate 1's
+brief used the relative form and got away with it.

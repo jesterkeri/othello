@@ -52,7 +52,7 @@ deadline rather than now.
 - [x] T11 update_coverage (turn-order allocation, saturating bps, remaining_accounts validation) | verify: `anchor test` | done when: I2 property test green
 - [x] T12 withdraw (snapshot, deposits_total − forfeited_total, zero stock_raw) | verify: `anchor test` | done when: I3, I11, I16 green
 - [ ] R2 Refactor pass before review: extract the round-reset and allocation logic shared by contribute, release_pot and update_coverage into one place, collapse repeated account-validation blocks, name every magic number. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 and gate-2 test still green, before/after diffstat in DONE.md
-- [ ] T13 Gate 2 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
+- [x] T13 Gate 2 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
       T13 IS STILL THE FULL GATE 2 REVIEW and covers the final accumulated diff, T08 to T12.
       reviews/gate-2a-t09-brief.md is an EARLY STRUCTURAL review of T09 alone, run at
       9ffe86c on Codex's own advice (2026-09-23) with three guardrails: exact commit only,
