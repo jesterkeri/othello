@@ -94,3 +94,15 @@ pub struct PotReleased {
     pub next_gate_short_by: u64,
     pub completed: bool,
 }
+
+/// T11.
+#[event]
+pub struct CoverageUpdated {
+    pub circle: Pubkey,
+    pub round: u8,
+    pub reserve_allocated: u64,
+    /// R - L at the moment of the recompute, so an indexer can see the ratio.
+    pub remaining: u64,
+    pub next_gate_short_by: u64,
+    pub last_coverage_at: i64,
+}

@@ -59,6 +59,13 @@ pub mod othello {
         instructions::release_pot::handle_release_pot(ctx)
     }
 
+    /// Anyone recomputes coverage and redistributes the reserve in turn order
+    /// (T11). Moves no money. All n Member accounts come as writable
+    /// remaining_accounts in turn order.
+    pub fn update_coverage<'info>(ctx: Context<'info, UpdateCoverage<'info>>) -> Result<()> {
+        instructions::update_coverage::handle_update_coverage(ctx)
+    }
+
     /// Creator only, Forming only. Refunds go through `withdraw` (T09).
     pub fn cancel_circle(ctx: Context<CreatorOnly>) -> Result<()> {
         instructions::lifecycle::handle_cancel_circle(ctx)

@@ -132,6 +132,31 @@ impl GateOutcome {
     }
 }
 
+/// Distributes the reserve across needs in TURN ORDER, earliest recipient
+/// first, capping each at what is left.
+///
+/// SPEC §5's update_coverage row: `allocated_i = min(need_i, remaining)`. Turn
+/// order is not a tie-break, it is the rule: the member who receives soonest is
+/// the member whose obligations the circle must be able to stand behind
+/// soonest, so they are allocated first. Distributing pro rata instead would
+/// leave everyone partly covered and nobody releasable.
+///
+/// The sum of the result is at most `remaining` by construction, which is the
+/// first half of I2, and it is a property of this function rather than of the
+/// caller remembering to check.
+pub fn allocate_in_turn_order(needs: &[u64], remaining: u64) -> Vec<u64> {
+    let mut left = remaining;
+
+    needs
+        .iter()
+        .map(|&need_i| {
+            let take = need_i.min(left);
+            left -= take;
+            take
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,6 +286,28 @@ mod tests {
 
         assert_eq!(outcome.short_by(), 14);
         assert!(!outcome.passes());
+    }
+
+    #[test]
+    fn allocation_follows_turn_order_and_never_exceeds_the_reserve() {
+        // Enough for everyone: each gets exactly its need.
+        assert_eq!(allocate_in_turn_order(&[10, 20, 30], 100), vec![10, 20, 30]);
+
+        // Not enough: the earliest recipient is filled first, the next takes
+        // what is left, and the last takes nothing. Pro rata would have left
+        // all three short and none of them releasable.
+        assert_eq!(allocate_in_turn_order(&[10, 20, 30], 25), vec![10, 15, 0]);
+
+        // Nothing to give.
+        assert_eq!(allocate_in_turn_order(&[10, 20], 0), vec![0, 0]);
+
+        // I2's first half holds for any input, by construction.
+        for remaining in [0u64, 1, 7, 59, u64::MAX] {
+            let needs = [u64::MAX, 3, u64::MAX, 0];
+            let out = allocate_in_turn_order(&needs, remaining);
+            let sum: u128 = out.iter().map(|&x| x as u128).sum();
+            assert!(sum <= remaining as u128, "sum {sum} exceeded {remaining}");
+        }
     }
 
     #[test]

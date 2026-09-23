@@ -1249,3 +1249,63 @@ NOT DONE: the adversary has not attacked this. Given what it taught on T09,
 where it found the g = 2^63 behaviour and passed it as "no wrap" while Codex
 called the same circle bricked, its brief for T10 will ask what the CIRCLE is
 after each attack, not only whether state is corrupted.
+
+## T11 - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: not run yet, attacks run: 0, test: tests/t11-update-coverage.spec.ts. Before T13, with the reframed brief noted under T10
+
+update_coverage, and I2 as a property rather than as a single assertion.
+
+verify, each command run ALONE (see the note at the end):
+
+  anchor test         70 passing, 0 failing  (was 64)
+  cargo test          38 passed; 0 failed    (was 37)
+  cargo clippy --all-targets -- -D warnings   clean
+  cargo fmt --check                            clean
+
+  T11 update_coverage and I2
+    ✔ I2 holds after every instruction, through a full round and a price fall
+    ✔ allocates in turn order, earliest recipient first, capped at what is left
+    ✔ coverage saturates for a member who owes nothing, and is a number for one
+      who does
+    ✔ validates the member accounts: order, count and writability
+    ✔ anyone can recheck, and a stale price refuses
+    ✔ refuses once the circle is Completed
+
+done when: I2 property test green.
+
+I2 IS CHECKED AS A PROPERTY, NOT AS AN ASSERTION ABOUT THIS INSTRUCTION.
+INVARIANTS.md states it holds "after every instruction", so `assertI2` runs
+after each of five joins, after activate, after each of five contributes, after
+release_pot, and after three update_coverage calls at falling prices. Checking
+it only after update_coverage would have proved the easy half.
+
+Its first half, `reserve_allocated <= reserve_total - reserve_losses`, is a
+property of `allocate_in_turn_order` and is proved over arbitrary inputs in
+gate.rs rather than over the inputs a test happened to pick:
+
+  test gate::tests::allocation_follows_turn_order_and_never_exceeds_the_reserve
+
+THE ALLOCATION IS THE POINT OF THIS TASK. release_pot's gate compares the
+UNCAPPED sum and refuses if it does not fit. update_coverage always succeeds and
+distributes what there is, in turn order, capping each member at what is left.
+SPEC.md:126 is the line that separates them: the gate's `remaining` is R - L,
+while `reserve_allocated` everywhere else is the capped, turn-order figure.
+
+Turn order is a rule and not a tie-break. The member who receives soonest is the
+member whose obligations the circle must stand behind soonest. Distributing pro
+rata would leave everyone partly covered and nobody releasable, which is the
+worse outcome for the same money. The test pins the exact split at a scarce
+price: 151, 24, 0, 0, 0 against a 175 reserve, which is only correct if the
+first seat is filled before the second is looked at.
+
+A Paused circle is not one this instruction refuses. It succeeds and returns
+next_gate_short_by > 0, which is what I18 defines Paused as.
+
+MY OWN TESTING ERROR, TWICE, RECORDED SO IT STOPS. Two separate runs reported
+failures that did not exist: once from two `anchor test` invocations in one
+shell line, once from `anchor test` sharing a line with `cargo fmt`, which
+rewrote the sources while the suite was running. Both fight over target/. Every
+verification command in this entry was run alone. A test run that races the
+formatter is not evidence of anything.
