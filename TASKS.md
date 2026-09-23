@@ -53,6 +53,11 @@ deadline rather than now.
 - [ ] T12 withdraw (snapshot, deposits_total − forfeited_total, zero stock_raw) | verify: `anchor test` | done when: I3, I11, I16 green
 - [ ] R2 Refactor pass before review: extract the round-reset and allocation logic shared by contribute, release_pot and update_coverage into one place, collapse repeated account-validation blocks, name every magic number. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 and gate-2 test still green, before/after diffstat in DONE.md
 - [ ] T13 Gate 2 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
+      FOLD IN reviews/gate-2a-t09-brief.md, written early and not run (Joshua, 2026-09-23:
+      Codex stays at gate boundaries). Its sections 2, 4, 6 and 7 are T09's structural
+      decisions, thin spots and open items, and they are still owed a review: ATAs for the
+      vaults, anchor-lang's init-if-needed, the Member layout, and the two-token-program
+      question. Do not let the gate 2 brief cover only T10 to T12.
 
 ## Gate 3: defaults
 - [ ] T14 init_pool/seed_pool (discount ≤ haircut enforced at create) | verify: `anchor test` | done when: unauthorized and invalid_params tested

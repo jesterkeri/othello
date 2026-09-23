@@ -1,6 +1,12 @@
 # Gate 2a review brief: T09, the first instruction that moves money
 
-This is an **early, partial** review, pulled forward from T13 on purpose. Gate 2
+> NOT RUN. Joshua, 2026-09-23: "if its at gate boundaries then keep building,
+> when u get there just bundle up." Codex stays at the gate boundary, so this
+> was written early and is not a pending request. It is kept as raw material:
+> sections 2, 4, 6 and 7 fold into T13's gate 2 brief, where the same three
+> structural decisions will be reviewed alongside the payout gate they carry.
+
+This was written as an **early, partial** review, pulled forward from T13. Gate 2
 is T08 through T12 and its full brief is still T13. T09 is being put in front of
 you now because it fixes the shape every later instruction inherits, and three
 of those decisions are cheap to change today and expensive at T13.
