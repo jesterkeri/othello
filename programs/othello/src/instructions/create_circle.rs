@@ -179,6 +179,24 @@ pub fn handle_create_circle(
         params.grace_secs >= MIN_GRACE_SECS,
         OthelloError::InvalidParams
     );
+    // SPEC §5 gives these two a floor and no ceiling, which is enough for a
+    // policy and not enough to be representable. `activate` computes
+    // `now + round_secs` and T15 will compute `deadline + grace_secs`, so a
+    // round of i64::MAX passes creation, accepts every join, and then fails on
+    // the addition, after five people have locked their stock.
+    //
+    // This bound is not a maximum round length, which would be a design
+    // decision and is not the build's to make. It is the weakest condition
+    // under which the arithmetic cannot overflow: with both under half the
+    // range, `now + round_secs + grace_secs` is representable for any `now` in
+    // the lower half, which is every timestamp this chain will ever carry.
+    require!(
+        params
+            .round_secs
+            .checked_add(params.grace_secs)
+            .is_some_and(|total| total <= i64::MAX / 2),
+        OthelloError::InvalidParams
+    );
     require!(params.max_price_age > 0, OthelloError::InvalidParams);
     // So H can never exceed what liquidation would actually return.
     require!(
@@ -198,6 +216,21 @@ pub fn handle_create_circle(
         .ok_or(OthelloError::ValuationOverflow)?;
 
     require!(reserve >= peak, OthelloError::GuaranteeBelowPeakNeed);
+
+    // The peak check compares in u128, but `reserve_total` and `deposits_total`
+    // are u64 and the guarantees all land in ONE token account, whose amount is
+    // also a u64. So a reserve that satisfies the peak in u128 can still be a
+    // total no field can hold.
+    //
+    // The failure is not an arithmetic one that checked_add catches. It is a
+    // circle that is created, takes its first guarantee, and then refuses every
+    // later join for ever: it can never reach Active, and the money that is
+    // already in it can only come back through a creator cancellation. Refusing
+    // here is the difference between an invalid configuration and a trap.
+    require!(
+        params.guarantee_per_member <= u64::MAX / n as u64,
+        OthelloError::InvalidParams
+    );
 
     let circle = &mut ctx.accounts.circle;
 

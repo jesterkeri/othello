@@ -325,3 +325,29 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       T14 lands, so the check belongs in T14, either an allowlist for the USDC mint or a refusal
       of any mint carrying TransferFeeConfig. Raised as a suspicion, not a proven defect: no
       allowlisted xStock carries TransferFeeConfig, confirmed by decoding all four fixtures.
+
+- [ ] SPEC §5's parameter ranges have floors but no ceilings (early T09 review, 2026-09-23)
+      SPEC.md:130 gives `guarantee_per_member > 0`, `round_secs >= 60` and
+      `grace_secs >= 30`, and no upper bound on any of the three. Each one admits a circle
+      that cannot function:
+
+      n x guarantee_per_member is compared against the peak in u128, but reserve_total,
+      deposits_total and the USDC vault's amount are all u64. A guarantee of 2^63 over
+      three seats satisfies the peak, takes the first member's deposit, and then refuses
+      every later join for ever.
+
+      round_secs = i64::MAX passes creation and accepts every join, then `activate` fails
+      on `now + round_secs` with everyone's stock already locked. grace_secs inherits the
+      same shape at T15, which forms `deadline + grace_secs`.
+
+      The build has added the REPRESENTABILITY bounds, because they follow from the field
+      widths and are not a policy choice: `guarantee_per_member <= u64::MAX / n`, and
+      `round_secs + grace_secs <= i64::MAX / 2` so that `now + round_secs + grace_secs`
+      holds for any timestamp in the lower half of the range.
+
+      What the build has NOT decided, because it is the design session's: whether there
+      should be a real maximum round length and grace, expressed in time rather than in
+      representability. i64::MAX / 2 is 146 billion years; a circle with a thousand-year
+      round is still absurd and still legal. If SPEC wants a human bound, it names it and
+      the build enforces that instead.
+

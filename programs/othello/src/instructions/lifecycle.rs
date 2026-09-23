@@ -68,8 +68,12 @@ pub fn handle_activate(ctx: Context<CreatorOnly>) -> Result<()> {
 
     circle.status = CircleStatus::Active;
     circle.round = 0;
-    // Checked: round_secs is bounded at create time, but a deadline that
-    // wrapped would put the first round permanently in the past.
+    // create_circle bounds round_secs + grace_secs at i64::MAX / 2, so this
+    // cannot fail for any real timestamp. It stays checked because the bound
+    // lives in another file: if that one is ever relaxed, this must refuse
+    // rather than wrap the first deadline into the past. Before the bound
+    // existed, round_secs = i64::MAX passed creation, accepted every join, and
+    // failed HERE, with everyone's stock already locked.
     circle.round_deadline = now
         .checked_add(circle.round_secs)
         .ok_or(OthelloError::InvalidParams)?;

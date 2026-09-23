@@ -1112,3 +1112,69 @@ so the reserve would exceed the money behind it. Admin-only and unwritten
 today; the check belongs in T14.
 
 Nothing the adversary wrote touched production code and it committed nothing.
+
+## T09 early structural review - 2026-09-23
+
+reviewed: reviews/gate-2a-t09-early-findings.md | EARLY FINDINGS, not a gate verdict | commit: 9ffe86c
+adversary: NO DEFECT FOUND earlier in the day, attacks run: 23, test: tests/t09-adversary.spec.ts
+
+Run on Codex's own advice, against Codex's own three guardrails: the exact
+commit only, recorded as EARLY FINDINGS and never a verdict, and invalidated by
+any later commit. T13 still gets the full gate 2 review of the accumulated diff.
+
+TWO MAJOR FINDINGS, both accepted, both fixed in create_circle.
+
+1. n x guarantee_per_member is compared against the peak in u128, but
+   reserve_total, deposits_total and the USDC vault's amount are all u64. A
+   guarantee of 2^63 over three seats passes the peak check, takes the first
+   member's stock and guarantee, and then refuses every later join for ever.
+   The circle can never reach Active and the money is only recoverable through
+   a creator cancellation.
+
+   Now refused at creation: `guarantee_per_member <= u64::MAX / n`.
+
+2. round_secs has a floor of 60 and no ceiling. i64::MAX passes creation,
+   accepts every join, and then fails inside `activate` on
+   `now + round_secs`, with all five members' stock already locked. The
+   documented activation surface promises only `not_all_joined`; a late
+   parameter refusal after deposits is not in it. grace_secs has the same
+   shape, and T15 will form `deadline + grace_secs`.
+
+   Now refused at creation: `round_secs + grace_secs <= i64::MAX / 2`, which is
+   the weakest condition under which the addition cannot overflow for any
+   timestamp in the lower half of the range. That is a representability bound
+   and not a maximum round length: a real maximum is a design decision and is
+   recorded in OPEN-QUESTIONS rather than invented here.
+
+WORTH RECORDING, BECAUSE IT IS A LESSON ABOUT THE REVIEW CHAIN. The adversary
+found the first one's BEHAVIOUR this morning and passed it. Its attack 19 reads:
+"reserve_total overflow: g = 2^63, three seats. First join books 2^63, second
+refuses on checked_add and reverts whole. No wrap." Same input, same
+observation, opposite conclusion. It asked "does this corrupt state" and
+answered no. Codex asked "what is this circle now" and answered: bricked, with
+someone's money in it. The absence of an overflow is not the absence of a
+defect, and an adversary that only looks for corruption will hand back a clean
+report on a trap.
+
+Both tests assert the refusal happens AT CREATION, not on a later join, which
+is the whole point: the old behaviour also "failed", just after someone had
+paid. Mutation-checked, both bounds removed together:
+
+  1) refuses parameters that make a circle unable to ever complete
+     Error: expected the instruction to be refused, but it succeeded
+
+The boundary is pinned accepted as well as refused, so the comparison is `<=`
+and not `<`.
+
+Codex found NO finding in the three structural decisions the review existed to
+check: the ATA constraints bind each token account to the right mint, authority
+and token program; the two CPIs are transaction-atomic and the direct mint-data
+borrow ends before either; the n == 8 bitmap branch correctly avoids 1u8 << 8.
+That is what the early review was for, and it came back clean.
+
+verify: `anchor test` 55 passing, up from 54. clippy and fmt clean.
+
+Its U8, not checked: no cluster transaction; it did not execute a bespoke
+overflow reproduction, both sequences are read from the checked u64 paths; T10
+to T12 are unwritten and unreviewed; the issuer-controlled extensions and the
+init_price_feed takeover were not re-reviewed and remain open.
