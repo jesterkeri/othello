@@ -1,18 +1,24 @@
 # Gate 2a review brief: T09, the first instruction that moves money
 
-> NOT RUN. Joshua, 2026-09-23: "if its at gate boundaries then keep building,
-> when u get there just bundle up." Codex stays at the gate boundary, so this
-> was written early and is not a pending request. It is kept as raw material:
-> sections 2, 4, 6 and 7 fold into T13's gate 2 brief, where the same three
-> structural decisions will be reviewed alongside the payout gate they carry.
+> **THIS IS AN EARLY STRUCTURAL REVIEW, NOT A GATE 2 PASS.** Codex set three
+> guardrails on it, via Joshua, 2026-09-23, and they bind this document:
+>
+> 1. Review the exact commit below and T09's own SPEC rows and invariants. Not
+>    the future gate, and not code that does not exist yet.
+> 2. The outcome is recorded as EARLY FINDINGS. It must never carry
+>    `VERDICT: implementation-ready`, because nothing here can pass gate 2.
+> 3. T13 still gets the full gate 2 review of the final accumulated diff. **Any
+>    commit after the one below invalidates this review**, and T10 to T12 are
+>    being built while it runs, so it will be invalidated by design.
 
-This was written as an **early, partial** review, pulled forward from T13. Gate 2
-is T08 through T12 and its full brief is still T13. T09 is being put in front of
-you now because it fixes the shape every later instruction inherits, and three
-of those decisions are cheap to change today and expensive at T13.
+Gate 2 is T08 through T12 and its full brief is still T13. T09 is put in front
+of you now because it fixes the shape every later instruction inherits, and
+three of those decisions are cheap to change today and expensive once T10 to
+T12 sit on top of them.
 
-Commit under review: `abb2829` on `task/T09-join-and-lock`, branched from
-`staging`. Diff range `origin/staging..task/T09-join-and-lock`, two commits.
+**Commit under review: `9ffe86c`** on `task/T09-join-and-lock`, branched from
+`staging`. Diff range `origin/staging..9ffe86c`. Review that range and nothing
+later; work in progress on T10 is expected to appear on this branch after it.
 
 Review under `orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
 
@@ -155,12 +161,18 @@ From `OPEN-QUESTIONS.md`, all added by this work:
 
 ## 9. Output
 
-A verdict line, exactly one of:
+Write to `reviews/gate-2a-t09-early-findings.md`, and open it with this line,
+which is the only accepted form:
 
 ```
-VERDICT: implementation-ready
-VERDICT: changes required
+EARLY FINDINGS (T09 structural, not a gate 2 verdict)
 ```
+
+Deliberately not a `VERDICT:` line. Guardrail 2 above, and the repo enforces the
+distinction: `scripts/check-reviews.sh` requires a verdict in any file matching
+`reviews/*review*.md`, so the findings file is named to stay outside that glob.
+A pass here cannot close gate 2, and a file that looked like it could would let
+T13 be skipped.
 
 Then findings as CRITICAL / MAJOR / MINOR, each with a file and line, what
 breaks, and the input or sequence that breaks it. If a finding is a disagreement

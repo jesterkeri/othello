@@ -53,11 +53,15 @@ deadline rather than now.
 - [ ] T12 withdraw (snapshot, deposits_total − forfeited_total, zero stock_raw) | verify: `anchor test` | done when: I3, I11, I16 green
 - [ ] R2 Refactor pass before review: extract the round-reset and allocation logic shared by contribute, release_pot and update_coverage into one place, collapse repeated account-validation blocks, name every magic number. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 and gate-2 test still green, before/after diffstat in DONE.md
 - [ ] T13 Gate 2 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
-      FOLD IN reviews/gate-2a-t09-brief.md, written early and not run (Joshua, 2026-09-23:
-      Codex stays at gate boundaries). Its sections 2, 4, 6 and 7 are T09's structural
-      decisions, thin spots and open items, and they are still owed a review: ATAs for the
-      vaults, anchor-lang's init-if-needed, the Member layout, and the two-token-program
-      question. Do not let the gate 2 brief cover only T10 to T12.
+      T13 IS STILL THE FULL GATE 2 REVIEW and covers the final accumulated diff, T08 to T12.
+      reviews/gate-2a-t09-brief.md is an EARLY STRUCTURAL review of T09 alone, run at
+      9ffe86c on Codex's own advice (2026-09-23) with three guardrails: exact commit only,
+      recorded as EARLY FINDINGS and never a verdict, and invalidated by any later commit.
+      T10 to T12 land after it, so it IS invalidated by the time T13 arrives. Fold its
+      sections 2, 4, 6 and 7 into the gate 2 brief: ATAs for the vaults, anchor-lang's
+      init-if-needed, the Member layout and the two-token-program question are still owed a
+      real gate review, and a brief written at T13 would otherwise cover only T10 to T12 and
+      skip the shape they were built on.
 
 ## Gate 3: defaults
 - [ ] T14 init_pool/seed_pool (discount ≤ haircut enforced at create) | verify: `anchor test` | done when: unauthorized and invalid_params tested
