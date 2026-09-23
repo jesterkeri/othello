@@ -68,3 +68,29 @@ pub struct CircleCancelled {
     pub joined_bitmap: u8,
     pub reserve_total: u64,
 }
+
+/// T10.
+#[event]
+pub struct Contributed {
+    pub circle: Pubkey,
+    pub member: Pubkey,
+    pub turn: u8,
+    pub round: u8,
+    pub amount: u64,
+    pub paid_bitmap: u8,
+    pub held_contributions: u64,
+}
+
+#[event]
+pub struct PotReleased {
+    pub circle: Pubkey,
+    pub round: u8,
+    pub recipient: Pubkey,
+    pub pot: u64,
+    /// The gate's own numbers, so an indexer can show why it passed.
+    pub needed: u64,
+    pub remaining: u64,
+    pub reserve_allocated: u64,
+    pub next_gate_short_by: u64,
+    pub completed: bool,
+}

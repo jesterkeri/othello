@@ -1178,3 +1178,74 @@ Its U8, not checked: no cluster transaction; it did not execute a bespoke
 overflow reproduction, both sequences are read from the checked u64 paths; T10
 to T12 are unwritten and unreviewed; the issuer-controlled extensions and the
 init_price_feed takeover were not re-reviewed and remain open.
+
+## T10 - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: not run yet, attacks run: 0, test: tests/t10-contribute-release.spec.ts. Before T13, and see the brief note below
+
+contribute and release_pot, with the payout gate. The gate arithmetic lives in
+programs/othello/src/gate.rs so T11's update_coverage and T15's declare_default
+use one implementation: three copies of a rounding rule is three chances for one
+of them to round the protocol's way.
+
+verify: `anchor test`
+
+  running 37 tests (Rust)
+  test result: ok. 37 passed; 0 failed
+
+  T10 contribute and release_pot
+    ✔ contribute takes exactly the contribution and sets only that seat's bit
+    ✔ contribute refuses twice, and refuses a circle that is not Active
+    ✔ I6: the pot is refused until every seat has paid
+    ✔ I1 and I18: a healthy demo round pays the pot and leaves nothing Paused
+    ✔ I10: exactly n payouts, each seat once, then Completed
+    ✔ I1: a price fall takes the gate below the line, and it refuses with the numbers
+    ✔ the same fall later refuses as Paused instead, because the stock is no
+      longer the whole gap
+    ✔ refuses member accounts that are not this circle's seats in order
+    ✔ refuses paying anyone but the seat whose turn it is
+
+  64 passing (14s)
+
+  cargo clippy --all-targets -- -D warnings: clean
+  cargo fmt --check: clean
+
+done when: I1, I6, I10 green; SPEC's table reproduced; no Paused after healthy
+payouts (I18). All four.
+
+SPEC'S TABLE IS REPRODUCED IN RUST, in gate.rs's own unit tests, not in the
+integration suite. The table is arithmetic and belongs where the arithmetic is,
+where it can be asserted without a validator:
+
+  test gate::tests::the_gate_reproduces_the_spec_demo_table ... ok
+
+It asserts need_k for k = 1..4 equals 140, 150, 30, 0, which is SPEC.md:133
+verbatim. That matters because create_circle's peak check and release_pot's gate
+are two implementations of the same table: if they disagreed, a circle could
+pass creation and then pause on its own parameters.
+
+I10 is checked by walking all five rounds and asserting the received bitmap
+after each: 0b00001, 0b00011, 0b00111, 0b01111, 0b11111. One new bit per round,
+in turn order, then Completed, then a sixth payout refused.
+
+WHAT THE FIRST ATTEMPT AT THE REFUSAL TEST TAUGHT. I tried to build a circle
+whose reserve could not meet its coverage target, and create_circle refused it
+with GuaranteeBelowPeakNeed before the gate could run. That is KNOWN-LIMITS L4
+demonstrated rather than quoted: "create-time peak check makes it unreachable
+without a default or price fall". So in gate 2, before defaults exist at T15,
+the ONLY honest way to reach a failing gate is a price fall under a circle that
+was correctly created. Both refusal tests now do that.
+
+The second one also corrected an expectation of mine rather than the code. I
+expected ReserveOvercommitted at 50 a token; the program said CoverageTooLow and
+was right. At 50, H is 44, each need is 151 and others_need is 151, which still
+fits the 175 reserve, so the recipient's own stock IS the whole gap and "lock
+more stock" is advice that would work. Only at 20 a token does others_need reach
+178 and exceed the reserve, which is the branch where locking more stock would
+not help. The SPEC's conjunction is doing real work and I had not believed it.
+
+NOT DONE: the adversary has not attacked this. Given what it taught on T09,
+where it found the g = 2^63 behaviour and passed it as "no wrap" while Codex
+called the same circle bricked, its brief for T10 will ask what the CIRCLE is
+after each attack, not only whether state is corrupted.

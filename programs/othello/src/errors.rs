@@ -35,4 +35,19 @@ pub enum OthelloError {
     NotAllJoined,
     #[msg("That wallet does not hold enough to do this")]
     InsufficientBalance,
+    // T10.
+    #[msg("You've paid this round")]
+    AlreadyContributed,
+    #[msg("This circle isn't running right now")]
+    CircleNotActive,
+    #[msg("This member's default is already settled")]
+    AlreadyDefaulted,
+    #[msg("Some contributions are still missing")]
+    RoundNotFunded,
+    #[msg("The recipient's locked stock is below the minimum and is the whole gap")]
+    CoverageTooLow,
+    #[msg("Payouts are paused: the reserve cannot cover the next payout")]
+    ReserveOvercommitted,
+    #[msg("The member accounts passed do not match this circle's seats")]
+    BadMemberAccounts,
 }

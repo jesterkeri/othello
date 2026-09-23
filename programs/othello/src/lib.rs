@@ -8,6 +8,7 @@
 pub mod allowlist;
 pub mod errors;
 pub mod events;
+pub mod gate;
 pub mod instructions;
 pub mod state;
 pub mod valuation;
@@ -43,6 +44,19 @@ pub mod othello {
     /// list, never passed in.
     pub fn join_and_lock(ctx: Context<JoinAndLock>, stock_raw: u64) -> Result<()> {
         instructions::join_and_lock::handle_join_and_lock(ctx, stock_raw)
+    }
+
+    /// A member pays their contribution for the current round (T10). No time
+    /// check: a late payment before a default is declared is a cure.
+    pub fn contribute(ctx: Context<Contribute>) -> Result<()> {
+        instructions::contribute::handle_contribute(ctx)
+    }
+
+    /// Anyone releases the pot once the round is funded and the gate passes
+    /// (T10). All n Member accounts come as writable remaining_accounts in
+    /// turn order.
+    pub fn release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Result<()> {
+        instructions::release_pot::handle_release_pot(ctx)
     }
 
     /// Creator only, Forming only. Refunds go through `withdraw` (T09).
