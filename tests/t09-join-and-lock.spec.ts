@@ -313,6 +313,7 @@ describe("T09 join_and_lock, cancel_circle, activate", () => {
 
   it("refuses a second join from the same wallet", async () => {
     await join(wallets[0]!, LOCK_RAW);
+    await h.nextSlot();
     // The Member PDA already exists, so this is Anchor's own refusal rather
     // than ours. What matters is that it cannot succeed and double the reserve.
     await assert.rejects(join(wallets[0]!, LOCK_RAW));
@@ -371,6 +372,14 @@ describe("T09 join_and_lock, cancel_circle, activate", () => {
       BigInt(DEMO.guaranteePerMember),
       "the guarantee is still in the vault after cancelling",
     );
+
+    // The second cancel must be a DIFFERENT transaction, or the runtime
+    // rejects it by signature as "already processed" and the program is never
+    // reached. A test that accepted that would be asserting a refusal it cannot
+    // observe: it would pass just as happily against a program with no status
+    // check at all. Warping the slot changes the blockhash, so this really is a
+    // second transaction arriving at the program.
+    await h.nextSlot();
 
     assert.equal(await h.refusal(creatorOnly("cancelCircle", creator)), "CircleNotForming");
   });

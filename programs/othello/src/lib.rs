@@ -66,6 +66,13 @@ pub mod othello {
         instructions::update_coverage::handle_update_coverage(ctx)
     }
 
+    /// After Completed or Cancelled: stock back, and the unused guarantee and
+    /// top-ups pro rata (T12, SPEC §7). Reads snapshots and decrements nothing,
+    /// so withdraw order cannot change anyone's share.
+    pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
+        instructions::withdraw::handle_withdraw(ctx)
+    }
+
     /// Creator only, Forming only. Refunds go through `withdraw` (T09).
     pub fn cancel_circle(ctx: Context<CreatorOnly>) -> Result<()> {
         instructions::lifecycle::handle_cancel_circle(ctx)

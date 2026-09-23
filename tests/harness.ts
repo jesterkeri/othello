@@ -105,6 +105,16 @@ export type Harness = {
   putAccount: (address: anchor.web3.PublicKey, data: Buffer, owner: anchor.web3.PublicKey) => void;
   /** The refusal code name a rejected instruction carried. */
   refusal: (promise: Promise<unknown>) => Promise<string>;
+  /**
+   * Advances the slot so the next transaction gets a fresh blockhash.
+   *
+   * Call this between two OTHERWISE IDENTICAL transactions. Without it the
+   * runtime rejects the second by signature, "This transaction has already been
+   * processed", and the program is never reached: a test asserting a refusal
+   * would pass just as happily against a program that had no such check. One
+   * test in T09 was doing exactly that.
+   */
+  nextSlot: () => Promise<void>;
 };
 
 /** Starts bankrun with the program loaded and the named real mints in place. */
@@ -188,6 +198,27 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
     return keypair;
   };
 
+  const nextSlot = async (): Promise<void> => {
+    const before = await context.banksClient.getClock();
+    context.warpToSlot(before.slot + 1n);
+
+    // warpToSlot recomputes the clock from the bank, which throws away any
+    // timestamp setClock had put there. Restoring it keeps this a change of
+    // blockhash ONLY: a helper meant to let a duplicate transaction through
+    // must not also move the wall clock, or a test asserting one refusal
+    // silently starts asserting PriceStale instead. That happened.
+    const after = await context.banksClient.getClock();
+    context.setClock(
+      new Clock(
+        after.slot,
+        after.epochStartTimestamp,
+        after.epoch,
+        after.leaderScheduleEpoch,
+        before.unixTimestamp,
+      ),
+    );
+  };
+
   const setClock = async (unixTimestamp: number): Promise<void> => {
     const current = await context.banksClient.getClock();
 
@@ -247,6 +278,7 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
     placeMint,
     putAccount,
     refusal,
+    nextSlot,
   };
 }
 
@@ -261,6 +293,8 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
 export type Callable = {
   accounts(accounts: Record<string, anchor.web3.PublicKey>): Callable;
   signers(signers: anchor.web3.Keypair[]): Callable;
+  /** The n Member accounts the gate instructions take, in turn order. */
+  remainingAccounts(accounts: anchor.web3.AccountMeta[]): Callable;
   rpc(): Promise<string>;
   instruction(): Promise<anchor.web3.TransactionInstruction>;
 };

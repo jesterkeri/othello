@@ -6,6 +6,7 @@ pub mod price_feed;
 pub mod quote;
 pub mod release_pot;
 pub mod update_coverage;
+pub mod withdraw;
 
 pub use contribute::*;
 pub use create_circle::*;
@@ -15,3 +16,4 @@ pub use price_feed::*;
 pub use quote::*;
 pub use release_pot::*;
 pub use update_coverage::*;
+pub use withdraw::*;

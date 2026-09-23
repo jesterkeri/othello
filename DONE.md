@@ -1309,3 +1309,75 @@ shell line, once from `anchor test` sharing a line with `cargo fmt`, which
 rewrote the sources while the suite was running. Both fight over target/. Every
 verification command in this entry was run alone. A test run that races the
 formatter is not evidence of anything.
+
+## T12 - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: not run yet, attacks run: 0, test: tests/t12-withdraw.spec.ts. Before T13
+
+withdraw, the one way money leaves a finished circle, for both endings.
+
+verify, each command run ALONE:
+
+  anchor test         74 passing, 0 failing  (was 70)
+  cargo test          43 passed; 0 failed    (was 38)
+  cargo clippy --all-targets -- -D warnings   clean
+  cargo fmt --check                            clean
+  pnpm exec tsc --noEmit                       clean
+
+  T12 withdraw, I3, I11 and I16
+    ✔ refuses while the circle is still running, and refuses twice after
+    ✔ a cancelled circle returns exactly what each member put in
+    ✔ I3 and I11: a completed circle pays every deposit back and never more
+    ✔ I16: withdraw order does not change any member's amount
+
+done when: I3, I11, I16 green. All three.
+
+I16 IS THE ONE WORTH READING. SPEC §7 says "snapshot values, never decremented
+by withdraw", and that is not a style note: withdraw does not touch
+reserve_total, reserve_losses or escrow, so every member's share is computed
+against the same three numbers no matter who goes first. The implementation it
+rules out is the obvious one, paying out of a pool that shrinks as people
+withdraw, which makes the last member's share depend on an order they do not
+control.
+
+The test runs the same circle to Completed THREE times and withdraws in three
+different orders, comparing every member's payout across all three. A single
+order would have proved nothing, because the bug only shows for whoever goes
+last.
+
+The pro-rata arithmetic is degenerate in gate 2: unequal weights need a default
+(T15) or a top-up (T16), so every weight here is 35 USDC and every share is 35
+USDC. Rather than leave it untested until then, completed_share has its own
+Rust unit tests with asymmetric inputs, including a 40 USDC loss shared across
+four survivors (33.75 each), a forfeited member receiving nothing, and dust
+staying in the vault rather than overpaying the last member.
+
+THREE TEST DEFECTS FOUND AND FIXED, all the same shape and all mine.
+
+Four tests did "call X, then call X again and expect a refusal" with byte
+identical transactions. The runtime rejects the second by SIGNATURE, "This
+transaction has already been processed", so the program is never reached. Those
+tests would have passed against a program with no such check at all. Surfaced
+when the T09 cancel-twice case finally failed, having been passing for the wrong
+reason.
+
+Fixed with a harness helper, h.nextSlot(), used at all four sites. Proved to
+bite by mutation: with the AlreadyContributed check deleted from contribute.rs,
+
+  contribute refuses twice, and refuses a circle that is not Active:
+    Error: expected the instruction to be refused, but it succeeded
+
+Before the fix that mutant survived.
+
+The helper itself then had the same class of fault. warpToSlot recomputes the
+clock from the bank and discards whatever setClock had put there, so the first
+version moved the wall clock as well as the blockhash and a test asserting
+CircleNotActive silently began asserting PriceStale. It now restores the
+timestamp, so it changes the blockhash and nothing else.
+
+AND tsc WAS NOT BEING RUN ON THE TEST SUITE. anchor test runs mocha through tsx,
+which strips types without checking them, so tests/*.spec.ts had accumulated
+five type errors: harness.ts's Callable type never declared remainingAccounts,
+which every gate instruction uses. `pnpm exec tsc --noEmit` is now part of this
+entry's verification and is clean.

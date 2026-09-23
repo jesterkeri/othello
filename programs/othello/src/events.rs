@@ -106,3 +106,16 @@ pub struct CoverageUpdated {
     pub next_gate_short_by: u64,
     pub last_coverage_at: i64,
 }
+
+/// T12.
+#[event]
+pub struct Withdrawn {
+    pub circle: Pubkey,
+    pub member: Pubkey,
+    pub wallet: Pubkey,
+    pub turn: u8,
+    pub usdc: u64,
+    pub stock: u64,
+    pub withdrawn_bitmap: u8,
+    pub withdrawn_usdc: u64,
+}

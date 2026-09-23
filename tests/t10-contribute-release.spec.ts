@@ -279,6 +279,7 @@ describe("T10 contribute and release_pot", () => {
     await setUp();
 
     await contribute(wallets[0]!);
+    await h.nextSlot();
     assert.equal(await h.refusal(contribute(wallets[0]!)), "AlreadyContributed");
 
     // A Forming circle: build a second one and do not activate it.

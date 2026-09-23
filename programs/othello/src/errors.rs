@@ -50,4 +50,9 @@ pub enum OthelloError {
     ReserveOvercommitted,
     #[msg("The member accounts passed do not match this circle's seats")]
     BadMemberAccounts,
+    // T12.
+    #[msg("You can withdraw when the circle ends")]
+    NotFinished,
+    #[msg("You've already withdrawn from this circle")]
+    AlreadyWithdrawn,
 }
