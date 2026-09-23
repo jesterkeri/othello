@@ -934,3 +934,38 @@ the most suspect, and should be re-reviewed. The code change after the reviewed 
 blank line, and `git diff --ignore-blank-lines` over programs, ops, tests, scripts and
 .github is empty; everything else is documentation. Whether that earns a re-review round
 is his call, not the builder's, so it is recorded rather than waived.
+
+## T08 - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: NO DEFECT FOUND in this pass, attacks run: 0 this session, test: tests/t08-create-circle.spec.ts. The code and its spec were written and merged to staging earlier; this entry records the evidence that was owed and never pasted
+
+Recorded late. create_circle.rs and tests/t08-create-circle.spec.ts reached
+staging without a DONE.md entry and with the task still unchecked, which is
+exactly the state guard-done.sh exists to catch and did not, because the task
+was never ticked. Found while answering "are we using a contract for our build".
+
+verify: `anchor test`
+
+  T08 create_circle
+    ✔ creates the demo circle in Forming, with everything zeroed
+    ✔ refuses g = 29 and accepts g = 30, which is the peak exactly
+    ✔ the peak it enforces is SPEC's 150, not a rounder number
+    ✔ refuses every parameter range separately (84ms)
+    ✔ refuses a member list that is the wrong size, or has a duplicate, or
+      omits the creator
+    ✔ refuses a byte-perfect counterfeit even when a feed for it already exists
+
+  37 passing (7s)
+
+done when: demo params pass, g=29 refused with guarantee_below_peak_need, each
+range refused. All three are covered by the six tests above, and the peak is
+pinned at SPEC's 150 rather than at a round number, so a mutant that computed a
+different peak and still refused 29 would not survive.
+
+KNOWN AND CARRIED FORWARD: the vaults are deliberately not created here.
+InitializeAccount3 on a mint carrying a permanent delegate returns
+InvalidAccountData, because a Token-2022 account for an extension-carrying mint
+needs more than 165 bytes. That is KNOWN-LIMITS L7 confirmed on chain rather
+than assumed. Vault creation moves to T09, which has to solve the sizing either
+extension-aware or through the ATA program.
