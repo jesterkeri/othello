@@ -294,3 +294,34 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       future test that moves a Token-2022 token depends on that file being loaded,
       and a harness that quietly fell back to the bundled program would fail in a way
       that looks like a program defect rather than a toolchain one.
+
+- [ ] I4's wording is externally falsifiable now the vault is an ATA (T09 adversary, 2026-09-23)
+      INVARIANTS.md I4 reads "stock vault balance = sum of member.stock_raw", with no dust
+      clause, unlike I3 which carries "(+ dust)". The circle's stock vault is an Associated
+      Token Account, so anyone at all can transfer into it without touching Othello.
+
+      Measured by the adversary: after putting 12,345 raw units into the vault and then joining
+      with 110,000,000, the vault read 110,012,345 against a sum of member.stock_raw of
+      110,000,000. No money moved wrongly, nothing the program did was incorrect, and no design
+      can prevent an inbound transfer to an ATA.
+
+      So the equality cannot hold as an equality, and a reviewer reading I4 literally would call
+      T09 a violation. This is a wording fix in INVARIANTS.md, ">=" or "(+ dust)" as I3 already
+      has, and INVARIANTS.md is the design session's file, not the build's. Recorded here rather
+      than edited. The program is unchanged either way: it reasons from member.stock_raw, never
+      from the vault balance.
+
+- [ ] `create_circle` constrains `stock_mint` but not `usdc_mint` (T09 adversary, 2026-09-23, before T14)
+      The stock mint must be on the ADR-012 allowlist. The USDC mint has no such check: it is
+      pinned only by the pool PDA's seeds, which means whatever mint `init_pool` was pointed at.
+
+      If T14's `init_pool` is ever pointed at a Token-2022 "USDC" carrying TransferFeeConfig,
+      `join_and_lock` credits `reserve_total += guarantee` while the vault receives
+      `guarantee - fee`. The reserve would then be larger than the money behind it, which is I3,
+      and the peak-guarantee check at create time would be measuring a reserve that does not
+      exist. The same applies to every later instruction that moves USDC.
+
+      Not exploitable today: `init_pool` is admin-only and unwritten. It becomes real the moment
+      T14 lands, so the check belongs in T14, either an allowlist for the USDC mint or a refusal
+      of any mint carrying TransferFeeConfig. Raised as a suspicion, not a proven defect: no
+      allowlisted xStock carries TransferFeeConfig, confirmed by decoding all four fixtures.

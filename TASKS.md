@@ -64,7 +64,12 @@ deadline rather than now.
 ## Gate 4: frontend (Next.js, neubrutalist style)
 - [ ] T18 App scaffold, read-only Circle place for a viewer with no wallet | verify: `pnpm -C app typecheck && pnpm -C app build` | done when: demo circle renders from devnet accounts without a wallet
 - [ ] T19 Transaction statechart (preview, awaiting wallet, submitted, confirmed, failed, expired) and refusal rendering with payload numbers | verify: `pnpm -C app build` | done when: each FLOWS §8 row renders from a fixture
-- [ ] T20 Places: Landing, Create, Join, Position, Stock (/api/live), Default, Split lab, Admin | verify: `pnpm -C app build` | done when: every FLOWS §7 state has a fixture screenshot in DONE.md
+- [ ] T20 Places: Landing, Create, Join, Position, Stock, Default, Split lab, Admin | verify: `pnpm -C app build` | done when: every FLOWS §7 state has a fixture screenshot in DONE.md
+      STOCK (the assets page) IS SEQUENCED LAST, NOT DROPPED. Joshua, 2026-09-23: "we are not
+      dropping it, i meant when we need the assets page we build it". It stays in scope and in
+      this list; it is built when something needs it rather than in place order. It is the only
+      place that reads /api/live, so it is the only one that can fail because mainnet is
+      unreachable, which is why it is not a good first thing to build, not a reason to cut it.
 - [ ] T21 UX acceptance test on one person (design/UX-REVIEW.md) | verify: n/a (human) | done when: their answer pasted in DONE.md
 - [ ] R4 Refactor pass before review: extract the repeated place/statechart rendering into shared components, remove duplicated fixture and formatting logic, no inline magic numbers in money rendering. No test weakened, skipped or deleted | verify: `pnpm -C app lint && pnpm -C app typecheck && pnpm -C app build` | done when: lint and typecheck clean, every FLOWS state still renders, before/after diffstat in DONE.md
 - [ ] T22 Gate 4 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready

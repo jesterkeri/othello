@@ -35,6 +35,4 @@ pub enum OthelloError {
     NotAllJoined,
     #[msg("That wallet does not hold enough to do this")]
     InsufficientBalance,
-    #[msg("This wallet has already joined this circle")]
-    AlreadyJoined,
 }

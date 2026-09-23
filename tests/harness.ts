@@ -457,17 +457,6 @@ export function poolAddress(
   );
 }
 
-export function vaultAddress(
-  program: anchor.Program<anchor.Idl>,
-  seed: "stock_vault" | "usdc_vault",
-  circle: anchor.web3.PublicKey,
-): anchor.web3.PublicKey {
-  return anchor.web3.PublicKey.findProgramAddressSync(
-    [Buffer.from(seed), circle.toBuffer()],
-    program.programId,
-  )[0];
-}
-
 export function priceFeedAddress(
   program: anchor.Program<anchor.Idl>,
   stockMint: anchor.web3.PublicKey,

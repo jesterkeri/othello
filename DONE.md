@@ -999,10 +999,17 @@ verify: `anchor test`
   cargo clippy --all-targets -- -D warnings: clean
   cargo fmt --check: clean
 
-done when: refusal codes tested; I4 holds. Both. Every code SPEC §5 names for
-these three is covered: not_a_member, circle_not_forming,
-collateral_below_minimum, insufficient_balance and not_all_joined, plus
-Unauthorized on the two creator-only instructions. I4 is checked incrementally,
+done when: refusal codes tested; I4 holds. Covered here: not_a_member,
+circle_not_forming, collateral_below_minimum, insufficient_balance and
+not_all_joined, plus Unauthorized on the two creator-only instructions.
+
+CORRECTION, 2026-09-23. This entry first claimed "Every code SPEC §5 names for
+these three is covered" and then listed five. SPEC.md:102 names SEVEN for
+join_and_lock: price_stale, multiplier_price_mismatch and multiplier_invalid
+had no test. The behaviour was right, the claim was not, and TASKS.md:50's
+done-when is "refusal codes tested". The first two are now covered by the
+adversary's suite; multiplier_invalid is unreachable through an allowlisted
+mint, so it is stated as unreachable rather than left implied. I4 is checked incrementally,
 member by member, with each member locking a DIFFERENT amount, so a vault that
 tracked a count or the last value rather than the sum would diverge on the
 second join.
@@ -1042,3 +1049,66 @@ failure would read like a defect in Othello rather than in the toolchain.
 NOT DONE: the adversary has not attacked this yet. It has found a real defect in
 every task it has been run on, so this is a gap and not a clean bill. Before
 T13.
+
+## T09 adversary - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: NO DEFECT FOUND, attacks run: 23, test: tests/t09-adversary.spec.ts (integrated, 5 cases, passing)
+
+The adversary ran 23 attacks against the T09 diff with the spec and no access
+to the reasoning behind the code, and broke none of them. Its report is
+summarised here rather than pasted: seats and authority (6), account
+substitution (6), price and time against I13 (4), accounting, ordering and
+arithmetic (7).
+
+Two it ran that this build had not thought to: `join` then `cancel_circle` then
+`join` inside ONE transaction, refused 0x1779 on the third instruction; and
+reserve_total overflow with g = 2^63 over three seats, where the second join
+reverts whole on checked_add rather than wrapping. It also measured compute:
+100,351 CU for the first join, which creates the Member PDA and both vaults
+against the real NFLXx bytes, and 48k-60k after. Inside the 200k default, so no
+ComputeBudget instruction is owed.
+
+Its test is integrated and passes on this branch, `anchor test` 54 passing, up
+from 49. It closes the three uncovered refusal codes noted in the correction
+above, pins freshness as `<=` at the exact boundary second, and pins activate's
+full-bitmap arithmetic at n=3 and at n=8, which is the `1u8 << n` overflow
+branch the T09 suite never reached.
+
+FOUR OBSERVATIONS, all acted on.
+
+1. `AlreadyJoined` was unreachable and its comment said the opposite. Anchor
+   runs `init` during account validation, before the handler body, so a second
+   join never reached the bitmap check: it returns the System program's failure
+   to allocate a non-empty account, measured as "unmapped custom program error
+   0", never 6013. The comment claimed the check existed to give that failure
+   SPEC's code. It did not and could not. Check deleted, comment replaced with
+   what actually stops a second join, and the `AlreadyJoined` variant removed:
+   it was last in the enum, so nothing renumbered, and SPEC §5 names no
+   `already_joined` code for any instruction. An unreachable guard reads like a
+   live one to the next person.
+
+2. The coverage claim above, corrected in place rather than quietly amended.
+
+3. `tests/harness.ts` still exported `vaultAddress()`, deriving the abandoned
+   `["stock_vault", circle]` PDA from the T08 design. No callers, and now wrong,
+   because the vaults are ATAs. A future test reaching for it would have
+   asserted against an address that can never hold anything and passed
+   vacuously. Deleted.
+
+4. I4 cannot hold as a literal equality now the vault is an ATA, since anyone
+   can transfer into one. Measured: 12,345 raw units sent in, then a join of
+   110,000,000, vault reads 110,012,345 against a member sum of 110,000,000.
+   INVARIANTS.md is the design session's file, so this is recorded in
+   OPEN-QUESTIONS for a wording fix (`>=`, or "(+ dust)" as I3 already carries)
+   rather than edited here. The program reasons from member.stock_raw and never
+   from the vault balance, so no code changes either way.
+
+AND ONE SUSPICION, unproven, recorded in OPEN-QUESTIONS for T14: `create_circle`
+allowlists `stock_mint` but places no constraint on `usdc_mint` beyond the pool
+PDA's seeds. A Token-2022 "USDC" carrying TransferFeeConfig would have
+join_and_lock credit `reserve_total += g` while the vault receives `g - fee`,
+so the reserve would exceed the money behind it. Admin-only and unwritten
+today; the check belongs in T14.
+
+Nothing the adversary wrote touched production code and it committed nothing.

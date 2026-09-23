@@ -145,14 +145,12 @@ pub fn handle_join_and_lock(ctx: Context<JoinAndLock>, stock_raw: u64) -> Result
 
     let turn = seat_of(circle, &ctx.accounts.wallet.key())?;
 
-    // The Member PDA's seeds already make a second join impossible, because
-    // `init` fails on an account that exists. This check is the one that gives
-    // that failure the refusal code SPEC §5 names, instead of a raw Anchor
-    // "account already in use".
-    require!(
-        circle.joined_bitmap & (1u8 << turn) == 0,
-        OthelloError::AlreadyJoined
-    );
+    // A second join is stopped by the Member PDA's `init`, which Anchor runs
+    // during account validation, before this handler body. So there is no
+    // bitmap check here: one would be unreachable, and an unreachable guard
+    // reads like a live one to the next person. SPEC §5 names no
+    // `already_joined` code, and FLOWS §8 has no row for it, so nothing is
+    // owed a friendlier refusal than the one the runtime already gives.
 
     // SPEC §5: H(stock_raw) >= min_stock_cover, with the price fresh and the
     // stamp matching the mint. value_position enforces all three, so a stale or
