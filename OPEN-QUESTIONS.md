@@ -257,3 +257,40 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       Joshua would rather not advertise how it was built.
       NOT THE BUILD'S CALL. Joshua approves the list before anything is deleted, and it
       lands as one commit so it can be reverted whole.
+
+- [ ] The real xStocks carry a TransferHook extension with its program id UNSET (T09, 2026-09-23)
+      Reading the committed fixtures shows all four mints carry, besides
+      ScaledUiAmountConfig and TokenMetadata: PermanentDelegate, Pausable,
+      DefaultAccountState, ConfidentialTransferMint and TransferHook.
+
+      Right now none of them blocks Othello. DefaultAccountState is 1, thawed, so a
+      new vault is not born frozen. Pausable's paused byte is 0. TransferHook's
+      program id is all zeroes, so `transfer_checked` runs without invoking a hook.
+      That is the only reason T09's plain transfer_checked works against real bytes.
+
+      Each of those is the issuer's to change at any time, with no warning and no
+      action from us. If the issuer ever sets a hook program, every Othello transfer
+      of that mint fails until the program resolves the hook's extra account metas
+      through `spl_transfer_hook_interface`. If they pause, or flip the default
+      account state, the same. This is KNOWN-LIMITS L7 ("issuer powers not handled")
+      with the specific mechanism now named rather than assumed.
+
+      Not blocking the hackathon: the demo runs on devnet against S2's mirror mints,
+      which carry only ScaledUiAmountConfig. It is a mainnet question, for the design
+      session, alongside L7's "revisit at mainnet".
+
+- [ ] bankrun's bundled Token-2022 cannot parse a real xStock (T09, 2026-09-23, RESOLVED IN THE HARNESS)
+      solana-bankrun 0.4.0 embeds a Token-2022 that predates ScaledUiAmountConfig
+      (extension 25) and Pausable (26). Its TLV walk errors on an unknown
+      discriminant, so the program's own GetAccountDataSize returns
+      InvalidAccountData against the real mint and no ATA can be created for it.
+
+      Proved rather than inferred: a probe created an ATA for a bare Token-2022 mint
+      and failed for NFLXx in the same harness run.
+
+      Resolved by loading the real program from tests/fixtures/spl_token_2022.so,
+      dumped from devnet with `solana program dump`, which is the same provenance
+      rule the mint fixtures follow. Recorded because it is a standing trap: any
+      future test that moves a Token-2022 token depends on that file being loaded,
+      and a harness that quietly fell back to the bundled program would fail in a way
+      that looks like a program defect rather than a toolchain one.

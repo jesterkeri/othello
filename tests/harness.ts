@@ -115,7 +115,21 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   assertFresh(PROGRAM_SO);
   assertFresh(PROGRAM_IDL);
 
-  const context = await startAnchor(REPO, [], []);
+  // The bundled Token-2022 is too old to parse a real xStock. bankrun 0.4.0
+  // predates ScaledUiAmountConfig (extension 25) and Pausable (26), and the
+  // TLV walk errors on an unknown discriminant, so the program's own
+  // GetAccountDataSize returns InvalidAccountData against the real mint bytes.
+  // Proved by probe: a bare Token-2022 mint got an ATA, NFLXx did not.
+  //
+  // Our decoder reads those extensions, which is why T05 and T06 pass on the
+  // same bytes; it is the on-chain program that could not. So the real one is
+  // loaded from tests/fixtures/spl_token_2022.so, dumped from devnet with
+  // `solana program dump`, the same provenance rule the mint fixtures follow.
+  const context = await startAnchor(
+    REPO,
+    [{ name: "spl_token_2022", programId: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM) }],
+    [],
+  );
   const provider = new BankrunProvider(context);
   const idl = JSON.parse(readFileSync(resolve(REPO, PROGRAM_IDL), "utf8")) as anchor.Idl & {
     address: string;
@@ -462,4 +476,61 @@ export function priceFeedAddress(
     [Buffer.from("price"), stockMint.toBuffer()],
     program.programId,
   )[0];
+}
+
+export const ASSOCIATED_TOKEN_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+
+/** The ATA the Associated Token program derives for (owner, tokenProgram, mint). */
+export function ataAddress(
+  mint: anchor.web3.PublicKey,
+  owner: anchor.web3.PublicKey,
+  tokenProgram: string,
+): anchor.web3.PublicKey {
+  return anchor.web3.PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), new anchor.web3.PublicKey(tokenProgram).toBuffer(), mint.toBuffer()],
+    new anchor.web3.PublicKey(ASSOCIATED_TOKEN_PROGRAM),
+  )[0];
+}
+
+/**
+ * A token account holding `amount`, written by hand.
+ *
+ * The base layout is 165 bytes: mint(32) owner(32) amount(8) delegate(4+32)
+ * state(1) is_native(4+8) delegated_amount(8) close_authority(4+32).
+ *
+ * For Token-2022 the ATA program appends the account-type discriminant and an
+ * ImmutableOwner extension, so the account is 170 bytes and byte 165 is 2. A
+ * 165-byte account under Token-2022 would be read as a MINT, not an account,
+ * which is the same length confusion that stopped T08 creating vaults.
+ */
+export function tokenAccount(args: {
+  mint: anchor.web3.PublicKey;
+  owner: anchor.web3.PublicKey;
+  amount: bigint;
+  tokenProgram: string;
+}): { data: Buffer; owner: anchor.web3.PublicKey } {
+  const token2022 = args.tokenProgram === TOKEN_2022_PROGRAM;
+  const data = Buffer.alloc(token2022 ? 170 : 165);
+
+  args.mint.toBuffer().copy(data, 0);
+  args.owner.toBuffer().copy(data, 32);
+  data.writeBigUInt64LE(args.amount, 64);
+  data.writeUInt32LE(0, 72); // delegate: None
+  data[108] = 1; // AccountState::Initialized, so DefaultAccountState cannot freeze it
+  data.writeUInt32LE(0, 109); // is_native: None
+  data.writeBigUInt64LE(0n, 121); // delegated_amount
+  data.writeUInt32LE(0, 129); // close_authority: None
+
+  if (token2022) {
+    data[165] = 2; // AccountType::Account
+    data.writeUInt16LE(7, 166); // ExtensionType::ImmutableOwner
+    data.writeUInt16LE(0, 168); // length 0
+  }
+
+  return { data, owner: new anchor.web3.PublicKey(args.tokenProgram) };
+}
+
+/** Reads the `amount` field back out of a token account. */
+export function tokenAmount(data: Buffer): bigint {
+  return data.readBigUInt64LE(64);
 }

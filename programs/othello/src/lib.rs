@@ -38,6 +38,23 @@ pub const HARNESS_BUILD_MARKER: &str = "OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY";
 pub mod othello {
     use super::*;
 
+    /// A named member's consent: locks stock and deposits the guarantee in one
+    /// transaction (T09, SPEC §5). The seat is found by scanning the member
+    /// list, never passed in.
+    pub fn join_and_lock(ctx: Context<JoinAndLock>, stock_raw: u64) -> Result<()> {
+        instructions::join_and_lock::handle_join_and_lock(ctx, stock_raw)
+    }
+
+    /// Creator only, Forming only. Refunds go through `withdraw` (T09).
+    pub fn cancel_circle(ctx: Context<CreatorOnly>) -> Result<()> {
+        instructions::lifecycle::handle_cancel_circle(ctx)
+    }
+
+    /// Creator only, once every seat has joined (T09).
+    pub fn activate(ctx: Context<CreatorOnly>) -> Result<()> {
+        instructions::lifecycle::handle_activate(ctx)
+    }
+
     /// Creates the price feed for one stock mint (T04, SPEC §5).
     pub fn init_price_feed(ctx: Context<InitPriceFeed>) -> Result<()> {
         instructions::price_feed::handle_init_price_feed(ctx)

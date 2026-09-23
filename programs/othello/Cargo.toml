@@ -22,7 +22,12 @@ custom-panic = []
 harness = []
 
 [dependencies]
-anchor-lang = "~1.1"
+# `init-if-needed` is required for the ATA constraints in join_and_lock. The
+# feature's documented danger is re-initialisation resetting a program-owned
+# account's state; every use here is an Associated Token Account, whose address
+# is derived from (mint, authority) and which Anchor validates rather than
+# rewrites when it already exists. No Othello state account uses it.
+anchor-lang = { version = "~1.1", features = ["init-if-needed"] }
 # Default features already carry token_2022, token_2022_extensions,
 # spl-token-2022-interface and spl-pod, which T02/T03 need for
 # ScaledUiAmountConfig and PodF64. Resolved versions are recorded in DONE.md.

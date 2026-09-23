@@ -24,4 +24,17 @@ pub enum OthelloError {
     MintNotAllowed,
     #[msg("The guarantee is too small for the worst round this circle can reach")]
     GuaranteeBelowPeakNeed,
+    // T09.
+    #[msg("This invite is for a different wallet")]
+    NotAMember,
+    #[msg("This circle already started")]
+    CircleNotForming,
+    #[msg("That stock is worth less cover than this circle's minimum")]
+    CollateralBelowMinimum,
+    #[msg("Not everyone has joined yet")]
+    NotAllJoined,
+    #[msg("That wallet does not hold enough to do this")]
+    InsufficientBalance,
+    #[msg("This wallet has already joined this circle")]
+    AlreadyJoined,
 }

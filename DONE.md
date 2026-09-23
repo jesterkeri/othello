@@ -969,3 +969,76 @@ InvalidAccountData, because a Token-2022 account for an extension-carrying mint
 needs more than 165 bytes. That is KNOWN-LIMITS L7 confirmed on chain rather
 than assumed. Vault creation moves to T09, which has to solve the sizing either
 extension-aware or through the ATA program.
+
+## T09 - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: not run yet, attacks run: 0, test: tests/t09-join-and-lock.spec.ts. To run before T13
+
+join_and_lock, cancel_circle and activate. The Member account arrives with them,
+laid out exactly as SPEC §4 specifies it.
+
+verify: `anchor test`
+
+  T09 join_and_lock, cancel_circle, activate
+    ✔ creates the circle's Token-2022 vault that T08 could not, and locks into it
+    ✔ records the seat the CREATOR fixed, not one the joiner chose
+    ✔ I4: the stock vault equals the sum of member.stock_raw, member by member
+    ✔ refuses a wallet the creator never named
+    ✔ refuses stock worth less cover than the minimum, at the exact boundary
+    ✔ refuses a wallet that does not hold the stock or the guarantee
+    ✔ refuses a second join from the same wallet
+    ✔ refuses joining a circle that is no longer Forming
+    ✔ activate refuses until every seat has joined, then sets round 0 and the deadline
+    ✔ activate and cancel are the creator's alone
+    ✔ cancel_circle moves a Forming circle to Cancelled and refuses twice
+    ✔ cannot activate a cancelled circle
+
+  49 passing (10s)
+
+  cargo clippy --all-targets -- -D warnings: clean
+  cargo fmt --check: clean
+
+done when: refusal codes tested; I4 holds. Both. Every code SPEC §5 names for
+these three is covered: not_a_member, circle_not_forming,
+collateral_below_minimum, insufficient_balance and not_all_joined, plus
+Unauthorized on the two creator-only instructions. I4 is checked incrementally,
+member by member, with each member locking a DIFFERENT amount, so a vault that
+tracked a count or the last value rather than the sum would diverge on the
+second join.
+
+THE VAULT PROBLEM FROM T08 IS SOLVED. Anchor's `init` allocates a token
+account's base 165 bytes, which a Token-2022 account for an extension-carrying
+mint cannot use, and that is why create_circle could not make the vaults. Every
+token account here is an Associated Token Account instead, so the length is
+computed by the program that knows the answer. The first test asserts the vault
+does not exist before the first join and holds the stock after it, against the
+real NFLXx bytes at the real mainnet address, so the sizing is proved rather
+than asserted.
+
+This required `anchor-lang`'s `init-if-needed` feature. Its documented danger is
+re-initialisation resetting a program-owned account's state; every use here is
+an ATA, whose address is derived from (mint, authority) and which Anchor
+validates rather than rewrites when it already exists. No Othello state account
+uses it. The Member PDA uses plain `init`, which is what makes a second join
+impossible.
+
+TWO FINDINGS ABOUT THE REAL MINTS, both now in OPEN-QUESTIONS.
+
+The real xStocks carry TransferHook, Pausable, DefaultAccountState,
+PermanentDelegate and ConfidentialTransferMint as well as ScaledUiAmountConfig.
+None blocks Othello today, and only because of three values the issuer controls:
+the hook program id is all zeroes, paused is 0, and the default account state is
+thawed. A plain transfer_checked is correct only while that holds.
+
+And bankrun's bundled Token-2022 cannot parse those mints at all. It predates
+extensions 25 and 26, and its TLV walk errors on an unknown discriminant, so
+GetAccountDataSize returns InvalidAccountData and no ATA can be created. Proved
+with a probe in the same harness run: a bare Token-2022 mint got an ATA, NFLXx
+did not. tests/fixtures/spl_token_2022.so is the real program, dumped from
+devnet, loaded by the harness. Without it these twelve tests cannot run, and the
+failure would read like a defect in Othello rather than in the toolchain.
+
+NOT DONE: the adversary has not attacked this yet. It has found a real defect in
+every task it has been run on, so this is a gap and not a clean bill. Before
+T13.

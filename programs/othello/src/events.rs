@@ -38,3 +38,33 @@ pub struct PricesSet {
     pub priced_for_multiplier: u64,
     pub updated_at: i64,
 }
+
+/// T09. ARCHITECTURE:85 requires an event per state change.
+#[event]
+pub struct MemberJoined {
+    pub circle: Pubkey,
+    pub member: Pubkey,
+    pub wallet: Pubkey,
+    pub turn: u8,
+    pub stock_raw: u64,
+    /// H at the moment of joining, so an indexer can see the join cleared the
+    /// minimum without re-deriving it from prices that have since moved.
+    pub stock_cover: u64,
+    pub guarantee: u64,
+    pub joined_bitmap: u8,
+}
+
+#[event]
+pub struct CircleActivated {
+    pub circle: Pubkey,
+    pub round: u8,
+    pub round_deadline: i64,
+    pub reserve_total: u64,
+}
+
+#[event]
+pub struct CircleCancelled {
+    pub circle: Pubkey,
+    pub joined_bitmap: u8,
+    pub reserve_total: u64,
+}
