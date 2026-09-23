@@ -113,9 +113,10 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
           ? "Every seat has been paid"
           : "This circle was cancelled";
 
-  // SPEC §7's halt arithmetic: what the next gate needs is what remains plus
-  // what it is short by.
-  const gateNeeded = d.available + c.nextGateShortBy;
+  // SPEC §7's halt arithmetic. SPEC.md:126 is explicit that the gate's own word
+  // is `remaining`, R - L, not the Guarantee panel's `free`, R - L - allocated.
+  // Printing free here would understate what the reserve holds.
+  const gateNeeded = d.remains + c.nextGateShortBy;
 
   return (
     <ThemeRoot className={s.root}>
@@ -163,7 +164,7 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
               kind="refusal"
               mark="!"
               title="Payouts paused."
-              text={`The next payout needs ${formatUsdc(gateNeeded)} ${USDC_SUFFIX} of reserve and ${formatUsdc(d.available)} remains. Top up ${formatUsdc(c.nextGateShortBy)} ${USDC_SUFFIX}, returned pro rata at the end, minus any default losses.`}
+              text={`The next payout needs ${formatUsdc(gateNeeded)} ${USDC_SUFFIX} of reserve and ${formatUsdc(d.remains)} remains. Top up ${formatUsdc(c.nextGateShortBy)} ${USDC_SUFFIX}, returned pro rata at the end, minus any default losses.`}
             />
           )}
           {isActive && !d.funded && !d.repricing && (
@@ -269,15 +270,15 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
 
         <div className={s.cards}>
           <div className={s.cardReserve}>
-            <span className={s.micro}>Shared reserve</span>
+            <span className={s.micro}>Shared reserve, free</span>
             <span className={`${s.display} ${s.cardBig}`}>
-              {formatUsdc(d.available, 0)} {USDC_SUFFIX}
+              {formatUsdc(d.free, 0)} {USDC_SUFFIX}
             </span>
             <div className={s.bar} aria-hidden>
               <span
                 className={s.barFill}
                 style={{
-                  width: `${c.reserveTotal > 0 ? Math.round((d.available / c.reserveTotal) * 100) : 0}%`,
+                  width: `${c.reserveTotal > 0 ? Math.round((d.free / c.reserveTotal) * 100) : 0}%`,
                 }}
               />
             </div>
@@ -289,6 +290,14 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
               <span className={s.row}>
                 <span className={s.rowLabel}>Spent on defaults</span>
                 <span className={s.rowValue}>{formatUsdc(c.reserveLosses)}</span>
+              </span>
+              <span className={s.row}>
+                <span className={s.rowLabel}>Allocated to cover</span>
+                <span className={s.rowValue}>{formatUsdc(c.reserveAllocated)}</span>
+              </span>
+              <span className={s.row}>
+                <span className={s.rowLabel}>Remains, the gate's figure</span>
+                <span className={s.rowValue}>{formatUsdc(d.remains)}</span>
               </span>
               <span className={s.row}>
                 <span className={s.rowLabel}>Next payout needs</span>

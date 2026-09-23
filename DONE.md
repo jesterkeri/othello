@@ -1151,3 +1151,73 @@ ALSO: design/OTHELLO-STYLE.md moved to app/OTHELLO-STYLE.md. AGENTS.md says
 S3 commit was a violation of that even though nothing existing was changed. The
 reference in Circle.module.css was updated with it. If the design session wants
 it under design/, that is theirs to place, not the build's.
+
+## S4 correction r2 - 2026-09-23
+
+reviewed: n/a (frontend; corrections raised by Joshua before merge, applied and re-verified)
+adversary: not run, attacks run: 0, test: none. Same gap as S3 and S4
+
+Joshua held the merge and named two factual errors. Both were real. Checking
+the second against the SPEC found a third.
+
+1. THE GUARANTEE WAS THE BOUNDARY, NOT THE DEMO'S. The fixture used g = 30 and
+   reserve 150. SPEC.md:134 states the seeded demo as g = 35, reserve 175,
+   "25 of slack so one base unit of price drift cannot pause the demo".
+
+   The S4 entry above derived 30 from SPEC.md:133's peak table and called it the
+   demo's value. That was a category error: n x g >= peak makes 30 the SMALLEST
+   guarantee create_circle will accept, which is what
+   peak_is_the_boundary_between_g29_and_g30 pins. What the demo seeds is a
+   separate, deliberately larger choice. The arithmetic was right and the
+   conclusion did not follow from it.
+
+2. "Create a circle" routes to /circle/new, which is a real 404. Left as it is,
+   on Joshua's instruction: he is having the design session produce a true 404
+   page. The route already falls through to the app's not-found, so that page
+   drops in at app/src/app/not-found.tsx with no routing change.
+
+3. FOUND WHILE CHECKING 1: the paused banner printed the wrong quantity.
+   SPEC.md:126 separates two numbers and tells the UI to keep the words apart:
+
+     free    = R - L - reserve_allocated   the Guarantee panel
+     remains = R - L                       the gate's own `remaining`
+
+   The banner printed free where the program means remains, which understates
+   what the reserve holds in exactly the message asking someone for money.
+   lib/circle.ts now exposes both as reserveFree and reserveRemains, the gate
+   banner uses remains, the reserve card is labelled "Shared reserve, free" and
+   lists Allocated and Remains as separate rows.
+
+   The paused fixture moved with it: SPEC §7 wants remaining = 70, and remaining
+   is R - L, so with reserve 175 the losses are 105, not 80. Ada's own 35 USDC
+   guarantee went first, then 70 from the pool.
+
+warn_bps 11000 (SPEC.md:134) was missing from CircleView entirely and is added.
+
+Also in this batch, both from Joshua's list:
+
+  app/OTHELLO-STYLE.md line 65 said "Frame maxes at 1240px" while the code says
+  1440. The doc now says 1440 and records that it was raised on 2026-09-22 and
+  why. Code and doc agree again.
+
+  Dark mode left a light strip behind the frame when scrolling past either end.
+  Each screen wrote its variables onto its own root element, but body and the
+  browser's overscroll area sit outside it and read :root, which layout.tsx
+  renders with the light default. lib/applyTheme.ts mirrors the variables onto
+  document.documentElement, and sets colorScheme so the scrollbar follows.
+  Wired into both ThemeRoot and Landing.
+
+verify: `pnpm -C app build` green, 12/12 static pages, `tsc --noEmit` clean, and
+read back out of the served HTML:
+
+  paused     "The next payout needs 75.00 USDC of reserve and 70.00 remains"
+  paused     "Top up 5.00 USDC"
+  active     175.00   reserve total, 5 x 35
+  active     112      free, 175 - 63 allocated
+  forming    "35.00 USDC into the shared reserve"
+  active     132.00 USDC and 130%, both unchanged by the above
+
+Merge stays held. Joshua's decision: stack S5 on this branch and merge the
+frontend as one piece, then one targeted frontend review plus the real-person
+UX check SPEC G4 requires, before submission. A broad Codex pass now would be
+stale the moment the join flow lands.

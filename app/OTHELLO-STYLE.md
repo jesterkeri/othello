@@ -62,7 +62,7 @@ name it, rename or delete later. Persisted under the single key `othello.theme`.
 
 ## Layout
 
-Fluid, no fixed widths. Frame maxes at 1240px. Nav is a three-column grid so the pill group shrinks
+Fluid, no fixed widths. Frame maxes at 1440px (raised from the handoff's 1240px on 2026-09-22, chosen from the rendered page). Nav is a three-column grid so the pill group shrinks
 between logo and actions. Everything else is `flex-wrap` with `flex-basis` + `min-width:0`, or
 `repeat(auto-fit,minmax(248px,1fr))`. Segmented controls scroll horizontally rather than overflow.
 

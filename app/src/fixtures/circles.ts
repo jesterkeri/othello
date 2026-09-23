@@ -9,18 +9,20 @@
  * Every parameter is the demo circle's own, derived from the SPEC rather than
  * chosen:
  *
- *   SPEC §10 G2 reproduces the peak table as "needs 140, 150, 30, 0" and
- *   requires g = 29 to be refused. Four terms means n = 5, and the peak is 150,
- *   so n x g >= peak puts the guarantee at exactly 30 USDC (5 x 29 = 145 < 150).
- *   Solving the four terms with coverage_bps = 13000 (SPEC.md:44) gives
- *   contribution x coverage = 65 USDC, so contribution = 50 USDC, and
- *   min_stock_cover = 120 USDC.
+ *   SPEC.md:134, "Demo circle (G5 seed script, r3)", states every one of them:
+ *   n=5, c=50 USDC, g=35 USDC, haircut 2000, coverage 13000, warn 11000,
+ *   min_stock_cover 120 USDC, round 120 s, grace 60 s, max_price_age 691_200,
+ *   wrapper 150, share 150, multiplier 1.0, and 1.1 token locked per member
+ *   giving EXEC = FUND = 165 and H = 132.
  *
- *   I12's worked example (1.1 token, 150/150, multiplier 10, share 15, H = 132)
- *   fixes the haircut: min(165, 165) x (1 - h) = 132, so haircut_bps = 2000.
- *
- *   D10 fixes 120 s rounds and 60 s grace. SPEC.md:48 fixes max_price_age at
- *   691_200, eight days, so judging never sees a stale banner.
+ *   The guarantee is 35, NOT the 30 that the peak check's boundary allows.
+ *   SPEC.md:133's peak table gives needs 140, 150, 30, 0, so the peak is 150 and
+ *   n x g >= 150 makes 30 the MINIMUM legal guarantee. SPEC.md:134 then chooses
+ *   35 on purpose: "reserve 175 vs peak need 150: 25 of slack so one base unit
+ *   of price drift cannot pause the demo". An earlier version of this file
+ *   derived 30 from the boundary and called it the demo's value, which confused
+ *   the smallest guarantee that passes create_circle with the one the demo
+ *   actually seeds.
  */
 
 import type { CircleView, MemberView } from "@/lib/circle";
@@ -88,7 +90,8 @@ const base: CircleView = {
   graceSecs: 60,
   haircutBps: 2000,
   coverageBps: 13000,
-  guaranteePerMember: 30 * USDC,
+  warnBps: 11000,
+  guaranteePerMember: 35 * USDC,
   minStockCover: 120 * USDC,
   maxPriceAge: 691_200,
 
@@ -102,8 +105,9 @@ const base: CircleView = {
   receivedBitmap: 0b00001,
   defaultedBitmap: 0,
 
-  // 5 members x 30 USDC guarantee.
-  reserveTotal: 150 * USDC,
+  // 5 members x 35 USDC guarantee. SPEC.md:134: 175 against a peak need of 150,
+  // so 25 of slack.
+  reserveTotal: 175 * USDC,
   reserveLosses: 0,
   // Ada's need_i, the only non-zero one at this round.
   reserveAllocated: 63 * USDC,
@@ -139,7 +143,7 @@ export const CIRCLE_STATES = {
     joinedBitmap: 0b00011,
     paidBitmap: 0,
     receivedBitmap: 0,
-    reserveTotal: 60 * USDC,
+    reserveTotal: 70 * USDC,
     heldContributions: 0,
     reserveAllocated: 0,
     members: members(5, () => 0).map((m) =>
@@ -162,9 +166,10 @@ export const CIRCLE_STATES = {
     // Ada received in round 0 then defaulted; Tunde received in round 1.
     receivedBitmap: 0b00011,
     defaultedBitmap: 0b00001,
-    // The waterfall took Ada's own 30 USDC guarantee first, then 50 from the
-    // pooled reserve, so 70 of the 150 remains.
-    reserveLosses: 80 * USDC,
+    // SPEC §7's halt example needs the gate's `remaining`, which SPEC.md:126
+    // defines as R - L, to be exactly 70. The waterfall took Ada's own 35 USDC
+    // guarantee first, then 70 from the pooled reserve: 175 - 105 = 70.
+    reserveLosses: 105 * USDC,
     // Ada is defaulted, so her allocation is released and her obligations are
     // prepaid. Tunde owes 50 x (5 - 3) = 100, and ceil(100 x 1.3) = 130 is under
     // his 132 of stock cover, so he needs no reserve. Nothing is allocated.
@@ -210,7 +215,7 @@ export const CIRCLE_STATES = {
     joinedBitmap: 0b00011,
     paidBitmap: 0,
     receivedBitmap: 0,
-    reserveTotal: 60 * USDC,
+    reserveTotal: 70 * USDC,
     reserveAllocated: 0,
     heldContributions: 0,
     members: members(5, () => 0),

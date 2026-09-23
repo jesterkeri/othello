@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 
+import { applyThemeToDocument } from "@/lib/applyTheme";
 import {
   PALETTES,
   customToProfile,
@@ -47,10 +48,16 @@ export function ThemeRoot({
   const active: Profile = choice.startsWith("c")
     ? (mine[Number(choice.slice(1))] ?? PALETTES[0]!)
     : (PALETTES[Number(choice.slice(1))] ?? PALETTES[0]!);
-  const vars = useMemo(() => themeVars(active, dark), [active, dark]) as CSSProperties;
+  const vars = useMemo(() => themeVars(active, dark), [active, dark]);
+
+  // body and the overscroll area sit outside this element, so they need the
+  // same variables or dark mode shows a light strip behind the frame.
+  useEffect(() => {
+    applyThemeToDocument(vars, mode);
+  }, [vars, mode]);
 
   return (
-    <div className={className} data-theme={mode} style={vars}>
+    <div className={className} data-theme={mode} style={vars as CSSProperties}>
       {children}
     </div>
   );

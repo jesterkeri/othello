@@ -64,6 +64,8 @@ export type CircleView = {
   graceSecs: number;
   haircutBps: number;
   coverageBps: number;
+  /** SPEC.md:134, demo 11000. 10000 <= warn_bps < coverage_bps. */
+  warnBps: number;
   guaranteePerMember: number;
   minStockCover: number;
   maxPriceAge: number;
@@ -151,9 +153,22 @@ export function secondsToGraceEnd(c: CircleView, now: number): number {
   return c.roundDeadline + c.graceSecs - now;
 }
 
-/** Reserve still available to cover a gate, after losses and allocations. */
-export function reserveAvailable(c: CircleView): number {
+/**
+ * SPEC.md:126 makes these two different numbers and tells the UI to keep the
+ * words apart, because confusing them misstates a refusal:
+ *
+ *   free    = R - L - reserve_allocated   the Guarantee panel's figure
+ *   remains = R - L                       the gate's own `remaining`
+ *
+ * The gate compares the uncapped sum, so a paused banner that prints `free`
+ * where the program means `remains` understates what is there.
+ */
+export function reserveFree(c: CircleView): number {
   return Math.max(0, c.reserveTotal - c.reserveLosses - c.reserveAllocated);
+}
+
+export function reserveRemains(c: CircleView): number {
+  return Math.max(0, c.reserveTotal - c.reserveLosses);
 }
 
 export function formatUsdc(base: number, dp = 2): string {
@@ -195,7 +210,10 @@ export type CircleDerived = {
   recipient: MemberView | undefined;
   missing: number;
   funded: boolean;
-  available: number;
+  /** R - L - allocated. The Guarantee panel. */
+  free: number;
+  /** R - L. What the gate calls `remaining`. */
+  remains: number;
   joined: number;
   toDeadline: number;
   toGraceEnd: number;
@@ -211,7 +229,8 @@ export function derive(c: CircleView, now: number): CircleDerived {
     recipient: recipient(c),
     missing: missingContributions(c),
     funded: roundFunded(c),
-    available: reserveAvailable(c),
+    free: reserveFree(c),
+    remains: reserveRemains(c),
     joined: countSeats(c.joinedBitmap, c.n),
     toDeadline: secondsToDeadline(c, now),
     toGraceEnd: secondsToGraceEnd(c, now),

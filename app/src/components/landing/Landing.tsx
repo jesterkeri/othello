@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import s from './Landing.module.css';
+import { applyThemeToDocument } from '@/lib/applyTheme';
 import {
   PALETTES, SLOT_LABELS, customToProfile, hsl, huesFor, huesFromBase, loadTheme, preview, saveTheme, themeVars,
   type CustomProfile, type Profile, type ThemeMode,
@@ -116,7 +117,14 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
   const dark = mode === 'dark';
   const mine = useMemo(() => custom.map(customToProfile), [custom]);
   const active: Profile = choice.startsWith('c') ? mine[Number(choice.slice(1))] ?? PALETTES[0]! : PALETTES[Number(choice.slice(1))] ?? PALETTES[0]!;
-  const vars = useMemo(() => themeVars(active, dark), [active, dark]) as CSSProperties;
+  const vars = useMemo(() => themeVars(active, dark), [active, dark]);
+
+  // body and the overscroll area are outside this component's root element, so
+  // they need the same variables or dark mode leaves a light strip behind the
+  // frame at both ends of the page.
+  useEffect(() => {
+    applyThemeToDocument(vars, mode);
+  }, [vars, mode]);
 
   const draftHues = huesFor({ dark: draft }, dark);
   const draftDesk = preview({ brand: draft[2]!, dark: draft }, dark).desk;
@@ -158,7 +166,7 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
   }
 
   return (
-    <div className={s.root} data-theme={mode} style={vars}>
+    <div className={s.root} data-theme={mode} style={vars as CSSProperties}>
       <div className={s.frame}>
 
         <header className={s.nav}>
