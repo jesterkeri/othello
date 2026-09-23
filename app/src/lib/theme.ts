@@ -128,3 +128,35 @@ export function loadTheme(): StoredTheme | null {
 export function saveTheme(t: StoredTheme) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(t)); } catch { /* storage unavailable */ }
 }
+
+/**
+ * Inner pages (Create, 404). Accents stay at full strength in both modes.
+ * Desk carries the profile hue; the frame is always dark; cards are neutral.
+ */
+export function innerVars(set: { brand: string; dark: string[] }, dark: boolean): Record<string, string> {
+  const b = set.brand, a = set.dark[0]!;
+  const v: Record<string, string> = {
+    '--line': '#0B0B0B',
+    '--frame': '#0B0B0B',
+    '--card': '#0B0B0B',
+    '--onCard': '#FBF9F2',
+    '--cardMuted': '#A9A596',
+    '--cardLine': 'rgba(255,255,255,.18)',
+    '--chip': '#FFFFFF',
+    '--sheet': '#FFFFFF',
+    '--sheetMuted': '#5C594F',
+    '--railMuted': mix(atLum(b, 0.45), '#ADA899', 0.5),
+    '--railHover': '#1C1C1B',
+  };
+  set.dark.forEach((h, i) => { v[`--${SLOTS[i]!}`] = h; v[`--${SLOTS[i]!}Ink`] = inkFor(h); });
+  v['--title'] = dark || lum(a) < 0.3 ? a : atLum(a, 0.1);
+  if (dark) Object.assign(v, {
+    '--desk': atLum(b, 0.075), '--panel': mix(atLum(b, 0.012), '#141414', 0.55), '--onPanel': '#FBF9F2',
+    '--panelMuted': mix(atLum(b, 0.45), '#ADA899', 0.5), '--raised': '#1C1C1B', '--chipHover': atLum(b, 0.8),
+  });
+  else Object.assign(v, {
+    '--desk': atLum(b, 0.82), '--panel': mix(atLum(b, 0.9), '#F4F2EC', 0.45), '--onPanel': '#0B0B0B',
+    '--panelMuted': mix(atLum(b, 0.12), '#5C594F', 0.5), '--raised': mix(atLum(b, 0.8), '#E6E2D9', 0.5), '--chipHover': atLum(b, 0.9),
+  });
+  return v;
+}

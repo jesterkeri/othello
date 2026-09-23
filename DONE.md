@@ -1292,3 +1292,63 @@ with the reason stated next to them. FLOWS §2.4 gives Viewer one verb, view, an
 both of these are transactions. The async axis (submitting, confirming) and the
 wrong-network and low-balance states are not rendered, because none of them can
 occur without a wallet. They arrive with the wallet, not before it.
+
+## Create and 404 - 2026-09-23
+
+reviewed: n/a (frontend, no money path; Codex reviews the program)
+adversary: not run, attacks run: 0, test: none. app/ still has no test suite; the gap is four tasks old now
+
+The design session's handoff-create-v2: Create, the 404, a shared Shell, a
+Recharts peak-need chart, and an extended theme.ts. Installed rather than
+re-authored, which is the standing correction from S3.
+
+verify: `pnpm -C app build`
+  └ ○ /circle/new    115 kB   220 kB
+  tsc --noEmit clean
+
+  /                       200
+  /circle/new             200   was a REAL 404 until this landed
+  /circle/demo            200
+  /definitely-not-a-page  404   and now renders the designed page
+
+Copy read back from the served HTML: "New circle", "Cancel", "Contribution",
+"Round length", "Grace", "Haircut", and "Connect wallet" where FLOWS' "Create
+circle" would be. That last one is not a miss: the component reads its own
+walletAddress prop, and with no wallet it shows Connect wallet and refuses to
+submit. That is the truth about what the app can do today, and it is the
+component's behaviour rather than anything this build stubbed.
+
+FOUR CHANGES TO THE HANDOFF, and no others.
+
+theme.ts was APPENDED to, not replaced. The new file is byte-identical to the
+installed one except that it lacks the eight non-null assertions this repo's
+noUncheckedIndexedAccess needs, and adds innerVars(). Overwriting would have
+silently reintroduced eight type errors, so innerVars was appended with its own
+two assertions and the rest left alone.
+
+Five more assertions in Create, NeedChart and Shell, same reason. Each is an
+index bounded by the array it reads: rows, probs and addrs are all length n,
+payload.length is checked on the line above, PALETTES[1] is a literal.
+
+`composes: display` on FOUR COMPOUND SELECTORS broke the build outright:
+
+  Error: composition is only allowed when selector is single :local class name
+  not in ":local(.seat) span"
+
+CSS Modules allows composes only on a single local class. .seat span, .track
+span, .add span and .invites b each got the composed declarations inlined
+instead, placed FIRST so that a rule which then overrides font-stretch still
+wins. The single-class uses are untouched.
+
+The 404's createHref defaults to /circles/new and this app routes /circle/new,
+so the page passes the right value rather than editing the component. The design
+session owns that file and will hand it again.
+
+recharts added as a dependency, because NeedChart is the design's own chart and
+re-drawing it as inline SVG would be re-authoring.
+
+FRONTEND DEBT, RECORDED IN TASKS.md RATHER THAN FIXED. The handoff ships a
+shared Shell, and Create and the 404 use it. Circle, Join and Position were
+hand-built before Shell existed and carry their own frame, so the app now has
+TWO shells and a judge clicking through will see both. Moving those three onto
+Shell is the right fix and is not a small one.

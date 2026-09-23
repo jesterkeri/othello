@@ -2,7 +2,9 @@
   "name": "othello-app",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,7 +15,8 @@
   "dependencies": {
     "next": "15.5.4",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
