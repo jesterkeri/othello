@@ -21,7 +21,7 @@ use anchor_spl::token_interface::{
 };
 
 use crate::errors::OthelloError;
-use crate::events::PotReleased;
+use crate::events::{PotRefused, PotReleased, RoundNotFunded};
 use crate::gate::{coverage_bps, need, obligations, obligations_next_round, GateOutcome};
 use crate::state::{Circle, CircleStatus, Member, PriceFeed};
 use crate::valuation::value_position;
@@ -117,6 +117,7 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
     // Every seat must be paid, or defaulted with the escrow standing in for it.
     // I6: the pot is released only when every seat is funded one way or other.
     let mut escrow_owed: u64 = 0;
+    let mut missing_seats: u8 = 0;
     for turn in 0..n {
         let bit = 1u8 << turn;
         let paid = circle.paid_bitmap & bit != 0;
@@ -125,13 +126,32 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
         if paid {
             continue;
         }
-        require!(defaulted, OthelloError::RoundNotFunded);
+        if !defaulted {
+            missing_seats |= bit;
+            continue;
+        }
 
         escrow_owed = escrow_owed
             .checked_add(circle.contribution)
             .ok_or(OthelloError::ValuationOverflow)?;
     }
-    require!(circle.escrow >= escrow_owed, OthelloError::RoundNotFunded);
+
+    // SPEC.md:204 and :106. The whole payload, before the error, so a simulated
+    // refusal tells the UI which seats are missing rather than only that some
+    // are. The loop runs to completion first for the same reason: reporting the
+    // first unpaid seat would understate the ask.
+    if missing_seats != 0 || circle.escrow < escrow_owed {
+        emit!(RoundNotFunded {
+            circle: circle.key(),
+            round,
+            missing_seats,
+            escrow: circle.escrow,
+            escrow_needed: escrow_owed,
+            escrow_deficit: circle.escrow_deficit,
+            short_by: circle.next_gate_short_by,
+        });
+        return err!(OthelloError::RoundNotFunded);
+    }
 
     // Read every seat once. value_position enforces freshness and the D5 stamp
     // match, so a stale or repricing feed refuses the payout here rather than
@@ -220,20 +240,26 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
     };
 
     if !outcome.passes() {
-        // The numbers go into the log so a refusal is actionable, per NFR-2.
-        // SPEC §5 requires the payload; until Anchor can return data on an
-        // error, the log is where the client reads it.
-        msg!(
-            "gate refused: needed={} remaining={} short_by={} recipient_gap={} others_need={} recipient_cover={} escrow_deficit={}",
-            outcome.needed,
-            outcome.remaining,
-            outcome.short_by(),
-            outcome.recipient_gap,
-            outcome.others_need(),
-            outcome.recipient_cover,
-            outcome.escrow_deficit,
-        );
-        return Err(outcome.refusal(circle.min_stock_cover).into());
+        // SPEC.md:204: the payload is an EVENT, not a log line. Both reach the
+        // client through the same transaction logs, but an event is typed and
+        // in the IDL, and a log line is free text nothing protects.
+        let refusal = outcome.refusal(circle.min_stock_cover);
+
+        emit!(PotRefused {
+            circle: circle.key(),
+            round,
+            recipient: ctx.accounts.recipient.key(),
+            needed: outcome.needed,
+            remaining: outcome.remaining,
+            short_by: outcome.short_by(),
+            recipient_gap: outcome.recipient_gap,
+            others_need: outcome.others_need(),
+            recipient_cover: outcome.recipient_cover,
+            escrow_deficit: outcome.escrow_deficit,
+            coverage_too_low: matches!(refusal, OthelloError::CoverageTooLow),
+        });
+
+        return Err(refusal.into());
     }
 
     let pot = circle
@@ -292,11 +318,12 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
         .escrow
         .checked_sub(escrow_owed)
         .ok_or(OthelloError::ValuationOverflow)?;
-    for turn in 0..n {
-        if circle.defaulted_bitmap & (1u8 << turn) != 0 {
-            circle.paid_bitmap |= 1u8 << turn;
-        }
-    }
+    // SPEC §5 sets the paid bit for each escrow-covered defaulted seat here.
+    // It was written and is now gone, because `paid_bitmap = 0` four lines
+    // below zeroes the whole thing for the new round: the writes could never be
+    // read, and dead state writes read as live ones to whoever comes next. The
+    // part of that clause that DOES outlive the round is rounds_paid++, which
+    // happens on the Member above.
 
     circle.reserve_allocated = needed;
     circle.received_bitmap |= 1u8 << round;

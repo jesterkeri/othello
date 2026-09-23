@@ -34,6 +34,7 @@ import {
   splMintAccount,
   tokenAccount,
   tokenAmount,
+  decodeEvent,
   type Harness,
 } from "./harness.ts";
 
@@ -509,6 +510,74 @@ describe("T10 contribute and release_pot", () => {
       .rpc();
 
     assert.equal(await h.refusal(promise), "BadMemberAccounts");
+  });
+
+  /**
+   * SPEC.md:204: "Every refusal payload field named in section 5 is emitted as
+   * an event before the error returns, so the UI can print the numbers."
+   *
+   * This was a msg! line until the T10-T12 adversarial pass found it. Both a
+   * log and an event arrive in the same transaction logs, so the distinction
+   * looks cosmetic until you are the client: an event is typed, declared in
+   * the IDL and decoded for you, while a log line is free text you parse by
+   * hand and nothing protects when it changes.
+   *
+   * The transaction fails, so the event never lands on chain. FLOWS §9
+   * previews every transaction by simulation, and a simulated failure returns
+   * its logs, which is exactly where the Paused screen reads its numbers from.
+   */
+  it("SPEC.md:204: a refused gate emits its whole payload as an event", async () => {
+    await setUp();
+    for (const w of wallets) await contribute(w);
+    await setPrices(h, stockMint, {
+      wrapper: 50 * USDC,
+      share: 50 * USDC,
+      stamp: CURRENT,
+      expected: ONE_X,
+    });
+
+    const logs = await h.failedLogs(release(creator, wallets[0]!.publicKey));
+    const event = decodeEvent<{
+      needed: { toNumber(): number };
+      remaining: { toNumber(): number };
+      shortBy: { toNumber(): number };
+      recipientGap: { toNumber(): number };
+      othersNeed: { toNumber(): number };
+      recipientCover: { toNumber(): number };
+      coverageTooLow: boolean;
+    }>(h.program, "potRefused", logs);
+
+    assert.ok(event, "a PotRefused event was emitted");
+    // H is 44 at 50 a token, the recipient owes 200, so 260 is required.
+    assert.equal(event.recipientCover.toNumber(), 44 * USDC);
+    assert.equal(event.needed.toNumber(), 216 * USDC, "260 required less 44 of cover");
+    assert.equal(event.remaining.toNumber(), 175 * USDC, "R - L, the gate's own figure");
+    assert.equal(event.shortBy.toNumber(), 41 * USDC, "216 - 175");
+    assert.equal(event.recipientGap.toNumber(), 216 * USDC);
+    assert.equal(event.othersNeed.toNumber(), 0, "nobody else has received yet");
+    assert.equal(event.coverageTooLow, true, "so their stock is the whole gap");
+  });
+
+  it("SPEC.md:106: an unfunded round emits missing_seats and the escrow figures", async () => {
+    await setUp();
+    // Seats 1, 2 and 4 pay; 3 and 5 do not.
+    for (const seat of [0, 1, 3]) await contribute(wallets[seat]!);
+
+    const logs = await h.failedLogs(release(creator, wallets[0]!.publicKey));
+    const event = decodeEvent<{
+      missingSeats: number;
+      escrow: { toNumber(): number };
+      escrowNeeded: { toNumber(): number };
+    }>(h.program, "roundNotFunded", logs);
+
+    assert.ok(event, "a RoundNotFunded event was emitted");
+    assert.equal(
+      event.missingSeats,
+      0b10100,
+      "seats 3 and 5, named individually rather than counted",
+    );
+    assert.equal(event.escrow.toNumber(), 0);
+    assert.equal(event.escrowNeeded.toNumber(), 0, "nobody has defaulted, so none is owed");
   });
 
   it("refuses paying anyone but the seat whose turn it is", async () => {

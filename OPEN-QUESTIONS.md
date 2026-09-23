@@ -351,3 +351,23 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       round is still absurd and still legal. If SPEC wants a human bound, it names it and
       the build enforces that instead.
 
+
+- [ ] KNOWN-LIMITS L4 names two routes to a stuck Active circle; there is a third (T10-T12 adversary, 2026-09-23)
+      L4 says an Active circle that can never complete is "unreachable without a default or
+      price fall". A stale feed is neither.
+
+      If the price ages past max_price_age, or the mint's multiplier moves and nobody
+      re-prices, then release_pot and update_coverage both refuse for ever, while
+      contribute keeps accepting money: SPEC.md:105 deliberately gives contribute no price
+      check, because a late payment before a default is declared is a cure. So members can
+      go on funding a circle that cannot pay anyone.
+
+      It resolves the moment the admin sets a matching price, which is why this is L4's
+      justification being incomplete rather than wrong, and L1 already owns the
+      single-admin dependency. But on a real xStock the multiplier change is scheduled by
+      the ISSUER, not by Othello's admin, so the trigger sits outside every party in the
+      circle, and the window between the issuer's change and the admin noticing is not
+      bounded by anything.
+
+      Design-level, for the design session. Not a defect in T10 to T12, and the build has
+      not changed L4 or anything else it owns.

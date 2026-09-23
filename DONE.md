@@ -1381,3 +1381,76 @@ which strips types without checking them, so tests/*.spec.ts had accumulated
 five type errors: harness.ts's Callable type never declared remainingAccounts,
 which every gate instruction uses. `pnpm exec tsc --noEmit` is now part of this
 entry's verification and is clean.
+
+## T10-T12 adversary - 2026-09-23
+
+reviewed: n/a (covered by the Gate 2 Codex review at T13)
+adversary: NO DEFECT FOUND, attacks run: ~40 across the gate, release_pot state, update_coverage, withdraw, prices, authority and arithmetic. test: tests/t10-adversary.spec.ts (integrated, 9 cases, passing)
+
+Briefed differently from T09's pass, on purpose. That one found the
+`guarantee = 2^63` behaviour, recorded "No wrap", and passed the change, while
+Codex took the same input and called the circle bricked. So this brief required
+two answers per attack: did anything move wrongly, AND what IS the circle
+afterwards, can it still reach its end, is anyone's money stuck.
+
+It broke nothing. Its nine tests are integrated and pass:
+
+  anchor test   85 passing  (74 before its tests, 83 with them, 85 with the two
+                             refusal-event tests below)
+  cargo test    43 passed; 0 failed
+  clippy, fmt, tsc   clean
+
+Two of its cases are worth naming. It pins the gate AT ONE BASE UNIT, with
+parameters chosen so the requirement lands on 177_773_331.5556 and the counted
+value equals the price exactly: at cover 2_773_332 the pot must pay and at
+2_773_331 it must refuse. A gate that floored the requirement, or compared with
+`<`, moves that boundary by one unit and fails one side. The existing T10 tests
+move the price in whole dollars and would not have noticed. And it wrote a
+DIFFERENTIAL SWEEP over 16 prices, re-implementing SPEC §4 and §5 in the test
+and asserting the program's pass/refuse decision, its reserve_allocated and its
+choice between CoverageTooLow and ReserveOvercommitted, at every price.
+
+ONE REAL FINDING, WHICH IT GRADED COSMETIC AND I DID NOT.
+
+SPEC.md:204: "Every refusal payload field named in section 5 is emitted as an
+event before the error returns, so the UI can print the numbers." The gate
+refusal used `msg!` and `round_not_funded` emitted nothing at all, though
+SPEC.md:106 specifies five fields for it.
+
+It called this cosmetic because every field is reconstructible from the Circle
+account the UI already fetches. That is true and it is not the point. A msg! line
+is free text the client parses by hand and that nothing protects when it changes;
+an event is typed, declared in the IDL and decoded by the client library. The
+SPEC says event. NFR-2 says every refusal carries the numbers the UI needs.
+
+Fixed: `PotRefused` and `RoundNotFunded` events, emitted before the error
+returns. The transaction fails, so nothing lands on chain, but FLOWS §9 previews
+every transaction by simulation and a simulated failure returns its logs, which
+is exactly where a Paused screen reads its numbers.
+
+Two tests decode the events properly, through BorshEventCoder, rather than
+grepping the log text, which is the part that proves it is an event and not a
+message. Mutation-checked: reporting only the FIRST missing seat instead of all
+of them fails with `4 !== 20`, that is 0b00100 against 0b10100.
+
+DEAD CODE IT SPOTTED, REMOVED. release_pot set the paid bit for each
+escrow-covered defaulted seat and then zeroed the whole bitmap four lines later.
+The writes could never be read. Dead state writes read as live ones to whoever
+comes next, which is the same fault as T09's unreachable AlreadyJoined guard.
+The part of that clause that DOES outlive the round, rounds_paid++, is on the
+Member and is untouched.
+
+Its second suspicion is recorded in OPEN-QUESTIONS: KNOWN-LIMITS L4 says a stuck
+Active circle is unreachable "without a default or price fall", and a stale feed
+is neither. release_pot and update_coverage refuse for ever while contribute
+keeps accepting money, because SPEC.md:105 deliberately gives contribute no
+price check. On a real xStock the multiplier change is the ISSUER's, so the
+trigger is outside every party in the circle. Design-level; the build has not
+touched L4.
+
+WHAT IT COULD NOT REACH, in its own words: anything needing declare_default
+(T15) or top_up_reserve / add_stock (T16). That leaves the escrow branch of
+release_pot, reserve_losses > 0, forfeited > 0, escrow_deficit > 0 and therefore
+the non-degenerate pro-rata in withdraw all unexecuted by anyone. It read them
+against SPEC §6 and §7 and reports they match, and says plainly that it did not
+prove it by execution. I14, I15 and the unhealthy half of I18 remain untested.

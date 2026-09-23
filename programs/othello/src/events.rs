@@ -119,3 +119,49 @@ pub struct Withdrawn {
     pub withdrawn_bitmap: u8,
     pub withdrawn_usdc: u64,
 }
+
+/// SPEC.md:204: "Every refusal payload field named in section 5 is emitted as
+/// an event before the error returns, so the UI can print the numbers."
+///
+/// These two exist because a `msg!` line is not an event. Both reach the client
+/// through the same transaction logs, but an event is typed, declared in the
+/// IDL and decoded by the client library, while a log line is free text the
+/// client has to parse by hand and that no schema protects. FLOWS §9 has every
+/// transaction previewed by simulation, and a simulated failure returns its
+/// logs, so a refusal event is readable without the transaction ever landing.
+///
+/// This is why NFR-2 exists: a Paused screen that cannot name what it is short
+/// by is a screen that tells someone to go and find out.
+#[event]
+pub struct PotRefused {
+    pub circle: Pubkey,
+    pub round: u8,
+    pub recipient: Pubkey,
+    /// `S`, the uncapped sum of need_i.
+    pub needed: u64,
+    /// `R - L`, which SPEC.md:126 calls the gate's `remaining`.
+    pub remaining: u64,
+    pub short_by: u64,
+    pub recipient_gap: u64,
+    pub others_need: u64,
+    pub recipient_cover: u64,
+    pub escrow_deficit: u64,
+    /// True when the recipient's own stock is the whole gap, which is the only
+    /// case where "lock more stock" is advice that would work.
+    pub coverage_too_low: bool,
+}
+
+/// SPEC.md:106's payload:
+/// `round_not_funded{missing_seats, escrow, escrow_needed, escrow_deficit, short_by}`.
+#[event]
+pub struct RoundNotFunded {
+    pub circle: Pubkey,
+    pub round: u8,
+    /// Bitmap of seats that have neither paid nor defaulted.
+    pub missing_seats: u8,
+    pub escrow: u64,
+    /// `k x contribution`, what the escrow must hold to cover defaulted seats.
+    pub escrow_needed: u64,
+    pub escrow_deficit: u64,
+    pub short_by: u64,
+}

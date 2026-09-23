@@ -106,6 +106,15 @@ export type Harness = {
   /** The refusal code name a rejected instruction carried. */
   refusal: (promise: Promise<unknown>) => Promise<string>;
   /**
+   * The program logs a FAILED transaction produced.
+   *
+   * SPEC.md:204 has refusal payloads emitted as events before the error
+   * returns. The transaction fails, so nothing lands on chain, but the logs
+   * come back either way, which is how FLOWS §9's "every tx previewed by
+   * simulation" reads them.
+   */
+  failedLogs: (promise: Promise<unknown>) => Promise<string[]>;
+  /**
    * Advances the slot so the next transaction gets a fresh blockhash.
    *
    * Call this between two OTHERWISE IDENTICAL transactions. Without it the
@@ -242,6 +251,32 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
     ]),
   );
 
+  const failedLogs = async (promise: Promise<unknown>): Promise<string[]> => {
+    try {
+      await promise;
+    } catch (thrown) {
+      const withLogs = thrown as { logs?: string[]; transactionLogs?: string[] };
+      const logs = withLogs.logs ?? withLogs.transactionLogs;
+      if (logs) {
+        return logs;
+      }
+
+      // bankrun stringifies the logs into the message instead of attaching
+      // them, so pull them back out of the array it prints.
+      const inline = /Logs:\s*\n?\[([\s\S]*?)\]\./.exec(String(thrown));
+      if (inline?.[1]) {
+        return inline[1]
+          .split("\n")
+          .map((line) => line.trim().replace(/^["']|["'],?$/g, ""))
+          .filter(Boolean);
+      }
+
+      throw new Error(`no logs on the failure: ${String(thrown)}`);
+    }
+
+    throw new Error("expected the instruction to be refused, but it succeeded");
+  };
+
   const refusal = async (promise: Promise<unknown>): Promise<string> => {
     try {
       await promise;
@@ -278,6 +313,7 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
     placeMint,
     putAccount,
     refusal,
+    failedLogs,
     nextSlot,
   };
 }
@@ -556,4 +592,32 @@ export function tokenAccount(args: {
 /** Reads the `amount` field back out of a token account. */
 export function tokenAmount(data: Buffer): bigint {
   return data.readBigUInt64LE(64);
+}
+
+/**
+ * Decodes one Anchor event out of a transaction's program logs.
+ *
+ * Anchor writes events as base64 behind "Program data:", with the event's
+ * 8-byte discriminator first. This is the decoding a client library does for
+ * you, and doing it here is the point: it proves the payload is a TYPED event
+ * rather than a msg! line that happens to contain the same numbers.
+ */
+export function decodeEvent<T>(
+  program: anchor.Program<anchor.Idl>,
+  name: string,
+  logs: string[],
+): T | null {
+  const coder = new anchor.BorshEventCoder(program.idl);
+
+  for (const line of logs) {
+    const match = /Program data: (.+)/.exec(line);
+    if (!match?.[1]) continue;
+
+    const decoded = coder.decode(match[1].trim());
+    if (decoded?.name === name) {
+      return decoded.data as T;
+    }
+  }
+
+  return null;
 }
