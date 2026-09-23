@@ -20,7 +20,10 @@ T12 sit on top of them.
 `staging`. Diff range `origin/staging..9ffe86c`. Review that range and nothing
 later; work in progress on T10 is expected to appear on this branch after it.
 
-Review under `orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
+Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`,
+U1 to U9. Absolute on purpose: it is a cross-project review standard that lives
+in another repo, and a relative path only resolves if the reviewer happens to
+start in `~/myvscode_linux/` rather than in this repo.
 
 ## 1. What T09 had to do
 
