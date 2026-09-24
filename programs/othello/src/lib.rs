@@ -91,7 +91,19 @@ pub mod othello {
         instructions::lifecycle::handle_activate(ctx)
     }
 
-    /// Creates the price feed for one stock mint (T04, SPEC §5).
+    /// Creates the liquidation pool for one USDC and stock mint pair (T14). Admin
+    /// only: the program's upgrade authority.
+    pub fn init_pool(ctx: Context<InitPool>, discount_bps: u16) -> Result<()> {
+        instructions::pool::handle_init_pool(ctx, discount_bps)
+    }
+
+    /// Moves the pool authority's own USDC into the pool (T14).
+    pub fn seed_pool(ctx: Context<SeedPool>, amount: u64) -> Result<()> {
+        instructions::pool::handle_seed_pool(ctx, amount)
+    }
+
+    /// Creates the price feed for one stock mint (T04, SPEC §5). Admin only
+    /// since T14: the program's upgrade authority.
     pub fn init_price_feed(ctx: Context<InitPriceFeed>) -> Result<()> {
         instructions::price_feed::handle_init_price_feed(ctx)
     }

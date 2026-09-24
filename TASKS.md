@@ -64,7 +64,7 @@ deadline rather than now.
       skip the shape they were built on.
 
 ## Gate 3: defaults
-- [ ] T14 init_pool/seed_pool (discount ≤ haircut enforced at create) | verify: `anchor test` | done when: unauthorized and invalid_params tested
+- [x] T14 init_pool/seed_pool (discount ≤ haircut enforced at create) | verify: `anchor test` | done when: unauthorized and invalid_params tested
 - [ ] T15 declare_default waterfall, both recompute branches, forfeited, escrow_deficit | verify: `anchor test` | done when: I7, I9, I15 green; Repricing branch keeps I2
 - [ ] T16 top_up_reserve (deficit first, closed-form next_gate_short_by), add_stock | verify: `anchor test` | done when: I14, I18 green; SPEC §7 halt example: needed 75, remaining 70, short_by 5, top-up 5 resumes
 - [ ] R3 Refactor pass before review: bring both recompute branches of the waterfall into one reviewable shape, extract the shared checked arithmetic into named helpers, remove any duplication introduced by top_up_reserve. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 to gate-3 test still green, before/after diffstat in DONE.md
@@ -133,3 +133,33 @@ should start before the hackathon build is finished.
       STILL TRUE, AND STILL THE DESIGN SESSION'S: D9's cut of cross-circle reputation was
       safe because the creator knew everyone. That reasoning does not carry to the public
       type and needs revisiting with it.
+
+- [ ] CIRCLE CHAT ROOM + HELPER AGENT (Joshua, 2026-09-24), after the deadline.
+      A small chat inside each circle, readable and writable by its members only, and a
+      helper agent that posts into it. The agent READS chain state and WRITES messages; it
+      never holds a key, never signs, never links anywhere but this app, and never pressures
+      or explains why someone did not pay. What it does: round-deadline reminders, plain
+      explanations of Paused and refusal payloads, early stock-cover warnings, and help
+      drafting "I can't pay this round".
+      What makes it a real build is not the chat UI: it needs Sign-In With Solana verified
+      server side, a membership check against the Member PDA, and a message store (a small
+      DB such as Supabase; a new service, so Joshua approves it first). Plus rate limiting,
+      a length cap, delete-own, and error monitoring. Depends on wallet connect (done, S7).
+
+- [ ] PRE-PAYOUT DEPARTURE (designed with Codex, 2026-09-24), after the deadline. A member
+      who stops paying BEFORE their own payout is owed money, not owing it, so their stock
+      is not sold. Their own future pot secures what they missed:
+        every missed contribution is bridged, so every pot is still n x c;
+        a quitter with p payments made owes (n - p) x c across the cycle and, at their
+        turn, receives n x c - (n - p) x c = p x c, exactly what they put in;
+        everyone who keeps paying receives their full n x c.
+      Needs NEW STATE and invariants, not just a changed declare_default: bridge_outstanding
+      tracked explicitly; coverage computed on the reserve NET of it (the same USDC is never
+      promised twice); a creator-set, immutable "absorbs up to k quitters" parameter shown
+      before anyone joins, with the bridge sized for every reachable quitter set up to k
+      (two late seats quitting at round 0 in n = 5 needs 6c, not 4c); past k, the round
+      pauses. A quitter cannot be "refused": they simply stop paying.
+      Model-check every n, turn, prior-payment count and quitter set up to k BEFORE any code.
+      Invariant: non-quitters' scheduled payouts unchanged; vault + bridge receivable conserved.
+      T15 meanwhile builds SPEC's post-payout default as written; the promise there is "no
+      loss beyond the unpaid obligation at a defensible sale price; surplus stock returns".

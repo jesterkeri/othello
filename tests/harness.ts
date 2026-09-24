@@ -100,7 +100,7 @@ export type Harness = {
   program: anchor.Program<anchor.Idl>;
   authority: anchor.web3.Keypair;
   setClock: (unixTimestamp: number) => Promise<void>;
-  fund: (lamports?: number) => anchor.web3.Keypair;
+  fund: (lamports?: number, keypair?: anchor.web3.Keypair) => anchor.web3.Keypair;
   placeMint: (symbol: FixtureSymbol, at?: anchor.web3.PublicKey) => void;
   putAccount: (address: anchor.web3.PublicKey, data: Buffer, owner: anchor.web3.PublicKey) => void;
   /** The refusal code name a rejected instruction carried. */
@@ -144,15 +144,24 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   // same bytes; it is the on-chain program that could not. So the real one is
   // loaded from tests/fixtures/spl_token_2022.so, dumped from devnet with
   // `solana program dump`, the same provenance rule the mint fixtures follow.
-  const context = await startAnchor(
-    REPO,
-    [{ name: "spl_token_2022", programId: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM) }],
-    [],
-  );
-  const provider = new BankrunProvider(context);
   const idl = JSON.parse(readFileSync(resolve(REPO, PROGRAM_IDL), "utf8")) as anchor.Idl & {
     address: string;
   };
+
+  // T14: the admin is the program's upgrade authority, read from the loader's
+  // ProgramData account. startAnchor loads the program through the old
+  // non-upgradeable loader, which has no ProgramData, so every admin
+  // instruction would refuse. The program is placed again here the way a real
+  // deploy leaves it: a program account owned by the upgradeable loader,
+  // pointing at a ProgramData account that holds the ELF and names `authority`
+  // as the upgrade authority. bankrun logs "Overriding account" for it.
+  const authority = anchor.web3.Keypair.generate();
+  const context = await startAnchor(
+    REPO,
+    [{ name: "spl_token_2022", programId: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM) }],
+    upgradeableProgram(new anchor.web3.PublicKey(idl.address), authority.publicKey),
+  );
+  const provider = new BankrunProvider(context);
   const program = new anchor.Program(idl, provider);
 
   /**
@@ -194,8 +203,10 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
     });
   };
 
-  const fund = (lamports = anchor.web3.LAMPORTS_PER_SOL): anchor.web3.Keypair => {
-    const keypair = anchor.web3.Keypair.generate();
+  const fund = (
+    lamports = anchor.web3.LAMPORTS_PER_SOL,
+    keypair = anchor.web3.Keypair.generate(),
+  ): anchor.web3.Keypair => {
 
     context.setAccount(keypair.publicKey, {
       lamports,
@@ -307,7 +318,7 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   return {
     context,
     program,
-    authority: fund(100 * anchor.web3.LAMPORTS_PER_SOL),
+    authority: fund(100 * anchor.web3.LAMPORTS_PER_SOL, authority),
     setClock,
     fund,
     placeMint,
@@ -425,6 +436,8 @@ export function initFeed(h: Harness, mint: anchor.web3.PublicKey, signer = h.aut
   return call(h.program, "initPriceFeed")
     .accounts({
       authority: signer.publicKey,
+      program: h.program.programId,
+      programData: programDataAddress(h.program.programId),
       stockMint: mint,
       feed: priceFeedAddress(h.program, mint),
     })
@@ -620,4 +633,105 @@ export function decodeEvent<T>(
   }
 
   return null;
+}
+
+export const UPGRADEABLE_LOADER = new anchor.web3.PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
+
+/** The loader's ProgramData address for a program: `[program_id]` under the loader. */
+export function programDataAddress(programId: anchor.web3.PublicKey): anchor.web3.PublicKey {
+  return anchor.web3.PublicKey.findProgramAddressSync([programId.toBuffer()], UPGRADEABLE_LOADER)[0];
+}
+
+/**
+ * The two accounts an upgradeable deploy leaves behind, as bincode
+ * UpgradeableLoaderState:
+ * - Program: tag 2 (u32), then the ProgramData address.
+ * - ProgramData: tag 3 (u32), slot (u64), upgrade authority as Option<Pubkey>
+ *   (1 byte + 32), then the ELF from byte 45.
+ * `upgradeAuthority` null is a program deployed immutable (Option None).
+ */
+export function upgradeableProgram(
+  programId: anchor.web3.PublicKey,
+  upgradeAuthority: anchor.web3.PublicKey | null,
+): { address: anchor.web3.PublicKey; info: { lamports: number; data: Buffer; owner: anchor.web3.PublicKey; executable: boolean } }[] {
+  const programData = programDataAddress(programId);
+  const elf = readFileSync(resolve(REPO, PROGRAM_SO));
+
+  const program = Buffer.alloc(36);
+  program.writeUInt32LE(2, 0);
+  programData.toBuffer().copy(program, 4);
+
+  const data = Buffer.alloc(45 + elf.length);
+  data.writeUInt32LE(3, 0);
+  data.writeBigUInt64LE(0n, 4);
+  if (upgradeAuthority) {
+    data[12] = 1;
+    upgradeAuthority.toBuffer().copy(data, 13);
+  }
+  elf.copy(data, 45);
+
+  return [
+    { address: programId, info: { lamports: anchor.web3.LAMPORTS_PER_SOL, data: program, owner: UPGRADEABLE_LOADER, executable: true } },
+    { address: programData, info: { lamports: 10 * anchor.web3.LAMPORTS_PER_SOL, data, owner: UPGRADEABLE_LOADER, executable: false } },
+  ];
+}
+
+/** `init_pool` with every account named, so a spec can swap any one of them. */
+export function initPoolIx(
+  h: Harness,
+  args: {
+    usdcMint: anchor.web3.PublicKey;
+    stockMint: anchor.web3.PublicKey;
+    discountBps: number;
+    signer?: anchor.web3.Keypair;
+    usdcTokenProgram?: string;
+    programData?: anchor.web3.PublicKey;
+  },
+) {
+  const signer = args.signer ?? h.authority;
+  const usdcTokenProgram = args.usdcTokenProgram ?? SPL_TOKEN_PROGRAM;
+  const [pool] = poolAddress(h.program, args.usdcMint, args.stockMint);
+
+  return call(h.program, "initPool", [args.discountBps])
+    .accounts({
+      authority: signer.publicKey,
+      program: h.program.programId,
+      programData: args.programData ?? programDataAddress(h.program.programId),
+      usdcMint: args.usdcMint,
+      stockMint: args.stockMint,
+      pool,
+      poolUsdcVault: ataAddress(args.usdcMint, pool, usdcTokenProgram),
+      poolStockVault: ataAddress(args.stockMint, pool, TOKEN_2022_PROGRAM),
+      usdcTokenProgram: new anchor.web3.PublicKey(usdcTokenProgram),
+      stockTokenProgram: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM),
+      associatedTokenProgram: new anchor.web3.PublicKey(ASSOCIATED_TOKEN_PROGRAM),
+      systemProgram: anchor.web3.SystemProgram.programId,
+    })
+    .signers([signer]);
+}
+
+/** `seed_pool` from the signer's own USDC associated token account. */
+export function seedPoolIx(
+  h: Harness,
+  args: {
+    usdcMint: anchor.web3.PublicKey;
+    stockMint: anchor.web3.PublicKey;
+    amount: bigint;
+    signer?: anchor.web3.Keypair;
+  },
+) {
+  const signer = args.signer ?? h.authority;
+  const [pool] = poolAddress(h.program, args.usdcMint, args.stockMint);
+
+  return call(h.program, "seedPool", [new BN(args.amount.toString())])
+    .accounts({
+      authority: signer.publicKey,
+      pool,
+      usdcMint: args.usdcMint,
+      stockMint: args.stockMint,
+      authorityUsdc: ataAddress(args.usdcMint, signer.publicKey, SPL_TOKEN_PROGRAM),
+      poolUsdcVault: ataAddress(args.usdcMint, pool, SPL_TOKEN_PROGRAM),
+      usdcTokenProgram: new anchor.web3.PublicKey(SPL_TOKEN_PROGRAM),
+    })
+    .signers([signer]);
 }

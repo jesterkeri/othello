@@ -180,3 +180,22 @@ pub struct MemberLeftForming {
     pub reserve_total: u64,
     pub deposits_total: u64,
 }
+
+/// T14. The pool that buys seized stock, and the discount it buys at.
+#[event]
+pub struct PoolInitialized {
+    pub pool: Pubkey,
+    pub authority: Pubkey,
+    pub usdc_mint: Pubkey,
+    pub stock_mint: Pubkey,
+    pub discount_bps: u16,
+}
+
+/// T14. `pool_usdc` is the vault's balance after the seed, which is what
+/// `declare_default` checks `recovered` against (`pool_insufficient`).
+#[event]
+pub struct PoolSeeded {
+    pub pool: Pubkey,
+    pub amount: u64,
+    pub pool_usdc: u64,
+}

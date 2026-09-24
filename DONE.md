@@ -1662,3 +1662,68 @@ verify, each run alone:
 check-reviews.sh stays red on this branch, correctly. It clears when the design
 owner applies the SPEC edits and Codex re-reviews. T14 stays stopped, per
 Joshua and per the r2 verdict.
+
+## T14 init_pool / seed_pool, and the admin root (2026-09-24)
+reviewed: n/a (covered by Codex Gate 3 review at T17)
+adversary: pending (run on the committed diff before the Gate 3 brief)
+
+Restarted by Joshua ("yes upgrade next, then continue with T14"). T14 had been
+stopped because two recorded findings were owed to it; both are closed here.
+
+1. THE ADMIN ROOT (OPEN-QUESTIONS, BLOCKING before T23: oracle takeover).
+   The admin is the program's upgrade authority, read from the upgradeable
+   loader's ProgramData account. init_price_feed and init_pool require it;
+   set_prices, touch_prices and seed_pool were already gated by the authority
+   those two record. Anchor's documented pattern: `program` must be Othello,
+   its programdata_address() must be the `program_data` passed, and that
+   account's upgrade_authority_address must be the signer. Both constraints
+   map to `unauthorized`, the refusal SPEC:114 and SPEC:116 already name.
+
+   The harness had to change for this to be testable at all. startAnchor
+   loads programs through the old non-upgradeable loader (probed:
+   owner BPFLoader2111..., no ProgramData), so every admin instruction would
+   refuse. The harness now places Othello again as a real upgradeable deploy
+   leaves it (program account -> ProgramData with the ELF and an upgrade
+   authority), with h.authority as that authority. All 92 existing tests
+   pass unchanged on that load.
+
+2. USDC MINT (OPEN-QUESTIONS, T09 adversary): init_pool refuses any USDC mint
+   not owned by classic SPL Token (`invalid_params`). Circles take the USDC
+   mint from the pool's seeds, so this one check covers every circle.
+
+3. init_pool / seed_pool per SPEC:116. discount_bps < 10000; stock mint on
+   the ADR-012 allowlist; both pool vaults are ATAs owned by the pool PDA,
+   created with init_if_needed because anyone can create an ATA for any
+   owner and a plain `init` could be blocked forever by one stranger's
+   transaction (tested). seed_pool moves only the signer's own USDC (I8),
+   refuses zero and more than the balance. Events PoolInitialized and
+   PoolSeeded added (an event per state change).
+
+init_if_needed uses, recounted from source at this commit (real uses, not grep
+hits: pool.rs has three grep hits, one of them the comment explaining why):
+  join_and_lock 3   leave_forming 2   release_pot 1   withdraw 2   pool 2   total 10
+
+MUTATION TEST, each check removed in turn, t14 spec rerun, source restored by
+cp from a backup (never git checkout), rebuilt clean afterwards:
+  M1 feed: no upgrade-authority check: 11 passing (5s) 2 failing
+  M2 feed: no programdata binding: 12 passing (5s) 1 failing
+  M3 pool: no upgrade-authority check: 11 passing (3s) 2 failing
+  M4 pool: USDC may be Token-2022: 12 passing (6s) 1 failing
+  M5 pool: plain init on USDC vault: 12 passing (5s) 1 failing
+  M6 pool: discount 100% allowed: 12 passing (5s) 1 failing
+  M7 pool: no allowlist: 12 passing (5s) 1 failing
+  M8 seed: no authority check: 12 passing (2s) 1 failing
+  M9 seed: zero allowed: 12 passing (5s) 1 failing
+  M10 seed: no balance precheck: 12 passing (5s) 1 failing
+  sources restored
+  rebuilt clean
+
+verify, each run alone:
+  anchor test   105 passing (50s)       (92 before + 13 in t14-pool.spec.ts)
+  cargo test    44 passed
+  cargo fmt --check, cargo clippy --all-targets -D warnings, tsc --noEmit: clean
+
+SPEC wording owed by the design owner (drafted as apply-spec-r6.py, not applied
+by the build): who "admin" is, init_pool's USDC-mint rule, and the two events.
+check-reviews.sh is red on this branch for the inherited reason: it stacks on
+task/T09-join-and-lock, whose gate 2 verdict is still "changes required" until r4.

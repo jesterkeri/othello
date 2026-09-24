@@ -127,7 +127,17 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       and implements `quote_valuation(raw, haircut_bps, max_price_age)` with the accounts
       exactly as SPEC states. Not blocking, and no invariant depends on which way it is
       resolved; recorded so the design session can ratify or correct the reading.
-- [ ] BLOCKING before T23 (any deploy). **Unauthenticated oracle takeover:**
+- [x] RESOLVED in T14 (2026-09-24, build), pending the design owner's SPEC wording (r6).
+      The admin is now the program's UPGRADE AUTHORITY, read from the loader's own
+      ProgramData account: init_price_feed and init_pool require it to sign, and every other
+      admin instruction is gated by an authority those two recorded. No new account, no new
+      key, no setup transaction, so no window after deploy for anyone to take. Attacked in
+      tests/t14-pool.spec.ts: a stranger is refused, a stranger bringing a genuine
+      ProgramData account of THEIR OWN program is refused, and an immutable program
+      (authority None) has no admin at all. Mutation-tested: removing either constraint fails
+      the suite. Codex's required shape, "a fixed deploy-time authority", is what this is.
+      Original entry, kept for the record:
+      BLOCKING before T23 (any deploy). **Unauthenticated oracle takeover:**
       `init_price_feed` has no authority gate, and SPEC cannot currently give it one. SPEC:113 puts `init_price_feed` on the admin row
       and lists `unauthorized` among its refusals, but SPEC section 4 defines no admin or
       config account for the program to check a signer against: `PriceFeed.authority` is
@@ -311,7 +321,12 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       than edited. The program is unchanged either way: it reasons from member.stock_raw, never
       from the vault balance.
 
-- [ ] `create_circle` constrains `stock_mint` but not `usdc_mint` (T09 adversary, 2026-09-23, before T14)
+- [x] RESOLVED in T14 (2026-09-24, build), pending SPEC wording (r6): init_pool refuses any
+      USDC mint not owned by classic SPL Token (`invalid_params`). Every circle takes its USDC
+      mint from the pool's seeds, so that is the single point that decides it, and SPL Token
+      has no extensions, so fee-on-transfer and every other Token-2022 extension are closed at
+      once. Tested and mutation-tested in tests/t14-pool.spec.ts. Original entry:
+      `create_circle` constrains `stock_mint` but not `usdc_mint` (T09 adversary, 2026-09-23, before T14)
       The stock mint must be on the ADR-012 allowlist. The USDC mint has no such check: it is
       pinned only by the pool PDA's seeds, which means whatever mint `init_pool` was pointed at.
 
