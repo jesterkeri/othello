@@ -1851,3 +1851,59 @@ mutation-testing run (load average 32 to 52 on 22 cores); at load 12 to 16 the
 same command passes in 81 s, and every file always passes in its own process.
 Correlated with load, not proven to be caused by it. mocha --parallel was
 tried and is NOT a fix: one test failed under it and one run also stalled.
+
+## T16 top_up_reserve and add_stock (2026-09-24)
+reviewed: n/a (covered by Codex Gate 3 review at T17)
+adversary: pending (run on the committed diff before the Gate 3 brief)
+
+top_up_reserve(amount), SPEC §5: fill = min(escrow_deficit, amount) goes to
+escrow first, the rest to reserve_total; top_ups and deposits_total += amount;
+reserve_losses does not move (r3); next_gate_short_by in SPEC r4's closed form,
+max(0, (v − D) − (amount − fill)) + (D − fill). The arithmetic is a pure
+`top_up()`, unit-tested. add_stock(raw): Forming or Active, member not
+defaulted, stock_raw += raw; does not refresh Paused (SPEC §5). Both refuse
+zero (InvalidParams) and a defaulter (AlreadyDefaulted); neither in SPEC's
+refusal list for the row, so both are owed to the design pack's wording.
+Events ReserveToppedUp and StockAdded.
+
+Tests: 4 unit (the halt example; deficit filled first; a top-up smaller than
+the deficit; a healthy top-up) and tests/t16-top-up.spec.ts, 6 end to end:
+  - SPEC §7 HALT EXAMPLE reproduced exactly (g 30, 1.0 token each): after seat
+    0's default R − L = 70, escrow 200, next_gate_short_by 5; release_pot
+    refuses ReserveOvercommitted and its PotRefused event carries needed 75,
+    remaining 70, short_by 5, recipient_gap 75, others_need 0,
+    escrow_deficit 0, recipient_cover 120; seat 1 tops up exactly 5, the
+    field reads 0, and the release pays (I18).
+  - I14: T15's deficit (wrapper 150 -> 50, deficit 6) cured by topping up
+    exactly next_gate_short_by at each Paused: 157 (6 filled first, 151 to the
+    reserve), then 21; the circle completes; every member's withdraw equals
+    SPEC §7's share exactly, the payer's top-ups included (I11, I15). Two
+    top-ups, not one, because the price fell: recorded as OPEN-QUESTIONS
+    "I14 wording".
+  - refusals for both instructions; top-up refused while Forming, add_stock
+    allowed while Forming; add_stock keeps I4 and leaves Paused untouched,
+    and half a token more lets the halt-example gate pass with no top-up.
+
+MUTATION TEST, restored by cp, rebuilt clean:
+  M1 no deficit-first fill           unit 2 failed, e2e 1 failing
+  M2 short_by ignores the top-up     unit 2 failed, e2e 2 failing
+  M3 top_ups not credited            SURVIVED first run; the exact per-seat
+                                     withdraw-share assertion was added and
+                                     M3 then fails it: 5 passing, 1 failing
+  M4 deposits_total not credited     e2e 1 failing
+  M5 defaulter may top up            e2e 1 failing
+  M6 zero allowed                    e2e 1 failing
+  M7 no balance precheck             e2e 1 failing
+  M8 fill also credited to reserve   unit 2 failed, e2e 1 failing
+  M9 top-up on any status            e2e 1 failing
+  M10 add_stock not recorded         e2e 2 failing
+  M11 defaulter may add stock        e2e 1 failing
+  M12 add_stock zero allowed         e2e 1 failing
+
+verify:
+  anchor test, timestamped: cargo test at 2 s, mocha "134 passing (1m)" at
+    75 s, both t00 fixture checks OK at 93 s
+  cargo test 54 passed; cargo fmt --check clean; clippy 0 warnings; tsc clean
+  One earlier anchor test run of this same commit stalled and was killed at
+  462 s; see OPEN-QUESTIONS "INTERMITTENT FULL-SUITE STALL", now corrected:
+  it is NOT load-related, since it also stalled at load 3.5.

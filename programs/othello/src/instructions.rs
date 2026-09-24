@@ -1,3 +1,4 @@
+pub mod add_stock;
 pub mod contribute;
 pub mod create_circle;
 pub mod declare_default;
@@ -8,9 +9,11 @@ pub mod pool;
 pub mod price_feed;
 pub mod quote;
 pub mod release_pot;
+pub mod top_up_reserve;
 pub mod update_coverage;
 pub mod withdraw;
 
+pub use add_stock::*;
 pub use contribute::*;
 pub use create_circle::*;
 pub use declare_default::*;
@@ -21,5 +24,6 @@ pub use pool::*;
 pub use price_feed::*;
 pub use quote::*;
 pub use release_pot::*;
+pub use top_up_reserve::*;
 pub use update_coverage::*;
 pub use withdraw::*;

@@ -91,6 +91,17 @@ pub mod othello {
         instructions::lifecycle::handle_activate(ctx)
     }
 
+    /// Adds USDC to the circle: an escrow deficit first, then the reserve
+    /// (T16, SPEC §5). The cure for Paused.
+    pub fn top_up_reserve(ctx: Context<TopUpReserve>, amount: u64) -> Result<()> {
+        instructions::top_up_reserve::handle_top_up_reserve(ctx, amount)
+    }
+
+    /// Locks more of the circle's stock behind the signer's seat (T16).
+    pub fn add_stock(ctx: Context<AddStock>, raw: u64) -> Result<()> {
+        instructions::add_stock::handle_add_stock(ctx, raw)
+    }
+
     /// Declares a missed contribution a default and settles the defaulter's
     /// remaining rounds from their stock, then the reserve (T15, SPEC §6).
     pub fn declare_default<'info>(

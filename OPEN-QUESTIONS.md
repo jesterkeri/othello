@@ -449,9 +449,25 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       for a recomputed-from-allocation figure. The DEFAULTER's own figure is set to u32::MAX
       on both branches.
 
-- [ ] TEST RUN STALLS UNDER LOAD (2026-09-24). A single-process run of every spec
-      sometimes stalls with no output (once for over an hour at ~650% CPU). Seen only while
-      the machine was loaded to 32-52 by another project; passes in 81 s at load 12-16, and
-      every file always passes in its own process. Not root-caused. If CI shows it, the
-      first thing to try is running each spec file in its own process.
+- [ ] INTERMITTENT FULL-SUITE STALL (2026-09-24, CORRECTED). A single-process run of every
+      spec sometimes stalls with NO output at all: 3 of about 8 full runs today, once for over
+      an hour with mocha at ~650% CPU and 2.7 GB. An earlier note here tied it to machine load;
+      that was WRONG: it also stalled at load 3.5. What the evidence supports: mocha never
+      reached its own 120 s per-test timeout, which cannot fire while a synchronous native call
+      holds the JavaScript thread, so the likeliest place is inside bankrun's native code, not
+      a slow test. Every spec file passes in its own process every time, and the same full
+      suite passes in about a minute on the runs that do not stall (134 passing, 93 s for all of
+      anchor test). CI is unaffected: it does not run anchor test. Next occurrence: run with
+      per-line timestamps (as in DONE.md, T16) so the stall names the test it stopped in.
+
+- [ ] I14 WORDING (T16, 2026-09-24). INVARIANTS I14: "default with shortfall > reserve, then a
+      top-up of next_gate_short_by (which already includes the deficit) lets the circle
+      complete". At unchanged prices a single default cannot make shortfall exceed the reserve
+      (the create-time peak check sizes the reserve for exactly that), so a deficit needs a price
+      fall or a second default, and then later gates need more reserve too. In
+      tests/t16-top-up.spec.ts the deficit case (g 30, wrapper 150 -> 50) needs TWO top-ups,
+      157 then 21, each exactly that round's next_gate_short_by, and then completes. The code
+      matches SPEC's formulas; the question is only the invariant's wording. Suggest: "each
+      Paused is cured by a top-up of exactly next_gate_short_by, and the first fills the
+      deficit". Design owner's call.
 

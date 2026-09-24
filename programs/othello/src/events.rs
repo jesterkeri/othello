@@ -222,3 +222,29 @@ pub struct DefaultDeclared {
     pub escrow_deficit: u64,
     pub next_gate_short_by: u64,
 }
+
+/// T16. `fill` is the part that prepaid defaulted seats (escrow deficit); the
+/// rest reached the reserve.
+#[event]
+pub struct ReserveToppedUp {
+    pub circle: Pubkey,
+    pub wallet: Pubkey,
+    pub turn: u8,
+    pub amount: u64,
+    pub fill: u64,
+    pub escrow: u64,
+    pub escrow_deficit: u64,
+    pub reserve_total: u64,
+    pub deposits_total: u64,
+    pub next_gate_short_by: u64,
+}
+
+/// T16. `stock_raw` is the member's total locked after the addition.
+#[event]
+pub struct StockAdded {
+    pub circle: Pubkey,
+    pub wallet: Pubkey,
+    pub turn: u8,
+    pub raw: u64,
+    pub stock_raw: u64,
+}
