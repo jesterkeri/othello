@@ -19,12 +19,12 @@ together with this block, and where they disagree this block wins.
 | | |
 |---|---|
 | branch | `task/T16-topup` |
-| commit | STAMP, the code and design pack under review |
-| range | `3028b3f..STAMP` (gate 2's reviewed head to this commit) |
-| size | STAMP |
-| spec files, each in its own process | STAMP |
-| `cargo test -p othello` | STAMP |
-| `init_if_needed` uses | STAMP, itemised per instruction in section 3 |
+| commit | `b0ec52c`, the code and design pack under review (r1) |
+| range | `c26fb31..b0ec52c` (gate 2's final head, implementation-ready, to this commit) |
+| size | 30 files changed, 4,962 insertions(+), 128 deletions(-) |
+| spec files, each in its own process | 21 files, 143 passing, 0 failing |
+| `cargo test -p othello` | 54 passed |
+| `init_if_needed` uses | 10, itemised per instruction in section 3 |
 
 Every figure above was produced by running the command at the named commit,
 not carried forward. The branch head may be ONE commit later than the commit
