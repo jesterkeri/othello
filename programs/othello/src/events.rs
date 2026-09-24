@@ -165,3 +165,18 @@ pub struct RoundNotFunded {
     pub escrow_deficit: u64,
     pub short_by: u64,
 }
+
+/// The G2 repair (2026-09-24). A member unwinding their own join before the
+/// circle activates, which is the only way out of a Forming circle that does
+/// not depend on the creator acting.
+#[event]
+pub struct MemberLeftForming {
+    pub circle: Pubkey,
+    pub wallet: Pubkey,
+    pub turn: u8,
+    pub stock: u64,
+    pub usdc: u64,
+    pub joined_bitmap: u8,
+    pub reserve_total: u64,
+    pub deposits_total: u64,
+}

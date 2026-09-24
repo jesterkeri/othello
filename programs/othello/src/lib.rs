@@ -73,6 +73,14 @@ pub mod othello {
         instructions::withdraw::handle_withdraw(ctx)
     }
 
+    /// Any joined member unwinds their own join before activation (G2 repair).
+    /// Stock and guarantee back, seat cleared, Member account closed so the
+    /// same wallet can rejoin. The only exit from Forming that does not need
+    /// the creator to act.
+    pub fn leave_forming(ctx: Context<LeaveForming>) -> Result<()> {
+        instructions::leave_forming::handle_leave_forming(ctx)
+    }
+
     /// Creator only, Forming only. Refunds go through `withdraw` (T09).
     pub fn cancel_circle(ctx: Context<CreatorOnly>) -> Result<()> {
         instructions::lifecycle::handle_cancel_circle(ctx)

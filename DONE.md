@@ -1551,3 +1551,68 @@ branch saying so. That is the guard reporting an unclosed gate, not a broken
 check: it refuses while a review in reviews/ says changes required. It clears
 when Codex re-reviews after the design decision, or when the design session
 records a deliberate override in KNOWN-LIMITS.md, which the build does not own.
+
+## leave_forming (G2 repair) - 2026-09-24
+
+reviewed: reviews/gate-2-review.md raised it | the repair itself awaits the gate 2 re-review
+adversary: not run on this instruction yet. Before the re-review
+
+Codex's gate 2 CRITICAL: a member who joined a Forming circle could not recover
+their stock or guarantee if the creator did nothing. Only the creator could
+cancel, and withdraw refuses unless Completed or Cancelled, so an ordinary
+stalled formation left a live circle holding other people's money with no exit.
+
+The design's answer, decided 2026-09-24: any JOINED member may leave at any time
+before activation. No formation deadline, no override for anyone else. The
+asymmetry that caused it was that joining was the member's decision and leaving
+was not; this removes it rather than adding a timer someone still has to watch.
+
+verify: `anchor test`
+
+  leave_forming: a member's own way out of a stalled circle
+    ✔ two of three join, the third never does, and each leaver gets everything back
+    ✔ the Member account is closed, so the same wallet can rejoin cleanly
+    ✔ refuses once the circle is Active, and once it is Cancelled
+    ✔ a member who stays is still refunded by cancel and withdraw
+    ✔ refuses a wallet that never joined, and one that already left
+
+  92 passing, 0 failing (was 87)
+  clippy, fmt, tsc clean, each run alone
+
+THE FIRST TEST IS THE REPORTED SCENARIO EXACTLY, at n = 3, the smallest circle
+SPEC allows and the shape the finding was written against. Two join, the third
+never does, activate refuses NotAllJoined, the creator does nothing, and each
+member leaves independently. Both get every locked token and the whole guarantee
+back to the base unit, and both vaults end empty: the circle holds nothing of
+anyone's.
+
+WHAT MOVES, AND WHAT DELIBERATELY DOES NOT. joined_bitmap clears the seat.
+reserve_total and deposits_total both come down: reserve_total because the money
+left the vault, which is I3, and deposits_total because it is the denominator of
+withdraw's pro rata and must count only deposits still settled here.
+withdrawn_usdc and withdrawn_bitmap are untouched, because they describe a
+FINISHED circle: counting an unwind as a withdrawal would make I11 read a refund
+as a payout, and would mark a seat withdrawn that may yet rejoin.
+
+The Member account is CLOSED to the wallet rather than zeroed, which is what
+makes a clean rejoin work: join_and_lock uses plain `init`, and `init` on a
+husk would fail. The test asserts the account is gone and then rejoins, and that
+deposits_total counts that join once rather than twice.
+
+top_ups is included in the refund although it cannot be non-zero in Forming,
+because top_up_reserve is Active only. The unwind is then the exact inverse of
+everything that ever entered on a member's behalf, so if that ever changes this
+returns the money rather than stranding it.
+
+MUTATION-CHECKED on the line the repair turns on. Removing the deposits_total
+subtraction, which is the "ever deposited" reading the design has now reworded,
+is caught by two tests:
+
+  and so does deposits_total, which is now settled deposits and not ever-deposited
+  + actual 70000000
+  - expected 35000000
+
+STILL OWED, AND WHY GATE 2 STAYS OPEN: SPEC.md needs the leave_forming row in §5
+and the deposits_total rewording. Both are the design session's, and AGENTS.md
+forbids this build editing SPEC.md. Gate 2 closes when the pack is updated and
+Codex re-reviews.

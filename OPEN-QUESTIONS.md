@@ -372,7 +372,7 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       Design-level, for the design session. Not a defect in T10 to T12, and the build has
       not changed L4 or anything else it owns.
 
-- [ ] BLOCKING before T23 (any deploy). **A joined member cannot recover assets from a
+- [x] RESOLVED 2026-09-24 by `leave_forming`. **A joined member cannot recover assets from a
       Forming circle if the creator does nothing** (Codex gate 2 review, 2026-09-23)
 
       SPEC.md:102-104 makes join move a member's stock AND guarantee into the circle,
@@ -395,5 +395,11 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       its accounting and its refusals then need implementing and scenario-testing, and
       KNOWN-LIMITS L4's statement about stuck circles needs revisiting with it.
 
-      The build has not invented a fix, per AGENTS.md: if the design is wrong, stop and
-      say so, and the pack is re-handed.
+      DESIGN DECISION, 2026-09-24: add `leave_forming`, callable by any joined member at
+      any time before activation. No formation deadline and no override. Implemented and
+      tested; see DONE.md.
+
+      STILL OWED BY THE DESIGN PACK, and the reason gate 2 stays open: SPEC.md must gain
+      the `leave_forming` row in §5, and `deposits_total` must be reworded from "ever
+      deposited" to the current settlement-deposit total, because a Forming unwind
+      reverses it. The build has implemented that meaning and cannot edit SPEC.md.
