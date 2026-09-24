@@ -89,3 +89,33 @@ deadline rather than now.
 - [ ] T25 Seven-step demo run + video | verify: n/a (human) | done when: video link in DONE.md
 - [ ] T27 Repo tidy before the repo is a judged artifact (Joshua, 2026-09-22: "after we are done building you'll have to delete all the unimportant information"). Joshua approves the list before anything is deleted | verify: `anchor test && ./scripts/check-reviews.sh && git log --oneline -1` | done when: the list is approved, the deletions are one commit, and CI is still green
 - [ ] T26 Submit on Stocklana; run ops/touch-prices.ts at submission | verify: n/a (human) | done when: submission link in DONE.md before Fri 25 Sep 21:00 Lagos
+
+## After submission. Decided by Joshua, 2026-09-24, and not in scope before Friday
+
+Recorded here rather than left in a conversation. Neither is started, and neither
+should start before the hackathon build is finished.
+
+- [ ] SOLO. Still in scope (Joshua, 2026-09-24). A single borrower against an
+      admin-seeded pool, approved on 2026-09-22 and never sequenced into this list. It is
+      a separate instruction surface, not a variant of a circle: there is no turn order,
+      no peak-guarantee table and no payout gate as written, because there is only one
+      obligation. What it shares is the valuation path and the liquidation pool. Needs
+      its own SPEC section before any of it is built.
+
+- [ ] MATCHMAKING. Wanted (Joshua, 2026-09-24), after the deadline.
+      THIS SUPERSEDES ADR-003, and that matters more than the feature does. ADR-003
+      records open join as REJECTED, with "creator names members and order at create"
+      chosen instead, and SPEC.md:27, design/FLOWS.md:14 and D3 all state open join as a
+      non-goal. Building matchmaking is not adding a screen, it is reversing a decision
+      the whole trust model rests on: today the creator vouching for every wallet IS the
+      security, and a stranger cannot reach your circle at all.
+      ADRs are append-only and the design session owns them, so this needs a NEW ADR that
+      supersedes ADR-003 before any code. Things that change with it, at least:
+        - `leave_forming` stops being a repair and becomes load-bearing. In a private
+          circle a stalled formation is a social problem with a social fix; among
+          strangers there is nobody to chase.
+        - D9's cut of cross-circle reputation was safe because the creator knew everyone.
+          It is not obviously safe once they do not.
+        - `join_and_lock` scans a fixed member list for the signer's seat. Open join has
+          no such list, so seat assignment becomes a thing the program decides, which is
+          the payout order, which is the economics.
