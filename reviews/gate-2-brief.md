@@ -10,42 +10,41 @@ that one is at `reviews/gate-2a-t09-brief.md`, was deliberately not a verdict,
 and its subject is INCLUDED here, because T10 to T12 landed after it and
 invalidated it by design.
 
-**Commit under review: `44cc1e5`** on `task/T09-join-and-lock`.
-Diff range `origin/staging..62d5f74`. Review under
-`/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
-The absolute path is deliberate: it is a cross-project standard in another repo,
-and a relative path only resolves if you start a directory above this one.
+## Review target
 
-```
- programs/othello/src/gate.rs                       | 326 ++++   (new)
- programs/othello/src/instructions/join_and_lock.rs | 263 ++++   (new)
- programs/othello/src/instructions/release_pot.rs   | 389 ++++   (new)
- programs/othello/src/instructions/update_coverage.rs | 180 ++   (new)
- programs/othello/src/instructions/withdraw.rs      | 307 ++++   (new)
- programs/othello/src/instructions/contribute.rs    | 125 ++++   (new)
- programs/othello/src/instructions/lifecycle.rs     |  89 ++++   (new)
- ... plus state, errors, events, wiring and 2,974 lines of tests
- 23 files changed, 5,112 insertions(+), 11 deletions(-)
-```
+Every figure that changes between review rounds lives in THIS block and nowhere
+else in the brief. It has been wrong three times, and every time for the same
+reason: a fix corrected the line a reviewer pointed at while the same fact sat
+restated further down. The rest of the brief now refers here instead of
+repeating a number.
 
-## 1. What gate 2 had to prove
+| | |
+|---|---|
+| branch | `task/T09-join-and-lock` |
+| commit | `@@COMMIT@@` |
+| range | `origin/staging..@@COMMIT@@` |
+| size | @@SIZE@@ |
+| `anchor test` | 92 passing |
+| `cargo test -p othello` | 44 passed |
+| `init_if_needed` uses | 8, itemised per instruction in section 3 |
 
-SPEC.md §10, G2, verbatim: *"I1-I4, I6, I10, I11, I16 and the healthy-payout
-half of I18 green; SPEC §3 peak table reproduced (needs 140, 150, 30, 0)
-including the peak-guarantee check refusing g = 29 for the demo params; every
-section 5 refusal code has a negative test."*
+Every figure above was produced by running the command, not carried forward:
+`git rev-parse`, `git diff --shortstat`, the two test runs, and `grep -c`.
 
-Section 4 is the third clause, and section 7 below says where it is not met.
+Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`,
+U1 to U9. The absolute path is deliberate: it is a cross-project standard in
+another repo, and a relative path only resolves if you start a directory above
+this one.
 
 ## 2. How to run it
 
 ```
 export PATH="$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
 cd /home/hr/myvscode_linux/othello
-git checkout task/T09-join-and-lock     # at 62d5f74
+git checkout @@COMMIT@@                 # the commit in the Review target block
 anchor build
-anchor test                              # 85 passing
-cargo test -p othello                    # 43 passed
+anchor test                              # count: Review target block
+cargo test -p othello                    # count: Review target block
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 pnpm exec tsc --noEmit -p tsconfig.json
@@ -74,8 +73,9 @@ transfer into it**.
 
 **`anchor-lang` carries the `init-if-needed` feature.** EIGHT uses across four
 instructions, counted from source at the commit under review. This table has been
-wrong twice: r1 found it undercounting at six, and r2 found it still at six after
-`leave_forming` added two more. These figures were counted from source with
+wrong three times: r1 found it undercounting, r2 found it still at six after
+`leave_forming` added two more, and r3 found the count restated elsewhere in
+the brief after the table itself was right. These figures were counted from source with
 `grep -c` at the commit below, not carried forward from the last version:
 
 | instruction | `init_if_needed` | `associated_token` constraints |
@@ -103,8 +103,8 @@ cannot answer about itself:
 
 1. Are the ATA constraints sufficient, in every combination, with two token
    programs present? Can any token account be substituted for another?
-2. Is `init_if_needed` safe on all five uses, including the two where the payer
-   and the authority are the same untrusted wallet?
+2. Is `init_if_needed` safe on every use in the section 3 table, including the
+   ones where the payer and the authority are the same untrusted wallet?
 3. Three instructions read the mint with `try_borrow_data` while the same mint
    is an `InterfaceAccount<Mint>` in the same context and CPIs follow. Sound?
 4. **`next_gate_short_by` is computed in two places**, `release_pot` and

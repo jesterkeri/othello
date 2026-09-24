@@ -172,7 +172,7 @@ if Completed (snapshot values, never decremented by withdraw):
   stock back: stock_raw_i (after any seizure)
 withdrawn_usdc += usdc_i; withdrawn bit set; stock_raw_i = 0 (keeps I4 true)
 ```
-Withdraw never changes reserve_total, reserve_losses or escrow, so every member's share is order-independent. Rounding dust stays in the vault. Member accounts are not closed in the prototype (rent stays locked; limit). Circle fields at Completed (paid_bitmap, round, reserve_allocated) are left as they are.
+Withdraw never changes reserve_total, reserve_losses or escrow, so every member's share is order-independent. Rounding dust stays in the vault. Member accounts are not closed by `withdraw` in the prototype (rent stays locked; limit). The one exception is `leave_forming`, which closes the leaver's Member account so the same wallet can rejoin (r5). Circle fields at Completed (paid_bitmap, round, reserve_allocated) are left as they are.
 
 **No exit from Active without a successful payout** (r2, accepted limit): an Active circle whose gate cannot pass and that nobody tops up never completes. The create-time peak check makes this unreachable without a default or a price fall. No `dissolve` instruction in Tier 1.
 
@@ -210,9 +210,9 @@ Anchor error names = the machine codes below (snake_case in copy, UpperCamel in 
 |---|---|---|---|---|---|---|
 | Landing | Savings circles where nobody has to trust anybody | Open demo circle | Create a circle | Lock tokenized stock as a promise. You still own it. You get it back when the circle ends. | | |
 | Create | New circle | Create circle | Cancel | You'll name every member and the order they get paid. Each member confirms when they join. | Add at least 3 members | Circle created. Share each member's invite link. |
-| Join | You're invited to {circle} | Join and lock | View circle | Turn {n} of {N}. {amount} USDC per round. You lock {stock} and put {g} USDC into the circle's shared reserve. Both come back when the circle ends. Most you could lose: {g} USDC, only if others default and their stock doesn't cover it. | | You're in. Your stock is locked until the circle ends. |
+| Join | You're invited to {circle} | Join and lock | View circle | Turn {n} of {N}. {amount} USDC per round. You lock {stock} and put {g} USDC into the circle's shared reserve. Both come back when the circle ends. Most you could lose: {g} USDC, only if others default and their stock doesn't cover it. | | You're in. Until the circle starts, you can leave and take everything back. |
 | Circle | Round {r} of {N} · {name}'s turn | Contribute / Release pot to {name} (context) | Update coverage | Coverage uses prices from {age} ago | Waiting for {k} members to join | Pot paid |
-| Position | {name}'s position | Lock more stock | Back | Counted at the lower of its market price and its share price, minus a {haircut}% safety margin | Not joined yet | Stock locked. Update coverage to refresh your numbers. |
+| Position | {name}'s position | Lock more stock | Back / Leave circle (while Forming) | Counted at the lower of its market price and its share price, minus a {haircut}% safety margin | Not joined yet | Stock locked. Update coverage to refresh your numbers. |
 | Default | {name} defaulted in round {r} | Top up reserve | Back to circle | Their remaining contributions are prepaid from their stock and the reserve. | | Payouts resumed |
 | Split lab | What a stock split does to your locked stock (muted: the handkerchief test) | Update coverage | Back | Same stock, same value. One vault believes the display. | No split yet. The demo admin can schedule one. | |
 
