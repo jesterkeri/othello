@@ -91,7 +91,9 @@ the brief after the table itself was right. These figures were counted from sour
 | `leave_forming` | 2 | 4 |
 | `release_pot` | 1 | 2 |
 | `withdraw` | 2 | 4 |
-| **total** | **8** | **14** |
+
+The `init_if_needed` total is the Review target block's figure and is not
+restated here.
 
 No Othello state account uses it; `Member` uses plain `init`.
 
