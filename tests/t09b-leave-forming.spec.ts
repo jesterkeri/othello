@@ -37,6 +37,8 @@ import {
   poolAddress,
   priceFeedAddress,
   setPrices,
+  decodeEvent,
+  send,
   splMintAccount,
   tokenAccount,
   tokenAmount,
@@ -133,7 +135,9 @@ describe("leave_forming: a member's own way out of a stalled circle", () => {
       .signers([w])
       .rpc();
 
-  const leave = (w: anchor.web3.Keypair) =>
+  const leave = (w: anchor.web3.Keypair) => leave_(w).rpc();
+
+  const leave_ = (w: anchor.web3.Keypair) =>
     call(h.program, "leaveForming", [])
       .accounts({
         wallet: w.publicKey,
@@ -150,8 +154,7 @@ describe("leave_forming: a member's own way out of a stalled circle", () => {
         associatedTokenProgram: new anchor.web3.PublicKey(ASSOCIATED_TOKEN_PROGRAM),
         systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([w])
-      .rpc();
+      .signers([w]);
 
   beforeEach(async () => {
     h = await harness(["NFLXx"]);
@@ -298,6 +301,42 @@ describe("leave_forming: a member's own way out of a stalled circle", () => {
       0n,
       "and so is the usdc vault: the circle holds nothing of anyone's",
     );
+  });
+
+  it("emits MemberLeftForming with the full payload, for indexers and the audit trail", async () => {
+    // Codex gate 2 r4: SPEC.md:104 requires this event and nothing asserted
+    // it, so removing the emit! or corrupting a field left every test green.
+    await join(wallets[0]!);
+    await join(wallets[1]!);
+    const w = wallets[1]!;
+
+    const ix = await leave_(w).instruction();
+    const meta = await send(h, ix, w);
+    const e = decodeEvent<{
+      circle: anchor.web3.PublicKey;
+      wallet: anchor.web3.PublicKey;
+      turn: number;
+      stock: { toString(): string };
+      usdc: { toString(): string };
+      joinedBitmap: number;
+      reserveTotal: { toString(): string };
+      depositsTotal: { toString(): string };
+    }>(h.program, "memberLeftForming", meta.logMessages);
+
+    assert.ok(e, "MemberLeftForming was emitted");
+    assert.ok(e.circle.equals(circle));
+    assert.ok(e.wallet.equals(w.publicKey));
+    assert.equal(e.turn, 1, "the leaver's own seat");
+    assert.equal(e.stock.toString(), LOCK_RAW.toString(), "every raw unit locked");
+    assert.equal(e.usdc.toString(), String(PARAMS.guaranteePerMember), "guarantee + top-ups");
+    assert.equal(e.joinedBitmap, 0b001, "seat 2's bit cleared, seat 1 still in");
+    assert.equal(e.reserveTotal.toString(), String(PARAMS.guaranteePerMember), "one guarantee left");
+    assert.equal(e.depositsTotal.toString(), String(PARAMS.guaranteePerMember), "settled deposits, not ever-deposited");
+
+    const c = await readCircle();
+    assert.equal(e.joinedBitmap, c.joinedBitmap, "the event says what the account says");
+    assert.equal(e.reserveTotal.toString(), c.reserveTotal.toString());
+    assert.equal(e.depositsTotal.toString(), c.depositsTotal.toString());
   });
 
   it("the Member account is closed, so the same wallet can rejoin cleanly", async () => {

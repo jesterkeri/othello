@@ -12,28 +12,30 @@ invalidated it by design.
 
 ## Review target
 
-Every figure that changes between review rounds lives in THIS block and nowhere
-else in the brief. It has been wrong three times, and every time for the same
-reason: a fix corrected the line a reviewer pointed at while the same fact sat
-restated further down. The rest of the brief now refers here instead of
-repeating a number.
+This block is the SOURCE OF TRUTH for every figure that changes between review
+rounds. It has been wrong three times, and every time for the same reason: a
+fix corrected the line a reviewer pointed at while the same fact sat restated
+further down. Section 3 keeps one sourced BREAKDOWN of the `init_if_needed`
+total, per instruction, because a reviewer needs to know where each use is;
+it is recounted from source together with this block, never edited alone, and
+where the two disagree this block wins and the brief is wrong.
 
 | | |
 |---|---|
 | branch | `task/T09-join-and-lock` |
-| commit | `045878a`, the code and design pack under review |
-| range | `origin/staging..045878a` |
-| size | 35 files changed, 7,636 insertions(+), 24 deletions(-) |
-| `anchor test` | 92 passing |
+| commit | `60fc76e`, the code and design pack under review (r6) |
+| range | `origin/staging..60fc76e` |
+| size | 36 files changed, 7,708 insertions(+), 26 deletions(-) |
+| `anchor test` | 93 passing |
 | `cargo test -p othello` | 44 passed |
 | `init_if_needed` uses | 8, itemised per instruction in section 3 |
 
 Every figure above was produced by running the command, not carried forward:
 `git rev-parse`, `git diff --shortstat`, the two test runs, and `grep -c`.
 
-The branch head is ONE commit later than `045878a`. That commit changes only
-this block, which cannot name its own hash, and records r3's verdict file. It
-changes no code and no design text, so `045878a` is the surface to review.
+The branch head is ONE commit later than `60fc76e`. That commit changes only
+this block, which cannot name its own hash. It
+changes no code and no design text, so `60fc76e` is the surface to review.
 
 Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`,
 U1 to U9. The absolute path is deliberate: it is a cross-project standard in
@@ -45,7 +47,7 @@ this one.
 ```
 export PATH="$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
 cd /home/hr/myvscode_linux/othello
-git checkout 045878a                    # the commit in the Review target block
+git checkout 60fc76e                    # the commit in the Review target block
 anchor build
 anchor test                              # count: Review target block
 cargo test -p othello                    # count: Review target block
@@ -75,8 +77,9 @@ that computes it. The consequence is that the vault address is derived from
 (mint, authority) rather than from a seed this program chose, and **anyone can
 transfer into it**.
 
-**`anchor-lang` carries the `init-if-needed` feature.** EIGHT uses across four
-instructions, counted from source at the commit under review. This table has been
+**`anchor-lang` carries the `init-if-needed` feature.** The total is in the
+Review target block; this is its per-instruction breakdown, counted from source
+at the commit under review and recounted whenever that block is. This table has been
 wrong three times: r1 found it undercounting, r2 found it still at six after
 `leave_forming` added two more, and r3 found the count restated elsewhere in
 the brief after the table itself was right. These figures were counted from source with
@@ -88,7 +91,9 @@ the brief after the table itself was right. These figures were counted from sour
 | `leave_forming` | 2 | 4 |
 | `release_pot` | 1 | 2 |
 | `withdraw` | 2 | 4 |
-| **total** | **8** | **14** |
+
+The `init_if_needed` total is the Review target block's figure and is not
+restated here.
 
 No Othello state account uses it; `Member` uses plain `init`.
 
