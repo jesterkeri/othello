@@ -38,7 +38,8 @@ U1 to U9.
 
 The range above, which is gate 3 alone. Gate 2 is reviewed separately on
 `task/T09-join-and-lock` and its r4/r5 fixes were merged into this branch
-(the merge commit `d7cc816`); they are context here, not scope.
+(merge commits `d7cc816`, and `8f916bf` for its r6 implementation-ready
+verdict); they are context here, not scope.
 
 | task | what | files |
 |---|---|---|
@@ -68,12 +69,13 @@ pnpm exec tsc --noEmit -p tsconfig.json
 ```
 
 **Run the spec files one per process, as above.** `anchor test` runs them all
-in one process, and that intermittently stalls with no output at all (3 of
-about 8 runs on 24 Sep; once for over an hour at ~650% CPU). It is recorded,
-not root-caused, in OPEN-QUESTIONS.md "INTERMITTENT FULL-SUITE STALL": every
-file passes alone every time, and the stall is not load-related (it also
-happened at load 3.5). If `anchor test` completes for you, its count should
-equal the sum of the per-file counts. Run cargo, clippy and fmt alone too:
+in one process, and that can stall with no output inside bankrun's native code.
+The trigger was found and fixed (commit 948d5ee): T14's harness loaded Othello
+twice per context. One 16-context test stalled 3 of 8 times with the double
+load and 0 of 10 after the fix. It is not fully gone: one of three full
+single-process runs after the fix still stalled. OPEN-QUESTIONS.md, "SUITE
+STALL". If `anchor test` completes for you, its count equals the sum of the
+per-file counts. Run cargo, clippy and fmt alone too:
 two of them in one shell line fight over `target/`.
 
 ## 3. The decisions a reviewer should check hardest
@@ -188,7 +190,8 @@ each is recorded.
   alternative is recorded for after the deadline (TASKS.md).
 - I14 is exercised for one deficit shape (a price fall then one default). A
   deficit from two defaults at unchanged prices is not separately tested.
-- The single-process suite stall (section 2) is not root-caused.
+- The single-process suite stall (section 2): its trigger is fixed, but one
+  full run in three still stalled afterwards, so it is not fully explained.
 
 ## 7. Open items, already recorded. Do not re-report unless the statement is wrong
 

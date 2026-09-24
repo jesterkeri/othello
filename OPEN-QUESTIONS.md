@@ -449,16 +449,16 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       for a recomputed-from-allocation figure. The DEFAULTER's own figure is set to u32::MAX
       on both branches.
 
-- [ ] INTERMITTENT FULL-SUITE STALL (2026-09-24, CORRECTED). A single-process run of every
-      spec sometimes stalls with NO output at all: 3 of about 8 full runs today, once for over
-      an hour with mocha at ~650% CPU and 2.7 GB. An earlier note here tied it to machine load;
-      that was WRONG: it also stalled at load 3.5. What the evidence supports: mocha never
-      reached its own 120 s per-test timeout, which cannot fire while a synchronous native call
-      holds the JavaScript thread, so the likeliest place is inside bankrun's native code, not
-      a slow test. Every spec file passes in its own process every time, and the same full
-      suite passes in about a minute on the runs that do not stall (134 passing, 93 s for all of
-      anchor test). CI is unaffected: it does not run anchor test. Next occurrence: run with
-      per-line timestamps (as in DONE.md, T16) so the stall names the test it stopped in.
+- [ ] INTERMITTENT SUITE STALL: TRIGGER FOUND AND FIXED, NOT FULLY GONE (2026-09-25).
+      Runs stalled with no output inside bankrun's native code (once for over an hour at
+      ~650% CPU). Not load-related. TRIGGER: T14's harness loaded Othello twice per context,
+      via startAnchor and again as upgradeable-loader accounts that overrode it. Measured on
+      one test that builds 16 contexts (t10-adversary "every price on the way down"): 3 of 8
+      runs stalled with the double load; 0 of 8 on the gate 2 branch without it; 0 of 10 after
+      the fix (commit 948d5ee: bankrun start(), Othello placed only as the upgradeable deploy).
+      NOT FULLY GONE: of three full single-process anchor test runs after the fix, one still
+      stalled (the other two passed, 143 in 63 s and 65 s). Every spec file in its own process
+      is the reliable way to run the suite; the Gate 3 brief says so.
 
 - [ ] I14 WORDING (T16, 2026-09-24). INVARIANTS I14: "default with shortfall > reserve, then a
       top-up of next_gate_short_by (which already includes the deficit) lets the circle

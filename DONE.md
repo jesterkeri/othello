@@ -1974,3 +1974,21 @@ by t16-top-up.
 verify:
   every spec file in its own process: 142 passing, 0 failing
   cargo test 54 passed; fmt clean; clippy 0 warnings; tsc clean
+
+## Gate 2 closed; the suite-stall trigger found (2026-09-25)
+reviewed: reviews/gate-2-review.md | verdict: implementation-ready | commit: 60fc76e (r6; recorded on task/T09-join-and-lock at c26fb31, merged here at 8f916bf)
+adversary: n/a (test-harness change, measured below)
+
+Gate 2: Codex r6, implementation-ready, 93 Mocha, 44 Rust, fixtures, clippy,
+fmt, tsc all passed; check-reviews.sh "reviews ok" on both branches.
+
+SUITE STALL, measured. One test that builds 16 bankrun contexts
+(t10-adversary, "every price on the way down"), looped:
+  on T16 with the harness loading Othello twice:  3 of 8 stalled (one ignored
+    SIGTERM for ~50 minutes), passing runs peaked at ~420 threads
+  on the gate 2 branch, before T14's harness:      0 of 8, ~6 s each
+  on T16 after 948d5ee (start(), load once):        0 of 10, ~6 s each
+Full single-process anchor test after the fix, three runs:
+  run 1: stalled, killed at 300 s; run 2: 143 passing (46s); run 3: 143 passing (45s)
+So the trigger is fixed and the suite is faster, but not every full run
+completes. Per-file runs remain the reliable path and the brief says so.
