@@ -19,10 +19,10 @@ together with this block, and where they disagree this block wins.
 | | |
 |---|---|
 | branch | `task/T16-topup` |
-| commit | `b0ec52c`, the code and design pack under review (r1) |
-| range | `c26fb31..b0ec52c` (gate 2's final head, implementation-ready, to this commit) |
-| size | 30 files changed, 4,962 insertions(+), 128 deletions(-) |
-| spec files, each in its own process | 21 files, 143 passing, 0 failing |
+| commit | `011a4ae`, the code and design pack under review (r2) |
+| range | `c26fb31..011a4ae` (gate 2's final head, implementation-ready, to this commit) |
+| size | 32 files changed, 5,203 insertions(+), 130 deletions(-) |
+| spec files, each in its own process | 21 files, 144 passing, 0 failing |
 | `cargo test -p othello` | 54 passed |
 | `init_if_needed` uses | 10, itemised per instruction in section 3 |
 
