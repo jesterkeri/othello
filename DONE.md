@@ -1854,7 +1854,7 @@ tried and is NOT a fix: one test failed under it and one run also stalled.
 
 ## T16 top_up_reserve and add_stock (2026-09-24)
 reviewed: n/a (covered by Codex Gate 3 review at T17)
-adversary: pending (run on the committed diff before the Gate 3 brief)
+adversary: NO DEFECT FOUND against abc68c0, attacks run: 7, test: tests/t16-adversary.spec.ts (7 passing, integrated)
 
 top_up_reserve(amount), SPEC §5: fill = min(escrow_deficit, amount) goes to
 escrow first, the rest to reserve_total; top_ups and deposits_total += amount;
@@ -1907,3 +1907,16 @@ verify:
   One earlier anchor test run of this same commit stalled and was killed at
   462 s; see OPEN-QUESTIONS "INTERMITTENT FULL-SUITE STALL", now corrected:
   it is NOT load-related, since it also stalled at load 3.5.
+
+T16 ADVERSARY PASS (against abc68c0): no defect in 7 attacks: another seat,
+another's token account, a foreign vault, the wrong token program or mint
+(A1, A2); partial and over-sized deficit fills keep I3 and SPEC's short_by
+(A3); add_stock by a non-member and after leave_forming (A4); stock added
+before a default sold only up to O, surplus returned at withdraw (A5); a late
+top-up returns LESS than it put in and raises everyone else's share, with
+the algebra pool_left <= denominator at Completed (A6); add_stock while
+Repricing keeps I4 (A7). Integrated: tests/t16-adversary.spec.ts, 7 passing.
+Two design-pack points recorded in OPEN-QUESTIONS: SPEC §9 says a deficit
+fill "is not returned" while §5 and §7 return it pro rata; and the capped
+branch's short_by is approximate, so I18 needs its exception stated.
+

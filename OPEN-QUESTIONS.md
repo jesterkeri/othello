@@ -471,3 +471,23 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       Paused is cured by a top-up of exactly next_gate_short_by, and the first fills the
       deficit". Design owner's call.
 
+- [ ] DEFICIT FILLS ARE PARTLY RETURNED, CONTRARY TO SPEC §9 (T16 adversary, 2026-09-24).
+      SPEC.md:228 (FLOWS, Round not funded: escrow short) tells the filler "the first {deficit}
+      prepays {name}'s contributions and is NOT RETURNED". But SPEC §5 adds the WHOLE top-up,
+      fill included, to Member.top_ups and deposits_total, and §7's withdraw weight is
+      guarantee + top_ups - forfeited. So at Completed the filler gets part of the fill back pro
+      rata, out of the other members' shares. The code implements §5 and §7 exactly; the pack
+      contradicts itself. Design owner's choice:
+        (a) keep the maths, change the §9 copy (the fill is shared like any other deposit); or
+        (b) keep the copy, and have the fill NOT enter top_ups/deposits_total (it becomes a
+            pure contribution to the defaulted seat), which changes §5, §7 and I15's reading.
+      (a) is copy only. (b) is a program change plus tests.
+
+- [ ] CAPPED-BRANCH short_by IS APPROXIMATE, SO I18 CAN MISS ONCE (T16 adversary, suspicion).
+      declare_default's capped branch (Repricing) adds only the new deficit to
+      next_gate_short_by, not the reserve the default just lost, so a top-up of exactly that
+      figure may not unpause the next gate until an update_coverage recomputes it. SPEC §5 labels
+      this branch "approximate until the next update_coverage", so this is the documented
+      behaviour, but I18 reads "a top-up of exactly short_by makes the next gate pass" without
+      that exception. Wording, or a note in the UI to recheck after repricing.
+
