@@ -12,11 +12,13 @@ invalidated it by design.
 
 ## Review target
 
-Every figure that changes between review rounds lives in THIS block and nowhere
-else in the brief. It has been wrong three times, and every time for the same
-reason: a fix corrected the line a reviewer pointed at while the same fact sat
-restated further down. The rest of the brief now refers here instead of
-repeating a number.
+This block is the SOURCE OF TRUTH for every figure that changes between review
+rounds. It has been wrong three times, and every time for the same reason: a
+fix corrected the line a reviewer pointed at while the same fact sat restated
+further down. Section 3 keeps one sourced BREAKDOWN of the `init_if_needed`
+total, per instruction, because a reviewer needs to know where each use is;
+it is recounted from source together with this block, never edited alone, and
+where the two disagree this block wins and the brief is wrong.
 
 | | |
 |---|---|
@@ -75,8 +77,9 @@ that computes it. The consequence is that the vault address is derived from
 (mint, authority) rather than from a seed this program chose, and **anyone can
 transfer into it**.
 
-**`anchor-lang` carries the `init-if-needed` feature.** EIGHT uses across four
-instructions, counted from source at the commit under review. This table has been
+**`anchor-lang` carries the `init-if-needed` feature.** The total is in the
+Review target block; this is its per-instruction breakdown, counted from source
+at the commit under review and recounted whenever that block is. This table has been
 wrong three times: r1 found it undercounting, r2 found it still at six after
 `leave_forming` added two more, and r3 found the count restated elsewhere in
 the brief after the table itself was right. These figures were counted from source with

@@ -101,7 +101,11 @@ pub struct Circle {
     pub escrow_deficit: u64,
     /// Cumulative paid out by withdraw.
     pub withdrawn_usdc: u64,
-    /// Sum of guarantees and top-ups ever deposited.
+    /// Sum of guarantees and top-ups currently settled in the circle (SPEC.md:58,
+    /// r5). A Forming unwind (`leave_forming`) subtracts its own deposit, so this
+    /// is NOT everything ever deposited: after two joins and one unwind it is g,
+    /// not 2g. It is withdraw's pro-rata denominator, which is why it must only
+    /// count money still here.
     pub deposits_total: u64,
     /// Sum of `Member.forfeited`.
     pub forfeited_total: u64,
