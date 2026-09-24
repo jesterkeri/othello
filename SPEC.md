@@ -96,6 +96,8 @@ reserve_free = reserve_total - reserve_losses - reserve_allocated
 
 ## 5. Instruction surface
 
+**Admin (r6).** "admin" is the program's upgrade authority. `init_price_feed` and `init_pool` require it as signer, read from the upgradeable loader's ProgramData account for this program; `set_prices`, `touch_prices` and `seed_pool` check the authority those two recorded (`feed.authority`, `pool.authority`). A program deployed immutable has no admin. No config account exists and none is needed: the deploy key is the root, so there is no window after deploy in which anyone else can claim a feed.
+
 | Instruction | Signer / auth | Preconditions (on-chain checks) | Effect | Refusal codes |
 |---|---|---|---|---|
 | `create_circle(params, members[..n])` | creator (must be in members) | 3≤n≤8, unique wallets, mints/feed/pool match, **param ranges below**, **peak-guarantee check below** | Circle Forming | `invalid_params`, `guarantee_below_peak_need` |
@@ -113,7 +115,7 @@ reserve_free = reserve_total - reserve_losses - reserve_allocated
 | `quote_valuation(raw)` | anyone, read-only | mint + feed | returns `{mult_fixed, fund, exec, h}` via return data | `multiplier_invalid`, `price_stale`, `multiplier_price_mismatch` |
 | `init_price_feed`, `set_prices(wrapper, share, stamp, expected_multiplier_fixed)` | admin | authority; prices > 0; reads the mint; **`expected_multiplier_fixed` must equal the value the stamp would write** (the script states which multiplier the prices are for, the program verifies it); **`stamp = Current` refused while a Scheduled stamp is pending** (feed.priced_for = mint.newMultiplier and its effective time is in the future) | wrapper/share set; `priced_for_multiplier` stamped from the mint (`Current` → effective now, `Scheduled` → newMultiplier); updated_at = now | `unauthorized`, `invalid_params`, `multiplier_invalid`, `multiplier_price_mismatch` |
 | `touch_prices` | admin | authority | **only** `updated_at = now`; prices and stamp untouched (r3: the refresh script calls this, never set_prices) | `unauthorized` |
-| `init_pool(discount_bps)`, `seed_pool` | admin | authority; discount_bps < 10000 | pool vault funded | `unauthorized`, `invalid_params` |
+| `init_pool(discount_bps)`, `seed_pool(amount)` | admin | authority; discount_bps < 10000; stock mint allowlisted; **USDC mint owned by classic SPL Token, never Token-2022** (r6: circles take the USDC mint from the pool's seeds, and a transfer-fee mint would make reserve_total larger than the vault, breaking I3); seed amount > 0 and ≤ the signer's balance | pool and both pool vaults created (associated token accounts of the pool PDA); pool vault funded from the signer's own USDC; emits PoolInitialized / PoolSeeded | `unauthorized`, `invalid_params`, `mint_not_allowed`, `insufficient_balance` |
 
 Multiplier changes are made by the admin with Token-2022's own `UpdateMultiplier` from a script, not through Othello.
 
