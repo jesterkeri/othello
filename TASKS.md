@@ -102,20 +102,34 @@ should start before the hackathon build is finished.
       obligation. What it shares is the valuation path and the liquidation pool. Needs
       its own SPEC section before any of it is built.
 
-- [ ] MATCHMAKING. Wanted (Joshua, 2026-09-24), after the deadline.
-      THIS SUPERSEDES ADR-003, and that matters more than the feature does. ADR-003
-      records open join as REJECTED, with "creator names members and order at create"
-      chosen instead, and SPEC.md:27, design/FLOWS.md:14 and D3 all state open join as a
-      non-goal. Building matchmaking is not adding a screen, it is reversing a decision
-      the whole trust model rests on: today the creator vouching for every wallet IS the
-      security, and a stranger cannot reach your circle at all.
-      ADRs are append-only and the design session owns them, so this needs a NEW ADR that
-      supersedes ADR-003 before any code. Things that change with it, at least:
-        - `leave_forming` stops being a repair and becomes load-bearing. In a private
-          circle a stalled formation is a social problem with a social fix; among
-          strangers there is nobody to chase.
-        - D9's cut of cross-circle reputation was safe because the creator knew everyone.
-          It is not obviously safe once they do not.
-        - `join_and_lock` scans a fixed member list for the signer's seat. Open join has
-          no such list, so seat assignment becomes a thing the program decides, which is
-          the payout order, which is the economics.
+- [ ] MATCHMAKING, as a SECOND CIRCLE TYPE (Joshua, 2026-09-24), after the deadline.
+      CORRECTION to what this entry first said. It does NOT supersede ADR-003. ADR-003
+      stands, unchanged, for private circles: the creator names every wallet and the turn
+      order, and that vouching IS the security model for that type. The new ADR ADDS a
+      public, matchmade type beside it. Two types on purpose, not one replacing the other,
+      and SPEC.md:27's "open join" non-goal is then a statement about the private type
+      rather than about the protocol.
+
+      That distinction changes the work. Superseding one decision would have been a
+      rewrite; adding a type is a discriminant and one divergent step, with everything
+      downstream shared.
+
+      WHAT DIFFERS BETWEEN THE TYPES, and it is a short list:
+        - WHO MAY JOIN. Private scans a fixed member list for the signer's seat and
+          refuses NotAMember otherwise. Public has no list to scan.
+        - HOW A SEAT IS ASSIGNED. Private reads it off the creator's ordering. Public
+          needs the program to decide it, and the seat is the payout order, which is the
+          economics, so that rule is an economic decision and not an implementation
+          detail. It is the main thing the new ADR has to settle.
+        - WHAT THE UI MUST SAY. A member has to know which type they are in, because the
+          answer to "who are these people" is completely different.
+
+      WHAT IS SHARED, and is already built: the valuation path, the peak-guarantee check,
+      the payout gate, update_coverage, the default waterfall, withdraw, and
+      `leave_forming`, which serves both and becomes load-bearing in the public type. In a
+      private circle a stalled formation is a social problem with a social fix; among
+      strangers there is nobody to chase.
+
+      STILL TRUE, AND STILL THE DESIGN SESSION'S: D9's cut of cross-circle reputation was
+      safe because the creator knew everyone. That reasoning does not carry to the public
+      type and needs revisiting with it.
