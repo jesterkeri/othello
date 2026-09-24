@@ -21,15 +21,19 @@ repeating a number.
 | | |
 |---|---|
 | branch | `task/T09-join-and-lock` |
-| commit | `@@COMMIT@@` |
-| range | `origin/staging..@@COMMIT@@` |
-| size | @@SIZE@@ |
+| commit | `045878a`, the code and design pack under review |
+| range | `origin/staging..045878a` |
+| size | 35 files changed, 7,636 insertions(+), 24 deletions(-) |
 | `anchor test` | 92 passing |
 | `cargo test -p othello` | 44 passed |
 | `init_if_needed` uses | 8, itemised per instruction in section 3 |
 
 Every figure above was produced by running the command, not carried forward:
 `git rev-parse`, `git diff --shortstat`, the two test runs, and `grep -c`.
+
+The branch head is ONE commit later than `045878a`. That commit changes only
+this block, which cannot name its own hash, and records r3's verdict file. It
+changes no code and no design text, so `045878a` is the surface to review.
 
 Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`,
 U1 to U9. The absolute path is deliberate: it is a cross-project standard in
@@ -41,7 +45,7 @@ this one.
 ```
 export PATH="$HOME/.cargo/bin:$HOME/.local/share/solana/install/active_release/bin:$PATH"
 cd /home/hr/myvscode_linux/othello
-git checkout @@COMMIT@@                 # the commit in the Review target block
+git checkout 045878a                    # the commit in the Review target block
 anchor build
 anchor test                              # count: Review target block
 cargo test -p othello                    # count: Review target block
