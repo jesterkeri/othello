@@ -17,4 +17,4 @@ Accepted tradeoffs. Reviews do not re-report these unless the statement itself i
 | L11 | One stock per circle | scope | design | post-hackathon |
 | L12 | Tier 1 design depth for a money-holding program | deadline; four review rounds compensate | design | mainnet (Tier 2 + audit) |
 | L13 | "Removed from future circles" claim dropped; default is recorded only in its circle | no cross-circle record | design | post-hackathon |
-| L14 | Top-ups that fill an escrow deficit are not returned | they prefund a defaulter's contributions | design r3 | never (by design) |
+| L14 | A top-up that fills an escrow deficit prefunds a defaulter's contributions and is then a deposit like any other: shared pro rata at settlement, so it can come back as less than was put in, after losses (SPEC r8, decision (a)) | the circle must be able to complete; the filler is not singled out to carry the default | design r3, r9 | never (by design) |
