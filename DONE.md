@@ -1665,7 +1665,7 @@ Joshua and per the r2 verdict.
 
 ## T14 init_pool / seed_pool, and the admin root (2026-09-24)
 reviewed: n/a (covered by Codex Gate 3 review at T17)
-adversary: pending (run on the committed diff before the Gate 3 brief)
+adversary: NO DEFECT FOUND against 0af634b, attacks run: 14, test: tests/t14-adversary.spec.ts (10 integrated, 1 withheld, see below)
 
 Restarted by Joshua ("yes upgrade next, then continue with T14"). T14 had been
 stopped because two recorded findings were owed to it; both are closed here.
@@ -1727,3 +1727,23 @@ SPEC wording owed by the design owner (drafted as apply-spec-r6.py, not applied
 by the build): who "admin" is, init_pool's USDC-mint rule, and the two events.
 check-reviews.sh is red on this branch for the inherited reason: it stacks on
 task/T09-join-and-lock, whose gate 2 verdict is still "changes required" until r4.
+
+T14 ADVERSARY PASS (same day, against 0af634b): no defect. 14 attacks, each
+refused for a stated reason: stranger admin; stranger's own ProgramData; a
+different executable as `program` (InvalidProgramId); a loader Buffer account
+as ProgramData (AccountNotProgramData); immutable program; pool PDA, feed PDA
+and vaults pre-funded or pre-created (init_pool and init_price_feed still
+succeed); Token-2022 USDC declared either way; second init_pool (account in
+use); seed_pool from an account the admin is only delegate on
+(ConstraintTokenOwner); seed_pool into a non-ATA pool account
+(ConstraintAssociated); seed_pool against another pair's pool; and a harness
+sanity check that rewriting the ProgramData authority byte changes who is
+admin, so the harness is not passing tests for the wrong reason.
+
+Integrated into tests/t14-adversary.spec.ts, run on this branch:
+  10 passing (2s)
+One test withheld: it showed that a feed's recorded authority keeps
+set_prices after the upgrade authority is rotated. That is current behaviour
+and an open design decision, recorded in OPEN-QUESTIONS.md rather than pinned
+by a passing test. Also noted: seed_pool's InsufficientBalance is not in SPEC
+§5's refusal list for that row; r6 added it.

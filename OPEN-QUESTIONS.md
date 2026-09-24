@@ -418,3 +418,20 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       the `leave_forming` row in §5, and `deposits_total` must be reworded from "ever
       deposited" to the current settlement-deposit total, because a Forming unwind
       reverses it. The build has implemented that meaning and cannot edit SPEC.md.
+
+- [ ] ADMIN ROTATION (T14 adversary, 2026-09-24). Decision for Joshua, before the Gate 3 review.
+      init_price_feed and init_pool record the signing upgrade authority as `feed.authority`
+      and `pool.authority`, and set_prices, touch_prices and seed_pool check THAT recorded key.
+      So if the upgrade authority is rotated later (for example after a suspected leak), the
+      OLD key still sets prices and seeds the pool. Proven by the adversary: rewrite the
+      ProgramData authority, and set_prices from the old key still succeeds.
+      Two readings of SPEC §5 "admin":
+        (a) the key that created the feed or pool (current behaviour). Simple; a rotation
+            needs a new feed, which the fixed PDA address does not allow.
+        (b) whoever the upgrade authority is NOW: every admin instruction checks ProgramData,
+            and the stored authority becomes informational. A rotation then takes effect
+            everywhere at once, which is the point of rotating.
+      (b) is the safer rule and costs two more accounts on set_prices, touch_prices and
+      seed_pool. On devnet for the hackathon the practical risk is low (ARCHITECTURE:
+      "Admin key | leaked on devnet | fake prices | devnet only, stated | Accepted").
+
