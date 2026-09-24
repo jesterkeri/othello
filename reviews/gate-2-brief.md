@@ -10,7 +10,7 @@ that one is at `reviews/gate-2a-t09-brief.md`, was deliberately not a verdict,
 and its subject is INCLUDED here, because T10 to T12 landed after it and
 invalidated it by design.
 
-**Commit under review: `HEAD_SHA`** on `task/T09-join-and-lock`.
+**Commit under review: `22c55f9`** on `task/T09-join-and-lock`.
 Diff range `origin/staging..62d5f74`. Review under
 `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
 The absolute path is deliberate: it is a cross-project standard in another repo,
