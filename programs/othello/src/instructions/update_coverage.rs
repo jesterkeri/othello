@@ -20,7 +20,8 @@ use anchor_spl::token_interface::Mint;
 use crate::errors::OthelloError;
 use crate::events::CoverageUpdated;
 use crate::gate::{
-    allocate_in_turn_order, coverage_bps, need, obligations, obligations_next_round,
+    allocate_in_turn_order, checked_total, coverage_bps, need, obligations, obligations_next_round,
+    short_by,
 };
 use crate::state::{Circle, CircleStatus, Member, PriceFeed};
 use crate::valuation::value_position;
@@ -175,18 +176,14 @@ pub(crate) fn recompute_coverage(
 
     // R - L. Not the free figure: nothing is allocated yet at this point, and
     // this is what decides what free becomes.
-    let remaining = circle.reserve_total.saturating_sub(circle.reserve_losses);
+    let remaining = circle.reserve_remaining();
     let allocated = allocate_in_turn_order(&needs, remaining);
 
-    let mut total: u64 = 0;
     for (index, member) in members.iter_mut().enumerate() {
-        let take = allocated[index];
-        member.allocated = take;
-        member.last_coverage_bps = coverage_bps(covers[index], take, obligs[index]);
-        total = total
-            .checked_add(take)
-            .ok_or(OthelloError::ValuationOverflow)?;
+        member.allocated = allocated[index];
+        member.last_coverage_bps = coverage_bps(covers[index], allocated[index], obligs[index]);
     }
+    let total = checked_total(&allocated)?;
 
     // `next_gate_short_by` describes the gate that has NOT run yet, so SPEC §5
     // (r4) is explicit that it projects obligations forward with
@@ -211,9 +208,7 @@ pub(crate) fn recompute_coverage(
     }
 
     circle.reserve_allocated = total;
-    circle.next_gate_short_by = next_needed
-        .saturating_sub(remaining)
-        .saturating_add(circle.escrow_deficit);
+    circle.next_gate_short_by = short_by(next_needed, remaining, circle.escrow_deficit);
     circle.last_coverage_at = now;
 
     Ok(remaining)

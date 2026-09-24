@@ -67,6 +67,12 @@ pub fn need(obligations: u64, stock_cover: u64, coverage_bps: u16) -> Result<u64
     u64::try_from(gap).map_err(|_| OthelloError::ValuationOverflow.into())
 }
 
+/// The `last_coverage_bps` value that is not a percentage (SPEC.md:70): the UI
+/// renders it as "Nothing owed" when O = 0 and "Prepaid" for a defaulted
+/// member. Distinct from saturation below, which is a real, very large ratio
+/// that happens to hit the same ceiling.
+pub const COVERAGE_BPS_NOT_A_RATIO: u32 = u32::MAX;
+
 /// `last_coverage_bps`, saturating.
 ///
 /// SPEC.md:70: `u32::MAX` when nothing is owed, which the UI renders as
@@ -74,7 +80,7 @@ pub fn need(obligations: u64, stock_cover: u64, coverage_bps: u16) -> Result<u64
 /// exactly when a member is in the safest state they can be in.
 pub fn coverage_bps(stock_cover: u64, allocated: u64, obligations: u64) -> u32 {
     if obligations == 0 {
-        return u32::MAX;
+        return COVERAGE_BPS_NOT_A_RATIO;
     }
 
     let covered = (stock_cover as u128).saturating_add(allocated as u128);
@@ -110,9 +116,7 @@ impl GateOutcome {
 
     /// Top-ups fill the escrow deficit first, so the ask includes it.
     pub fn short_by(&self) -> u64 {
-        self.needed
-            .saturating_sub(self.remaining)
-            .saturating_add(self.escrow_deficit)
+        short_by(self.needed, self.remaining, self.escrow_deficit)
     }
 
     pub fn others_need(&self) -> u64 {
@@ -130,6 +134,28 @@ impl GateOutcome {
             OthelloError::ReserveOvercommitted
         }
     }
+}
+
+/// SPEC §5's `short_by` and `next_gate_short_by`: what the reserve lacks for
+/// a gate, plus the escrow deficit, because a top-up fills the deficit first.
+///
+/// One formula for three writers (a refused gate's payload, release_pot's
+/// projection for the next round, update_coverage's recompute), so they cannot
+/// drift apart. Paused is `next_gate_short_by > 0`.
+pub fn short_by(needed: u64, remaining: u64, escrow_deficit: u64) -> u64 {
+    needed
+        .saturating_sub(remaining)
+        .saturating_add(escrow_deficit)
+}
+
+/// Sums allocations, refusing on overflow. Both capped allocations (the
+/// recompute and declare_default's capped branch) total through this.
+pub fn checked_total(values: &[u64]) -> Result<u64> {
+    values.iter().try_fold(0u64, |total, &v| {
+        total
+            .checked_add(v)
+            .ok_or(OthelloError::ValuationOverflow.into())
+    })
 }
 
 /// Distributes the reserve across needs in TURN ORDER, earliest recipient

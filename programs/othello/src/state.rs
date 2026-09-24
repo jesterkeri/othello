@@ -113,6 +113,13 @@ pub struct Circle {
 }
 
 impl Circle {
+    /// SPEC's `remaining`, R - L: the reserve the circle still has after the
+    /// losses defaults have booked against it. The gate compares its uncapped
+    /// sum against this; every capped allocation distributes it.
+    pub fn reserve_remaining(&self) -> u64 {
+        self.reserve_total.saturating_sub(self.reserve_losses)
+    }
+
     pub const SEED: &'static [u8] = b"circle";
 }
 

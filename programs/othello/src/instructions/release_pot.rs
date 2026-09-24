@@ -22,7 +22,7 @@ use anchor_spl::token_interface::{
 
 use crate::errors::OthelloError;
 use crate::events::{PotRefused, PotReleased, RoundNotFunded};
-use crate::gate::{coverage_bps, need, obligations, obligations_next_round, GateOutcome};
+use crate::gate::{coverage_bps, need, obligations, obligations_next_round, short_by, GateOutcome};
 use crate::state::{Circle, CircleStatus, Member, PriceFeed};
 use crate::valuation::value_position;
 
@@ -225,7 +225,7 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
             .ok_or(OthelloError::ValuationOverflow)?;
     }
 
-    let remaining = circle.reserve_total.saturating_sub(circle.reserve_losses);
+    let remaining = circle.reserve_remaining();
     let recipient_seat = seats
         .iter()
         .find(|s| s.turn == round)
@@ -365,10 +365,11 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
                 .checked_add(need(o, seat.stock_cover, circle.coverage_bps)?)
                 .ok_or(OthelloError::ValuationOverflow)?;
         }
-        let next_remaining = circle.reserve_total.saturating_sub(circle.reserve_losses);
-        circle.next_gate_short_by = next_needed
-            .saturating_sub(next_remaining)
-            .saturating_add(circle.escrow_deficit);
+        circle.next_gate_short_by = short_by(
+            next_needed,
+            circle.reserve_remaining(),
+            circle.escrow_deficit,
+        );
     }
 
     circle.last_coverage_at = now;

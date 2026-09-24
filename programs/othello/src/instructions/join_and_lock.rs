@@ -234,7 +234,7 @@ pub fn handle_join_and_lock(ctx: Context<JoinAndLock>, stock_raw: u64) -> Result
     member.allocated = 0;
     // O_i is zero until this member has received, so coverage saturates from
     // the start rather than reading as 0% (SPEC.md:70).
-    member.last_coverage_bps = u32::MAX;
+    member.last_coverage_bps = crate::gate::COVERAGE_BPS_NOT_A_RATIO;
 
     circle.joined_bitmap |= 1u8 << turn;
     // Checked, not saturating: a reserve that silently stopped growing would

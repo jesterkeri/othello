@@ -9,7 +9,7 @@ use anchor_lang::prelude::*;
 
 use crate::errors::OthelloError;
 use crate::events::{CircleActivated, CircleCancelled};
-use crate::state::{Circle, CircleStatus};
+use crate::state::{Circle, CircleStatus, MAX_MEMBERS};
 
 #[derive(Accounts)]
 pub struct CreatorOnly<'info> {
@@ -57,7 +57,7 @@ pub fn handle_activate(ctx: Context<CreatorOnly>) -> Result<()> {
     // bitmap for a 5-member circle is 0b11111 and the three unused high bits
     // must stay clear; comparing against u8::MAX would never activate anything
     // smaller than 8.
-    let full: u8 = if circle.n as usize >= 8 {
+    let full: u8 = if circle.n as usize >= MAX_MEMBERS {
         u8::MAX
     } else {
         (1u8 << circle.n) - 1

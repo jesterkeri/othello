@@ -143,8 +143,7 @@ pub fn handle_withdraw(ctx: Context<Withdraw>) -> Result<()> {
             // escrow is always 0 at Completed, because release_pot refuses
             // otherwise. It is in the sum because I3 counts it.
             let pool_left = circle
-                .reserve_total
-                .saturating_sub(circle.reserve_losses)
+                .reserve_remaining()
                 .checked_add(circle.escrow)
                 .ok_or(OthelloError::ValuationOverflow)?;
 

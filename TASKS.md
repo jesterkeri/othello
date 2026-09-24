@@ -51,7 +51,7 @@ deadline rather than now.
 - [x] T10 contribute (no time check), release_pot (gate option B, allocations, next round reset, next_gate_short_by) | verify: `anchor test` | done when: I1, I6, I10 green; SPEC §3 table reproduced; no Paused after healthy payouts (I18)
 - [x] T11 update_coverage (turn-order allocation, saturating bps, remaining_accounts validation) | verify: `anchor test` | done when: I2 property test green
 - [x] T12 withdraw (snapshot, deposits_total − forfeited_total, zero stock_raw) | verify: `anchor test` | done when: I3, I11, I16 green
-- [ ] R2 Refactor pass before review: extract the round-reset and allocation logic shared by contribute, release_pot and update_coverage into one place, collapse repeated account-validation blocks, name every magic number. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 and gate-2 test still green, before/after diffstat in DONE.md
+- [x] R2 Refactor pass before review: extract the round-reset and allocation logic shared by contribute, release_pot and update_coverage into one place, collapse repeated account-validation blocks, name every magic number. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 and gate-2 test still green, before/after diffstat in DONE.md
 - [x] T13 Gate 2 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
       T13 IS STILL THE FULL GATE 2 REVIEW and covers the final accumulated diff, T08 to T12.
       reviews/gate-2a-t09-brief.md is an EARLY STRUCTURAL review of T09 alone, run at
@@ -67,7 +67,7 @@ deadline rather than now.
 - [x] T14 init_pool/seed_pool (discount ≤ haircut enforced at create) | verify: `anchor test` | done when: unauthorized and invalid_params tested
 - [x] T15 declare_default waterfall, both recompute branches, forfeited, escrow_deficit | verify: `anchor test` | done when: I7, I9, I15 green; Repricing branch keeps I2
 - [x] T16 top_up_reserve (deficit first, closed-form next_gate_short_by), add_stock | verify: `anchor test` | done when: I14, I18 green; SPEC §7 halt example: needed 75, remaining 70, short_by 5, top-up 5 resumes
-- [ ] R3 Refactor pass before review: bring both recompute branches of the waterfall into one reviewable shape, extract the shared checked arithmetic into named helpers, remove any duplication introduced by top_up_reserve. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 to gate-3 test still green, before/after diffstat in DONE.md
+- [x] R3 Refactor pass before review: bring both recompute branches of the waterfall into one reviewable shape, extract the shared checked arithmetic into named helpers, remove any duplication introduced by top_up_reserve. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 to gate-3 test still green, before/after diffstat in DONE.md
 - [ ] T17 Gate 3 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
 
 ## Gate 4: frontend (Next.js, neubrutalist style)

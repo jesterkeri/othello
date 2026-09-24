@@ -15,6 +15,7 @@ use crate::allowlist;
 use crate::errors::OthelloError;
 use crate::events::{PoolInitialized, PoolSeeded};
 use crate::state::LiquidationPool;
+use crate::valuation::BPS_DENOMINATOR;
 
 #[derive(Accounts)]
 pub struct InitPool<'info> {
@@ -89,7 +90,10 @@ pub fn handle_init_pool(ctx: Context<InitPool>, discount_bps: u16) -> Result<()>
     );
     // SPEC §5: discount_bps < 10000. A discount of 100% would be a pool that
     // pays nothing for stock, so every default would fund zero from collateral.
-    require!(discount_bps < 10_000, OthelloError::InvalidParams);
+    require!(
+        (discount_bps as u64) < BPS_DENOMINATOR,
+        OthelloError::InvalidParams
+    );
 
     let pool = &mut ctx.accounts.pool;
     pool.authority = ctx.accounts.authority.key();

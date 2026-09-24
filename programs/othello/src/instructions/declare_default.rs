@@ -29,6 +29,7 @@ use anchor_spl::token_interface::{
 
 use crate::errors::OthelloError;
 use crate::events::DefaultDeclared;
+use crate::gate::{allocate_in_turn_order, checked_total, COVERAGE_BPS_NOT_A_RATIO};
 use crate::instructions::update_coverage::{load_members, recompute_coverage};
 use crate::state::{Circle, CircleStatus, LiquidationPool, PriceFeed};
 use crate::valuation::{
@@ -256,7 +257,7 @@ pub fn handle_declare_default<'info>(
         stock_raw: members[d].stock_raw,
         wrapper_price: feed.wrapper_price,
         discount_bps: ctx.accounts.pool.discount_bps,
-        reserve_available: circle.reserve_total.saturating_sub(circle.reserve_losses),
+        reserve_available: circle.reserve_remaining(),
         guarantee: members[d].guarantee,
         top_ups: members[d].top_ups,
     })?;
@@ -335,7 +336,7 @@ pub fn handle_declare_default<'info>(
     // reads u32::MAX as "Prepaid". Set here rather than left to the recompute,
     // because the capped branch values nobody and would otherwise leave the
     // defaulter showing their last percentage (T15 adversary).
-    defaulter.last_coverage_bps = u32::MAX;
+    defaulter.last_coverage_bps = COVERAGE_BPS_NOT_A_RATIO;
     defaulter.stock_raw = defaulter
         .stock_raw
         .checked_sub(w.sell_raw)
@@ -379,17 +380,15 @@ pub fn handle_declare_default<'info>(
         // reserve could not absorb, approximately, until the next
         // update_coverage; last_coverage_at is not stamped, because nothing
         // was valued.
-        let mut remaining = circle.reserve_total.saturating_sub(circle.reserve_losses);
-        let mut total: u64 = 0;
-        for member in members.iter_mut() {
-            let take = member.allocated.min(remaining);
-            member.allocated = take;
-            remaining -= take;
-            total = total
-                .checked_add(take)
-                .ok_or(OthelloError::ValuationOverflow)?;
+        // The same turn-order allocation as the recompute, with each member's
+        // existing allocation standing in for their need, because nothing was
+        // valued to compute a new one. No last_coverage_bps is written.
+        let held: Vec<u64> = members.iter().map(|m| m.allocated).collect();
+        let allocated = allocate_in_turn_order(&held, circle.reserve_remaining());
+        for (member, take) in members.iter_mut().zip(allocated.iter()) {
+            member.allocated = *take;
         }
-        circle.reserve_allocated = total;
+        circle.reserve_allocated = checked_total(&allocated)?;
         circle.next_gate_short_by = circle.next_gate_short_by.saturating_add(w.deficit);
         false
     };

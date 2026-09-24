@@ -1920,3 +1920,57 @@ Two design-pack points recorded in OPEN-QUESTIONS: SPEC §9 says a deficit
 fill "is not returned" while §5 and §7 return it pro rata; and the capped
 branch's short_by is approximate, so I18 needs its exception stated.
 
+
+## R2 and R3, merged: refactor pass before the Gate 3 brief (2026-09-24)
+reviewed: n/a (covered by Codex Gate 3 review at T17)
+adversary: n/a (behaviour-preserving; guarded by the full suite plus two mutation checks below)
+refactor: 4 applied, 5 declined
+
+R2 and R3 run as ONE pass, per the 2026-09-22 sequencing decision (TASKS.md).
+The read-only refactor agent read gates 2 and 3 at 0ff588a and ranked nine
+proposals by value over risk. Applied:
+  1. Circle::reserve_remaining() for SPEC's R - L, written six times before
+     (release_pot x2, update_coverage, withdraw, declare_default x2).
+  2. Named constants: BPS_DENOMINATOR in init_pool's discount check,
+     MAX_MEMBERS in activate's full-bitmap check, and
+     gate::COVERAGE_BPS_NOT_A_RATIO for SPEC.md:70's u32::MAX sentinel
+     (gate, join_and_lock, declare_default). Saturation in coverage_bps keeps
+     u32::MAX literally: it is a real ratio, not the sentinel.
+  3. declare_default's capped branch now calls gate::allocate_in_turn_order
+     (it hand-copied it) and both capped allocations total through the new
+     gate::checked_total. It still writes no last_coverage_bps and does not
+     stamp last_coverage_at.
+  4. gate::short_by(needed, remaining, escrow_deficit), the one formula
+     behind GateOutcome::short_by, release_pot's next-round projection and
+     update_coverage's recompute. The agent found the three copies had
+     already begun to drift in shape; they now cannot.
+Declined, each for a reason:
+  5. one per-seat valuation helper for release_pot and update_coverage: risks
+     moving where PriceStale fires relative to defaulted seats;
+  6. a shared circle signer-seeds helper: lifetime gymnastics for four
+     call sites that fail loudly if wrong;
+  7. Circle::is_defaulted and a seat-bit helper: churn across 18 sites the
+     night before the deadline;
+  8. a shared member-to-vault USDC transfer: low value;
+  9. folding release_pot's member loading into load_members: CHANGES REFUSAL
+     ORDER (a stale price plus a bad account at index >= 1 would return
+     BadMemberAccounts instead of PriceStale), which clients can observe.
+
+Diffstat of the pass (programs and tests):
+  10 files changed, 102 insertions(+), 42 deletions(-)
+
+A GAP THE PASS EXPOSED, closed. Mutation-checking refactor 3 (remove the cap
+in the capped branch) SURVIVED: in every existing test the survivors held no
+allocation at default time, so the cap never bound. That gap predates the
+refactor. Added to t15-declare-default.spec.ts: g 30, 1.0 token each, two
+rounds released so seats 0 and 1 each hold 75; the price falls to 60 before
+the split and seat 1 defaults unrepriced; 48 recovered, 102 absorbed,
+R - L = 48, and seat 0's 75 must be cut to 48. The mutant now fails it:
+9 passing, 1 failing. (Writing it also found that T15's setUp ignored a
+lock-size argument; it now takes one, as T16's copy does.) Mutation-checking
+refactor 4 (drop the deficit from short_by): caught by a gate unit test and
+by t16-top-up.
+
+verify:
+  every spec file in its own process: 142 passing, 0 failing
+  cargo test 54 passed; fmt clean; clippy 0 warnings; tsc clean

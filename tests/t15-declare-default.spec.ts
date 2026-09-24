@@ -246,7 +246,7 @@ describe("T15 declare_default", () => {
     assert.equal(await circleStock(), stock, `${label}: I4, stock vault = Σ stock_raw`);
   }
 
-  async function setUp(overrides: Partial<typeof DEMO> = {}, poolSeed = POOL_SEED) {
+  async function setUp(overrides: Partial<typeof DEMO> = {}, poolSeed = POOL_SEED, lock = LOCK_RAW) {
     const p = { ...DEMO, ...overrides };
     h = await harness(["NFLXx"]);
     stockMint = new anchor.web3.PublicKey(FIXTURE_MINTS.NFLXx);
@@ -301,7 +301,7 @@ describe("T15 declare_default", () => {
       put(stockMint, w.publicKey, LOCK_RAW * 2n, TOKEN_2022_PROGRAM);
       put(usdcMint, w.publicKey, BigInt(p.guaranteePerMember + p.contribution * N * 2), SPL_TOKEN_PROGRAM);
     }
-    for (const w of wallets) await join(w, LOCK_RAW);
+    for (const w of wallets) await join(w, lock);
     await call(h.program, "activate", []).accounts({ creator: creator.publicKey, circle }).signers([creator]).rpc();
   }
 
@@ -489,6 +489,35 @@ describe("T15 declare_default", () => {
     assert.equal(big(c.nextGateShortBy), big(before.nextGateShortBy) + u(6));
     assert.equal(big(c.escrowDeficit), u(6));
     await assertBooks("capped branch with a deficit");
+  });
+
+  it("the capped branch really caps: a survivor's allocation is cut to what the reserve still holds (I2)", async () => {
+    // g 30 (R 150) and 1.0 token each (H 120). After rounds 0 and 1 are
+    // released, seats 0 and 1 each hold an allocation of 75 (O 150 x 1.3 =
+    // 195 - 120). The price then falls to 60 BEFORE the split and nobody
+    // re-prices after it, so seat 1's default takes the capped branch: its
+    // 1.0 token recovers 48 of the 150 it owes and the reserve absorbs 102,
+    // leaving R - L = 48. Seat 0's 75 must come down to 48, or I2 breaks.
+    await setUp({ guaranteePerMember: 30 * USDC }, POOL_SEED, 100_000_000n);
+    for (let r = 0; r < 2; r++) {
+      for (const w of wallets) await contribute(w);
+      await release();
+    }
+    assert.equal(big((await readMember(0)).allocated), u(75), "seat 0 holds 75 before the default");
+    await setPrices(h, stockMint, { wrapper: 60 * USDC, share: 60 * USDC, stamp: CURRENT, expected: ONE_X });
+    for (const [i, w] of wallets.entries()) if (i !== 1) await contribute(w);
+    await h.setClock(await pastGrace());
+
+    const e = await declare(1);
+    assert.equal(e.recomputed, false, "the capped branch ran");
+    assert.equal(big(e.recovered), u(48));
+    assert.equal(big(e.loss), u(102));
+
+    const c = await readCircle();
+    assert.equal(big(c.reserveTotal) - big(c.reserveLosses), u(48));
+    assert.equal(big((await readMember(0)).allocated), u(48), "cut from 75 to what remains");
+    assert.equal(big(c.reserveAllocated), u(48));
+    await assertBooks("capped branch that binds");
   });
 
   it("turns what the reserve cannot absorb into an escrow deficit and pauses the circle", async () => {
