@@ -17,9 +17,9 @@ Canonical. Each must have the named test before its gate closes. A test that can
 | I11 | Σ withdrawals ≤ Σ deposits − reserve_losses | scenario test |
 | I12 | 10-for-1 split with price updated for multiplier 10: H unchanged within 1 base unit | unit (gate 1) |
 | I13 | Price stamped for a different multiplier than the effective one: `release_pot`, `update_coverage`, `join_and_lock` refuse; `declare_default` still works | unit |
-| I14 | Escrow deficit is curable: default with shortfall > reserve, then a top-up of `next_gate_short_by` (which already includes the deficit) lets the circle complete | scenario test (G3) |
+| I14 | Escrow deficit is curable: default with shortfall > reserve, then each Paused is cured by a top-up of exactly that moment's `next_gate_short_by` (the first fills the deficit before anything reaches the reserve), and the circle completes. After a price fall this can take more than one top-up (r8) | scenario test (G3) |
 | I15 | A defaulter's withdraw weight excludes what their own default consumed | unit (G3) |
 | I16 | Withdraw order does not change any member's amount | property test over permutations (G2) |
 | I17 | `set_prices` never binds a share price to a multiplier the script did not name; `touch_prices` never changes prices or stamp | unit (G1): Scheduled stamp then Current with old share price before T → refused |
-| I18 | Paused ⇔ `next_gate_short_by > 0`; a top-up of exactly `short_by` makes the next gate pass (if the round is funded); **no Paused after a healthy payout** (demo circle, every round) | scenario test (G3) |
+| I18 | Paused ⇔ `next_gate_short_by > 0`; a top-up of exactly `short_by` makes the next gate pass (if the round is funded), **except after a default declared during Repricing, where short_by is approximate until the next full coverage refresh (update_coverage or release_pot) (r8)**; **no Paused after a healthy payout** (demo circle, every round) | scenario test (G3) |
 
