@@ -13,11 +13,11 @@ import * as anchor from "@coral-xyz/anchor";
 
 import { assertFresh, DEPLOY_DIR, PROGRAM_IDL, PROGRAM_SO, REPO } from "./artifacts.ts";
 
-// Read inside startAnchor, so setting them at import time is early enough.
+// Read inside start(), so setting them at import time is early enough.
 process.env.BPF_OUT_DIR = resolve(REPO, DEPLOY_DIR);
 process.env.RUST_LOG = process.env.RUST_LOG ?? "off";
 
-const { startAnchor, Clock } = await import("solana-bankrun");
+const { start, Clock } = await import("solana-bankrun");
 const { BankrunProvider } = await import("anchor-bankrun");
 
 export { Clock };
@@ -96,7 +96,7 @@ export function fixture(symbol: FixtureSymbol): Fixture {
 }
 
 export type Harness = {
-  context: Awaited<ReturnType<typeof startAnchor>>;
+  context: Awaited<ReturnType<typeof start>>;
   program: anchor.Program<anchor.Idl>;
   authority: anchor.web3.Keypair;
   setClock: (unixTimestamp: number) => Promise<void>;
@@ -149,15 +149,19 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   };
 
   // T14: the admin is the program's upgrade authority, read from the loader's
-  // ProgramData account. startAnchor loads the program through the old
+  // ProgramData account. startAnchor would load Othello through the old
   // non-upgradeable loader, which has no ProgramData, so every admin
-  // instruction would refuse. The program is placed again here the way a real
-  // deploy leaves it: a program account owned by the upgradeable loader,
-  // pointing at a ProgramData account that holds the ELF and names `authority`
-  // as the upgrade authority. bankrun logs "Overriding account" for it.
+  // instruction would refuse. So Othello is NOT given to bankrun as a program
+  // at all: it is placed only as a real upgradeable deploy leaves it, a program
+  // account owned by the upgradeable loader pointing at a ProgramData account
+  // that holds the ELF and names `authority` as the upgrade authority.
+  //
+  // It used to be both: startAnchor loaded it, then these accounts overrode it
+  // ("Overriding account" in bankrun's log). That double load made test runs
+  // stall intermittently inside bankrun's native code: the same test stalled
+  // 3 of 8 times with it and 0 of 8 without (OPEN-QUESTIONS, suite stall).
   const authority = anchor.web3.Keypair.generate();
-  const context = await startAnchor(
-    REPO,
+  const context = await start(
     [{ name: "spl_token_2022", programId: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM) }],
     upgradeableProgram(new anchor.web3.PublicKey(idl.address), authority.publicKey),
   );
