@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } fro
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
 import { hrefFor } from '@/lib/nav';
+import { WalletControl } from '@/components/othello/WalletConnect';
 import {
-  PALETTES, SLOT_LABELS, customToProfile, hsl, huesFor, huesFromBase, loadTheme, preview, saveTheme, themeVars,
+  PALETTES, SLOT_LABELS, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
   type CustomProfile, type Profile, type ThemeMode,
 } from '@/lib/theme';
 
@@ -119,6 +120,9 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
   const mine = useMemo(() => custom.map(customToProfile), [custom]);
   const active: Profile = choice.startsWith('c') ? mine[Number(choice.slice(1))] ?? PALETTES[0]! : PALETTES[Number(choice.slice(1))] ?? PALETTES[0]!;
   const vars = useMemo(() => themeVars(active, dark), [active, dark]);
+  // The wallet pill and its menu are the inner pages' control, drawn with the
+  // inner-page tokens, which Landing's own theme does not define.
+  const walletVars = useMemo(() => ({ display: 'contents', ...innerVars(active, dark) }) as CSSProperties, [active, dark]);
 
   // body and the overscroll area are outside this component's root element, so
   // they need the same variables or dark mode leaves a light strip behind the
@@ -284,8 +288,10 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
               </div>
             )}
 
+            {/* Connected: the shared address pill, whose menu is where you
+                disconnect. A plain "Connected" label here left no way out. */}
             {walletConnected
-              ? <span className={s.connected}>Connected</span>
+              ? <span style={walletVars}><WalletControl /></span>
               : <button className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}
           </div>
         </header>

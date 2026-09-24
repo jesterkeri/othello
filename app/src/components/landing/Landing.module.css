@@ -27,7 +27,6 @@
 .iconBtn { width: 46px; height: 46px; border: 3px solid var(--line); border-radius: 999px; background: var(--paper); display: flex; align-items: center; justify-content: center; padding: 0; }
 .iconBtn:hover { background: var(--greyFill); }
 .connect { border: 3px solid var(--line); border-radius: 999px; background: var(--ink); color: var(--paper) !important; padding: 13px 20px; font-size: 11.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; box-shadow: 3px 3px 0 var(--teal); }
-.connected { border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); padding: 12px 18px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
 /* palette panel */
 .panel { position: absolute; top: 56px; right: 0; z-index: 40; width: min(330px, 82vw); border: 3px solid var(--line); border-radius: 26px; background: var(--paper); box-shadow: 5px 5px 0 var(--line); padding: 16px; display: flex; flex-direction: column; gap: 13px; text-align: left; max-height: 80vh; overflow-y: auto; }
