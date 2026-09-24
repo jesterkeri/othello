@@ -1616,3 +1616,49 @@ STILL OWED, AND WHY GATE 2 STAYS OPEN: SPEC.md needs the leave_forming row in §
 and the deposits_total rewording. Both are the design session's, and AGENTS.md
 forbids this build editing SPEC.md. Gate 2 closes when the pack is updated and
 Codex re-reviews.
+
+## T13 r3 - 2026-09-24
+
+reviewed: reviews/gate-2-review.md | verdict: changes required (r2) | commit: 7307806
+adversary: not re-run; the corrections below are to documentation and one added unit test
+
+Codex's r2: the asset-lock repair passes, and 22 of 22 refusal coverage passes.
+Closure still needs three corrections. Two were mine and are made. The third is
+the design owner's.
+
+1. THE BRIEF STILL SAID SIX init_if_needed USES. It was right at r1 and went stale
+   the moment leave_forming added two more. Counted from source at this commit:
+
+     join_and_lock 3 / 4     leave_forming 2 / 4     release_pot 1 / 2
+     withdraw      2 / 4     total         8 / 14
+     (init_if_needed / associated_token constraints)
+
+   That table has now been wrong twice, both times because it was carried
+   forward instead of recounted. The brief states that the figures were counted
+   with grep -c at the commit under review, and no longer claims a regeneration
+   process that does not exist; an earlier draft of this fix did claim one.
+
+2. MY n = 3 FIXTURE COMMENT SAID THE PEAK WAS 0. It is 10 USDC. At k = 1 the
+   member who has received still owes TWO rounds, ceil(50 x 2 x 1.3) = 130
+   against a 120 minimum, a gap of 10. The comment counted one remaining round.
+   The test itself was never wrong: 35 x 3 = 105 clears a peak of 10.
+
+   Corrected, and made load-bearing rather than just reworded. A number that
+   lives only in a comment is a number nothing checks, so
+   `peak_for_the_smallest_circle_is_ten` in create_circle.rs now pins it, and
+   the comment points at that test:
+
+     test ...::peak_for_the_smallest_circle_is_ten ... ok
+
+3. THE TWO SPEC.md EDITS: not the build's. The field rewording at SPEC.md:58 and
+   the leave_forming row after SPEC.md:103 were drafted in the session for the
+   design owner to apply. AGENTS.md forbids this build editing SPEC.md.
+
+verify, each run alone:
+  anchor test   92 passing, 0 failing
+  cargo test    44 passed (was 43)
+  clippy, fmt, tsc   clean
+
+check-reviews.sh stays red on this branch, correctly. It clears when the design
+owner applies the SPEC edits and Codex re-reviews. T14 stays stopped, per
+Joshua and per the r2 verdict.

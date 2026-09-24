@@ -338,6 +338,24 @@ mod tests {
         );
     }
 
+    /// The smallest circle SPEC allows, at the demo's other parameters.
+    ///
+    /// k = 1: the member who received still owes TWO rounds, so
+    /// ceil(50 x 2 x 1.3) = 130 against a 120 minimum, a gap of 10.
+    /// k = 2: one round, ceil(50 x 1.3) = 65, under the minimum, so 0.
+    ///
+    /// Pinned because a comment in tests/t09b-leave-forming.spec.ts once said
+    /// this peak was 0, by counting one remaining round instead of two at
+    /// k = 1. The gate 2 re-review caught it. A number that only lives in a
+    /// comment is a number nothing checks.
+    #[test]
+    fn peak_for_the_smallest_circle_is_ten() {
+        assert_eq!(
+            peak_guarantee_need(3, CONTRIBUTION, COVERAGE_BPS, MIN_STOCK_COVER).unwrap(),
+            10 * USDC as u128,
+        );
+    }
+
     /// T08's done-when: g = 29 is refused, g = 30 is not. 5 x 30 = 150 exactly
     /// meets the peak, so this also pins the comparison as `>=` not `>`.
     #[test]

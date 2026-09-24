@@ -72,15 +72,19 @@ that computes it. The consequence is that the vault address is derived from
 (mint, authority) rather than from a seed this program chose, and **anyone can
 transfer into it**.
 
-**`anchor-lang` carries the `init-if-needed` feature.** SIX uses across three
-instructions, counted rather than recalled after the r1 review found this brief
-undercounting them:
+**`anchor-lang` carries the `init-if-needed` feature.** EIGHT uses across four
+instructions, counted from source at the commit under review. This table has been
+wrong twice: r1 found it undercounting at six, and r2 found it still at six after
+`leave_forming` added two more. These figures were counted from source with
+`grep -c` at the commit below, not carried forward from the last version:
 
 | instruction | `init_if_needed` | `associated_token` constraints |
 |---|---|---|
 | `join_and_lock` | 3 | 4 |
+| `leave_forming` | 2 | 4 |
 | `release_pot` | 1 | 2 |
 | `withdraw` | 2 | 4 |
+| **total** | **8** | **14** |
 
 No Othello state account uses it; `Member` uses plain `init`.
 

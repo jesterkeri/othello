@@ -49,8 +49,15 @@ const N = 3;
 
 /**
  * The demo circle's parameters, with n = 3. The peak for three seats at these
- * numbers is 0, because one round of obligations is under min_stock_cover, so
- * any positive guarantee passes the create-time check.
+ * numbers is 10 USDC, so the 35 USDC guarantee (105 across three) passes the
+ * create-time check with room to spare.
+ *
+ * It is 10 and not 0 because at k = 1 the member who has received still owes
+ * TWO rounds, not one: ceil(50 x 2 x 1.3) = 130 against a 120 minimum. An
+ * earlier version of this comment said 0 by counting one remaining round, and
+ * the gate 2 re-review caught it. The figure is now pinned by
+ * `peak_for_the_smallest_circle_is_ten` in create_circle.rs, so this comment
+ * restates a tested number rather than asserting one.
  */
 const PARAMS = {
   contribution: 50 * USDC,

@@ -1,94 +1,80 @@
 VERDICT: changes required
 
-Reviewed commit: `62d5f74` only (`origin/staging..62d5f74`). Gate 1 code in
-that range was previously reviewed; this review traced T08-T12 and the account
-and lifecycle shape they add. This is a single-prompt review, so U7's
-INSIDE/OUTSIDE measurement is indicative, not a rigorous cold-read result.
+Reviewed commit: `7307806` (`origin/staging..7307806`). This is the Gate 2
+re-review of r1 at `62d5f74`.
 
-## CRITICAL — OUTSIDE — a joined member has no way to recover assets from a Forming circle when the creator does not cooperate
+## r1 findings
 
-`SPEC.md:102-104` makes joining move a member's stock and guarantee, requires
-every seat before activation, and grants cancellation only to the creator.
-The implementation follows that exactly:
-`programs/othello/src/instructions/lifecycle.rs:15-44` accepts only the
-creator for `cancel_circle`, and
-`programs/othello/src/instructions/withdraw.rs:121-130` refuses withdrawal
-unless the circle is Completed or Cancelled.
+- **CRITICAL — fixed in code, not yet closed in the authoritative pack.**
+  `leave_forming` binds the signer to their own Member PDA, is Forming-only,
+  returns stock and settled USDC under the Circle PDA, clears the joined bit,
+  decrements both settlement totals, and closes the Member account for a clean
+  rejoin. The exact stalled three-seat sequence, rejoin, post-activation and
+  post-cancellation refusals, and cancellation of a remaining member all pass
+  in `tests/t09b-leave-forming.spec.ts`.
+- **MAJOR — fixed.** `tests/t13-refusal-coverage.spec.ts` exercises
+  `AlreadyDefaulted` from a harness-written Circle state and exercises
+  `MultiplierInvalid` with NaN, infinity, negative, negative-zero and zero
+  multiplier bytes at the allowlisted mint address. The declared-error enum has
+  22 variants and the suite has a negative assertion for each.
+- **MINOR — not fixed; see finding 2.** The original 6-use / 4-2-4 table was
+  correct for the old three-instruction surface, but it is no longer complete
+  after `leave_forming`.
 
-Sequence: a creator names A, B and a wallet that never joins (whether an
-unresponsive normal wallet or an unusable public key). A and B call
-`join_and_lock`; their stock and guarantees are now in the circle ATAs. The
-last seat never joins, so `activate` can never pass. If the creator simply
-does nothing, neither A nor B can cancel or withdraw. Their assets are locked
-indefinitely; this is not merely a failed attempt to create a circle.
+## MAJOR — OUTSIDE — the checked-in authoritative SPEC still contradicts the repaired program
 
-The same availability failure occurs whenever formation stalls, without a
-malicious or invalid last key. An on-curve check would not fix it. The design
-needs a recovery path that does not depend on the creator—for example a
-permissionless or joined-member cancellation after a recorded formation
-expiry, or a Forming-state member unwind—and its accounting/refusal behaviour
-must then be implemented and scenario-tested. This is a SPEC-level correction,
-not a local implementation choice.
+`SPEC.md:58` still defines `deposits_total` as guarantees and top-ups "ever
+deposited", and its instruction surface at `SPEC.md:101-115` contains no
+`leave_forming` row. In contrast, `leave_forming.rs:163-177` correctly clears
+the seat and reverses that member's settled deposit, and it is exposed from
+`lib.rs:75-81`.
 
-## MAJOR — INSIDE — G2's required negative coverage is missing, and both stated reasons are testability errors rather than blockers
+The supplied design decision resolves the semantic question, but it has not
+yet been applied and re-handed as the canonical pack. Under the repository's
+authority order, a gate cannot be implementation-ready while its code adds an
+instruction and changes accounting contrary to SPEC. Apply the two stated SPEC
+edits, then re-run this review.
 
-`SPEC.md:270` requires a negative test for every section 5 refusal code. The
-brief correctly says `MultiplierInvalid` and `AlreadyDefaulted` lack one, so
-the reviewed commit cannot satisfy G2 as written.
+## MINOR — INSIDE — the re-review brief again reports a smaller `init_if_needed` surface than the code has
 
-Neither test needs a production default transaction. The harness already loads
-accounts at chosen addresses and writes their bytes. It can set the
-`defaulted_bitmap` for a constructed Circle and assert that
-`contribute` refuses `AlreadyDefaulted` before its transfer
-(`programs/othello/src/instructions/contribute.rs:68-99`). Likewise it can
-replace the bytes at an allowlisted mint address with an initialized
-Token-2022 mint whose scaled multiplier is invalid, then assert that the
-T09/T10/T11 valuation path returns `MultiplierInvalid`. Production allowlisting
-does not prevent a hostile-byte harness test at that same canonical address.
+`reviews/gate-2-brief.md:75-85` says there are six uses across three
+instructions, and `:102` says "all five uses". The new reviewed surface has
+eight: join_and_lock 3, release_pot 1, withdraw 2, and leave_forming 2.
+Its ATA-constraint table also omits leave_forming's four constraints. The brief
+still names `22c55f9`, `origin/staging..62d5f74`, and an 85-test command at
+`:13-14` and `:45-47`, none of which identifies this re-review.
 
-Add those negative tests, or have the design owner narrow G2's clause. Until
-then this gate is not implementation-ready on its own declared done-when.
+This repeats r1's review-map defect: the reader is directed to a smaller
+account surface and an older range. Update the brief for `7307806`, including a
+4-row table (3/4, 1/2, 2/4, 2/4) and the current verification result.
 
-## MINOR — INSIDE — the brief's completeness counts omit one `init_if_needed` account and misstate the per-instruction ATA constraints
+## MINOR — OUTSIDE — the new fixture's peak-guarantee explanation is false
 
-`reviews/gate-2-brief.md:75-86` says there are five `init_if_needed` uses and
-two associated-token constraints in each instruction. The source has six
-uses: three in `join_and_lock` (`join_and_lock.rs:88-115`), one in
-`release_pot` (`release_pot.rs:60-67`), and two in `withdraw`
-(`withdraw.rs:57-73`). The corresponding ATA constraints are four, two, and
-four, respectively.
-
-This does not make the constraints unsound—the six reviewed constraints bind
-their mint, authority and selected token program—but it is a U2 failure in the
-review map. Correct the brief/DONE evidence so a future reviewer is not told a
-smaller account surface than exists.
+`tests/t09b-leave-forming.spec.ts:51-54` says the n=3 peak is zero and any
+positive guarantee passes. With its own parameters, k=1 yields
+`ceil(50 * (3 - 1) * 13000 / 10000) - 120 = 10` USDC, so the peak is 10 and
+g=1 fails because 3 * 1 < 10. The test's g=35 still passes, so this does not
+mask the asset-return repair; correct the fixture comment before it becomes a
+copied parameter example.
 
 ## U7
 
-INSIDE: 2. OUTSIDE: 1. Indicative only, because the prompt and its concerns
-were visible in the same message as the source scope.
+INSIDE: 1. OUTSIDE: 2. Indicative only: this was a single-prompt re-review and
+the r1 findings and implementation locations were visible before the review.
 
 ## U8 — not checked
 
-- No deployment or cluster transaction was performed; Token-2022 movement was
-  exercised only in bankrun with the dumped Token-2022 program.
-- The default/escrow, reserve-loss, escrow-deficit and non-degenerate
-  withdrawal paths remain unwritten or unreachable before T15/T16 and were
-  not cleared by this review.
-- Issuer-controlled extension changes, direct third-party ATA deposits, the
-  first-caller price-feed authority issue, the chosen USDC-mint policy, and
-  stale-feed liveness remain the separately recorded open items; I did not
-  re-review them here.
-- I did not create a bespoke transaction reproducing the Forming lock: the
-  absence of a callable member exit is explicit in the reviewed instruction
-  surface, and every normal state transition in the sequence is covered by the
-  existing tests.
+- No cluster transaction or deployment was performed; the tests use bankrun.
+- T14-T16 remain out of scope, so the default waterfall, pool funding,
+  top-ups, escrow deficits and non-degenerate Completed withdrawal remain
+  unexecuted in this Gate 2 review.
+- Existing recorded limits remain unreviewed here, including issuer-controlled
+  Token-2022 extensions, direct third-party ATA deposits, price-feed bootstrap
+  authority, the USDC-mint policy and stale-feed liveness.
 
 ## Verification run
 
-The program/test sources are unchanged between `62d5f74` and the review
-branch head (only evidence, task tracking and this gate brief were added). I
-ran the following sequentially on that identical code surface:
+Run sequentially at `7307806`:
 
 ```
 anchor build
@@ -97,7 +83,8 @@ cargo test -p othello
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 pnpm exec tsc --noEmit -p tsconfig.json
+pnpm exec mocha --import=tsx --timeout 120000 tests/t09b-leave-forming.spec.ts tests/t13-refusal-coverage.spec.ts
 ```
 
-All passed: Anchor reported 85 tests and Cargo reported 43 tests; clippy,
-formatting and TypeScript type-checking were clean.
+All commands passed. The direct repair/refusal run reported 7 passing; Anchor
+reported 92 passing and Cargo reported 43 passing.
