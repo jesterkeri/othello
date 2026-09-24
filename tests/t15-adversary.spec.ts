@@ -195,7 +195,7 @@ describe("T15 adversary", () => {
       .rpc();
   };
 
-  const declareIx = (turn: number, caller = creator) =>
+  const declareIx = (turn: number, caller = creator, seats = memberMetas()) =>
     call(h.program, "declareDefault", [turn])
       .accounts({
         caller: caller.publicKey,
@@ -211,7 +211,7 @@ describe("T15 adversary", () => {
         stockTokenProgram: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM),
         usdcTokenProgram: new anchor.web3.PublicKey(SPL_TOKEN_PROGRAM),
       })
-      .remainingAccounts(memberMetas())
+      .remainingAccounts(seats)
       .signers([caller]);
 
   /** Sends declare_default and returns its decoded DefaultDeclared event. */
@@ -386,7 +386,10 @@ describe("T15 adversary", () => {
       ["read-only", readOnly],
       ["short", short],
     ] as const) {
-      const ix = declareIx(0).remainingAccounts(list as typeof metas);
+      // Passed as the ONLY seats: Anchor's remainingAccounts() appends, so
+      // adding them to a builder that already had the honest list would fail
+      // the length check and pass this test for the wrong reason.
+      const ix = declareIx(0, creator, list as typeof metas);
       assert.equal(await h.refusal(ix.rpc()), "BadMemberAccounts", label);
       await h.nextSlot();
     }

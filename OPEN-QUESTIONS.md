@@ -460,7 +460,8 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       stalled (the other two passed, 143 in 63 s and 65 s). Every spec file in its own process
       is the reliable way to run the suite; the Gate 3 brief says so.
 
-- [ ] I14 WORDING (T16, 2026-09-24). INVARIANTS I14: "default with shortfall > reserve, then a
+- [x] RESOLVED by SPEC r8: I14 reworded to one top-up per Paused. Original entry:
+      I14 WORDING (T16, 2026-09-24). INVARIANTS I14: "default with shortfall > reserve, then a
       top-up of next_gate_short_by (which already includes the deficit) lets the circle
       complete". At unchanged prices a single default cannot make shortfall exceed the reserve
       (the create-time peak check sizes the reserve for exactly that), so a deficit needs a price
@@ -471,7 +472,9 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       Paused is cured by a top-up of exactly next_gate_short_by, and the first fills the
       deficit". Design owner's call.
 
-- [ ] DEFICIT FILLS ARE PARTLY RETURNED, CONTRARY TO SPEC §9 (T16 adversary, 2026-09-24).
+- [x] RESOLVED by SPEC r8 (Joshua, decision (a), 2026-09-24): a deficit fill is a deposit, shared
+      pro rata at settlement. SPEC §9 copy changed; KNOWN-LIMITS L14 follows in r9. Original entry:
+      DEFICIT FILLS ARE PARTLY RETURNED, CONTRARY TO SPEC §9 (T16 adversary, 2026-09-24).
       SPEC.md:228 (FLOWS, Round not funded: escrow short) tells the filler "the first {deficit}
       prepays {name}'s contributions and is NOT RETURNED". But SPEC §5 adds the WHOLE top-up,
       fill included, to Member.top_ups and deposits_total, and §7's withdraw weight is
@@ -483,7 +486,8 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
             pure contribution to the defaulted seat), which changes §5, §7 and I15's reading.
       (a) is copy only. (b) is a program change plus tests.
 
-- [ ] CAPPED-BRANCH short_by IS APPROXIMATE, SO I18 CAN MISS ONCE (T16 adversary, suspicion).
+- [x] RESOLVED by SPEC r8: I18 now states the Repricing exception. Original entry:
+      CAPPED-BRANCH short_by IS APPROXIMATE, SO I18 CAN MISS ONCE (T16 adversary, suspicion).
       declare_default's capped branch (Repricing) adds only the new deficit to
       next_gate_short_by, not the reserve the default just lost, so a top-up of exactly that
       figure may not unpause the next gate until an update_coverage recomputes it. SPEC §5 labels

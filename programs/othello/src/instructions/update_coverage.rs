@@ -111,7 +111,12 @@ pub(crate) fn load_members<'info>(
 
     let mut members = Vec::with_capacity(accounts.len());
     for (index, info) in accounts.iter().enumerate() {
-        let member: Account<'info, Member> = Account::try_from(info)?;
+        // Anything that is not a Member account at all (system-owned, another
+        // program's, the wrong discriminator) is the same refusal as a Member
+        // in the wrong seat: SPEC §5 names bad_member_accounts for both, and a
+        // client can only follow a documented recovery path (Gate 3 r1).
+        let member: Account<'info, Member> =
+            Account::try_from(info).map_err(|_| error!(OthelloError::BadMemberAccounts))?;
         require!(
             member.circle == circle_key && member.turn as usize == index,
             OthelloError::BadMemberAccounts

@@ -164,7 +164,10 @@ pub fn handle_release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Resu
         let mint_data = mint_info.try_borrow_data()?;
 
         for (index, info) in ctx.remaining_accounts.iter().enumerate() {
-            let member: Account<'info, Member> = Account::try_from(info)?;
+            // Not a Member account at all is bad_member_accounts too, as in
+            // load_members (Gate 3 r1).
+            let member: Account<'info, Member> =
+                Account::try_from(info).map_err(|_| error!(OthelloError::BadMemberAccounts))?;
 
             require!(
                 member.circle == circle.key() && member.turn as usize == index,

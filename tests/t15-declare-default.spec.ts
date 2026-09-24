@@ -198,7 +198,7 @@ describe("T15 declare_default", () => {
       .rpc();
   };
 
-  const declareIx = (turn: number, caller = creator) =>
+  const declareIx = (turn: number, caller = creator, seats = memberMetas()) =>
     call(h.program, "declareDefault", [turn])
       .accounts({
         caller: caller.publicKey,
@@ -214,7 +214,7 @@ describe("T15 declare_default", () => {
         stockTokenProgram: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM),
         usdcTokenProgram: new anchor.web3.PublicKey(SPL_TOKEN_PROGRAM),
       })
-      .remainingAccounts(memberMetas())
+      .remainingAccounts(seats)
       .signers([caller]);
 
   /** Sends declare_default and returns its decoded DefaultDeclared event. */
@@ -518,6 +518,77 @@ describe("T15 declare_default", () => {
     assert.equal(big((await readMember(0)).allocated), u(48), "cut from 75 to what remains");
     assert.equal(big(c.reserveAllocated), u(48));
     await assertBooks("capped branch that binds");
+  });
+
+  it("refuses an account that is not a Member at all with BadMemberAccounts, in all three instructions that take the seats (Gate 3 r1)", async () => {
+    await setUp();
+    await firstRecipientMissesRoundOne();
+    await h.setClock(await pastGrace());
+    await repriceForSplit();
+
+    // Three kinds of not-a-Member in seat 2: a plain system-owned wallet, an
+    // account this program owns with a different discriminator (the circle
+    // itself), and a token account owned by another program (the USDC vault).
+    const impostors: [string, anchor.web3.PublicKey][] = [
+      ["system-owned", h.fund().publicKey],
+      ["wrong discriminator", circle],
+      ["another program's", ataAddress(usdcMint, circle, SPL_TOKEN_PROGRAM)],
+    ];
+    const seatsWith = (impostor: anchor.web3.PublicKey) =>
+      memberMetas().map((m, i) => (i === 2 ? { ...m, pubkey: impostor } : m));
+
+    for (const [kind, impostor] of impostors) {
+      assert.equal(
+        await h.refusal(declareIx(0, creator, seatsWith(impostor)).rpc()),
+        "BadMemberAccounts",
+        `declare_default, ${kind}`,
+      );
+      await h.nextSlot();
+      assert.equal(
+        await h.refusal(
+          call(h.program, "updateCoverage", [])
+            .accounts({ caller: creator.publicKey, circle, stockMint, priceFeed: priceFeedAddress(h.program, stockMint) })
+            .remainingAccounts(seatsWith(impostor))
+            .signers([creator])
+            .rpc(),
+        ),
+        "BadMemberAccounts",
+        `update_coverage, ${kind}`,
+      );
+      await h.nextSlot();
+    }
+
+    // release_pot, on a funded round: default seat 0 so round 1 is covered by
+    // escrow, then substitute seat 2.
+    await declare(0);
+    const c = await readCircle();
+    const recipient = wallets[c.round]!.publicKey;
+    for (const [kind, impostor] of impostors) {
+      await h.nextSlot();
+      assert.equal(
+        await h.refusal(
+          call(h.program, "releasePot", [])
+            .accounts({
+              caller: creator.publicKey,
+              circle,
+              stockMint,
+              usdcMint,
+              priceFeed: priceFeedAddress(h.program, stockMint),
+              recipient,
+              recipientUsdcAta: ataAddress(usdcMint, recipient, SPL_TOKEN_PROGRAM),
+              circleUsdcVault: ataAddress(usdcMint, circle, SPL_TOKEN_PROGRAM),
+              usdcTokenProgram: new anchor.web3.PublicKey(SPL_TOKEN_PROGRAM),
+              associatedTokenProgram: new anchor.web3.PublicKey(ASSOCIATED_TOKEN_PROGRAM),
+              systemProgram: anchor.web3.SystemProgram.programId,
+            })
+            .remainingAccounts(seatsWith(impostor))
+            .signers([creator])
+            .rpc(),
+        ),
+        "BadMemberAccounts",
+        `release_pot, ${kind}`,
+      );
+    }
   });
 
   it("turns what the reserve cannot absorb into an escrow deficit and pauses the circle", async () => {

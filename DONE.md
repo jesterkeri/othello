@@ -1992,3 +1992,31 @@ Full single-process anchor test after the fix, three runs:
   run 1: stalled, killed at 300 s; run 2: 143 passing (46s); run 3: 143 passing (45s)
 So the trigger is fixed and the suite is faster, but not every full run
 completes. Per-file runs remain the reliable path and the brief says so.
+
+## Gate 3 r1: two MINOR findings, both addressed (2026-09-25)
+reviewed: reviews/gate-3-review.md | verdict: changes required (r1) | commit: b0ec52c
+adversary: n/a (review fixes; each guarded by a mutation check below)
+
+1. INSIDE: an account that is not a Member at all (system-owned, another
+   program's, wrong discriminator) returned Anchor's generic deserialization
+   error instead of SPEC §5's bad_member_accounts. Fixed in load_members
+   (update_coverage, declare_default) and, for consistency, in release_pot's
+   own loader. New test in t15-declare-default.spec.ts: three impostor kinds
+   in seat 2, refused BadMemberAccounts by all three instructions.
+   Mutation: restoring the bare `?` fails it (10 passing, 1 failing).
+
+   FOUND WHILE WRITING IT: Anchor's remainingAccounts() APPENDS. The T15
+   adversary's "reordered, duplicated and read-only" test called it on a
+   builder that already held the honest list, so every case failed the
+   LENGTH check and the test passed for the wrong reason. declareIx now takes
+   the seats explicitly in both files. Mutation: removing the turn == index
+   check now fails that test (3 passing, 1 failing); before, it would not
+   have. The T10 and T11 custom-list tests build their calls fresh and were
+   not affected.
+
+2. OUTSIDE the code: KNOWN-LIMITS L14 still said a deficit fill is not
+   returned. Design-owned: drafted as apply-known-limits-r9.py for Joshua.
+   The three OPEN-QUESTIONS items r8 resolved are marked resolved.
+
+verify: every spec file in its own process, 21 files, 144 passing, 0 failing;
+cargo test 54; fmt clean; clippy 0 warnings; tsc clean.
