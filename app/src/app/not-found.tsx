@@ -1,7 +1,7 @@
 "use client";
 
 import NotFound from "@/components/othello/NotFound";
-import { CONNECT_HREF } from "@/lib/nav";
+import { useWalletUi } from "@/lib/wallet";
 
 /**
  * Next renders this for any unmatched route, and for every `notFound()` call,
@@ -12,10 +12,12 @@ import { CONNECT_HREF } from "@/lib/nav";
  * session owns that file and will hand it again.
  */
 export default function NotFoundPage() {
+  const wallet = useWalletUi();
   return (
     <NotFound
       createHref="/circle/new"
-      onConnectWallet={() => window.location.assign(CONNECT_HREF)}
+      walletAddress={wallet.address}
+      onConnectWallet={wallet.openConnect}
     />
   );
 }

@@ -2,25 +2,34 @@
 
 import { useRouter } from "next/navigation";
 
-import Create from "@/components/othello/Create";
-import { CONNECT_HREF } from "@/lib/nav";
+import Create, { type CreateError } from "@/components/othello/Create";
+import { useWalletUi } from "@/lib/wallet";
 
 /**
  * The Create place, at the route Landing's "Create a circle" already pointed
  * at. That link was a real 404 until this landed.
  *
- * `onCreate` is deliberately unset: creating a circle is a transaction and
- * there is no wallet yet, so the screen shows "Connect wallet" instead of
- * "Create circle" and the form refuses to submit. That is the component's own
- * behaviour, not a stub, and it is the truth about what the app can do today.
+ * With no wallet the screen shows "Connect wallet" and opens the connect modal.
+ *
+ * With a wallet, the form can be submitted, and `onCreate` refuses with a plain
+ * reason. It must be passed: Create treats a missing `onCreate` as success and
+ * would show "created" for a circle that does not exist. The create_circle
+ * transaction lands when the program is on devnet (T23), and replaces this.
  */
+const notYet: CreateError = {
+  kind: "program",
+  reason: "Creating a circle needs the Othello program on devnet, and it is not deployed yet. Nothing was sent.",
+};
 export default function CreateCirclePage() {
   const router = useRouter();
+  const wallet = useWalletUi();
 
   return (
     <Create
       onCancel={() => router.back()}
-      onConnectWallet={() => router.push(CONNECT_HREF)}
+      walletAddress={wallet.address}
+      onConnectWallet={wallet.openConnect}
+      onCreate={async () => { throw notYet; }}
     />
   );
 }

@@ -147,6 +147,9 @@ export function innerVars(set: { brand: string; dark: string[] }, dark: boolean)
     '--sheetMuted': '#5C594F',
     '--railMuted': mix(atLum(b, 0.45), '#ADA899', 0.5),
     '--railHover': '#1C1C1B',
+    // Wallet Screen: the "keys" note in the connect modal is always ink on cream.
+    '--deepBg': '#0B0B0B',
+    '--deepFg': '#FBF9F2',
   };
   set.dark.forEach((h, i) => { v[`--${SLOTS[i]!}`] = h; v[`--${SLOTS[i]!}Ink`] = inkFor(h); });
   v['--title'] = dark || lum(a) < 0.3 ? a : atLum(a, 0.1);

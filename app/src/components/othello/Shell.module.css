@@ -24,9 +24,6 @@
 .devnetText { margin: 0; flex: 1 1 240px; min-width: 0; font-size: 12.5px; line-height: 1.45; font-weight: 600; color: var(--panelMuted); }
 .actions { display: flex; gap: 8px; align-items: center; margin-left: auto; position: relative; }
 .palette { width: 46px; height: 46px; border: 3px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--onPanel); display: flex; align-items: center; justify-content: center; padding: 0; }
-.connected, .connect { border: 3px solid var(--line); border-radius: 999px; padding: 12px 20px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
-.connected { background: var(--teal); color: var(--tealInk); }
-.connect { background: #FBF9F2; color: #0B0B0B; }
 
 .menu { position: absolute; top: 56px; right: 0; z-index: 60; width: min(320px, 86vw); border: 3px solid var(--line); border-radius: 26px; background: #FBF9F2; color: #0B0B0B; padding: 16px; display: flex; flex-direction: column; gap: 8px; animation: rowIn .25s cubic-bezier(.2, 1.4, .35, 1) both; }
 .menuLabel { margin-top: 4px; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #5C594F; }

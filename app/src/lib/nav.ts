@@ -21,19 +21,6 @@ export const NAV_HREF: Record<string, string> = {
   "How it works": "/how-it-works",
 };
 
-/**
- * Connecting a wallet is not built either.
- *
- * It is a control, not a place, so it has no nav label, but the same rule
- * applies: it appears on Landing, on every Shell and on the 404 itself, and
- * until this it did nothing at all on any of them. Sending it to a path that
- * does not exist reuses the designed 404 to say so, rather than leaving three
- * buttons that look live and are not.
- *
- * When a wallet adapter lands, this becomes the modal and nothing else moves.
- */
-export const CONNECT_HREF = "/connect-wallet";
-
 /** The labels that lead somewhere real today. */
 export const BUILT = new Set(["Home", "Circles"]);
 

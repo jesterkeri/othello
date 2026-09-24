@@ -3,6 +3,7 @@
 // Frame, icon rail, devnet strip and colours menu shared by Create and 404.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import s from './Shell.module.css';
+import { WalletControl } from './WalletConnect';
 import { hrefFor } from '@/lib/nav';
 import { PALETTES, customToProfile, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
@@ -15,6 +16,12 @@ const NAV = [
 
 export type ShellProps = {
   active?: (typeof NAV)[number]['label'] | null;
+  /**
+   * Both ignored. The top bar reads the connected wallet from context
+   * (lib/wallet.tsx) now, so no page can show a stale address. They stay in the
+   * type because the design session's Create and 404 still pass them, and
+   * those files are theirs to hand again.
+   */
   walletAddress?: string | null;
   onConnectWallet?: () => void;
   onNavigate?: (label: string) => void;
@@ -38,7 +45,7 @@ export function useTheme() {
   return { mode, setMode, choice, setChoice, mine, vars };
 }
 
-export default function Shell({ active = 'Circles', walletAddress, onConnectWallet, onNavigate, children }: ShellProps) {
+export default function Shell({ active = 'Circles', onNavigate, children }: ShellProps) {
   const t = useTheme();
   const [menu, setMenu] = useState(false);
   useEffect(() => { document.body.style.background = String((t.vars as Record<string, string>)['--desk']); }, [t.vars]);
@@ -87,9 +94,7 @@ export default function Shell({ active = 'Circles', walletAddress, onConnectWall
                   </div>
                 </div>
               )}
-              {walletAddress
-                ? <span className={s.connected} title={walletAddress}>Connected</span>
-                : <button type="button" className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}
+              <WalletControl />
             </span>
           </div>
           {children}

@@ -1,0 +1,99 @@
+/* Wallet connection, ported from the design session's "Wallet Screen" (rows 1a to 1f). Tokens come from innerVars() in theme.ts. */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+:where(.wrap) button { font-family: inherit; cursor: pointer; color: inherit; }
+.wrap { display: flex; gap: 8px; align-items: center; position: relative; }
+
+/* Header, disconnected (1a trigger) */
+.connect { display: flex; align-items: center; gap: 8px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--acid); color: var(--acidInk); padding: 0 18px 0 8px; min-height: 46px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; transform: rotate(-2deg); transition: transform .35s cubic-bezier(.2, 1.5, .35, 1); }
+.connect:hover { transform: rotate(1.5deg) scale(1.05); }
+.connectIcon { width: 28px; height: 28px; border: 2px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: var(--acid); display: flex; align-items: center; justify-content: center; }
+
+/* Header, connected (1f) */
+.pill { display: flex; align-items: center; gap: 10px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--raised); color: var(--onPanel); padding: 0 12px 0 6px; min-height: 46px; white-space: nowrap; }
+.letter { width: 30px; height: 30px; border: 2px solid #0B0B0B; border-radius: 999px; background: var(--sky); color: var(--skyInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 14px; }
+.short { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.chevron { transition: transform .2s; }
+.chevronOpen { transform: rotate(180deg); }
+
+.menu { position: absolute; top: 56px; right: 0; z-index: 40; width: 320px; max-width: calc(100vw - 32px); border: 3px solid #0B0B0B; border-radius: 26px; background: var(--panel); color: var(--onPanel); padding: 8px; display: flex; flex-direction: column; animation: rise .25s cubic-bezier(.2, .9, .2, 1) both; }
+.menuHead { display: flex; align-items: center; gap: 12px; padding: 10px 10px 14px; border-bottom: 3px dotted #0B0B0B; margin-bottom: 6px; }
+.menuLetter { flex: 0 0 auto; width: 46px; height: 46px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--sky); color: var(--skyInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 20px; }
+.menuWho { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.menuWith { font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: var(--panelMuted); }
+.menuAddr { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.devnetChip { border: 2px solid #0B0B0B; border-radius: 999px; background: var(--cobalt); color: var(--cobaltInk); padding: 5px 9px; font-size: 9.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.item { display: flex; align-items: center; gap: 12px; min-height: 48px; border: 0; border-radius: 16px; background: transparent; color: var(--onPanel); padding: 0 12px; font-size: 14.5px; font-weight: 700; text-align: left; text-decoration: none; }
+.item:hover { background: var(--raised); color: var(--onPanel); }
+.menuNote { margin: 6px 0 0; padding: 12px 12px 8px; border-top: 3px dotted #0B0B0B; font-size: 12px; line-height: 1.45; font-weight: 600; color: var(--panelMuted); text-wrap: pretty; }
+
+/* Modal (1a to 1e) */
+.overlay { position: fixed; inset: 0; z-index: 50; background: rgba(11, 11, 11, .62); display: flex; align-items: center; justify-content: center; padding: 24px; font-family: var(--font-jakarta, 'Plus Jakarta Sans'), Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+.overlay *, .overlay *::before, .overlay *::after { box-sizing: border-box; }
+:where(.overlay) button { font-family: inherit; cursor: pointer; color: inherit; }
+.overlay :focus-visible, .wrap :focus-visible { outline: 3px solid #0B0B0B; outline-offset: 3px; }
+.dialog { width: min(468px, 100%); max-height: 100%; overflow: auto; border: 3px solid #0B0B0B; border-radius: 32px; background: var(--panel); color: var(--onPanel); display: flex; flex-direction: column; animation: rise .3s cubic-bezier(.2, .9, .2, 1) both; }
+
+.head { position: relative; overflow: hidden; display: flex; align-items: flex-start; gap: 12px; padding: 20px 18px 22px 24px; border-bottom: 3px solid #0B0B0B; border-radius: 29px 29px 0 0; }
+.ring1, .ring2 { position: absolute; border-radius: 999px; border: solid currentColor; opacity: .13; pointer-events: none; }
+.ring1 { right: -38px; bottom: -70px; width: 170px; height: 170px; border-width: 14px; }
+.ring2 { right: 26px; bottom: -30px; width: 70px; height: 70px; border-width: 10px; }
+.headText { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; }
+.kicker { display: flex; align-items: center; gap: 7px; border: 2px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: 5px 11px 5px 7px; font-size: 9.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; transform: rotate(-3deg); }
+.kickerDot { width: 8px; height: 8px; border-radius: 999px; background: var(--acid); }
+.title { font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 68%; font-weight: 900; font-size: 40px; line-height: .9; letter-spacing: -.02em; text-transform: uppercase; text-wrap: balance; }
+.close { position: relative; flex: 0 0 auto; width: 46px; height: 46px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--panel); color: var(--onPanel); display: flex; align-items: center; justify-content: center; padding: 0; transition: transform .35s cubic-bezier(.2, 1.5, .35, 1); }
+.close:hover { transform: rotate(90deg); }
+
+.list { padding: 18px 18px 8px; display: flex; flex-direction: column; gap: 10px; }
+.walletRow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 72px; border: 3px solid #0B0B0B; border-radius: 999px; padding: 8px 10px 8px 8px; text-align: left; transition: transform .4s cubic-bezier(.2, 1.5, .35, 1); }
+.walletRow:hover { transform: rotate(0deg) scale(1.03) !important; }
+.walletRow:active { transform: scale(.97) !important; }
+.walletBadge { flex: 0 0 auto; width: 50px; height: 50px; border: 3px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 24px; }
+.walletText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.walletName { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+.walletSub { font-size: 9.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; opacity: .8; }
+.walletGo { flex: 0 0 auto; width: 44px; height: 44px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--panel); color: var(--onPanel); display: flex; align-items: center; justify-content: center; }
+.keys { margin: 10px 18px 18px; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border: 3px solid #0B0B0B; border-radius: 22px; background: var(--deepBg); color: var(--deepFg); }
+.keys svg { flex: 0 0 auto; margin-top: 1px; }
+.keys p { margin: 0; font-size: 13px; line-height: 1.5; font-weight: 600; text-wrap: pretty; }
+
+.empty { padding: 22px 24px 8px; display: flex; flex-direction: column; gap: 14px; }
+.emptyLead { margin: 0; font-size: 15px; line-height: 1.5; font-weight: 600; text-wrap: pretty; }
+.label { font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--panelMuted); }
+.installs { display: flex; flex-direction: column; gap: 8px; }
+.install { display: flex; align-items: center; gap: 14px; min-height: 64px; border: 3px solid #0B0B0B; border-radius: 22px; background: var(--raised); color: var(--onPanel); padding: 6px 16px 6px 6px; text-decoration: none; }
+.install:hover { background: var(--acid); color: var(--acidInk); }
+.installBadge { flex: 0 0 auto; width: 46px; height: 46px; border: 3px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 20px; }
+.installName { flex: 1; font-size: 16px; font-weight: 800; }
+.emptyFoot { padding: 14px 24px 22px; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.emptyFoot p { margin: 0; font-size: 12.5px; line-height: 1.5; font-weight: 600; color: var(--panelMuted); text-wrap: pretty; }
+
+.status { padding: 30px 24px 24px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; }
+.orb { position: relative; width: 118px; height: 118px; display: flex; align-items: center; justify-content: center; }
+.orbRing { position: absolute; inset: 0; border: 3px solid #0B0B0B; border-radius: 999px; }
+.orbRingWaiting { border-style: dashed; border-color: var(--onPanel); animation: spin 6s linear infinite; }
+.orbLetter { width: 74px; height: 74px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--sky); color: var(--skyInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 32px; }
+.orbBad { position: absolute; right: 4px; bottom: 4px; width: 38px; height: 38px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--clay); color: var(--clayInk); display: flex; align-items: center; justify-content: center; }
+.chip { display: flex; align-items: center; gap: 8px; border: 3px solid #0B0B0B; border-radius: 999px; padding: 6px 14px 6px 10px; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; white-space: nowrap; flex: 0 0 auto; }
+.chipDot { width: 9px; height: 9px; border-radius: 999px; background: currentColor; }
+.chipDotWaiting { animation: blink 1.2s ease-in-out infinite; }
+.statusLine { margin: 0; max-width: 34ch; font-size: 15.5px; line-height: 1.5; font-weight: 600; text-wrap: pretty; }
+.statusHint { margin: 0; max-width: 36ch; font-size: 12.5px; line-height: 1.5; font-weight: 600; color: var(--panelMuted); text-wrap: pretty; }
+.actions { padding: 16px 24px 22px; border-top: 3px dotted #0B0B0B; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+.btnPrimary, .btnGhost { border: 3px solid #0B0B0B; border-radius: 999px; min-height: 50px; font-size: 15px; font-weight: 800; }
+.btnPrimary { background: var(--acid); color: var(--acidInk); padding: 0 26px; }
+.btnGhost { background: transparent; color: var(--onPanel); padding: 0 22px; }
+.btnGhost:hover { background: var(--raised); }
+.btnCheck { min-height: 48px; font-size: 14px; padding: 0 20px; }
+
+@media (max-width: 760px) {
+  .connect { padding: 0 14px 0 7px; letter-spacing: .04em; }
+  .overlay { align-items: flex-end; padding: 0; }
+  .dialog { width: 100%; border-radius: 30px 30px 0 0; border-bottom-width: 0; }
+  .head { border-radius: 27px 27px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) { .wrap *, .overlay * { animation: none !important; transition: none !important; } }

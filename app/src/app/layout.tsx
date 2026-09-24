@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 
+import { WalletModal } from "@/components/othello/WalletConnect";
 import { PALETTES, themeVars } from "@/lib/theme";
+import { WalletProviders } from "@/lib/wallet";
 
 import "./globals.css";
 
@@ -48,7 +50,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <style dangerouslySetInnerHTML={{ __html: `:root{${baseVars}}` }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* One wallet and one connect modal for every page, so connecting on
+            Landing is still connected on Create. */}
+        <WalletProviders>
+          {children}
+          <WalletModal />
+        </WalletProviders>
+      </body>
     </html>
   );
 }
