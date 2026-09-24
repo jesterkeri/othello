@@ -3,6 +3,7 @@
 // Frame, icon rail, devnet strip and colours menu shared by Create and 404.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import s from './Shell.module.css';
+import { hrefFor } from '@/lib/nav';
 import { PALETTES, customToProfile, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
 const NAV = [
@@ -50,7 +51,8 @@ export default function Shell({ active = 'Circles', walletAddress, onConnectWall
           <nav className={s.railNav} aria-label="Main">
             {NAV.map((n) => (
               <button key={n.label} type="button" aria-label={n.label} title={n.label} aria-current={n.label === active ? 'page' : undefined}
-                className={`${s.railBtn} ${n.label === active ? s.railOn : ''}`} onClick={() => onNavigate?.(n.label)}>
+                className={`${s.railBtn} ${n.label === active ? s.railOn : ''}`}
+                onClick={() => (onNavigate ? onNavigate(n.label) : window.location.assign(hrefFor(n.label)))}>
                 <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={n.d} /></svg>
               </button>
             ))}

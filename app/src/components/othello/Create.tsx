@@ -148,8 +148,15 @@ export default function Create({ walletAddress = null, onConnectWallet, onCreate
           <div className={s.headActions}>
             <div className={s.btnRow}>
               <button type="button" className={s.ghost} onClick={onCancel}>Cancel</button>
-              <button type="button" className={s.primary} aria-busy={busy} onClick={submit}>
-                {walletAddress ? 'Create circle' : 'Connect wallet'}
+              <button
+                type="button"
+                className={s.primary}
+                aria-busy={busy}
+                disabled={!walletAddress}
+                title={walletAddress ? undefined : 'Creating a circle needs a wallet'}
+                onClick={submit}
+              >
+                Create circle
                 <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={3.1} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" /></svg>
               </button>
             </div>
@@ -314,7 +321,7 @@ export default function Create({ walletAddress = null, onConnectWallet, onCreate
       {tx.phase !== 'confirmed' && (
         <div className={s.phoneBar}>
           <button type="button" className={s.ghost} onClick={onCancel}>Cancel</button>
-          <button type="button" className={s.primary} aria-busy={busy} onClick={submit}>{walletAddress ? 'Create circle' : 'Connect wallet'}</button>
+          <button type="button" className={s.primary} aria-busy={busy} disabled={!walletAddress} onClick={submit}>Create circle</button>
         </div>
       )}
     </Shell>

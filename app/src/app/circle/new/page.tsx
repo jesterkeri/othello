@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 
 import Create from "@/components/othello/Create";
+import { CONNECT_HREF } from "@/lib/nav";
 
 /**
  * The Create place, at the route Landing's "Create a circle" already pointed
@@ -16,5 +17,10 @@ import Create from "@/components/othello/Create";
 export default function CreateCirclePage() {
   const router = useRouter();
 
-  return <Create onCancel={() => router.back()} />;
+  return (
+    <Create
+      onCancel={() => router.back()}
+      onConnectWallet={() => router.push(CONNECT_HREF)}
+    />
+  );
 }

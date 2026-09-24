@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
+import { hrefFor } from '@/lib/nav';
 import {
   PALETTES, SLOT_LABELS, customToProfile, hsl, huesFor, huesFromBase, loadTheme, preview, saveTheme, themeVars,
   type CustomProfile, type Profile, type ThemeMode,
@@ -173,7 +174,14 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
           <span className={s.logo} aria-label="Othello">O</span>
           <nav className={s.pillGroup} aria-label="Main">
             {NAV.map((label, i) => (
-              <button key={label} className={`${s.navItem} ${i === 0 ? s.navItemActive : ''}`} aria-current={i === 0 ? 'page' : undefined}>{label}</button>
+              <a
+                key={label}
+                href={hrefFor(label)}
+                className={`${s.navItem} ${i === 0 ? s.navItemActive : ''}`}
+                aria-current={i === 0 ? 'page' : undefined}
+              >
+                {label}
+              </a>
             ))}
           </nav>
           <div className={s.navActions}>

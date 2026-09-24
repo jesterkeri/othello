@@ -1,7 +1,7 @@
 /* Shell: frame, icon rail, panel, topbar, colours menu. Tokens come from innerVars() in theme.ts. */
 .root { min-height: 100vh; height: 100vh; box-sizing: border-box; padding: clamp(8px, 1.4vw, 18px); background: var(--desk); font-family: var(--font-jakarta, 'Plus Jakarta Sans'), Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; transition: background .3s; }
 .root *, .root *::before, .root *::after { box-sizing: border-box; }
-.root button { font-family: inherit; cursor: pointer; color: inherit; }
+:where(.root) button { font-family: inherit; cursor: pointer; color: inherit; }
 .root button:disabled { cursor: default; opacity: .28; }
 .root :focus-visible { outline: 3px solid var(--line); outline-offset: 3px; }
 
