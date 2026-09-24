@@ -2020,3 +2020,13 @@ adversary: n/a (review fixes; each guarded by a mutation check below)
 
 verify: every spec file in its own process, 21 files, 144 passing, 0 failing;
 cargo test 54; fmt clean; clippy 0 warnings; tsc clean.
+
+## T17 Gate 3 closed (2026-09-25)
+reviewed: reviews/gate-3-review.md | verdict: implementation-ready | commit: 011a4ae (r2)
+adversary: T14 no defect (14 attacks), T15 one defect fixed (12), T16 no defect (7); see each entry
+
+Codex r2: both r1 findings verified fixed; 21 spec files / 144 tests, 54 Rust
+tests, clippy, fmt and TypeScript pass; check-reviews.sh "reviews ok".
+Gates 1, 2 and 3 are all implementation-ready: the program is complete for
+the hackathon scope. Next on the critical path: S2 devnet mirror mints, then
+T23 deploy (Joshua).

@@ -68,7 +68,7 @@ deadline rather than now.
 - [x] T15 declare_default waterfall, both recompute branches, forfeited, escrow_deficit | verify: `anchor test` | done when: I7, I9, I15 green; Repricing branch keeps I2
 - [x] T16 top_up_reserve (deficit first, closed-form next_gate_short_by), add_stock | verify: `anchor test` | done when: I14, I18 green; SPEC §7 halt example: needed 75, remaining 70, short_by 5, top-up 5 resumes
 - [x] R3 Refactor pass before review: bring both recompute branches of the waterfall into one reviewable shape, extract the shared checked arithmetic into named helpers, remove any duplication introduced by top_up_reserve. No test weakened, skipped or deleted | verify: `cargo clippy --all-targets -- -D warnings && cargo fmt --check && anchor test` | done when: clippy and fmt clean, every gate-1 to gate-3 test still green, before/after diffstat in DONE.md
-- [ ] T17 Gate 3 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
+- [x] T17 Gate 3 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
 
 ## Gate 4: frontend (Next.js, neubrutalist style)
 - [ ] T18 App scaffold, read-only Circle place for a viewer with no wallet | verify: `pnpm -C app typecheck && pnpm -C app build` | done when: demo circle renders from devnet accounts without a wallet

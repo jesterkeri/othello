@@ -1,104 +1,81 @@
-VERDICT: changes required
+VERDICT: implementation-ready
 
-# Gate 3 r1 — review of `c26fb31..b0ec52c`
+# Gate 3 r2 — review of `c26fb31..011a4ae`
 
-The frozen target relationship is correct. `git diff b0ec52c 11f9e33 --stat`
-reports only `reviews/gate-3-brief.md` (6 insertions, 6 deletions), and the
-target range is 30 files, 4,962 insertions and 128 deletions. The brief's
-other figures also recompute: 21 isolated spec files / 143 passing tests, 54
-Rust unit tests, and 10 `init_if_needed` uses (join 3, leave 2, release 1,
-withdraw 2, init_pool 2).
+The frozen target relationship is correct. `git diff 011a4ae 9e8aa34 --stat`
+reports only `reviews/gate-3-brief.md` (4 insertions, 4 deletions). The brief's
+figures recompute: 32 files changed, 5,203 insertions and 130 deletions; 21
+isolated spec files / 144 passing tests; 54 Rust unit tests; and 10
+`init_if_needed` constraints (join 3, leave 2, release 1, withdraw 2,
+init_pool 2).
 
-## Finding
+## r1 findings
 
-### MINOR — INSIDE — the design pack gives the opposite settlement promise for an escrow-deficit fill
+### MINOR — INSIDE — deficit-fill settlement policy: fixed
 
-`KNOWN-LIMITS.md:20` still says that a top-up which fills an escrow deficit
-“[is] not returned,” while `SPEC.md:113`, `SPEC.md:172-173`, and
-`SPEC.md:228` now define the r8 decision: the entire top-up is credited to
-`Member.top_ups` and `Circle.deposits_total`, then shared pro rata at
-settlement. The implementation follows that latter rule:
-`programs/othello/src/instructions/top_up_reserve.rs:155-171` credits the full
-amount and `programs/othello/src/instructions/withdraw.rs:133-153` includes it
-in the member's withdrawal weight. `OPEN-QUESTIONS.md:474-484` also still
-presents the superseded (a)/(b) choice as unresolved, even though its cited
-SPEC §9 copy has already been changed to (a).
+`KNOWN-LIMITS.md:20` now states the adopted r8 decision: an escrow-deficit
+fill is a deposit, shared pro rata at settlement and potentially returned at
+less than its original amount after losses. That agrees with `SPEC.md:113`,
+`SPEC.md:172-173`, and `SPEC.md:228`, and with the full-amount accounting in
+`programs/othello/src/instructions/top_up_reserve.rs:155-171` and withdrawal
+weight in `programs/othello/src/instructions/withdraw.rs:133-153`.
+`OPEN-QUESTIONS.md:463-496` marks the r8 I14, deficit-fill, and I18 items
+resolved while retaining their historical context. The previous contradictory
+promise is gone.
 
-Failure scenario: a member fills a 6-USDC escrow deficit and uses L14 to
-understand the action as an irrevocable gift. The circle completes; their
-top-up increases their settlement weight and they receive its pro-rata share
-(possibly less than 6 after losses). The code is financially consistent, but
-the recorded limit promises the opposite result. Update L14 and resolve or
-historical-mark the stale Open Question to state the adopted r8 rule. No
-program change is warranted.
+### MINOR — INSIDE — malformed remaining Member accounts: fixed
 
-### MINOR — INSIDE — malformed remaining Member accounts bypass the declared `bad_member_accounts` refusal
+`programs/othello/src/instructions/update_coverage.rs:102-128` maps every
+`Account::try_from` failure to `BadMemberAccounts`; shared callers
+`update_coverage` and `declare_default` therefore have the documented
+machine-code refusal. `programs/othello/src/instructions/release_pot.rs:166-176`
+does the equivalent mapping before valuing any seat. The regression at
+`tests/t15-declare-default.spec.ts:523-592` exercises system-owned,
+wrong-discriminator, and other-program accounts across all three
+instructions, each asserting `BadMemberAccounts`.
 
-`programs/othello/src/instructions/update_coverage.rs:102-123`, newly shared
-by `declare_default` at `programs/othello/src/instructions/declare_default.rs:249-251`,
-uses `Account::try_from(info)?`. A reordered, duplicate, or read-only *valid*
-Member account reaches the following `BadMemberAccounts` checks, but a system
-account, wrong-owner account, or account without the Member discriminator
-returns Anchor's generic `AccountOwnedByWrongProgram` / account-deserialization
-error first. That is not the `bad_member_accounts` refusal required by
-`SPEC.md:111` for the handler's Member-account validation, and
-`tests/t15-adversary.spec.ts:372-395` covers only deserializable Member
-accounts.
+The related adversary test is now load-bearing:
+`tests/t15-adversary.spec.ts:372-397` supplies the reordered, duplicated,
+read-only, or short list as `declareIx`'s only remaining-account list. It no
+longer accidentally appends a second honest list and passes merely at the
+length check; each altered valid Member list reaches the seat-order or
+writability validation and refuses with `BadMemberAccounts`.
 
-Failure scenario: a caller supplies a system-owned account as one of
-`declare_default`'s required remaining seats. Funds are safe because the
-transaction aborts before the waterfall, but a client receives an unmapped
-Anchor framework error rather than the documented machine code and cannot
-follow the specified recovery path. Map `Account::try_from` failures in
-`load_members` to `OthelloError::BadMemberAccounts`, then add a system/wrong
-owner and bad-discriminator regression case. This also makes the shared
-`update_coverage` path consistent with its own published refusal.
+## Re-review evidence
 
-## Review evidence
-
-I traced the new admin path from the ProgramData binding through the recorded
-feed/pool authority, the classic-SPL USDC gate, the pool ATA constraints, the
-default waterfall's stock sale / reserve-loss / escrow-deficit ledger, and
-both post-default recompute branches. `declare_default` follows SPEC §5's
-refusal order: active, turn range, grace, paid, received, defaulted, price,
-member accounts, then pool liquidity. The normal branch calls the shared
-coverage recompute; the Repricing/unreadable-multiplier branch caps preserved
-allocations in turn order and adds only the new deficit, as the now-explicit
-approximation requires. `top_up_reserve` fills the deficit before reserve and
-does not revalue positions; `add_stock` changes only the caller's locked
-position. Apart from the remaining-account error mapping above, I found no
-financial or authority defect in those paths.
-
-The completeness sweep corroborated the brief's account-surface claim: the
-source has exactly ten `init_if_needed` constraints, distributed 3/2/1/2/2 as
-above. Changed state is consumed by the withdrawal formula, events, gate
-projection, and design copy; the stale policy record above is the consumer
-that remains inconsistent.
+I rechecked the Gate 3 surface, not only the r1 patch: ProgramData binds the
+admin bootstrap to this program's upgrade authority; `init_pool` enforces
+classic-SPL USDC and PDA-bound vault ATAs; the waterfall sells only up to the
+conservative obligation, books reserve loss / escrow / deficit consistently,
+and is safe in both normal and Repricing recomputation branches. The shared
+recompute preserves the allocation bound and turn order. `top_up_reserve`
+fills deficit before reserve while the full deposit participates in settlement;
+`add_stock` affects only the signing member's collateral. Refusal ordering in
+the new handlers agrees with SPEC §5. No new findings.
 
 ## U7
 
 Indicative only: this was a single-prompt review, so the protocol's cold-read
-measurement is not rigorous. Findings: INSIDE 2; OUTSIDE 0. The all-INSIDE
-count is not evidence that framing was neutral.
+measurement is not rigorous. Findings: INSIDE 0; OUTSIDE 0.
 
 ## U8 — not checked
 
 I did not deploy or seed on devnet, test real Token-2022 transfer hooks or
-transfer-fee extensions on the allowlisted stock mints, review the frontend,
-or execute a full single-process `anchor test`; the repository records that
-run as intermittently stalling. I used the required reliable per-file runner
-instead. Pre-payout default, multi-default deficit shapes, matchmaking, solo
-mode, and chat remain outside this gate as stated.
+transfer-fee extensions on the allowlisted stock mints, review frontend code,
+or run a full single-process `anchor test`; the repository records that runner
+as intermittently stalling. I used the required per-spec-file runner instead.
+Pre-payout defaults, multi-default deficit shapes, matchmaking, solo mode, and
+chat remain out of scope as stated.
 
 ## Verification commands and real output
 
 ```text
-$ git diff --shortstat c26fb31..b0ec52c
- 30 files changed, 4962 insertions(+), 128 deletions(-)
+$ git diff --shortstat c26fb31..011a4ae
+ 32 files changed, 5203 insertions(+), 130 deletions(-)
 
-$ git diff b0ec52c 11f9e33 --stat
- reviews/gate-3-brief.md | 12 ++++++------
- 1 file changed, 6 insertions(+), 6 deletions(-)
+$ git diff 011a4ae 9e8aa34 --stat
+ reviews/gate-3-brief.md | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
 
 $ anchor build
 exit 0
@@ -106,7 +83,7 @@ Program ID mismatch detected for program 'othello' (local generated keypair
 versus source declaration); build completed successfully.
 
 $ for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 120000 "$f"; done
-exit 0 — 21 spec files, 143 passing
+exit 0 — 21 spec files, 144 passing
 
 $ cargo test -p othello
 exit 0 — 54 passed; 0 failed; 0 ignored
@@ -120,6 +97,6 @@ exit 0
 $ pnpm exec tsc --noEmit -p tsconfig.json
 exit 0
 
-$ git diff --check c26fb31..b0ec52c
+$ git diff --check c26fb31..011a4ae
 exit 0
 ```
