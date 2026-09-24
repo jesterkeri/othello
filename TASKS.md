@@ -163,3 +163,15 @@ should start before the hackathon build is finished.
       Invariant: non-quitters' scheduled payouts unchanged; vault + bridge receivable conserved.
       T15 meanwhile builds SPEC's post-payout default as written; the promise there is "no
       loss beyond the unpaid obligation at a defensible sale price; surplus stock returns".
+
+
+- [ ] ROTATE_AUTHORITY, option (c) (Joshua, 2026-09-24): "we will continue C". Before Colosseum
+      or any mainnet deploy. A `rotate_authority(new)` instruction, signed by the CURRENT
+      upgrade authority (the same ProgramData check init_price_feed and init_pool use), that
+      reassigns `feed.authority` and `pool.authority` to `new`. Day-to-day price updates keep
+      using the stored authority, so no extra accounts on set_prices; a leaked key is cut off by
+      rotating; and the stored authority survives the program being made immutable, so prices
+      keep flowing after the upgrade authority is removed. Touches T04's gate-1-reviewed feed
+      code, so it needs a SPEC change, its own tests, an adversary pass and a Codex review.
+      Today's behaviour, (a), is recorded in OPEN-QUESTIONS "ADMIN ROTATION".
+

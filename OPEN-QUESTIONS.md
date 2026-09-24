@@ -419,7 +419,13 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       deposited" to the current settlement-deposit total, because a Forming unwind
       reverses it. The build has implemented that meaning and cannot edit SPEC.md.
 
-- [ ] ADMIN ROTATION (T14 adversary, 2026-09-24). Decision for Joshua, before the Gate 3 review.
+- [x] ADMIN ROTATION: DECIDED by Joshua, 2026-09-24: (a) for the hackathon, (c) before
+      Colosseum or mainnet, tracked in TASKS.md "ROTATE_AUTHORITY". (b) was rejected: tying
+      every admin call to the live upgrade authority means an immutable program (upgrade
+      authority removed, the normal end state for trust-minimised DeFi) could never set a price
+      again, so every circle would go stale and refuse payouts.
+      Original entry:
+      ADMIN ROTATION (T14 adversary, 2026-09-24). Decision for Joshua, before the Gate 3 review.
       init_price_feed and init_pool record the signing upgrade authority as `feed.authority`
       and `pool.authority`, and set_prices, touch_prices and seed_pool check THAT recorded key.
       So if the upgrade authority is rotated later (for example after a suspected leak), the
