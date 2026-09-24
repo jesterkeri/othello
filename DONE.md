@@ -1750,7 +1750,7 @@ by a passing test. Also noted: seed_pool's InsufficientBalance is not in SPEC
 
 ## T15 declare_default: the SPEC §6 waterfall (2026-09-24)
 reviewed: n/a (covered by Codex Gate 3 review at T17)
-adversary: pending (run on the committed diff before the Gate 3 brief)
+adversary: DEFECT fixed in the commit after 23bcf58, attacks run: 12, test: tests/t15-adversary.spec.ts
 
 declare_default(turn), exactly per SPEC §5's row and §6. Preconditions in the
 row's order: Active, turn < n, now > deadline + grace (strict, I7), seat unpaid,
@@ -1821,3 +1821,33 @@ before I killed it. Every run since has been clean: each of the 18 spec files
 alone (124 tests), all of them in one mocha process (124 passing, 1m), and
 `anchor test` again (87 s). Recorded rather than guessed at; if it recurs,
 the per-file timings above are the baseline.
+
+T15 ADVERSARY PASS (against 23bcf58): ONE DEFECT, low severity, no money at
+risk. The capped branch (Repricing, or an unreadable multiplier) left the
+defaulter's last_coverage_bps at its old percentage; SPEC.md:70 says a
+defaulted member reads u32::MAX, which the UI renders as "Prepaid". The
+adversary's failing test, verbatim:
+  AssertionError [ERR_ASSERTION]: a defaulted member's last_coverage_bps must read u32::MAX (Prepaid)
+  + 13000
+  - 4294967295
+Fixed where the defaulter's other fields are set, so it holds on both
+branches. Its 4 tests are integrated as tests/t15-adversary.spec.ts (the
+failing one kept as the regression guard, plus a normal-branch control,
+reordered/duplicated/read-only Member accounts, and a defaulter who cannot
+contribute and withdraws only what it did not forfeit after completion,
+I11/I15). 11 other attacks failed, each for a stated reason. Its one unproven
+suspicion, that capped survivors keep an older higher last_coverage_bps, is
+allowed by SPEC ("as of last recompute") and is recorded in OPEN-QUESTIONS.
+
+verify after the fix:
+  every spec file in its own process: 128 passing, 0 failing (19 files)
+  anchor test   128 passing (58s), exit 0 after 81s
+  cargo test 50 passed; fmt clean; clippy 0 warnings; tsc clean
+
+THE STALL, NOW SEEN THREE TIMES. A single-process run of all specs (anchor
+test, or mocha over the glob) sometimes stalls with no output. Every
+occurrence was while the machine was heavily loaded by another project's
+mutation-testing run (load average 32 to 52 on 22 cores); at load 12 to 16 the
+same command passes in 81 s, and every file always passes in its own process.
+Correlated with load, not proven to be caused by it. mocha --parallel was
+tried and is NOT a fix: one test failed under it and one run also stalled.

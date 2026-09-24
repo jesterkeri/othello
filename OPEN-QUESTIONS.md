@@ -435,3 +435,17 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       seed_pool. On devnet for the hackathon the practical risk is low (ARCHITECTURE:
       "Admin key | leaked on devnet | fake prices | devnet only, stated | Accepted").
 
+- [ ] CAPPED-BRANCH SURVIVORS' COVERAGE (T15 adversary, suspicion, 2026-09-24). When
+      declare_default takes the capped branch, a survivor whose `allocated` is capped down
+      keeps its previous, higher `last_coverage_bps`. SPEC.md:70 calls the field "as of last
+      recompute" and the capped branch deliberately values nobody, so this reads as allowed;
+      the next update_coverage corrects it. Recorded so the design owner can confirm or ask
+      for a recomputed-from-allocation figure. The DEFAULTER's own figure is set to u32::MAX
+      on both branches.
+
+- [ ] TEST RUN STALLS UNDER LOAD (2026-09-24). A single-process run of every spec
+      sometimes stalls with no output (once for over an hour at ~650% CPU). Seen only while
+      the machine was loaded to 32-52 by another project; passes in 81 s at load 12-16, and
+      every file always passes in its own process. Not root-caused. If CI shows it, the
+      first thing to try is running each spec file in its own process.
+

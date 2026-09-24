@@ -331,6 +331,11 @@ pub fn handle_declare_default<'info>(
     let previously_forfeited = defaulter.forfeited;
     defaulter.forfeited = w.forfeited;
     defaulter.allocated = 0;
+    // SPEC.md:70: a defaulted member's obligations are prepaid, and the UI
+    // reads u32::MAX as "Prepaid". Set here rather than left to the recompute,
+    // because the capped branch values nobody and would otherwise leave the
+    // defaulter showing their last percentage (T15 adversary).
+    defaulter.last_coverage_bps = u32::MAX;
     defaulter.stock_raw = defaulter
         .stock_raw
         .checked_sub(w.sell_raw)
