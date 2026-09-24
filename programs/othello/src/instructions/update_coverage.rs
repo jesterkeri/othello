@@ -50,80 +50,131 @@ pub struct UpdateCoverage<'info> {
 }
 
 pub fn handle_update_coverage<'info>(ctx: Context<'info, UpdateCoverage<'info>>) -> Result<()> {
-    let circle = &ctx.accounts.circle;
-
     // SPEC §5: refused at Completed. A finished circle owes nothing, and
     // `release_pot` already set next_gate_short_by to 0 on the last payout;
     // recomputing would be describing a gate that will never run.
     require!(
-        circle.status == CircleStatus::Active,
+        ctx.accounts.circle.status == CircleStatus::Active,
         OthelloError::CircleNotActive
     );
 
-    let n = circle.n;
+    let circle_key = ctx.accounts.circle.key();
+    let mut members = load_members(&ctx.accounts.circle, circle_key, ctx.remaining_accounts)?;
+    let now = Clock::get()?.unix_timestamp;
+
+    let remaining = {
+        let mint_info = ctx.accounts.stock_mint.to_account_info();
+        let mint_data = mint_info.try_borrow_data()?;
+        recompute_coverage(
+            &mut ctx.accounts.circle,
+            &mut members,
+            &ctx.accounts.price_feed,
+            &mint_data,
+            now,
+        )?
+    };
+
+    for member in members.iter() {
+        member.exit(&crate::ID)?;
+    }
+
+    let circle = &ctx.accounts.circle;
+    emit!(CoverageUpdated {
+        circle: circle_key,
+        round: circle.round,
+        reserve_allocated: circle.reserve_allocated,
+        remaining,
+        next_gate_short_by: circle.next_gate_short_by,
+        last_coverage_at: now,
+    });
+
+    Ok(())
+}
+
+/// Every Member account of a circle, from `remaining_accounts`, each validated
+/// against its seat (SPEC §5): it belongs to this circle, its turn is its
+/// index, and it is writable. Index IS turn, so a caller cannot reorder the
+/// list to change who is allocated first: turn order is the allocation rule.
+///
+/// Shared by `update_coverage` and `declare_default`, which both write every
+/// member's allocation.
+pub(crate) fn load_members<'info>(
+    circle: &Circle,
+    circle_key: Pubkey,
+    accounts: &'info [AccountInfo<'info>],
+) -> Result<Vec<Account<'info, Member>>> {
     require!(
-        ctx.remaining_accounts.len() == n as usize,
+        accounts.len() == circle.n as usize,
         OthelloError::BadMemberAccounts
     );
 
-    let now = Clock::get()?.unix_timestamp;
+    let mut members = Vec::with_capacity(accounts.len());
+    for (index, info) in accounts.iter().enumerate() {
+        let member: Account<'info, Member> = Account::try_from(info)?;
+        require!(
+            member.circle == circle_key && member.turn as usize == index,
+            OthelloError::BadMemberAccounts
+        );
+        require!(info.is_writable, OthelloError::BadMemberAccounts);
+        members.push(member);
+    }
 
-    let mut members: Vec<Account<'info, Member>> = Vec::with_capacity(n as usize);
-    let mut covers: Vec<u64> = Vec::with_capacity(n as usize);
-    let mut obligs: Vec<u64> = Vec::with_capacity(n as usize);
-    let mut needs: Vec<u64> = Vec::with_capacity(n as usize);
+    Ok(members)
+}
 
-    {
-        let mint_info = ctx.accounts.stock_mint.to_account_info();
-        let mint_data = mint_info.try_borrow_data()?;
+/// The coverage recompute, SPEC §5's `update_coverage` effect, and what
+/// `declare_default` runs "exactly as update_coverage" when the price is fresh
+/// and not repricing. One copy, so the two can never drift apart.
+///
+/// Writes every member's `allocated` and `last_coverage_bps`, and the circle's
+/// `reserve_allocated`, `next_gate_short_by` and `last_coverage_at`. The caller
+/// persists the members. Returns `remaining` (R - L) for the caller's event.
+pub(crate) fn recompute_coverage(
+    circle: &mut Circle,
+    members: &mut [Account<'_, Member>],
+    feed: &PriceFeed,
+    mint_data: &[u8],
+    now: i64,
+) -> Result<u64> {
+    let n = circle.n;
+    let mut covers: Vec<u64> = Vec::with_capacity(members.len());
+    let mut obligs: Vec<u64> = Vec::with_capacity(members.len());
+    let mut needs: Vec<u64> = Vec::with_capacity(members.len());
 
-        for (index, info) in ctx.remaining_accounts.iter().enumerate() {
-            let member: Account<'info, Member> = Account::try_from(info)?;
+    for member in members.iter() {
+        let bit = 1u8 << member.turn;
+        let defaulted = circle.defaulted_bitmap & bit != 0;
+        let received = circle.received_bitmap & bit != 0;
 
-            // Each validated against its seat, per SPEC §5. Index IS turn, so
-            // the caller cannot reorder the list to change who is allocated
-            // first: turn order is the allocation rule.
-            require!(
-                member.circle == circle.key() && member.turn as usize == index,
-                OthelloError::BadMemberAccounts
-            );
-            require!(info.is_writable, OthelloError::BadMemberAccounts);
+        // A defaulted member's obligations were prepaid by the waterfall
+        // and their allocation released, so they take nothing from the
+        // reserve and their coverage reads as Prepaid, not as a number.
+        let cover = if defaulted {
+            0
+        } else {
+            value_position(
+                feed,
+                mint_data,
+                member.stock_raw,
+                circle.haircut_bps,
+                now,
+                circle.max_price_age,
+            )?
+            .h
+        };
+        let o = if defaulted {
+            0
+        } else {
+            obligations(circle.contribution, n, member.rounds_paid, received)?
+        };
 
-            let bit = 1u8 << member.turn;
-            let defaulted = circle.defaulted_bitmap & bit != 0;
-            let received = circle.received_bitmap & bit != 0;
-
-            // A defaulted member's obligations were prepaid by the waterfall
-            // and their allocation released, so they take nothing from the
-            // reserve and their coverage reads as Prepaid, not as a number.
-            let cover = if defaulted {
-                0
-            } else {
-                value_position(
-                    &ctx.accounts.price_feed,
-                    &mint_data,
-                    member.stock_raw,
-                    circle.haircut_bps,
-                    now,
-                    circle.max_price_age,
-                )?
-                .h
-            };
-            let o = if defaulted {
-                0
-            } else {
-                obligations(circle.contribution, n, member.rounds_paid, received)?
-            };
-
-            covers.push(cover);
-            obligs.push(o);
-            needs.push(need(o, cover, circle.coverage_bps)?);
-            members.push(member);
-        }
+        covers.push(cover);
+        obligs.push(o);
+        needs.push(need(o, cover, circle.coverage_bps)?);
     }
 
     // R - L. Not the free figure: nothing is allocated yet at this point, and
-    // this instruction is what decides what free becomes.
+    // this is what decides what free becomes.
     let remaining = circle.reserve_total.saturating_sub(circle.reserve_losses);
     let allocated = allocate_in_turn_order(&needs, remaining);
 
@@ -135,7 +186,6 @@ pub fn handle_update_coverage<'info>(ctx: Context<'info, UpdateCoverage<'info>>)
         total = total
             .checked_add(take)
             .ok_or(OthelloError::ValuationOverflow)?;
-        member.exit(&crate::ID)?;
     }
 
     // `next_gate_short_by` describes the gate that has NOT run yet, so SPEC §5
@@ -160,21 +210,11 @@ pub fn handle_update_coverage<'info>(ctx: Context<'info, UpdateCoverage<'info>>)
             .ok_or(OthelloError::ValuationOverflow)?;
     }
 
-    let circle = &mut ctx.accounts.circle;
     circle.reserve_allocated = total;
     circle.next_gate_short_by = next_needed
         .saturating_sub(remaining)
         .saturating_add(circle.escrow_deficit);
     circle.last_coverage_at = now;
 
-    emit!(CoverageUpdated {
-        circle: circle.key(),
-        round: circle.round,
-        reserve_allocated: circle.reserve_allocated,
-        remaining,
-        next_gate_short_by: circle.next_gate_short_by,
-        last_coverage_at: now,
-    });
-
-    Ok(())
+    Ok(remaining)
 }

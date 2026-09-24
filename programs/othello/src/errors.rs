@@ -55,4 +55,13 @@ pub enum OthelloError {
     NotFinished,
     #[msg("You've already withdrawn from this circle")]
     AlreadyWithdrawn,
+    // T15.
+    #[msg("The grace period for this round has not ended yet")]
+    GraceNotElapsed,
+    #[msg("That seat has paid this round")]
+    SeatAlreadyPaid,
+    #[msg("A member can't be defaulted before their turn; they can still pay late")]
+    PrePayoutDefaultUnsupported,
+    #[msg("The liquidation pool needs refilling before this default can settle")]
+    PoolInsufficient,
 }

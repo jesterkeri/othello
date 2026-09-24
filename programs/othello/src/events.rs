@@ -199,3 +199,26 @@ pub struct PoolSeeded {
     pub amount: u64,
     pub pool_usdc: u64,
 }
+
+/// T15, SPEC §6. Every figure the waterfall computed, so a client can show
+/// what was sold, what the reserve absorbed and what is left to cure.
+#[event]
+pub struct DefaultDeclared {
+    pub circle: Pubkey,
+    pub turn: u8,
+    pub round: u8,
+    pub obligations: u64,
+    pub sell_raw: u64,
+    pub recovered: u64,
+    pub funded_from_stock: u64,
+    pub shortfall: u64,
+    pub loss: u64,
+    /// Added to `escrow_deficit` by this default.
+    pub deficit: u64,
+    pub forfeited: u64,
+    /// False when the capped branch ran (price repricing or unreadable).
+    pub recomputed: bool,
+    pub escrow: u64,
+    pub escrow_deficit: u64,
+    pub next_gate_short_by: u64,
+}

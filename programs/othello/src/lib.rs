@@ -91,6 +91,15 @@ pub mod othello {
         instructions::lifecycle::handle_activate(ctx)
     }
 
+    /// Declares a missed contribution a default and settles the defaulter's
+    /// remaining rounds from their stock, then the reserve (T15, SPEC §6).
+    pub fn declare_default<'info>(
+        ctx: Context<'info, DeclareDefault<'info>>,
+        turn: u8,
+    ) -> Result<()> {
+        instructions::declare_default::handle_declare_default(ctx, turn)
+    }
+
     /// Creates the liquidation pool for one USDC and stock mint pair (T14). Admin
     /// only: the program's upgrade authority.
     pub fn init_pool(ctx: Context<InitPool>, discount_bps: u16) -> Result<()> {

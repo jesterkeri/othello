@@ -1747,3 +1747,77 @@ set_prices after the upgrade authority is rotated. That is current behaviour
 and an open design decision, recorded in OPEN-QUESTIONS.md rather than pinned
 by a passing test. Also noted: seed_pool's InsufficientBalance is not in SPEC
 §5's refusal list for that row; r6 added it.
+
+## T15 declare_default: the SPEC §6 waterfall (2026-09-24)
+reviewed: n/a (covered by Codex Gate 3 review at T17)
+adversary: pending (run on the committed diff before the Gate 3 brief)
+
+declare_default(turn), exactly per SPEC §5's row and §6. Preconditions in the
+row's order: Active, turn < n, now > deadline + grace (strict, I7), seat unpaid,
+received(turn) (else PrePayoutDefaultUnsupported, KNOWN-LIMITS L3), not already
+defaulted, wrapper price fresh and non-zero, pool USDC >= recovered. Then the
+sale (circle signs its stock to the pool vault, the pool signs USDC back) and
+the books line by line. Four error codes appended: GraceNotElapsed,
+SeatAlreadyPaid, PrePayoutDefaultUnsupported, PoolInsufficient. Event
+DefaultDeclared carries every waterfall figure.
+
+The arithmetic is a pure `waterfall()` so it is unit-tested without a
+transaction. Two SPEC edges made explicit: a conservative price of zero sells
+NOTHING (ceil(O/0) is undefined, and selling for zero would take stock for no
+money), and a mint whose multiplier cannot be read takes the capped branch
+rather than refusing, because the sale never needed it.
+
+Recompute: the normal branch is update_coverage's own code. That recompute
+was EXTRACTED from update_coverage into `load_members` + `recompute_coverage`
+(pub(crate)), which both instructions call, because SPEC says "exactly as
+update_coverage" and one copy is the only way that stays true. Behaviour is
+unchanged; the one difference is that all Member accounts are validated
+before any is valued, rather than interleaved. The full suite passed on it
+before declare_default existed (105 passing). The capped branch (Repricing)
+is written as SPEC r4 states it.
+
+Tests. Unit, programs/othello/src/instructions/declare_default.rs, 6: the demo
+numbers (sell all 1.1 tokens for 132, loss 68, forfeit 35); a late default
+selling only 83,333,334 raw; I9 swept over five wrapper prices and every
+rounds_paid; the escrow deficit; the r3 forfeit rule where it actually differs
+from the loss; a price too small to buy anything. End to end,
+tests/t15-declare-default.spec.ts, 9, on a pool made by init_pool and funded by
+seed_pool, with I2, I3 and I4 checked after each step: the demo default with
+the real token movements; then escrow paying the defaulted seat until
+Completed, and a Completed circle refusing (CircleNotActive); the late
+default; I7 at exactly deadline + grace (refused) and one second later
+(accepted), measured from a release made 1,000 s late; SeatAlreadyPaid,
+PrePayoutDefaultUnsupported, InvalidParams, AlreadyDefaulted; PoolInsufficient
+and PriceStale; the Repricing branch (I13, I2, last_coverage_at unstamped);
+Repricing with a deficit; and the escrow deficit on the normal branch.
+
+MUTATION TEST, each change made alone, unit + e2e rerun, restored by cp:
+  M1 grace >= instead of >              e2e 1 failing
+  M2 no received check                  e2e 1 failing
+  M3 no paid check                      e2e 1 failing
+  M4 forfeit against loss               unit 1 failed
+  M5 escrow omits the loss              e2e 4 failing
+  M6 no pool balance check              e2e 1 failing
+  M7 always full recompute              e2e 1 failing
+  M8 floor instead of ceil              unit 2 failed, e2e 1 failing
+  M9 no stale check                     e2e 1 failing
+  M10 stock not reduced                 e2e 5 failing
+  M11 capped branch forgets the deficit SURVIVED the first run (the Repricing
+      test had a deficit of 0); the Repricing-with-deficit test was added and
+      M11 then fails it: 8 passing, 1 failing
+  M12 no already-defaulted check        e2e 1 failing
+  source restored, rebuilt clean
+
+verify:
+  anchor test   124 passing (1m), exit 0 after 87s
+  cargo test    50 passed
+  cargo fmt --check clean (after cargo fmt; whitespace only, in the new file)
+  cargo clippy --all-targets -D warnings: 0 warnings
+  tsc --noEmit clean
+
+OBSERVED AND NOT EXPLAINED: one `anchor test` run earlier in this task did
+not finish. Its mocha process sat for over an hour at ~650% CPU and 2.7 GB
+before I killed it. Every run since has been clean: each of the 18 spec files
+alone (124 tests), all of them in one mocha process (124 passing, 1m), and
+`anchor test` again (87 s). Recorded rather than guessed at; if it recurs,
+the per-file timings above are the baseline.
