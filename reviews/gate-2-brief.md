@@ -10,7 +10,7 @@ that one is at `reviews/gate-2a-t09-brief.md`, was deliberately not a verdict,
 and its subject is INCLUDED here, because T10 to T12 landed after it and
 invalidated it by design.
 
-**Commit under review: `62d5f74`** on `task/T09-join-and-lock`.
+**Commit under review: `HEAD_SHA`** on `task/T09-join-and-lock`.
 Diff range `origin/staging..62d5f74`. Review under
 `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
 The absolute path is deliberate: it is a cross-project standard in another repo,
@@ -72,18 +72,25 @@ that computes it. The consequence is that the vault address is derived from
 (mint, authority) rather than from a seed this program chose, and **anyone can
 transfer into it**.
 
-**`anchor-lang` carries the `init-if-needed` feature.** Used on five accounts
-across three instructions: the circle's two vaults, the member's USDC ATA at
-join, the recipient's USDC ATA at release, and both member ATAs at withdraw. No
-Othello state account uses it; `Member` uses plain `init`.
+**`anchor-lang` carries the `init-if-needed` feature.** SIX uses across three
+instructions, counted rather than recalled after the r1 review found this brief
+undercounting them:
+
+| instruction | `init_if_needed` | `associated_token` constraints |
+|---|---|---|
+| `join_and_lock` | 3 | 4 |
+| `release_pot` | 1 | 2 |
+| `withdraw` | 2 | 4 |
+
+No Othello state account uses it; `Member` uses plain `init`.
 
 **The gate arithmetic is one module**, `gate.rs`, shared by `release_pot` and
 `update_coverage`, and T15's `declare_default` will use it too.
 
 **Two token programs in one instruction.** Stock is Token-2022 and USDC is SPL
-Token, so `join_and_lock`, `release_pot` and `withdraw` each carry two
-`Interface<TokenInterface>` accounts and two `associated_token::token_program`
-constraints.
+Token, so `join_and_lock` and `withdraw` each carry two
+`Interface<TokenInterface>` accounts; the constraint counts are in the table
+above and are not two per instruction, which is what r1 corrected.
 
 ## 4. What to review
 
@@ -139,10 +146,14 @@ rejected by signature before reaching the program.
 
 ## 6. Where the tests are thin, stated rather than discovered
 
-- **Two refusal codes have no negative test**, so G2's third clause is not fully
-  met. `MultiplierInvalid` is unreachable through an allowlisted mint, because
-  all four fixtures decode. `AlreadyDefaulted` needs `declare_default`, which is
-  T15. Both are structural, neither is an oversight, and neither is fixed.
+- **G2's third clause is now met: 22 of 22 refusal codes have a negative test.**
+  r1 correctly rejected this brief's claim that the last two were structurally
+  untestable. They were not; the claim confused "unreachable in production" with
+  "untestable". `tests/t13-refusal-coverage.spec.ts` reaches both by writing
+  account bytes, which is how every fixture in this repo works: it marks a seat
+  defaulted on the Circle account and asserts `contribute` refuses, and it puts
+  a mint whose scaled multiplier is NaN, infinity, negative, negative zero or
+  zero at the allowlisted address and asserts the valuation path refuses.
 - **Everything downstream of a default is unexecuted by anyone.** The escrow
   branch of `release_pot`, `reserve_losses > 0`, `forfeited > 0`,
   `escrow_deficit > 0`, and therefore the non-degenerate pro-rata in `withdraw`,

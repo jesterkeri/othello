@@ -1497,3 +1497,57 @@ The prompt for Joshua to run is in the session; the brief cites
 because it is a cross-project standard living in another repo and a relative
 path resolves only if the reviewer starts a directory above this one. Gate 1's
 brief used the relative form and got away with it.
+
+## T13 r2 - 2026-09-24
+
+reviewed: reviews/gate-2-review.md | verdict: changes required | commit: 62d5f74
+adversary: two passes, both NO DEFECT FOUND; their tests are integrated
+
+Codex returned three findings. Two were mine to fix and are fixed. The third is
+the design session's and is recorded, not invented around.
+
+MAJOR, FIXED, AND I WAS WRONG IN THE WAY IT SAID. The brief claimed
+MultiplierInvalid and AlreadyDefaulted were structurally untestable. They were
+not. I had confused "unreachable in production" with "untestable", which are
+different things: the harness writes arbitrary account bytes at arbitrary
+addresses, which is how every fixture in this repo already works.
+
+tests/t13-refusal-coverage.spec.ts reaches both the way Codex described.
+AlreadyDefaulted marks a seat on the Circle account, which is the state
+declare_default will eventually write, and asserts contribute refuses, then
+asserts every other member can still pay, so a default does not halt the round
+for people who did nothing. MultiplierInvalid puts a mint whose scaled
+multiplier is NaN, +inf, negative, negative zero or zero at the ALLOWLISTED
+address, because ADR-012 governs which address may be used and says nothing
+about the bytes there, which the issuer owns.
+
+  ✔ contribute refuses a member whose seat is marked defaulted
+  ✔ the valuation path refuses a mint whose multiplier cannot be read safely
+
+  anchor test: 87 passing, 0 failing (was 85)
+
+G2's third clause is now met, audited rather than asserted: every declared error
+against every code the suite asserts gives declared 22, covered 22, nothing
+uncovered.
+
+MINOR, FIXED. The brief said five init_if_needed uses and two associated-token
+constraints per instruction. Counted: six uses, and 4/2/4 constraints across
+join_and_lock, release_pot and withdraw. A U2 failure in my own review map, so
+the brief now carries the table rather than a recalled number.
+
+CRITICAL, NOT FIXED, AND NOT MINE TO FIX. A member who joins a Forming circle
+cannot recover their stock or guarantee if the creator does nothing. Only the
+creator can cancel, and withdraw refuses unless Completed or Cancelled, so an
+ordinary stalled formation, with no bad actor at all, leaves a live circle
+holding money with no exit.
+
+SPEC.md:102-104 is what makes that true, so it is a SPEC correction and
+AGENTS.md is explicit: if the design is wrong, stop and say so, and the pack is
+re-handed. Recorded in OPEN-QUESTIONS as BLOCKING before T23, because deploying
+a program that can lock a member's funds is worse than not deploying.
+
+GATE 2 IS THEREFORE NOT CLOSED, and scripts/check-reviews.sh now fails on this
+branch saying so. That is the guard reporting an unclosed gate, not a broken
+check: it refuses while a review in reviews/ says changes required. It clears
+when Codex re-reviews after the design decision, or when the design session
+records a deliberate override in KNOWN-LIMITS.md, which the build does not own.

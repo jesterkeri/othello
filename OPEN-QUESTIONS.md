@@ -371,3 +371,29 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
 
       Design-level, for the design session. Not a defect in T10 to T12, and the build has
       not changed L4 or anything else it owns.
+
+- [ ] BLOCKING before T23 (any deploy). **A joined member cannot recover assets from a
+      Forming circle if the creator does nothing** (Codex gate 2 review, 2026-09-23)
+
+      SPEC.md:102-104 makes join move a member's stock AND guarantee into the circle,
+      requires every seat before activation, and grants cancellation to the creator alone.
+      The implementation follows that exactly: lifecycle.rs accepts only the creator for
+      cancel_circle, and withdraw.rs refuses unless Completed or Cancelled.
+
+      The sequence needs no bad actor. A creator names A, B and a third wallet. A and B
+      join; their stock and guarantees are in the circle's ATAs. The third seat never
+      joins, so activate can never pass. If the creator then does nothing, neither A nor B
+      can cancel and neither can withdraw. Their assets are locked indefinitely.
+
+      This is not a failed attempt to create a circle, it is a live circle holding money
+      with no exit, and an ordinary stalled formation reaches it. An on-curve check on the
+      member list would not fix it.
+
+      SPEC-LEVEL, NOT AN IMPLEMENTATION CHOICE. The design needs a recovery path that does
+      not depend on the creator: a recorded formation expiry after which anyone, or any
+      joined member, may cancel; or a Forming-state member unwind. Whichever is chosen,
+      its accounting and its refusals then need implementing and scenario-testing, and
+      KNOWN-LIMITS L4's statement about stuck circles needs revisiting with it.
+
+      The build has not invented a fix, per AGENTS.md: if the design is wrong, stop and
+      say so, and the pack is re-handed.
