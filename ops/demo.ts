@@ -348,3 +348,84 @@ export async function scheduleSplit(chain: Chain, mints: Mints, creator: PublicK
   chain.log(`split scheduled: x${DEMO.splitMultiplier} at ${new Date(effectiveAt * 1000).toISOString()}, share re-priced 150 -> 15`);
 }
 
+
+type RoundCircle = {
+  status: Record<string, unknown>;
+  round: number;
+  n: number;
+  members: PublicKeyT[];
+  paidBitmap: number;
+  defaultedBitmap: number;
+  receivedBitmap: number;
+};
+
+/**
+ * The demo's rounds, played by the script-held members (T25). Pays this
+ * round's contribution for every seat that has not paid and is not in `skip`
+ * (0-based turns: the seat Joshua pays himself, on camera, from the app).
+ * Each member signs their own payment. Returns the turns it paid for.
+ */
+export async function payRound(chain: Chain, mints: Mints, members: KeypairT[], skip: number[] = []): Promise<number[]> {
+  const creator = members[0]!;
+  const a = addresses(chain.program, mints, creator.publicKey);
+  const c = await fetchOrNull<RoundCircle>(chain, "circle", a.circle);
+  if (!c || !("active" in c.status)) throw new Error(`the demo circle ${a.circle.toBase58()} is not Active`);
+
+  const paid: number[] = [];
+  for (const [turn, w] of members.entries()) {
+    if (skip.includes(turn)) continue;
+    if (c.paidBitmap & (1 << turn) || c.defaultedBitmap & (1 << turn)) continue;
+    if (!c.members[turn]!.equals(w.publicKey)) throw new Error(`seat ${turn + 1}'s key is not the circle's member ${c.members[turn]!.toBase58()}`);
+    const ix = await methods(chain.program)
+      .contribute!()
+      .accounts({
+        wallet: w.publicKey,
+        circle: a.circle,
+        member: a.member(w.publicKey),
+        usdcMint: mints.usdc,
+        memberUsdcAta: ataAddress(mints.usdc, w.publicKey, SPL_TOKEN),
+        circleUsdcVault: ataAddress(mints.usdc, a.circle, SPL_TOKEN),
+        usdcTokenProgram: SPL_TOKEN,
+      })
+      .instruction();
+    await chain.send([ix], [w]);
+    chain.log(`seat ${turn + 1} paid round ${c.round + 1}`);
+    paid.push(turn);
+  }
+  return paid;
+}
+
+/**
+ * Releases this round's pot to its recipient (release_pot: anyone may call,
+ * the admin pays the fee). Refuses, with the missing seats, if the round is not
+ * funded, rather than sending a transaction the program would refuse anyway.
+ */
+export async function releasePot(chain: Chain, mints: Mints, creator: PublicKeyT): Promise<void> {
+  const a = addresses(chain.program, mints, creator);
+  const c = await fetchOrNull<RoundCircle>(chain, "circle", a.circle);
+  if (!c || !("active" in c.status)) throw new Error(`the demo circle ${a.circle.toBase58()} is not Active`);
+  const missing = Array.from({ length: c.n }, (_, t) => t).filter((t) => !(c.paidBitmap & (1 << t)) && !(c.defaultedBitmap & (1 << t)));
+  if (missing.length) throw new Error(`round ${c.round + 1} is not funded: seat(s) ${missing.map((t) => t + 1).join(", ")} have not paid`);
+
+  const recipient = c.members[c.round]!;
+  const ix = await methods(chain.program)
+    .releasePot!()
+    .accounts({
+      caller: chain.admin.publicKey,
+      circle: a.circle,
+      stockMint: mints.stock,
+      usdcMint: mints.usdc,
+      priceFeed: a.feed,
+      recipient,
+      recipientUsdcAta: ataAddress(mints.usdc, recipient, SPL_TOKEN),
+      circleUsdcVault: ataAddress(mints.usdc, a.circle, SPL_TOKEN),
+      usdcTokenProgram: SPL_TOKEN,
+      associatedTokenProgram: ASSOCIATED_TOKEN,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+  // Every Member account, writable, in turn order (SPEC §5).
+  ix.keys.push(...c.members.slice(0, c.n).map((w) => ({ pubkey: a.member(w), isSigner: false, isWritable: true })));
+  await chain.send([ix], [chain.admin]);
+  chain.log(`round ${c.round + 1}'s pot released to seat ${c.round + 1} (${recipient.toBase58()})`);
+}

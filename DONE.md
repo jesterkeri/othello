@@ -2575,3 +2575,19 @@ verify:
   Joshua's first morning check, with member 2's key in Phantom.
 - next build clean; app tsc and root tsc clean; check-secrets clean; toml and MAINNET_RPC_URL
   absent from app/.next/static.
+
+## T25 prep: the demo's round scripts (2026-09-25, built)
+reviewed: pending, Codex, together with T18 and T24
+adversary: pending (with T18's pass or the next)
+
+ops/demo.ts gains payRound (every unpaid seat except those skipped, each member signing its own
+contribute) and releasePot (admin as caller; refuses an unfunded round naming the seats, before
+sending). ops/play-round.ts runs them on devnet (--skip <seat>, --release) and refuses if the
+member keys on disk are not the circle's recorded members. ops/export-member-key.ts prints one
+member's key in base58 for Phantom's import and refuses unless stdout is a terminal (checked:
+piped, it prints "Refused: stdout is not a terminal" and no key).
+
+verify: tests/t25-demo-play.spec.ts 3 passing on target/devnet/othello.so: round 1 paid by four
+scripted seats plus seat 2 through the app's contributeIx, pot 250 to seat 1; split scheduled and
+effective with H 132 before and after; round 2 paid, pot 250 to seat 2; unfunded release refused
+naming seats 2 and 4 with nothing sent; a second payRound sends nothing. Root tsc clean.
