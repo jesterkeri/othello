@@ -206,5 +206,13 @@ should start before the hackathon build is finished.
       registry, the /api routes) become per-chain adapters selected by the wallet. Research before
       code: which Sui assets have DeepBook depth that survives SPEC's depth rule; the on-chain price
       source; DeepBook's newer products (e.g. DeepBook Predict) and whether any fit; the Sui side's own
-      headline (the Token-2022 scaled-UI "split" story does not carry over); funding, against Colosseum
-      (Solana) competing for the same time.
+      headline (the Token-2022 scaled-UI "split" story does not carry over); funding and time.
+      ROBINHOOD (Joshua, 2026-09-25: Colosseum lets an entry pick several chains; he picked Solana,
+      Robinhood and one more, not yet named here). Two separate items, both to VERIFY before planning:
+      (a) Robinhood Wallet as a connection: does it implement Solana's Wallet Standard in a desktop
+      browser (then it appears in the app with no code), or only on mobile (WalletConnect / mobile
+      wallet adapter)? (b) Robinhood's own stock tokens as an asset family: which chain they live on
+      today (believed EVM: Arbitrum / Robinhood Chain, unverified), what a Robinhood-chain adapter
+      needs (EVM wallet, a Solidity or Stylus contract, their price and corporate-action model), and
+      whether Colosseum's Robinhood track expects a deployment on that chain. Colosseum's rules for
+      multi-chain entries are binding: read them before choosing scope.
