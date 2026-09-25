@@ -13,8 +13,15 @@
 .railBtn { width: 52px; height: 52px; border: 3px solid var(--line); border-radius: 999px; background: transparent; color: var(--railMuted); display: flex; align-items: center; justify-content: center; padding: 0; transition: background .15s, color .15s; }
 .railBtn:hover { background: var(--railHover); color: #FBF9F2; }
 .railOn, .railOn:hover { background: #FBF9F2; color: #0B0B0B; }
+.railLabel, .logoTop { display: none; }
 
 .panel { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; margin: 4px 4px 4px 0; border: 2px solid var(--line); border-radius: clamp(20px, 2.6vw, 34px); background: var(--panel); color: var(--onPanel); padding: clamp(18px, 2vw, 24px) clamp(18px, 2.2vw, 28px) clamp(22px, 2.6vw, 32px); display: flex; flex-direction: column; gap: 14px; transition: background .3s; }
+
+/* Split lab handoff: surface="gutter" drops the panel fill so colour cards sit on --gutter. */
+.panelGutter { background: var(--gutter); padding: 6px; gap: 6px; }
+.panelGutter .topbar { padding: 10px 12px 6px; }
+.panelGutter .devnetText { color: var(--gutterMuted); }
+.panelGutter .palette { background: var(--tile); }
 
 .topbar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
 .devnet { display: flex; align-items: center; gap: 9px; border: 3px solid var(--line); border-radius: 999px; background: var(--cobalt); color: var(--cobaltInk); padding: 7px 14px; font-size: 9.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; white-space: nowrap; }
@@ -48,8 +55,21 @@
 @media (max-width: 760px), (max-height: 620px) {
   .root { height: auto; }
   .frame { height: auto; flex-direction: column; }
-  .rail { flex-direction: row; gap: 12px; padding: 12px 12px 10px; }
-  .railNav { flex-direction: row; }
-  .panel { overflow: visible; margin: 0; border: 0; border-radius: 0 0 clamp(20px, 2.6vw, 34px) clamp(20px, 2.6vw, 34px); padding: 14px 12px 96px; }
+  /* Split lab handoff: phone nav floats as a pill 22px from the bottom; the active item widens and shows its label. */
+  .rail { position: fixed; left: 22px; right: 22px; bottom: 22px; z-index: 40; flex-direction: row; gap: 0; padding: 6px; border: 3px solid var(--line); border-radius: 999px; background: #0B0B0B; }
+  .rail > .logo { display: none; }
+  .railNav { flex: 1 1 auto; flex-direction: row; justify-content: space-between; gap: 4px; }
+  .railBtn { min-width: 44px; width: auto; flex: 0 1 52px; }
+  .railOn, .railOn:hover { flex: 1 1 auto; gap: 9px; padding: 0 16px; background: var(--acid); color: var(--acidInk); }
+  .railOn .railLabel { display: inline; font-size: 15px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+  .logoTop { display: flex; flex: 0 0 auto; width: 40px; height: 40px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 18px; }
+  .devnetText { order: 3; flex-basis: 100%; }
+  .topbar { gap: 8px; }
+  .dots { display: none; }
+  .devnet { padding: 6px 11px; }
+  .devnetFull { display: none; }
+  .panel { overflow: visible; margin: 0; border: 0; border-radius: clamp(20px, 2.6vw, 34px); padding: 14px 12px 112px; }
+  .panelGutter { padding: 6px 6px 100px; }
+  .panelGutter .topbar { padding: 8px 6px 4px; }
 }
 @media (prefers-reduced-motion: reduce) { .root * { animation: none !important; transition: none !important; } }

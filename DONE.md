@@ -2696,3 +2696,32 @@ into the build environment; it is not NEXT_PUBLIC, so it does not reach client o
 
 verify: t24-seed-demo 8, t24-adversary 3, t25-demo-play 3, app-contribute 3 passing; root tsc
 clean; git diff --check clean.
+
+## Asset pages + Split lab (2026-09-25, built)
+reviewed: pending, Codex T18 r2 (with the r1 fixes)
+adversary: pending
+
+- /assets and /assets/[symbol] (Joshua: "we do not have a dedicated asset page yet"): the four real
+  xStocks read live from mainnet through /api/live. Per mint: its own on-chain name and symbol, the
+  multiplier and last scheduled change, supply raw and as wallets show it, and the issuer powers
+  decoded from its extensions (mint and freeze authority, permanent delegate, pausable, transfer
+  hook with no program set, default account state, confidential transfers), with KNOWN-LIMITS L7
+  stated. No price: Othello has no price source for the real mints. app/src/lib/mintInfo.ts;
+  tests/app-mint-info.spec.ts 5 passing against the four real fixtures, expected values taken
+  from an independent Python decode of the same bytes.
+- /split-lab: the design session's handoff (handoff-split-lab/, board Split Lab Board.dc.html)
+  installed. Kept from the app, not the handoff: the Shell's real nav links and the wallet control
+  you can disconnect from (the handoff Shell predates both); taken from the handoff: surface
+  "gutter", the phone nav pill with the active label, the top-bar logo, and theme.ts's --gutter,
+  --gutterMuted, --tile. Changed to fit the site: "See a live circle" -> /circle/demo (handoff had
+  /circles/demo); the source line links to /assets/NFLXx. Its NFLXx data is the T00 fixture's
+  (slot 449,145,146) and its prices SPEC.md:137's.
+- Flow: nav gains xStocks and Split lab is marked built; the xStocks panel's symbols link to their
+  asset pages; NFLXx's asset page and the live circle's devnet line link to Split lab.
+- Dependency: framer-motion 13.4.3 (the handoff's README requires it). pnpm audit --prod unchanged
+  at 10 (4 moderate, 6 high), so it adds none.
+
+verify: app tsc and next build clean (/assets 3.4 kB, /split-lab 58.1 kB); headless Chromium at
+1280 and 390 px on /split-lab, /assets, /assets/NFLXx and /: no console errors, no horizontal
+overflow, screenshots checked (Split lab autoplay lands on After, 165.00 vs 16.50; NFLXx shows x10,
+1,550,568.48 as wallets show it, every issuer power); check-secrets clean.

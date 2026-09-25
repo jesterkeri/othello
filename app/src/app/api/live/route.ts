@@ -11,7 +11,8 @@
 import { NextResponse } from "next/server";
 
 import { REAL_XSTOCKS } from "@/lib/devnet";
-import { multiplierAt, readMint } from "@/lib/scaledUi";
+import { readMintInfo, type MintInfo } from "@/lib/mintInfo";
+import { multiplierAt } from "@/lib/scaledUi";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,8 @@ export type LiveXStock = {
   newMultiplier: number;
   effectiveAt: number;
   multiplierNow: number;
+  /** Authorities, extensions, issuer powers and on-chain metadata (the asset page). */
+  info: MintInfo;
 };
 export type LiveXStocks = { readAt: number; slot: number; mints: LiveXStock[] };
 
@@ -63,7 +66,12 @@ async function readMainnet(): Promise<LiveXStocks> {
     const acc = body.result!.value[i];
     if (!acc) throw new Error(`${x.symbol} (${x.address}) not found on mainnet`);
     if (acc.owner !== "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") throw new Error(`${x.symbol} is not a Token-2022 mint`);
-    const m = readMint(Buffer.from(acc.data[0], "base64"));
+    let m: MintInfo;
+    try {
+      m = readMintInfo(Buffer.from(acc.data[0], "base64"));
+    } catch {
+      throw new Error(`${x.symbol} is not a readable Token-2022 mint`);
+    }
     if (!m.scaledUi) throw new Error(`${x.symbol} carries no ScaledUiAmountConfig`);
     return {
       symbol: x.symbol,
@@ -73,6 +81,7 @@ async function readMainnet(): Promise<LiveXStocks> {
       supply: m.supply,
       ...m.scaledUi,
       multiplierNow: multiplierAt(m.scaledUi, readAt),
+      info: m,
     };
   });
   return { readAt, slot: body.result.context.slot, mints };

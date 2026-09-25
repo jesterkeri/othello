@@ -178,7 +178,10 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
               {live.usdcWord}.
               {live.split.effectiveAt > now && live.split.newMultiplier !== live.split.multiplier
                 ? ` Split scheduled: x${live.split.multiplier} to x${live.split.newMultiplier} in ${formatDuration(live.split.effectiveAt - now)}.`
-                : ""}
+                : ""}{" "}
+              <Link className={s.link} href="/split-lab">
+                What a split does to locked stock
+              </Link>
             </p>
           ) : (
             <p className={s.devnetText}>

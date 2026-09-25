@@ -161,5 +161,9 @@ export function innerVars(set: { brand: string; dark: string[] }, dark: boolean)
     '--desk': atLum(b, 0.82), '--panel': mix(atLum(b, 0.9), '#F4F2EC', 0.45), '--onPanel': '#0B0B0B',
     '--panelMuted': mix(atLum(b, 0.12), '#5C594F', 0.5), '--raised': mix(atLum(b, 0.8), '#E6E2D9', 0.5), '--chipHover': atLum(b, 0.9),
   });
+  // Card-stack pages (Split lab): --gutter shows between cards, --tile is the neutral card. Accent cards use their slot + ink.
+  v['--gutter'] = dark ? '#0B0B0B' : mix(atLum(b, 0.62), '#CFC9BC', 0.5);
+  v['--gutterMuted'] = dark ? v['--panelMuted']! : '#2E2C27';
+  v['--tile'] = dark ? mix(atLum(b, 0.03), '#1C1C1B', 0.6) : v['--panel']!;
   return v;
 }

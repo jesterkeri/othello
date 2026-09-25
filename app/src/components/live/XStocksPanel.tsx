@@ -94,10 +94,10 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
               {data.mints.map((m) => (
                 <tr key={m.address}>
                   <td>
-                    <span className={s.seatName}>
-                      <span>{m.symbol}</span>
+                    <a href={`/assets/${m.symbol}`} className={s.seatName}>
+                      <span className={s.link}>{m.symbol}</span>
                       <span className={s.seatAddr}>{m.name}</span>
-                    </span>
+                    </a>
                   </td>
                   <td>
                     <a className={s.link} href={explorer("address", m.address, "mainnet")} target="_blank" rel="noreferrer">

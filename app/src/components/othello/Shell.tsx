@@ -10,6 +10,7 @@ import { PALETTES, customToProfile, innerVars, loadTheme, saveTheme, type Custom
 const NAV = [
   { label: 'Home', d: 'M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5' },
   { label: 'Circles', d: 'M12 2.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M18.5 9.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M12 16.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M5.5 9.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M14 6.4l3 3.4M17 14.2l-3 3.4M10 17.6l-3-3.4M7 9.8l3-3.4' },
+  { label: 'xStocks', d: 'M4 19.5h16M7 16v-5M12 16V6.5M17 16v-8' },
   { label: 'Split lab', d: 'M9.5 3.5h5M10.5 3.5v5.2L5 18.3A1.5 1.5 0 0 0 6.3 20.5h11.4a1.5 1.5 0 0 0 1.3-2.2L13.5 8.7V3.5M7.6 14h8.8' },
   { label: 'How it works', d: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4M12 16.6v.6' },
 ] as const;
@@ -25,6 +26,8 @@ export type ShellProps = {
   walletAddress?: string | null;
   onConnectWallet?: () => void;
   onNavigate?: (label: string) => void;
+  /** 'gutter' drops the panel fill so the page can lay colour cards on --gutter (Split lab handoff). */
+  surface?: 'panel' | 'gutter';
   children: ReactNode;
 };
 
@@ -45,7 +48,7 @@ export function useTheme() {
   return { mode, setMode, choice, setChoice, mine, vars };
 }
 
-export default function Shell({ active = 'Circles', onNavigate, children }: ShellProps) {
+export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', children }: ShellProps) {
   const t = useTheme();
   const [menu, setMenu] = useState(false);
   useEffect(() => { document.body.style.background = String((t.vars as Record<string, string>)['--desk']); }, [t.vars]);
@@ -61,14 +64,16 @@ export default function Shell({ active = 'Circles', onNavigate, children }: Shel
                 className={`${s.railBtn} ${n.label === active ? s.railOn : ''}`}
                 onClick={() => (onNavigate ? onNavigate(n.label) : window.location.assign(hrefFor(n.label)))}>
                 <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={n.d} /></svg>
+                {n.label === active && <span className={s.railLabel}>{n.label}</span>}
               </button>
             ))}
           </nav>
         </aside>
 
-        <main className={s.panel}>
+        <main className={`${s.panel} ${surface === 'gutter' ? s.panelGutter : ''}`}>
           <div className={s.topbar}>
-            <span className={s.devnet}><span className={s.dots} aria-hidden>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>Devnet demo</span>
+            <span className={s.logoTop} aria-hidden>O</span>
+            <span className={s.devnet}><span className={s.dots} aria-hidden>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>Devnet<span className={s.devnetFull}>&nbsp;demo</span></span>
             <p className={s.devnetText}>The demo trades labelled mirrors of these shares, not the real xStocks.</p>
             <span className={s.actions}>
               <button type="button" className={s.palette} aria-label="Colours and mode" aria-expanded={menu} onClick={() => setMenu(!menu)}>
