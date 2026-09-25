@@ -288,14 +288,26 @@
 .refTitle { font-size: 14px; font-weight: 800; letter-spacing: -.01em; color: var(--onPanel); }
 .refChip { border: 2px solid currentColor; border-radius: 999px; padding: 2px 10px; font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--panelMuted); }
 .refList { display: flex; flex-direction: column; gap: clamp(8px, 1vw, 12px); }
-.refRow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: clamp(10px, 1.4vw, 22px); border: 3px solid #0B0B0B; border-radius: 999px; background: var(--raised); color: var(--onPanel); padding: clamp(8px, .9vw, 10px); }
+.refRow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; transition: transform .45s cubic-bezier(.2, 1.5, .35, 1), box-shadow .45s cubic-bezier(.2, 1.5, .35, 1); align-items: center; gap: clamp(10px, 1.4vw, 22px); border: 3px solid #0B0B0B; border-radius: 999px; background: var(--raised); color: var(--onPanel); padding: clamp(8px, .9vw, 10px); }
 .refBadge { width: clamp(48px, 4.6vw, 60px); height: clamp(48px, 4.6vw, 60px); border: 3px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(17px, 1.5vw, 21px); text-transform: uppercase; }
 .refName { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .refName b { font-size: clamp(16px, 1.4vw, 19px); font-weight: 800; letter-spacing: -.02em; }
 .refName > span { font-size: 12.5px; font-weight: 600; color: var(--panelMuted); overflow-wrap: anywhere; }
 .refFacts { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; font-size: 12px; font-weight: 800; padding-right: 8px; }
 .refFact { border: 2px solid var(--panelMuted); border-radius: 999px; padding: 4px 10px; }
-.refNote { grid-column: 1 / -1; margin: 0 8px 6px; border: 3px solid #0B0B0B; border-radius: 18px; background: var(--acid); color: var(--acidInk); padding: 10px 14px; font-size: 13px; font-weight: 700; line-height: 1.45; }
+.refRow u { color: var(--onPanel); }
+.refBadge { transition: transform .5s cubic-bezier(.2, 1.6, .35, 1); }
+.refArrow { width: clamp(40px, 3.4vw, 48px); height: clamp(40px, 3.4vw, 48px); border: 3px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; display: flex; align-items: center; justify-content: center; transition: transform .5s cubic-bezier(.2, 1.6, .35, 1); }
+@media (hover: hover) and (pointer: fine) {
+  .refRow:hover { transform: translate(-5px, -5px); box-shadow: 8px 8px 0 var(--slot); }
+  .refRow:hover .refBadge { transform: rotate(-14deg) scale(1.12); }
+  .refRow:hover .refArrow { transform: rotate(45deg); background: #FBF9F2; color: #0B0B0B; }
+  .member { transition: transform .45s cubic-bezier(.2, 1.5, .35, 1), box-shadow .45s cubic-bezier(.2, 1.5, .35, 1); }
+  .member:hover { transform: translate(-4px, -4px); box-shadow: 6px 6px 0 #0B0B0B; }
+  .member:hover .arrow { transform: rotate(45deg); background: #FBF9F2; color: #0B0B0B; }
+}
+.arrow { transition: transform .5s cubic-bezier(.2, 1.6, .35, 1); }
+.refNote { display: block; grid-column: 1 / -1; margin: 0 8px 6px; border: 3px solid #0B0B0B; border-radius: 18px; background: var(--acid); color: var(--acidInk); padding: 10px 14px; font-size: 13px; font-weight: 700; line-height: 1.45; }
 .refRow:has(.refNote) { border-radius: 30px; }
 
 @media (max-width: 1079px) {
@@ -306,7 +318,7 @@
   .hero { box-shadow: 4px 4px 0 #0B0B0B; }
   .member { grid-template-columns: 92px minmax(0, 1fr); }
   .chip { white-space: normal; }
-  .refRow { grid-template-columns: auto minmax(0, 1fr); border-radius: 26px; }
+  .refRow { grid-template-columns: auto minmax(0, 1fr) auto; border-radius: 26px; }
   .refFacts { grid-column: 1 / -1; justify-content: flex-start; }
 }
 

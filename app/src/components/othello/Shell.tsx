@@ -9,6 +9,9 @@ import { WalletControl } from './WalletConnect';
 import { hrefFor } from '@/lib/nav';
 import { PALETTES, STORAGE_KEY, customToProfile, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
+/** Each nav item's tag colour (Circle.dc.html handoff). */
+const TIP: Record<string, string> = { Home: 'acid', Portfolio: 'sky', Stocks: 'teal', Circles: 'clay', 'How it works': 'cobalt' };
+
 const NAV = [
   { label: 'Home', d: 'M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5' },
   { label: 'Portfolio', d: 'M4 8.5h16v11H4zM8.5 8.5V6a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 6v2.5M4 13h16' },
@@ -106,11 +109,15 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
         <span className={s.logo} aria-label="Othello">O</span>
         <nav className={s.railNav} aria-label="Main">
           {NAV.map((n) => (
-            <button key={n.label} type="button" aria-label={n.label} title={n.label} aria-current={n.label === active ? 'page' : undefined}
+            <button key={n.label} type="button" aria-label={n.label} aria-current={n.label === active ? 'page' : undefined}
               className={`${s.railBtn} ${n.label === active ? s.railOn : ''}`}
               onClick={() => (onNavigate ? onNavigate(n.label) : window.location.assign(hrefFor(n.label)))}>
               <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={n.d} /></svg>
               {n.label === active && <span className={s.railLabel}>{n.label}</span>}
+              {/* Circle.dc.html: a coloured flag beside the rail on hover or focus (desktop). */}
+              <span className={s.tip} aria-hidden style={{ '--tipBg': `var(--${TIP[n.label] ?? 'acid'})`, '--tipFg': `var(--${TIP[n.label] ?? 'acid'}Ink)` } as CSSProperties}>
+                <span className={s.tipFlag}><span className={s.tipDot} />{n.label}</span>
+              </span>
             </button>
           ))}
         </nav>

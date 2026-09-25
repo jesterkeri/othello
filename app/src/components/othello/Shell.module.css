@@ -62,7 +62,17 @@
 
 @keyframes rowIn { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
 
+/* The rail's tag (Circle.dc.html): a flag with a dot, sliding out on hover or keyboard focus. Desktop only. */
+.railBtn { position: relative; }
+.tip { position: absolute; left: calc(100% + 32px); top: 50%; z-index: 70; opacity: 0; pointer-events: none; transform: translate(-8px, -50%) scale(.92); transform-origin: left center; transition: opacity .16s ease-out, transform .3s cubic-bezier(.2, 1.6, .35, 1); }
+.tipFlag { position: relative; display: flex; align-items: center; gap: 8px; white-space: nowrap; border: 3px solid #0B0B0B; border-radius: 14px 999px 999px 14px; background: var(--tipBg); color: var(--tipFg); padding: 7px 16px 7px 12px; box-shadow: 4px 4px 0 #0B0B0B; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; text-transform: uppercase; font-size: 19px; line-height: 1; }
+.tipFlag::before { content: ''; position: absolute; left: -9px; top: 50%; width: 14px; height: 14px; margin-top: -7px; background: var(--tipBg); border-left: 3px solid #0B0B0B; border-bottom: 3px solid #0B0B0B; transform: rotate(45deg); border-radius: 0 0 0 3px; }
+.tipDot { position: relative; width: 8px; height: 8px; border: 2px solid #0B0B0B; border-radius: 999px; background: #FBF9F2; }
+@media (hover: hover) and (pointer: fine) { .railBtn:hover .tip { opacity: 1; transform: translate(0, -50%) scale(1); } }
+.railBtn:focus-visible .tip { opacity: 1; transform: translate(0, -50%) scale(1); }
+
 @media (max-width: 759px) {
+  .tip { display: none; }
   /* Phone: the bottom nav pill, 14px inset; the active item is a wide clay pill with its label. */
   .rail { top: auto; left: 14px; right: 14px; bottom: 14px; width: auto; flex-direction: row; gap: 0; padding: 6px; background: #0B0B0B; color: #FBF9F2; }
   .root[data-mode='light'] .rail { background: #0B0B0B; color: #FBF9F2; }

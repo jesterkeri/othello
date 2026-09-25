@@ -9,11 +9,10 @@
  * On failure it says so and shows no number (PREFLIGHT: "/api/live failure
  * shows Live data unavailable, never breaks the page").
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 import type { LiveXStocks } from "@/app/api/live/route";
 import s from "@/components/circle/Circle.module.css";
-import { explorer } from "@/lib/devnet";
 import { formatDuration, shortAddress } from "@/lib/circle";
 import { multiplierAt } from "@/lib/scaledUi";
 
@@ -93,19 +92,20 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
             .map((m) => {
               const slot = SLOT[m.symbol] ?? "raised";
               return (
-                <div key={m.address} className={s.refRow}>
-                  <a href={`/assets/${m.symbol}`} className={s.refBadge} style={{ background: `var(--${slot})`, color: `var(--${slot}Ink)` }} aria-label={`${m.symbol} stock page`}>
+                <a
+                  key={m.address}
+                  href={`/assets/${m.symbol}`}
+                  className={s.refRow}
+                  style={{ "--slot": `var(--${slot})` } as CSSProperties}
+                  aria-label={`${m.symbol}, ${m.name}: open its stock page`}
+                >
+                  <span className={s.refBadge} style={{ background: `var(--${slot})`, color: `var(--${slot}Ink)` }} aria-hidden>
                     {m.symbol.slice(0, 2)}
-                  </a>
+                  </span>
                   <span className={s.refName}>
-                    <a href={`/assets/${m.symbol}`}>
-                      <b>{m.symbol}</b>
-                    </a>
+                    <b>{m.symbol}</b>
                     <span>
-                      {m.name} · Mint{" "}
-                      <a className={s.link} href={explorer("address", m.address, "mainnet")} target="_blank" rel="noreferrer">
-                        {shortAddress(m.address)}
-                      </a>
+                      {m.name} · Mint <u>{shortAddress(m.address)}</u>
                     </span>
                   </span>
                   {/* By this browser's clock at render, not the server's cached moment,
@@ -114,13 +114,18 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
                     <span className={s.refFact}>Multiplier now {mult(multiplierAt(m, Date.now() / 1000))}</span>
                     <span className={s.refFact}>Last change: {change(m)}</span>
                   </span>
+                  <span className={s.refArrow} aria-hidden>
+                    <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M7 17 17 7M9 7h8v8" />
+                    </svg>
+                  </span>
                   {m.symbol === "NFLXx" && (
-                    <p className={s.refNote}>
+                    <span className={s.refNote}>
                       The circle above locks the {mirror.label}, now at {mult(mirror.multiplierNow)}. The demo replays
                       this split on it.
-                    </p>
+                    </span>
                   )}
-                </div>
+                </a>
               );
             })}
         </div>

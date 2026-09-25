@@ -112,7 +112,8 @@ async function holdings(jupiter: () => Response): Promise<{ xstocks: { symbol: s
   }
 }
 
-/** The "Your xStocks" heading as the page renders it for that body. */
+/** The "Your xStocks" total card as the page renders it for that body (T18e: Portfolio.dc.html
+ *  replaced the old h2 heading with this card; the claim under test is unchanged). */
 async function heading(body: unknown): Promise<string> {
   const React = appRequire("react");
   const { renderToStaticMarkup } = appRequire("react-dom/server");
@@ -122,9 +123,10 @@ async function heading(body: unknown): Promise<string> {
   g.__portfolioSeed = [null, "not read in this test", body, null];
   const { default: Portfolio } = await import(pathToFileURL(PORTFOLIO).href);
   const html: string = renderToStaticMarkup(React.createElement(Portfolio));
-  const h = html.split("<h2").map((x) => x.slice(x.indexOf(">") + 1, x.indexOf("</h2>"))).find((x) => x.startsWith("Your xStocks"));
-  assert.ok(h, "the page has a Your xStocks heading");
-  return h.replace(/<[^>]+>/g, "");
+  const at = html.indexOf('aria-label="Your xStocks"');
+  assert.ok(at >= 0, "the page has a Your xStocks card");
+  const card = html.slice(at, html.indexOf("</section>", at));
+  return card.slice(card.indexOf(">") + 1).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 describe("T18c adversary: Portfolio never totals holdings it could not price", () => {
@@ -133,7 +135,7 @@ describe("T18c adversary: Portfolio never totals holdings it could not price", (
     assert.equal(body.xstocks.length, 1);
     assert.equal(body.xstocks[0]!.symbol, "NFLXx");
     assert.ok(body.xstocks[0]!.usdValue! > 0, "valued at Jupiter's price");
-    assert.match(await heading(body), /^Your xStocks: \$[1-9]/);
+    assert.match(await heading(body), /^Your xStocks · mainnet \$[1-9]/);
   });
 
   it("does not print a dollar total when Jupiter's price read failed", async () => {
