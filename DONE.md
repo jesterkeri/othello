@@ -2741,3 +2741,21 @@ adversary: ONE defect, fixed (tests/t18-assets-adversary.spec.ts, integrated unc
 
 verify: t18-assets-adversary 1, app-mint-info 5, app-live 10 passing; app and root tsc; next
 build; check-secrets; git diff --check clean.
+
+## T18 Codex r2: r1 fixed, one MINOR fixed (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: changes required (r2) | commit: 0aac57c
+adversary: n/a (review fix; guarded by a test)
+
+Codex r2 confirmed all three r1 findings fixed (32 spec files, 194 passing; Rust, clippy, fmt,
+tsc, diff check, secret scan). One new MINOR: AssetDetail's "Supply, raw" showed a rounded decimal.
+It now shows the exact on-chain u64 split at the mint's decimals with string arithmetic
+(exactTokens), labelled "Supply, raw (exact, before the multiplier)"; the multiplied figure is
+labelled "about". New test: NFLXx fixture 15505685531324 -> "155,056.85531324", u64 max exact,
+tiny and zero-decimal cases.
+Codex skipped the app build because it auto-loads app/.env.local: that file was the Vercel OIDC
+token `vercel link` wrote; deploys build from Git, so it is deleted (not read). `next build` no
+longer reports loading any env file.
+Note: Codex r2 ran in this worktree while 67cebbc (asset-page adversary fix) was committed here;
+r2's target was 0aac57c. 67cebbc and this fix go to r3.
+
+verify: app-mint-info 6 passing; app tsc; next build; git diff --check; check-secrets clean.

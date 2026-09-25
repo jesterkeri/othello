@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { REPO } from "./artifacts.ts";
 import { REAL_XSTOCKS } from "../app/src/lib/devnet.ts";
 import { readMintInfo } from "../app/src/lib/mintInfo.ts";
+import { exactTokens } from "../app/src/components/assets/useLiveXStocks.ts";
 
 const bytes = (symbol: string) =>
   Buffer.from((JSON.parse(readFileSync(resolve(REPO, `tests/fixtures/${symbol}.json`), "utf8")) as { dataBase64: string }).dataBase64, "base64");
@@ -51,5 +52,15 @@ describe("asset page: mintInfo.ts on the real xStocks", () => {
     account[165] = 2;
     assert.throws(() => readMintInfo(account), /not a Token-2022 mint account/);
     assert.throws(() => readMintInfo(bytes("NFLXx").subarray(0, 300)), /truncated/);
+  });
+
+  // Codex T18 r2: the page's "Supply, raw" must be the exact on-chain integer, not a rounded decimal.
+  it("shows raw supply exactly: every digit of the u64, split at the mint's decimals", () => {
+    const m = readMintInfo(bytes("NFLXx"));
+    assert.equal(m.supply, "15505685531324");
+    assert.equal(exactTokens(m.supply, m.decimals), "155,056.85531324");
+    assert.equal(exactTokens("18446744073709551615", 8), "184,467,440,737.09551615", "u64 max, no float anywhere");
+    assert.equal(exactTokens("5", 8), "0.00000005");
+    assert.equal(exactTokens("1000", 0), "1,000");
   });
 });

@@ -45,7 +45,7 @@ export default function AssetsIndex() {
                 </span>
                 <span className={s.row}>
                   <span className={s.rowLabel}>Supply, as wallets show it</span>
-                  <span className={s.rowValue}>{tokens(m.supply, m.decimals, multiplierAt(m, Date.now() / 1000))}</span>
+                  <span className={s.rowValue}>about {tokens(m.supply, m.decimals, multiplierAt(m, Date.now() / 1000))}</span>
                 </span>
                 <span className={s.row}>
                   <span className={s.rowLabel}>Mint</span>

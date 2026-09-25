@@ -14,7 +14,7 @@ import { explorer } from "@/lib/devnet";
 import { multiplierAt } from "@/lib/scaledUi";
 
 import AssetShell, { Unavailable } from "./Shell";
-import { mult, tokens, useLiveXStocks, when } from "./useLiveXStocks";
+import { exactTokens, mult, tokens, useLiveXStocks, when } from "./useLiveXStocks";
 
 function Row({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
   return (
@@ -86,12 +86,12 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
                   </span>
                 </span>
                 <span className={s.row}>
-                  <span className={s.rowLabel}>Supply, raw</span>
-                  <span className={s.rowValue}>{tokens(m.supply, m.decimals)}</span>
+                  <span className={s.rowLabel}>Supply, raw (exact, before the multiplier)</span>
+                  <span className={s.rowValue}>{exactTokens(m.supply, m.decimals)}</span>
                 </span>
                 <span className={s.row}>
                   <span className={s.rowLabel}>Supply, as wallets show it</span>
-                  <span className={s.rowValue}>{tokens(m.supply, m.decimals, multiplierAt(m, now))}</span>
+                  <span className={s.rowValue}>about {tokens(m.supply, m.decimals, multiplierAt(m, now))}</span>
                 </span>
               </div>
             </div>
