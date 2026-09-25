@@ -2804,3 +2804,12 @@ verify: 34 spec files each alone, 198 passing before the adversary tests (+4 now
 fmt, root and app tsc, next build, git diff --check, check-secrets clean; all 11 pages at 1280 and
 390 px in headless Chromium: HTTP 200, no console errors, no overflow, no failure words. Holdings
 checked on real wallets (Tunde's seat: 0 mirror, 200 test USDC; four SPYx pool owners on mainnet).
+
+## T18 Codex r4: implementation-ready (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: implementation-ready | commit: f95c4b4 (r4)
+adversary: see the T18, T24, T25 and asset-page entries above
+
+Codex r4 confirmed both r3 findings fixed (root tsc; the adversary's asset test). All 33 isolated
+spec files passed (195 assertions); root and app TypeScript and the app build pass.
+T24 + T18/S2b + T25 (the seed, the live circle, the real xStocks panel, Contribute, the demo round
+scripts) are closed.
