@@ -77,7 +77,7 @@ export default function Portfolio() {
         <h1 className={s.title}>Portfolio</h1>
         {w.address && (
           <div className={s.walletBox}>
-            <WalletFunds funds={funds} error={fundsError} />
+            <WalletFunds funds={funds} error={fundsError} devnet />
           </div>
         )}
         {w.address && (
