@@ -2870,3 +2870,13 @@ r2's fixes work. Two MINOR:
    the new case fails (16 passing, 1 failing).
 
 verify: app-quote 17 passing; root and app tsc; git diff --check clean.
+
+## T18c Codex r4: changes required, one MINOR fixed (2026-09-25)
+reviewed: reviews/t18c-review.md | verdict: changes required (r4) | commit: b0efb44 (branch head 5bcdea7)
+adversary: n/a (review fix; guarded by a test and a mutation check)
+
+Codex r4 confirmed both r3 fixes (37 spec files, 220 assertions; tsc, 109-page build, diff and
+secret checks; the branch stayed task/T18c-charts at 5bcdea7). One MINOR: a label of only control
+characters (U+0000) passed the "visible" check. The check is now positive: a label must contain a
+letter, number, punctuation mark or symbol (\p{L}\p{N}\p{P}\p{S}). tests/app-quote.spec.ts 18
+passing; with r3's check restored the new case fails (17 passing, 1 failing).

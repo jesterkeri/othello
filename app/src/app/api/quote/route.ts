@@ -46,9 +46,10 @@ export async function GET(req: NextRequest) {
     const plan = Array.isArray(q?.routePlan) ? (q!.routePlan as { swapInfo?: { label?: unknown } }[]) : [];
     const route = plan
       .map((r) => r?.swapInfo?.label)
-      // Codex T18c r3: zero-width and other invisible format characters survive trim(); a label
-      // needs at least one visible character once whitespace and format characters are removed.
-      .filter((l): l is string => typeof l === "string" && l.replace(/[\p{Cf}\p{Z}\s]/gu, "").length > 0)
+      // Codex T18c r3/r4: whitespace, zero-width and control characters all render blank. Rather
+      // than list every invisible class, a label must contain a letter, number, punctuation mark or
+      // symbol.
+      .filter((l): l is string => typeof l === "string" && /[\p{L}\p{N}\p{P}\p{S}]/u.test(l))
       .map((l) => l.trim());
     if (!out || !Number.isFinite(impact) || impact < 0 || plan.length === 0 || route.length !== plan.length) {
       throw new Error("Jupiter returned an incomplete quote");
