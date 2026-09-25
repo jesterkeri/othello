@@ -14,7 +14,9 @@ import { explorer } from "@/lib/devnet";
 import { multiplierAt } from "@/lib/scaledUi";
 
 import AssetShell, { Unavailable } from "./Shell";
-import { exactTokens, mult, tokens, useLiveXStocks, when } from "./useLiveXStocks";
+import { exactTokens } from "@/lib/format";
+
+import { mult, tokens, useLiveXStocks, when } from "./useLiveXStocks";
 
 function Row({ label, value, note }: { label: string; value: ReactNode; note?: string }) {
   return (

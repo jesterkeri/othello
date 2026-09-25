@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 import { REPO } from "./artifacts.ts";
 import { REAL_XSTOCKS } from "../app/src/lib/devnet.ts";
 import { readMintInfo } from "../app/src/lib/mintInfo.ts";
-import { exactTokens } from "../app/src/components/assets/useLiveXStocks.ts";
+import { exactTokens } from "../app/src/lib/format.ts";
 
 const bytes = (symbol: string) =>
   Buffer.from((JSON.parse(readFileSync(resolve(REPO, `tests/fixtures/${symbol}.json`), "utf8")) as { dataBase64: string }).dataBase64, "base64");

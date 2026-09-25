@@ -2759,3 +2759,19 @@ Note: Codex r2 ran in this worktree while 67cebbc (asset-page adversary fix) was
 r2's target was 0aac57c. 67cebbc and this fix go to r3.
 
 verify: app-mint-info 6 passing; app tsc; next build; git diff --check; check-secrets clean.
+
+## T18 Codex r3: r2 fixed, two findings fixed (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: changes required (r3) | commit: c3f09ef
+adversary: n/a (review fixes; guarded by the root typecheck and the adversary's own test)
+
+Codex r3 confirmed r2's raw-supply finding fixed. New: MAJOR, `pnpm exec tsc` at the root failed
+because tests/app-mint-info.spec.ts imported exactTokens from a browser hook module
+(useLiveXStocks.ts, window/fetch/"@/" types); MINOR, tests/t18-assets-adversary.spec.ts stubs that
+hook module, so AssetDetail's exactTokens import was undefined and the test failed before its
+assertions. Fix: exactTokens moves to app/src/lib/format.ts (pure, no "@/" imports, no browser
+APIs); AssetDetail and the test import it from there; the hook no longer carries it.
+I had found the MAJOR myself while r3 ran (in the charts worktree) but could not change this
+worktree during the review.
+
+verify: root tsc clean; app tsc clean; t18-assets-adversary 1, app-mint-info 6, app-live 10
+passing; next build; git diff --check; check-secrets clean.
