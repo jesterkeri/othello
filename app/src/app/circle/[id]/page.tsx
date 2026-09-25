@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 
 import Circle from "@/components/circle/Circle";
+import LiveCircle from "@/components/live/LiveCircle";
 import {
   CIRCLE_STATES,
-  DEMO_STATE,
   FIXTURE_NOW,
   STALE_NOW,
   STATE_KEYS,
@@ -14,7 +14,8 @@ import {
  * Every Circle state in design/FLOWS.md §7 gets its own URL, which is how G4's
  * "every place renders each of its states" is checked rather than asserted.
  *
- *   /circle/demo        what "Open demo circle" opens
+ *   /circle/demo        what "Open demo circle" opens: the demo circle LIVE
+ *                       from devnet (T18), not a fixture
  *   /circle/<state>     one per Data state: forming, active, paused,
  *                       repricing, completed, cancelled
  *   /circle/stale       the demo circle read past its max_price_age (D6)
@@ -34,7 +35,9 @@ export default async function CirclePage({ params }: Params) {
     );
   }
 
-  const key = (id === "demo" ? DEMO_STATE : id) as CircleStateKey;
+  if (id === "demo") return <LiveCircle />;
+
+  const key = id as CircleStateKey;
   const circle = CIRCLE_STATES[key];
   if (!circle) notFound();
 

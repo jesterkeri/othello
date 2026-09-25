@@ -2540,3 +2540,38 @@ verify: `pnpm tsx ops/verify-demo-circle.ts` (read-only, one getMultipleAccounts
   member 3 5QjP2WU25AmP6yYNoLpNciC9S2VV8j1VnVo55dPs7xd8 turn 2 stock_raw 110000000
   member 4 EXdbuPTgBvoYDaToRa5zBYaGWUQoh3H9qa94pUBk5Sqs turn 3 stock_raw 110000000
   member 5 BLhFjSFowYZSadXkLLCqahiQrHBtPZHm6RGmAJthTecP turn 4 stock_raw 110000000
+
+## T18 + S2b Live demo circle, real xStocks panel, Contribute (2026-09-25, built)
+reviewed: pending, Codex, together with T24
+adversary: pending (run after this commit)
+
+- /circle/demo reads the devnet demo circle live (app/src/lib/live.ts, decoded with the deployed
+  program's IDL) and renders the existing Circle screen in live mode: where the data comes from,
+  "test USDC" everywhere money is shown (never "USDC"), the NFLXx mirror's label, a connected
+  member's Contribute, seat links to the explorer (the Position place reads fixtures). Fixture
+  URLs are unchanged.
+- /api/live reads the four real xStocks from MAINNET on the server (MAINNET_RPC_URL, server-only,
+  defaults to the public RPC), cached 60 s, 502 with the reason on failure; the panel then says
+  "Live data unavailable" and shows no number.
+- Two display bugs fixed on the way: the Circle cards never applied the shared .card class (no
+  padding or radius on every circle screen), and "Coverage uses prices from 20721d ago" when
+  last_coverage_at is 0; it now says coverage has not been computed yet.
+- Dependency: @coral-xyz/anchor 0.32.1 in app/ (Joshua approved); audit note in OPEN-QUESTIONS.
+
+verify:
+- tests/app-live.spec.ts 9 passing: scaledUi.ts on the four REAL mainnet fixtures (NFLXx
+  1 -> 10 at 1763337300); decodeLive on IDL-encoded demo-shaped accounts (H = 132; Repricing until
+  the effective time, H still 132 after); unjoined seats; mismatched Member refused; app constants
+  equal ops/demo-circle.json, ops/devnet-mints.json, the IDL, declare_id and allowlist.rs.
+- tests/app-contribute.spec.ts 3 passing, on target/devnet/othello.so after the real seed code:
+  exactly 50 test USDC from seat 2 and only its bit; a second payment named AlreadyContributed;
+  a stranger refused.
+- readLiveCircle against the real devnet circle: Active, round 1 of 5, joined 11111, H 132 for
+  every seat, not stale.
+- GET /api/live (next start): HTTP 200, slot 450208721, NFLXx x1 -> x10 effective 1763337300,
+  AAPLx/SPYx/NVDAx with their current dividend multipliers.
+- Headless Chromium on /circle/demo at 1280 and 390 px: no console errors, no horizontal overflow
+  (screenshots checked). NOT verified: a real wallet signing Contribute in the browser; that is
+  Joshua's first morning check, with member 2's key in Phantom.
+- next build clean; app tsc and root tsc clean; check-secrets clean; toml and MAINNET_RPC_URL
+  absent from app/.next/static.

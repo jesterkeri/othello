@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
+import { WalletControl } from "@/components/othello/WalletConnect";
 import { ThemeRoot } from "@/components/theme/ThemeRoot";
 import {
   coverageLabel,
@@ -17,6 +18,7 @@ import {
   type CircleView,
 } from "@/lib/circle";
 import { STATE_KEYS, type CircleStateKey } from "@/fixtures/circles";
+import { explorer } from "@/lib/devnet";
 
 import s from "./Circle.module.css";
 
@@ -24,14 +26,34 @@ import s from "./Circle.module.css";
 // Circle row of "Copy per place" or a row of "Errors and refusals". Do not
 // rewrite copy here; design/ wins.
 
-const USDC_SUFFIX = "USDC";
+/**
+ * T18: set when the circle is read from devnet rather than a fixture. The
+ * screen is the same; what changes is what it claims about its data, the
+ * money word (test USDC is never shown as USDC), and the connected member's
+ * action. Fixture screens pass nothing and render exactly as before.
+ */
+export type LiveProps = {
+  circleAddress: string;
+  /** Unix seconds of the last successful read. */
+  readAt: number;
+  /** The last refresh's failure, shown over the last good read, never hidden. */
+  error: string | null;
+  mirrorLabel: string;
+  usdcWord: string;
+  /** The connected wallet's seat, 0-based, or null. */
+  yourTurn: number | null;
+  split: { multiplier: number; newMultiplier: number; effectiveAt: number };
+  action: ReactNode;
+  below: ReactNode;
+};
 
 export type CircleProps = {
   circle: CircleView;
   /** The clock this screen reads. Fixtures carry their own, so the countdown
    *  runs from the fixture's moment rather than from today. */
   startNow: number;
-  stateKey: CircleStateKey;
+  stateKey: CircleStateKey | "demo";
+  live?: LiveProps;
 };
 
 function Dots() {
@@ -71,7 +93,8 @@ function Banner({
   );
 }
 
-export default function Circle({ circle, startNow, stateKey }: CircleProps) {
+export default function Circle({ circle, startNow, stateKey, live }: CircleProps) {
+  const USDC_SUFFIX = live ? live.usdcWord : "USDC";
   // Starts at the fixture's own moment so the server and the first client paint
   // agree, then ticks, which is what carries a round from open to overdue to
   // grace without anyone reloading.
@@ -81,6 +104,10 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
     const id = window.setInterval(() => setNow((t) => t + 1), 1000);
     return () => window.clearInterval(id);
   }, []);
+  // A fresh live read resets the clock to the chain's moment.
+  useEffect(() => {
+    if (live) setNow(live.readAt);
+  }, [live?.readAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const d = derive(circle, now);
   const c = circle;
@@ -129,7 +156,11 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
             <span aria-hidden>{"←"}</span> Back
           </Link>
           <span className={s.navSpacer} />
-          <span className={`${s.viewerPill} ${s.micro}`}>Viewing, no wallet</span>
+          {live ? (
+            <WalletControl />
+          ) : (
+            <span className={`${s.viewerPill} ${s.micro}`}>Viewing, no wallet</span>
+          )}
         </header>
 
         <div className={s.devnet}>
@@ -137,12 +168,34 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
             <Dots />
             <span className={s.micro}>Devnet demo</span>
           </span>
-          <p className={s.devnetText}>
-            This circle renders from a committed fixture, not from a live devnet account.
-          </p>
+          {live ? (
+            <p className={s.devnetText}>
+              Live from devnet:{" "}
+              <a className={s.link} href={explorer("address", live.circleAddress)} target="_blank" rel="noreferrer">
+                circle {shortAddress(live.circleAddress)}
+              </a>
+              , read {formatDuration(now - live.readAt)} ago. Collateral is the {live.mirrorLabel}; money is{" "}
+              {live.usdcWord}.
+              {live.split.effectiveAt > now && live.split.newMultiplier !== live.split.multiplier
+                ? ` Split scheduled: x${live.split.multiplier} to x${live.split.newMultiplier} in ${formatDuration(live.split.effectiveAt - now)}.`
+                : ""}
+            </p>
+          ) : (
+            <p className={s.devnetText}>
+              This circle renders from a committed fixture, not from a live devnet account.
+            </p>
+          )}
         </div>
 
         <div className={s.banners}>
+          {live?.error && (
+            <Banner
+              kind="refusal"
+              mark="?"
+              title="Live data unavailable"
+              text={`The last read of devnet failed (${live.error}). Showing the read from ${formatDuration(now - live.readAt)} ago.`}
+            />
+          )}
           {d.repricing && (
             <Banner
               kind="neutral"
@@ -226,6 +279,8 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
           )}
         </section>
 
+        {live?.action}
+
         {c.status === "Forming" ? (
           <div className={s.section}>
             <div className={s.empty}>
@@ -269,7 +324,7 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
         )}
 
         <div className={s.cards}>
-          <div className={s.cardReserve}>
+          <div className={`${s.card} ${s.cardReserve}`}>
             <span className={s.micro}>Shared reserve, free</span>
             <span className={`${s.display} ${s.cardBig}`}>
               {formatUsdc(d.free, 0)} {USDC_SUFFIX}
@@ -306,7 +361,7 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
             </div>
           </div>
 
-          <div className={s.cardCoverage}>
+          <div className={`${s.card} ${s.cardCoverage}`}>
             <span className={s.micro}>Cover per member</span>
             <span className={`${s.display} ${s.cardBig}`}>
               {d.repricing
@@ -365,16 +420,28 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
                   return (
                     <tr key={m.address}>
                       <td>
-                        {/* design/FLOWS.md §4: member row -> [Position]. */}
+                        {/* design/FLOWS.md §4: member row -> [Position]. The
+                            Position place reads fixtures, so a live row links
+                            to the member's account on the explorer instead. */}
                         <Link
-                          href={`/circle/${stateKey}/position/${m.turn + 1}`}
+                          href={
+                            live
+                              ? explorer("address", m.address)
+                              : `/circle/${stateKey}/position/${m.turn + 1}`
+                          }
+                          target={live ? "_blank" : undefined}
                           className={s.seatCell}
                         >
                           <span className={`${s.seatDisc} ${isNow ? s.seatDiscNow : ""}`}>
                             {m.turn + 1}
                           </span>
                           <span className={s.seatName}>
-                            <span>{m.name}</span>
+                            <span>
+                              {m.name}
+                              {live?.yourTurn === m.turn && (
+                                <span className={`${s.tag} ${s.tagYes} ${s.you}`}>You</span>
+                              )}
+                            </span>
                             <span className={s.seatAddr}>{shortAddress(m.address)}</span>
                           </span>
                         </Link>
@@ -382,6 +449,8 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
                       <td>
                         {defaulted ? (
                           <span className={`${s.tag} ${s.tagGone}`}>Defaulted</span>
+                        ) : !joined && live ? (
+                          <span className={`${s.tag} ${s.tagNo}`}>Not joined</span>
                         ) : !joined ? (
                           <Link
                             href={`/circle/${stateKey}/join/${m.turn + 1}`}
@@ -426,12 +495,25 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
           </div>
         </div>
 
+        {live?.below}
+
         <div className={s.footer}>
           <p className={s.helper}>
-            Coverage uses prices from {formatDuration(d.coverageAge)} ago. Counted at the lower
-            of its market price and its share price, minus a {c.haircutBps / 100}% safety
-            margin.
+            {/* last_coverage_at is 0 until the first recompute (update_coverage
+                or release_pot); "prices from 20,000 days ago" would be a lie. */}
+            {c.lastCoverageAt === 0
+              ? "Coverage has not been computed yet: it is first computed when a pot is released or coverage is updated."
+              : `Coverage uses prices from ${formatDuration(d.coverageAge)} ago.`}{" "}
+            Counted at the lower of its market price and its share price, minus a{" "}
+            {c.haircutBps / 100}% safety margin.
           </p>
+          {live ? (
+            <nav className={s.states} aria-label="Design states">
+              <Link href="/circle/active" className={s.stateLink}>
+                Every design state, from fixtures
+              </Link>
+            </nav>
+          ) : (
           <nav className={s.states} aria-label="Circle states">
             {STATE_KEYS.map((k) => (
               <Link
@@ -449,6 +531,7 @@ export default function Circle({ circle, startNow, stateKey }: CircleProps) {
               stale
             </Link>
           </nav>
+          )}
         </div>
       </div>
     </ThemeRoot>
