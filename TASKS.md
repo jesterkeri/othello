@@ -208,7 +208,11 @@ should start before the hackathon build is finished.
       source; DeepBook's newer products (e.g. DeepBook Predict) and whether any fit; the Sui side's own
       headline (the Token-2022 scaled-UI "split" story does not carry over); funding and time.
       ROBINHOOD (Joshua, 2026-09-25: Colosseum lets an entry pick several chains; he picked Solana,
-      Robinhood and one more, not yet named here). Two separate items, both to VERIFY before planning:
+      Robinhood and, he thinks, Arbitrum; to confirm). Robinhood Chain is built on Arbitrum Orbit, so
+      both are EVM: ONE Solidity contract (SPEC's integer maths ports to uint256; the Anchor tests are
+      its specification), reviewed once, deployed to Arbitrum and Robinhood Chain, behind the same UI
+      via an EVM adapter (wagmi; MetaMask, Robinhood Wallet). Order: Solana (submitted) -> EVM for
+      Colosseum -> Sui. Two separate items, both to VERIFY before planning:
       (a) Robinhood Wallet as a connection: does it implement Solana's Wallet Standard in a desktop
       browser (then it appears in the app with no code), or only on mobile (WalletConnect / mobile
       wallet adapter)? (b) Robinhood's own stock tokens as an asset family: which chain they live on
