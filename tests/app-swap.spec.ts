@@ -165,6 +165,14 @@ describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed
     const b = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, OTHER));
     assert.match(String(b.out.body.error), /not a Jupiter swap/);
   });
+  it("accepts 0.10 USDC, the minimum, and refuses 0.099999 (Joshua: a real buy for pocket change)", async () => {
+    const ok = await build({ symbol: "NVDAx", usdc: "0.10", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
+    assert.equal(ok.out.status, 200);
+    assert.ok(ok.asked[0]!.includes("amount=100000&"));
+    const low = await build({ symbol: "NVDAx", usdc: "0.099999", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
+    assert.equal(low.out.status, 400);
+    assert.equal(low.asked.length, 0);
+  });
   it("refuses a JSON number amount (1e2 arrives as 100; Codex T18d r4)", async () => {
     const { out, asked } = await build({ symbol: "NVDAx", usdc: 1e2, user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
     assert.equal(out.status, 400);

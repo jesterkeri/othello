@@ -51,7 +51,7 @@ function useConnectPrompt(): (() => void) | null {
 }
 
 export default function BuyPanel({ symbol, address, decimals, multiplier, accepted, embedded = false }: { symbol: string; address: string; decimals: number; multiplier: number; accepted: boolean; /** Inside the stock page's Buy card: no box or title of its own. */ embedded?: boolean }) {
-  const [amount, setAmount] = useState("50");
+  const [amount, setAmount] = useState("1");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const wallet = useWallet();
@@ -146,6 +146,11 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
   return (
     <div className={embedded ? s.chartBare : s.chartBox}>
       {!embedded && <span className={s.bannerTitle}>Buy {symbol}</span>}
+      {/* Joshua: say it up front, so a judge knows what to expect before pressing anything. */}
+      <p className={s.panelNote} data-upfront>
+        <b>A real purchase on Solana mainnet.</b> Any mainnet wallet with 0.10 USDC or more and a little SOL for fees can
+        try it. The savings circle runs on free devnet funds.
+      </p>
       <label className={s.panelNote}>
         Pay{" "}
         <input className={s.search} style={{ width: 140, display: "inline-block", padding: "8px 12px" }} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/^(\d*\.\d{0,6}).*$/, "$1"))} aria-label="USDC to pay" />{" "}

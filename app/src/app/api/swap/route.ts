@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
   const m = typeof typed === "string" ? /^(\d+)(?:\.(\d{1,6}))?$/.exec(typed.trim()) : null;
   if (!m) return fail("enter a plain USDC amount with at most 6 decimal places", 400);
   const micro = BigInt(m[1]!) * 1_000_000n + BigInt((m[2] ?? "").padEnd(6, "0") || "0");
-  if (micro < 1_000_000n || micro > 100_000_000_000n) return fail("enter between 1 and 100,000 USDC", 400);
+  // Joshua: a judge can try a real buy for pocket change, so the minimum is 0.10 USDC.
+  if (micro < 100_000n || micro > 100_000_000_000n) return fail("enter between 0.10 and 100,000 USDC", 400);
   let user: string;
   try {
     user = new PublicKey(String(body?.user)).toBase58();

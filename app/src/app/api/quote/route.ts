@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const usdc = Number(req.nextUrl.searchParams.get("usdc"));
   const x = TRADABLE_XSTOCKS.find((t) => t.symbol === symbol);
   if (!x) return NextResponse.json({ error: "not a listed xStock" }, { status: 404 });
-  if (!Number.isFinite(usdc) || usdc < 1 || usdc > 100_000) return NextResponse.json({ error: "enter between 1 and 100,000 USDC" }, { status: 400 });
+  if (!Number.isFinite(usdc) || usdc < 0.1 || usdc > 100_000) return NextResponse.json({ error: "enter between 0.10 and 100,000 USDC" }, { status: 400 });
 
   // Codex T18c r1: quote and report the SAME amount. The micro-USDC integer sent to Jupiter is the
   // canonical figure; the USDC shown back is derived from it (1.0000004 is quoted and shown as 1).
