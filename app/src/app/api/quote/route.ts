@@ -46,7 +46,9 @@ export async function GET(req: NextRequest) {
     const plan = Array.isArray(q?.routePlan) ? (q!.routePlan as { swapInfo?: { label?: unknown } }[]) : [];
     const route = plan
       .map((r) => r?.swapInfo?.label)
-      .filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+      // Codex T18c r3: zero-width and other invisible format characters survive trim(); a label
+      // needs at least one visible character once whitespace and format characters are removed.
+      .filter((l): l is string => typeof l === "string" && l.replace(/[\p{Cf}\p{Z}\s]/gu, "").length > 0)
       .map((l) => l.trim());
     if (!out || !Number.isFinite(impact) || impact < 0 || plan.length === 0 || route.length !== plan.length) {
       throw new Error("Jupiter returned an incomplete quote");

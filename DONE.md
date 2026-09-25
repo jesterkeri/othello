@@ -2854,3 +2854,19 @@ Note from U8: Codex skipped `anchor build` because it reads the local deploy key
 (target/deploy/othello-keypair.json, the program id's key for anchor's id check).
 
 verify: app-quote 16 passing; root and app tsc; git diff --check clean.
+
+## T18c Codex r3: changes required, two MINOR fixed (2026-09-25)
+reviewed: reviews/t18c-review.md | verdict: changes required (r3) | commit: e5663a9
+adversary: n/a (review fixes; the label fix is guarded by a test and a mutation check)
+
+Codex r3 (37 spec files, 219 assertions; tsc, build of 109 pages, diff and secret checks pass):
+r2's fixes work. Two MINOR:
+1. The hero said the locked stock "covers what they still owe"; it may not. It now says the stock
+   is sold to pay what they still owe, the guarantee and the shared reserve make up any shortfall,
+   and if even that is not enough the next payout pauses until someone tops up (SPEC §6).
+2. Zero-width characters survive trim(), so a label of only U+200B/U+200D/U+FEFF passed and
+   rendered blank. Labels now need a visible character once whitespace and format characters
+   (\p{Cf}, \p{Z}) are removed. tests/app-quote.spec.ts 17 passing; with r2's trim() check restored
+   the new case fails (16 passing, 1 failing).
+
+verify: app-quote 17 passing; root and app tsc; git diff --check clean.

@@ -75,6 +75,7 @@ describe("/api/quote: only Jupiter's own, well-formed facts reach the Buy panel"
     ["an empty-string impact", { ...GOOD, priceImpactPct: "" }],
     ["a whitespace-only route label (Codex r2)", { ...GOOD, routePlan: [{ swapInfo: { label: "   " } }] }],
     ["a non-finite numeric impact", { ...GOOD, priceImpactPct: "Infinity" }],
+    ["a zero-width-only route label (Codex r3)", { ...GOOD, routePlan: [{ swapInfo: { label: "\u200B\u200D\uFEFF" } }] }],
   ] as const) {
     it(`refuses ${name} instead of filling in a fact`, async () => {
       const r = await quote("symbol=NFLXx&usdc=50", { body });

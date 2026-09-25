@@ -47,7 +47,9 @@ export default function HowItWorks() {
           <p>
             A savings circle (ajo, esusu, tontine) with a promise behind it. Friends pay in every round and take the whole pot
             in turn. The usual risk is the member who has already taken the pot and stops paying: here, that member has
-            tokenized stock locked on-chain that covers what they still owe.
+            tokenized stock locked on-chain that is sold to pay what they still owe. If it falls short, their guarantee and
+            the shared reserve make up the difference, and if even that is not enough, the next payout pauses until someone
+            tops up.
           </p>
           {/* Codex T18c r1/r2: state the limits (KNOWN-LIMITS L3, L7, L10) rather than promise a trustless, automatic outcome. */}
           <p className={s.note}>
