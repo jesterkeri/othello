@@ -2642,3 +2642,26 @@ adversary: TWO defects, both fixed (tests/t25-adversary.spec.ts, integrated unch
 
 verify: t25-adversary 2, app-live 10, t18-adversary 1, t25-demo-play 3 passing; root and app tsc
 clean; export-member-key with a non-terminal stdout: "Refused: stdout is not a terminal".
+
+## T25 adversary r3 + full regression + Vercel preview (2026-09-25 ~04:20 WAT)
+reviewed: pending, Codex (brief next)
+adversary: r3 on 0265f83, NO DEFECT FOUND in 10 attacks (toFixed1e9 against an independent exact
+reference on 630,020 bit patterns, 0 mismatches; export-member-key cannot print or create a
+non-member key; play-round signs only with recorded members; no URL reaches /api/circle).
+
+Full regression on 0265f83, each spec file in its own process: 31 files, 187 passing, 0 failing;
+cargo test 57 (default) / 56 (devnet); clippy -D warnings clean on both; fmt, root tsc, app tsc,
+check-secrets clean. CI on PR #14 green.
+
+Vercel (Joshua approved "Vercel, preview first, production only on his go"):
+- `vercel link --yes --project othello` in app/ created project jesters-projects-340c1a8c/othello
+  and wrote app/.env.local (a VERCEL_OIDC_TOKEN; not read, gitignored by app/.gitignore). Added
+  app/.vercelignore so .env* never uploads (the CLI's default ignore list does not cover it).
+- My FIRST `vercel deploy` went to PRODUCTION: a new project's first deploy is production by
+  default, which I did not intend. It failed at build (/vercel/path0/path0/.next: next.config's
+  outputFileTracingRoot pointed above app/), so no production deployment exists. Fixed by rooting
+  the trace at app/ itself (nothing in app/ reads outside it since the IDL moved in).
+- Preview https://othello-5yvyp54rc-jesters-projects-340c1a8c.vercel.app: Ready, behind Vercel
+  deployment protection (302 to login). Through `vercel curl`: /api/circle -> Active, round 1,
+  joined 0b11111; /api/live -> AAPLx 1.0032690125398187, NFLXx 10, SPYx 1.005714560286254,
+  NVDAx 1.001701196801074; /circle/demo title "Othello".
