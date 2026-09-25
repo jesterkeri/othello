@@ -7,7 +7,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { checkSwapTx } from "@/lib/swap";
+import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys } from "@/lib/swap";
 import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +64,13 @@ export async function POST(req: NextRequest) {
     if (!s.ok || typeof swap?.swapTransaction !== "string" || typeof swap.lastValidBlockHeight !== "number") throw new Error("Jupiter could not build the swap");
     const check = checkSwapTx(swap.swapTransaction, user, false);
     if (!check.ok) throw new Error(`Jupiter's transaction was refused: ${check.reason}`);
+    // Codex T18d final: resolve the lookup tables and check what each instruction does.
+    const rpcUrl = process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
+    const tables = await fetchLookupTables(rpcUrl, check.tx);
+    const keys = tables ? resolveKeys(check.tx, tables) : null;
+    if (!keys) throw new Error("Jupiter's transaction could not be checked (lookup table unreadable)");
+    const wrong = checkSwapAccounts(check.tx, keys, user, x.address);
+    if (wrong) throw new Error(`Jupiter's transaction was refused: ${wrong}`);
 
     const built: SwapBuild = { tx: swap.swapTransaction, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: Number(micro) / 1_000_000 };
     return NextResponse.json(built, { headers: { "cache-control": "no-store" } });

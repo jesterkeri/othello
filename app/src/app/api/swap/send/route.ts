@@ -6,7 +6,8 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-import { checkSwapTx } from "@/lib/swap";
+import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys } from "@/lib/swap";
+import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,10 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as { tx?: unknown; user?: unknown; lastValidBlockHeight?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { tx?: unknown; user?: unknown; lastValidBlockHeight?: unknown; symbol?: unknown } | null;
+  // Codex T18d final: the relay checks the listed stock's mint too, from the registry, never the request.
+  const listed = TRADABLE_XSTOCKS.find((t) => t.symbol === body?.symbol);
+  if (!listed) return fail("not a listed xStock", 400);
   const lvbh = Number(body?.lastValidBlockHeight);
   if (!Number.isSafeInteger(lvbh) || lvbh <= 0) return fail("missing lastValidBlockHeight", 400);
   let check;
@@ -40,11 +44,18 @@ export async function POST(req: NextRequest) {
   if (!check.ok) return fail(`refused: ${check.reason}`, 400);
 
   const url = process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
+  const tables = await fetchLookupTables(url, check.tx);
+  const keys = tables ? resolveKeys(check.tx, tables) : null;
+  if (!keys) return fail("refused: the transaction could not be checked (lookup table unreadable)", 400);
+  const wrong = checkSwapAccounts(check.tx, keys, String(body!.user), listed.address);
+  if (wrong) return fail(`refused: ${wrong}`, 400);
   try {
-    const signature = (await rpc(url, "sendTransaction", [body!.tx, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }])) as string;
+    const signature = await rpc(url, "sendTransaction", [body!.tx, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }]);
+    // Codex T18d final: the signature is echoed to the browser, so it must be a signature.
+    if (typeof signature !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) return fail("sendTransaction: the network refused it");
     const deadline = Date.now() + 50_000;
     while (Date.now() < deadline) {
-      const st = (await rpc(url, "getSignatureStatuses", [[signature]])) as { value: ({ err: unknown; confirmationStatus?: string } | null)[] };
+      const st = (await rpc(url, "getSignatureStatuses", [[signature as string]])) as { value: ({ err: unknown; confirmationStatus?: string } | null)[] };
       const s = st.value[0];
       // Codex T18d r5: no provider text, even the chain's error object: fixed words and a number.
       if (s?.err) {

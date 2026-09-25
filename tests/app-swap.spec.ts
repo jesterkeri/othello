@@ -40,13 +40,16 @@ registerHooks({
 const JUP = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 const OTHER = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const NVDAX = "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh";
+/** A signature-shaped string (base58, 86 chars) for the mocked RPC. */
+const SIG = "5VERNGQ8o5hQx8Yp8b3kLbbYx4wP2XWbPqKkq7w7nRwYJk3x6CjvL6CwFqS4fFq3nq3YdK8VqXQy1u8YzZ7eTnF";
 const buyer = Keypair.generate();
 
 function tx(payer: PublicKey, program: PublicKey, sign?: Keypair): string {
   const msg = MessageV0.compile({
     payerKey: payer,
     recentBlockhash: Keypair.generate().publicKey.toBase58(),
-    instructions: [new TransactionInstruction({ programId: program, keys: [], data: Buffer.from([1]) })],
+    // The listed mint rides as an account, as in Jupiter's route instruction.
+    instructions: [new TransactionInstruction({ programId: program, keys: [{ pubkey: new PublicKey(NVDAX), isSigner: false, isWritable: false }], data: Buffer.from([1]) })],
   });
   const t = new VersionedTransaction(msg);
   if (sign) t.sign([sign]);
@@ -74,6 +77,30 @@ describe("T18g: lib/swap.ts checkSwapTx", () => {
 
 describe("T18g: checkSwapTx against a REAL Jupiter transaction (Codex T18d r4)", () => {
   const fx = JSON.parse(readFileSync(resolve(REPO, "tests/fixtures/jup-swap-qqqx.json"), "utf8")) as { user: string; swapTransaction: string };
+  it("resolves the real transaction's lookup table and passes the instruction-level checks for QQQx (Codex T18d final)", async () => {
+    const { resolveKeys, checkSwapAccounts } = await lib();
+    const fxl = JSON.parse(readFileSync(resolve(REPO, "tests/fixtures/jup-swap-qqqx.json"), "utf8")) as { user: string; outputMint: string; swapTransaction: string; lookupTables: Record<string, string> };
+    const t = VersionedTransaction.deserialize(Buffer.from(fxl.swapTransaction, "base64"));
+    const tables = Object.fromEntries(Object.entries(fxl.lookupTables).map(([k, v]) => [k, Uint8Array.from(Buffer.from(v, "base64"))]));
+    const keys = resolveKeys(t, tables)!;
+    assert.ok(keys.includes(fxl.outputMint), "the output mint comes from the lookup table");
+    assert.equal(checkSwapAccounts(t, keys, fxl.user, fxl.outputMint), null);
+    assert.match(String(checkSwapAccounts(t, keys, fxl.user, NVDAX)), /does not buy the listed stock|another token/);
+    assert.match(String(checkSwapAccounts(t, keys, Keypair.generate().publicKey.toBase58(), fxl.outputMint)), /token account for someone else/);
+  });
+  it("refuses an unbounded compute budget (Codex T18d final)", async () => {
+    const { checkSwapAccounts } = await lib();
+    const payer = Keypair.generate();
+    const price = Buffer.alloc(9); price[0] = 3; price.writeBigUInt64LE(10_000_000n, 1);
+    const msg = MessageV0.compile({ payerKey: payer.publicKey, recentBlockhash: Keypair.generate().publicKey.toBase58(), instructions: [
+      new TransactionInstruction({ programId: new PublicKey("ComputeBudget111111111111111111111111111111"), keys: [], data: price }),
+      new TransactionInstruction({ programId: JUP, keys: [{ pubkey: new PublicKey(NVDAX), isSigner: false, isWritable: false }], data: Buffer.from([1]) }),
+    ] });
+    const v = new VersionedTransaction(msg);
+    const keys = v.message.staticAccountKeys.map((k) => k.toBase58());
+    assert.match(String(checkSwapAccounts(v, keys, payer.publicKey.toBase58(), NVDAX)), /unexpected compute budget/);
+  });
+
   it("accepts the transaction Jupiter's /swap actually built (its program id is the one we check)", async () => {
     const { checkSwapTx } = await lib();
     const r = checkSwapTx(fx.swapTransaction, fx.user, false);
@@ -199,25 +226,25 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
   const signed = () => tx(buyer.publicKey, JUP, buyer);
 
   it("relays a signed Jupiter swap and reports it confirmed", async () => {
-    const { out, asked } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, (m) =>
-      m === "sendTransaction" ? { body: { result: "SIG" } } : m === "getSignatureStatuses" ? { body: { result: { value: [{ err: null, confirmationStatus: "confirmed" }] } } } : { body: { result: 1 } },
+    const { out, asked } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, (m) =>
+      m === "sendTransaction" ? { body: { result: SIG } } : m === "getSignatureStatuses" ? { body: { result: { value: [{ err: null, confirmationStatus: "confirmed" }] } } } : { body: { result: 1 } },
     );
-    assert.deepEqual(out.body, { signature: "SIG", status: "confirmed" });
+    assert.deepEqual(out.body, { signature: SIG, status: "confirmed" });
     assert.ok(asked[0]!.includes('"sendTransaction"'));
   });
   it("relays nothing unsigned, not a Jupiter swap, or paid by someone else", async () => {
     for (const bad of [tx(buyer.publicKey, JUP), tx(buyer.publicKey, OTHER, buyer)]) {
-      const { out, asked } = await send({ tx: bad, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { result: "SIG" } }));
+      const { out, asked } = await send({ tx: bad, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { result: SIG } }));
       assert.equal(out.status, 400);
       assert.equal(asked.length, 0, "nothing reached the RPC");
     }
   });
   it("reports a swap that failed on chain as failed, with the signature", async () => {
-    const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, (m) =>
-      m === "sendTransaction" ? { body: { result: "SIG" } } : { body: { result: { value: [{ err: { InstructionError: [0, { Custom: 6001 }] } }] } } },
+    const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, (m) =>
+      m === "sendTransaction" ? { body: { result: SIG } } : { body: { result: { value: [{ err: { InstructionError: [0, { Custom: 6001 }] } }] } } },
     );
     assert.equal(out.body.status, "failed");
-    assert.equal(out.body.signature, "SIG");
+    assert.equal(out.body.signature, SIG);
     // Codex T18d r5: fixed words and the program's error number only.
     assert.equal(out.body.error, "the swap failed on chain (program error 6001)");
   });
@@ -225,7 +252,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const prev = process.env.MAINNET_RPC_URL;
     process.env.MAINNET_RPC_URL = "https://rpc.example/?api-key=SECRET";
     try {
-      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { error: { message: "blocked at https://rpc.example/?api-key=SECRET" } } }));
+      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "blocked at https://rpc.example/?api-key=SECRET" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /SECRET/);
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
@@ -236,7 +263,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const prev = process.env.MAINNET_RPC_URL;
     process.env.MAINNET_RPC_URL = "https://rpc.example/v2/abcdef0123456789SECRETKEY";
     try {
-      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { error: { message: "invalid api key abcdef0123456789SECRETKEY" } } }));
+      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "invalid api key abcdef0123456789SECRETKEY" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /SECRETKEY/);
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
@@ -247,13 +274,27 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const prev = process.env.MAINNET_RPC_URL;
     process.env.MAINNET_RPC_URL = "https://rpc.example/?k=ab12";
     try {
-      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { error: { message: "Transaction simulation failed: key ab12 rejected" } } }));
+      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "Transaction simulation failed: key ab12 rejected" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /ab12|rejected/);
       assert.match(String(out.body.error), /^sendTransaction: the network's simulation of the swap failed$/);
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
       else process.env.MAINNET_RPC_URL = prev;
     }
+  });
+});
+
+describe("Codex T18d final: the relay echoes only a real signature", () => {
+  it("returns fixed words if the RPC's signature field is not a signature", async () => {
+    const route = await import(pathToFileURL(resolve(SRC, "app/api/swap/send/route.ts")).href);
+    const { out } = await withFetch(
+      () => ({ body: { result: "<script>provider text</script>" } }),
+      async () => {
+        const res = await route.POST(post({ tx: tx(buyer.publicKey, JUP, buyer), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }));
+        return { status: res.status as number, body: (await res.json()) as Record<string, unknown> };
+      },
+    );
+    assert.doesNotMatch(JSON.stringify(out.body), /provider text/);
   });
 });
 

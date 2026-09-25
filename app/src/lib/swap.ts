@@ -58,3 +58,77 @@ export function checkSwapTx(base64: string, payer: string, signed: boolean): TxC
   if (signed && !(tx.signatures[0] ?? new Uint8Array(64)).some((b) => b !== 0)) return { ok: false, reason: "the transaction is not signed by this wallet" };
   return { ok: true, tx };
 }
+
+/* ------------------------------------------------------------------------- *
+ * Codex T18d final round: what the instructions DO, not only which programs.
+ * The swap's output mint and token program live in an address lookup table, so
+ * the account list is resolved first (static keys, then each table's writable,
+ * then readonly entries: the v0 message order).
+ * ------------------------------------------------------------------------- */
+
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+/** An address lookup table account: a 56-byte header, then 32-byte addresses. */
+const LUT_HEADER = 56;
+
+/** The v0 account list with lookup tables resolved; null if a table is missing or too short. */
+export function resolveKeys(tx: VersionedTransaction, tables: Record<string, Uint8Array>): string[] | null {
+  const keys = tx.message.staticAccountKeys.map((k) => k.toBase58());
+  const lookups = tx.message.addressTableLookups;
+  const at = (table: string, i: number) => {
+    const d = tables[table];
+    const off = LUT_HEADER + i * 32;
+    return d && d.length >= off + 32 ? new PublicKey(d.subarray(off, off + 32)).toBase58() : null;
+  };
+  for (const pass of ["writableIndexes", "readonlyIndexes"] as const) {
+    for (const l of lookups) {
+      for (const i of l[pass]) {
+        const k = at(l.accountKey.toBase58(), i);
+        if (!k) return null;
+        keys.push(k);
+      }
+    }
+  }
+  return keys;
+}
+
+/** Reads each lookup table the transaction uses (base64 getAccountInfo) from `rpcUrl`. */
+export async function fetchLookupTables(rpcUrl: string, tx: VersionedTransaction): Promise<Record<string, Uint8Array> | null> {
+  const out: Record<string, Uint8Array> = {};
+  for (const l of tx.message.addressTableLookups) {
+    const addr = l.accountKey.toBase58();
+    const res = await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getAccountInfo", params: [addr, { encoding: "base64" }] }), cache: "no-store" }).catch(() => null);
+    const body = res && res.ok ? ((await res.json().catch(() => null)) as { result?: { value?: { data?: [string, string] } | null } } | null) : null;
+    const data = body?.result?.value?.data?.[0];
+    if (typeof data !== "string") return null;
+    out[addr] = Uint8Array.from(Buffer.from(data, "base64"));
+  }
+  return out;
+}
+
+/** Compute budget limits: at most 1.4M units, at most 1 lamport per unit of priority fee (1,000,000 micro-lamports). */
+export const MAX_CU = 1_400_000;
+export const MAX_CU_PRICE = 1_000_000n;
+
+/**
+ * With the account list resolved: every compute-budget instruction only sets a bounded unit limit or
+ * price; every Associated Token create is paid for and owned by the buyer, for the listed mint or
+ * USDC; and the listed mint is in the transaction at all.
+ */
+export function checkSwapAccounts(tx: VersionedTransaction, keys: string[], payer: string, mint: string): string | null {
+  for (const ix of tx.message.compiledInstructions) {
+    const program = keys[ix.programIdIndex];
+    const d = ix.data;
+    if (program === COMPUTE_BUDGET) {
+      const view = new DataView(d.buffer, d.byteOffset, d.byteLength);
+      if (d[0] === 2 && d.length === 5 && view.getUint32(1, true) <= MAX_CU) continue;
+      if (d[0] === 3 && d.length === 9 && view.getBigUint64(1, true) <= MAX_CU_PRICE) continue;
+      return "the transaction sets an unexpected compute budget";
+    }
+    if (program === ASSOCIATED_TOKEN) {
+      const a = ix.accountKeyIndexes.map((i) => keys[i]);
+      if (a[0] !== payer || a[2] !== payer || (a[3] !== mint && a[3] !== USDC_MINT)) return "the transaction creates a token account for someone else or another token";
+    }
+  }
+  if (!keys.includes(mint)) return "the transaction does not buy the listed stock";
+  return null;
+}

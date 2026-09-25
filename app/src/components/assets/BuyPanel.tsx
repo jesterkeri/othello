@@ -101,7 +101,7 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
       setBuy({ phase: "wallet" });
       const signed = await wallet.signTransaction(VersionedTransaction.deserialize(fromB64(b.tx)));
       setBuy({ phase: "sending" });
-      const r = (await fetch("/api/swap/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx: toB64(signed.serialize()), user, lastValidBlockHeight: b.lastValidBlockHeight }) }).then((x) => x.json())) as SwapSent | { error: string };
+      const r = (await fetch("/api/swap/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx: toB64(signed.serialize()), user, lastValidBlockHeight: b.lastValidBlockHeight, symbol }) }).then((x) => x.json())) as SwapSent | { error: string };
       if ("error" in r && !("signature" in r)) throw new Error(r.error);
       const sent = r as SwapSent;
       sig = sent.signature;
@@ -120,7 +120,10 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
   };
   // Refuse up front what the chain would refuse: a buyer with too little USDC or SOL never signs a
   // transaction bound to fail (Joshua: judges may test with empty wallets).
-  const shortUsdc = !!funds && !!quote && BigInt(funds.usdcRaw) < BigInt(Math.round(quote.usdc * 1_000_000));
+  // Codex T18d final: compare the TYPED amount (exact), never a quote that may be for an older amount.
+  const typedMatch = /^(\d+)(?:\.(\d{1,6}))?$/.exec(amount.trim());
+  const typedMicro = typedMatch ? BigInt(typedMatch[1]!) * 1_000_000n + BigInt((typedMatch[2] ?? "").padEnd(6, "0") || "0") : null;
+  const shortUsdc = !!funds && typedMicro !== null && BigInt(funds.usdcRaw) < typedMicro;
   const shortSol = !!funds && BigInt(funds.lamports) < MIN_FEE_LAMPORTS;
   const label = !wallet.publicKey
     ? "Connect a wallet"
