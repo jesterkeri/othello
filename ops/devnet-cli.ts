@@ -96,6 +96,30 @@ export function demoMembers(n: number): anchor.web3.Keypair[] {
   });
 }
 
+/**
+ * The demo circle's member keys, LOADED ONLY: never created. Every script
+ * but the seed uses this. T25 adversary: export-member-key.ts used
+ * demoMembers(), which on a machine without the keys generated five new ones,
+ * saved them, and printed one as "seat 2" although it was in no circle.
+ * Refuses unless every key exists and they are exactly, in order, the members
+ * ops/demo-circle.json recorded when the seed ran.
+ */
+export function loadDemoMembers(): anchor.web3.Keypair[] {
+  const record = JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { members: string[] };
+  return record.members.map((expected, i) => {
+    const path = resolve(MEMBER_DIR, `member-${i + 1}.json`);
+    if (!existsSync(path)) {
+      throw new Error(`Missing ${path}: this machine does not hold the demo member keys (the seed made them on the machine it ran on). Nothing was created or printed.`);
+    }
+    chmodSync(path, 0o600);
+    const k = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
+    if (k.publicKey.toBase58() !== expected) {
+      throw new Error(`${path} is ${k.publicKey.toBase58()}, but seat ${i + 1} of the demo circle is ${expected}. Nothing was printed or sent.`);
+    }
+    return k;
+  });
+}
+
 export function writeDemoRecord(update: Record<string, unknown>): void {
   const current = existsSync(DEMO_RECORD) ? (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as Record<string, unknown>) : {};
   writeFileSync(DEMO_RECORD, JSON.stringify({ ...current, ...update }, null, 2) + "\n");

@@ -12,7 +12,7 @@
 import * as anchor from "@coral-xyz/anchor";
 
 import { DEMO } from "./demo.ts";
-import { demoMembers } from "./devnet-cli.ts";
+import { loadDemoMembers } from "./devnet-cli.ts";
 
 const at = process.argv.indexOf("--seat");
 const seat = Number(process.argv[at + 1]);
@@ -25,7 +25,8 @@ if (!process.stdout.isTTY) {
   process.exit(1);
 }
 
-const member = demoMembers(DEMO.n)[seat - 1]!;
+// Loads only, and only the recorded members: never makes a key (T25 adversary).
+const member = loadDemoMembers()[seat - 1]!;
 console.log(`Seat ${seat} address (public): ${member.publicKey.toBase58()}`);
 console.log("Private key for Phantom > Add account > Import private key (devnet test funds only, do not share):");
 console.log(anchor.utils.bytes.bs58.encode(member.secretKey));

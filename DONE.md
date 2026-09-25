@@ -2624,3 +2624,21 @@ process, 0 failing); GET /api/circle 200 x3 (Active, round 1, joined 0b11111, mu
 headless Chromium at 1280/390 px through /api/circle: no console errors, no overflow; next build;
 app and root tsc; check-secrets clean; client chunks naming DEVNET_RPC_URL, MAINNET_RPC_URL or
 toml: 0.
+
+## T25 adversary fixes (2026-09-25)
+reviewed: pending, Codex, together with T18, T24, T25
+adversary: TWO defects, both fixed (tests/t25-adversary.spec.ts, integrated unchanged; failed on b848d11, passes now). All other attacks failed; list in the adversary report.
+
+1. export-member-key.ts used demoMembers(), which on a machine without the member keys GENERATED
+   five, wrote them to disk, and printed one as "seat 2" although it belonged to no circle. New
+   loadDemoMembers() (ops/devnet-cli.ts) only loads, refuses if any key file is missing, and
+   refuses unless the keys are exactly, in order, ops/demo-circle.json's members. Used by
+   export-member-key.ts and play-round.ts; only the seed still creates keys. Checked on this
+   machine: loads seats 1-5 = the recorded members; directory 700, key files 600.
+2. toFixed1e9 refused multipliers above ~9,007,199x that the program accepts (valuation.rs:917
+   takes 2^34) and said "the program refuses it". It now returns any result a JS number holds
+   exactly and otherwise says the value is valid on chain but too precise for the app; /api/circle
+   passes any "Multiplier ..." message through.
+
+verify: t25-adversary 2, app-live 10, t18-adversary 1, t25-demo-play 3 passing; root and app tsc
+clean; export-member-key with a non-terminal stdout: "Refused: stdout is not a terminal".

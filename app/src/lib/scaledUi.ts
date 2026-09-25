@@ -102,6 +102,11 @@ export function toFixed1e9(m: number): number {
   const fixed = exponent >= 0 ? scaled << BigInt(exponent) : scaled >> BigInt(-exponent);
 
   if (fixed === 0n || fixed > 0xffff_ffff_ffff_ffffn) throw invalid();
-  if (fixed > BigInt(Number.MAX_SAFE_INTEGER)) throw invalid();
-  return Number(fixed);
+  // The program accepts everything up to u64 (valuation.rs:917 takes 2^34).
+  // This app carries the result as a JS number, so it returns it only when
+  // that number is EXACTLY the integer, and otherwise says so in its own
+  // words, never "the program refuses it" (T25 adversary).
+  const n = Number(fixed);
+  if (BigInt(n) !== fixed) throw new Error(`Multiplier ${m} is valid on chain but too precise for this app to show exactly`);
+  return n;
 }

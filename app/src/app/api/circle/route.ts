@@ -37,7 +37,7 @@ export async function GET() {
     const said = e instanceof Error ? e.message : String(e);
     // readLiveCircle's own refusals are safe to show; anything from the RPC
     // client is summarised, so a keyed URL can never reach the browser.
-    const own = /^(No circle at|Missing |Seat \d|Member account|Expected \d|Unknown circle status|The circle's stock mint|Multiplier .* cannot|.* is not an Othello account)/.test(said);
+    const own = /^(No circle at|Missing |Seat \d|Member account|Expected \d|Unknown circle status|The circle's stock mint|Multiplier |.* is not an Othello account)/.test(said);
     return NextResponse.json({ error: own ? said : "devnet RPC unreachable or rate-limited" }, { status: 502 });
   }
 }
