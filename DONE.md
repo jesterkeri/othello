@@ -2673,3 +2673,26 @@ Vercel (Joshua approved "Vercel, preview first, production only on his go"):
   branches build previews. Redeployed that commit as a preview:
   https://othello-cnlr7j24p-jesters-projects-340c1a8c.vercel.app, Ready; /api/circle -> Active,
   joined 0b11111.
+
+## T18 Codex r1: changes required, three findings fixed (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: changes required (r1) | commit: 87f1dfe
+adversary: n/a (review fixes; each guarded by a test and a mutation check below)
+
+1. MAJOR, the seed with other member keys: seedDemoCircle now checks, before sending anything,
+   that an existing circle's ordered members are exactly the supplied keys, and
+   seed-demo-circle.ts uses loadDemoMembers() (load-only, refuses if missing) whenever
+   ops/demo-circle.json records a circle; new keys are made only for the first seed. Note beyond
+   the finding: with a different member 1 the circle PDA differs, so the old code would have
+   started a SECOND circle, not just funded strangers. New test: other keys refused, 0 sends.
+2. MINOR, an existing pool unchecked: the same pre-send block requires an existing pool's
+   authority = admin and discount_bps = 2000, and an existing feed's authority = admin. New test:
+   a pool opened at 1500 bps refused, 0 sends.
+   Mutation (both checks disabled): t24-seed-demo 6 passing, 2 failing.
+3. MINOR, blank line at EOF in tests/app-live.spec.ts: removed; `git diff --check` clean.
+
+Also from U8: `next build` loads app/.env.local (the Vercel OIDC token written by `vercel link`)
+into the build environment; it is not NEXT_PUBLIC, so it does not reach client output
+(check-secrets clean). Not read.
+
+verify: t24-seed-demo 8, t24-adversary 3, t25-demo-play 3, app-contribute 3 passing; root tsc
+clean; git diff --check clean.

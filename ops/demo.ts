@@ -146,6 +146,29 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
   const creator = members[0]!;
   const a = addresses(program, mints, creator.publicKey);
 
+  // 0. Codex T18 r1: check everything that already exists BEFORE sending
+  //    anything. A seed with the wrong member keys used to fund them (and,
+  //    with another creator, start a second circle); an existing pool with
+  //    another discount was accepted as the SPEC demo's.
+  const existingCircle = await fetchOrNull<{ n: number; members: PublicKeyT[] }>(chain, "circle", a.circle);
+  if (existingCircle) {
+    const named = existingCircle.members.slice(0, existingCircle.n);
+    if (named.length !== members.length || named.some((k, i) => !k.equals(members[i]!.publicKey))) {
+      throw new Error(`the demo circle ${a.circle.toBase58()} exists and its members are not these keys. Nothing was sent.`);
+    }
+  }
+  const existingPool = await fetchOrNull<{ authority: PublicKeyT; discountBps: number }>(chain, "liquidationPool", a.pool);
+  if (existingPool && (!existingPool.authority.equals(admin.publicKey) || existingPool.discountBps !== DEMO.poolDiscountBps)) {
+    throw new Error(
+      `the pool ${a.pool.toBase58()} exists with authority ${existingPool.authority.toBase58()} and discount ${existingPool.discountBps} bps, ` +
+        `not this admin at the demo's ${DEMO.poolDiscountBps}. Nothing was sent.`,
+    );
+  }
+  const existingFeed = await fetchOrNull<{ authority: PublicKeyT }>(chain, "priceFeed", a.feed);
+  if (existingFeed && !existingFeed.authority.equals(admin.publicKey)) {
+    throw new Error(`the price feed ${a.feed.toBase58()} belongs to ${existingFeed.authority.toBase58()}, not this admin. Nothing was sent.`);
+  }
+
   // 1. Price feed, and the pre-split prices (SPEC: 150 / 150 at 1.0).
   if (!(await chain.getAccount(a.feed))) {
     const ix = await m.initPriceFeed!()
