@@ -13,9 +13,9 @@ import * as anchor from "@coral-xyz/anchor";
 import { REPO, TOOLCHAIN_PATH } from "./artifacts.ts";
 import { BEFORE_SPLIT, fetchAccount, harness, type Harness } from "./harness.ts";
 import { DEMO, payRound, seedDemoCircle, type Chain } from "../ops/demo.ts";
-import { NFLXX_MIRROR_SPACE, SPL_TOKEN, TEST_USDC_SPACE, ataAddress, createDevnetMintsIxs, devnetMintAddresses } from "../ops/devnet-mints.ts";
+import { NFLXX_MIRROR_DECIMALS, NFLXX_MIRROR_SPACE, SPL_TOKEN, TEST_USDC_SPACE, TOKEN_2022, ataAddress, createDevnetMintsIxs, devnetMintAddresses, mintToCheckedIx } from "../ops/devnet-mints.ts";
 import { explainFailure } from "../app/src/lib/contribute.ts";
-import { declareDefaultIx, releasePotIx, updateCoverageIx, type CircleKeys } from "../app/src/lib/actions.ts";
+import { addStockIx, declareDefaultIx, parseUnits, releasePotIx, topUpReserveIx, updateCoverageIx, withdrawIx, type CircleKeys } from "../app/src/lib/actions.ts";
 import { defaultRecovered } from "../app/src/lib/circle.ts";
 import { decodeLive, memberAddress } from "../app/src/lib/live.ts";
 
@@ -193,5 +193,67 @@ describe("T18d the app's anyone-may-send actions, on the devnet build", () => {
     const e = await refusal(sendAs(await declareDefaultIx(stranger.publicKey, keys(circle), 2), stranger));
     assert.ok(e, "a seat that took nothing was declared in default");
     assert.match(explainFailure(e), /^PrePayoutDefaultUnsupported/);
+  });
+  // T18g: the member's own actions, as the app builds them, signed by the member.
+  type Mem = { stockRaw: anchor.BN; topUps: anchor.BN };
+  const memberOf = (circle: anchor.web3.PublicKey, w: anchor.web3.Keypair) =>
+    fetchAccount<Mem>(h.program, "member", memberAddress(h.program.programId, circle, w.publicKey));
+
+  it("parseUnits reads typed amounts exactly and refuses anything else", () => {
+    assert.equal(parseUnits("0.5", 8), 50_000_000n);
+    assert.equal(parseUnits("12", 6), 12_000_000n);
+    assert.equal(parseUnits("90071992.54740993", 8), 9_007_199_254_740_993n);
+    for (const bad of ["", ".", "0", "-1", "1e3", "0.123456789", "abc"]) assert.equal(parseUnits(bad, 8), null, bad);
+  });
+
+  it("add_stock from the member's wallet locks more of their stock; without the stock it is InsufficientBalance", async () => {
+    const circle = await seedDemoCircle(chain, MINTS, members);
+    const before = (await memberOf(circle, members[1]!)).stockRaw.toNumber();
+    // The seed funds each member exactly what they lock, so there is nothing more to lock yet.
+    const none = await refusal(sendAs(await addStockIx(members[1]!.publicKey, keys(circle), 1n), members[1]!));
+    assert.ok(none, "locked stock the wallet does not hold");
+    assert.match(explainFailure(none), /^InsufficientBalance/);
+    // The admin (the mirror's mint authority) mints the member one more raw unit.
+    await chain.send([mintToCheckedIx(MINTS.stock, ataAddress(MINTS.stock, members[1]!.publicKey, TOKEN_2022), h.authority.publicKey, 1n, NFLXX_MIRROR_DECIMALS, TOKEN_2022)], [h.authority]);
+    await sendAs(await addStockIx(members[1]!.publicKey, keys(circle), 1n), members[1]!);
+    assert.equal((await memberOf(circle, members[1]!)).stockRaw.toNumber(), before + 1);
+  });
+
+  it("add_stock from a stranger is refused", async () => {
+    const circle = await seedDemoCircle(chain, MINTS, members);
+    const stranger = h.fund();
+    await assert.rejects(sendAs(await addStockIx(stranger.publicKey, keys(circle), 1n), stranger));
+  });
+
+  it("top_up_reserve from the member's wallet adds to the reserve", async () => {
+    const circle = await seedDemoCircle(chain, MINTS, members);
+    const before = (await fetchAccount<{ reserveTotal: anchor.BN }>(h.program, "circle", circle)).reserveTotal.toNumber();
+    await sendAs(await topUpReserveIx(members[1]!.publicKey, keys(circle), 1_000_000n), members[1]!);
+    assert.equal((await fetchAccount<{ reserveTotal: anchor.BN }>(h.program, "circle", circle)).reserveTotal.toNumber(), before + 1_000_000);
+    assert.equal((await memberOf(circle, members[1]!)).topUps.toNumber(), 1_000_000);
+  });
+
+  it("withdraw is refused while Active, and returns the member's stock once the circle is Completed", async () => {
+    const circle = await seedDemoCircle(chain, MINTS, members);
+    const early = await refusal(sendAs(await withdrawIx(members[1]!.publicKey, keys(circle)), members[1]!));
+    assert.ok(early, "withdrew from an Active circle");
+    assert.match(explainFailure(early), /^NotFinished/);
+
+    const stranger = h.fund();
+    for (let r = 0; r < DEMO.n; r++) {
+      await payRound(chain, MINTS, members);
+      await sendAs(await releasePotIx(stranger.publicKey, keys(circle), members[r]!.publicKey), stranger);
+    }
+    const c = await fetchAccount<{ status: object; withdrawnBitmap: number }>(h.program, "circle", circle);
+    assert.ok("completed" in c.status, `the circle is ${JSON.stringify(c.status)}`);
+    const stockOf = async (w: anchor.web3.PublicKey) => {
+      const info = await h.context.banksClient.getAccount(ataAddress(MINTS.stock, w, new anchor.web3.PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")));
+      return info ? Buffer.from(info.data).readBigUInt64LE(64) : 0n;
+    };
+    const locked = BigInt((await memberOf(circle, members[1]!)).stockRaw.toString());
+    const before = await stockOf(members[1]!.publicKey);
+    await sendAs(await withdrawIx(members[1]!.publicKey, keys(circle)), members[1]!);
+    assert.equal((await stockOf(members[1]!.publicKey)) - before, locked);
+    assert.equal((await fetchAccount<{ withdrawnBitmap: number }>(h.program, "circle", circle)).withdrawnBitmap, 0b00010);
   });
 });

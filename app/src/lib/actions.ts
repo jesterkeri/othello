@@ -21,6 +21,10 @@ type Builder = {
 };
 
 const { PublicKey, SystemProgram } = anchor.web3;
+// Anchor's BN, whether the module arrives as a namespace (Next's bundle) or as CommonJS behind a
+// default export (node's ESM loader in the tests).
+// Reflect.get keeps webpack from flagging a default export anchor's ESM build does not declare.
+const BN: typeof anchor.BN = (anchor as unknown as { BN?: typeof anchor.BN }).BN ?? (Reflect.get(anchor, "default") as { BN: typeof anchor.BN }).BN;
 const SPL_TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const TOKEN_2022 = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 const ASSOCIATED_TOKEN = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
@@ -102,5 +106,76 @@ export async function declareDefaultIx(caller: PublicKeyT, k: CircleKeys, turn: 
       usdcTokenProgram: SPL_TOKEN,
     })
     .remainingAccounts(memberMetas(id, k))
+    .instruction();
+}
+
+/* ------------------------------------------------------------------------- *
+ * T18g: the member's own actions (SPEC §5), signed by the member's wallet.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * A decimal amount typed by a person, as base units, with string arithmetic so nothing is rounded.
+ * null for anything that is not a plain positive number with at most `decimals` places.
+ */
+export function parseUnits(text: string, decimals: number): bigint | null {
+  const m = /^(\d*)(?:\.(\d*))?$/.exec(text.trim());
+  if (!m || (m[1] === "" && (m[2] ?? "") === "")) return null;
+  const frac = m[2] ?? "";
+  if (frac.length > decimals) return null;
+  const units = BigInt((m[1] || "0") + frac.padEnd(decimals, "0"));
+  return units > 0n ? units : null;
+}
+
+/** Locks `raw` more of the circle's stock behind the member's seat (add_stock, T16). */
+export async function addStockIx(wallet: PublicKeyT, k: CircleKeys, raw: bigint) {
+  const { id, methods } = program();
+  return methods.addStock!(new BN(raw.toString()))
+    .accountsStrict({
+      wallet,
+      circle: k.circle,
+      member: memberAddress(id, k.circle, wallet),
+      stockMint: k.stockMint,
+      memberStockAta: ata(wallet, k.stockMint, TOKEN_2022),
+      circleStockVault: ata(k.circle, k.stockMint, TOKEN_2022),
+      stockTokenProgram: TOKEN_2022,
+    })
+    .instruction();
+}
+
+/** Adds `amount` test USDC to the reserve (top_up_reserve, SPEC §5): it fills the escrow deficit first. */
+export async function topUpReserveIx(wallet: PublicKeyT, k: CircleKeys, amount: bigint) {
+  const { id, methods } = program();
+  return methods.topUpReserve!(new BN(amount.toString()))
+    .accountsStrict({
+      wallet,
+      circle: k.circle,
+      member: memberAddress(id, k.circle, wallet),
+      usdcMint: k.usdcMint,
+      memberUsdcAta: ata(wallet, k.usdcMint, SPL_TOKEN),
+      circleUsdcVault: ata(k.circle, k.usdcMint, SPL_TOKEN),
+      usdcTokenProgram: SPL_TOKEN,
+    })
+    .instruction();
+}
+
+/** The member takes back their stock, unused guarantee and top-ups once the circle has ended (withdraw, SPEC §7). */
+export async function withdrawIx(wallet: PublicKeyT, k: CircleKeys) {
+  const { id, methods } = program();
+  return methods.withdraw!()
+    .accountsStrict({
+      wallet,
+      circle: k.circle,
+      member: memberAddress(id, k.circle, wallet),
+      stockMint: k.stockMint,
+      usdcMint: k.usdcMint,
+      memberStockAta: ata(wallet, k.stockMint, TOKEN_2022),
+      memberUsdcAta: ata(wallet, k.usdcMint, SPL_TOKEN),
+      circleStockVault: ata(k.circle, k.stockMint, TOKEN_2022),
+      circleUsdcVault: ata(k.circle, k.usdcMint, SPL_TOKEN),
+      stockTokenProgram: TOKEN_2022,
+      usdcTokenProgram: SPL_TOKEN,
+      associatedTokenProgram: ASSOCIATED_TOKEN,
+      systemProgram: SystemProgram.programId,
+    })
     .instruction();
 }

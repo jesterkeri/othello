@@ -20,7 +20,7 @@ import Circle from "@/components/circle/Circle";
 import s from "@/components/circle/Circle.module.css";
 import Shell from "@/components/othello/Shell";
 import { defaultRecovered, derive, formatDuration, formatUsdc, seatSet } from "@/lib/circle";
-import { declareDefaultIx, releasePotIx, updateCoverageIx } from "@/lib/actions";
+import { addStockIx, declareDefaultIx, parseUnits, releasePotIx, topUpReserveIx, updateCoverageIx, withdrawIx } from "@/lib/actions";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
@@ -51,6 +51,9 @@ export default function LiveCircle() {
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pay, setPay] = useState<Pay>({ phase: "idle" });
+  // T18g: the member's own amounts, typed as decimals and converted exactly (parseUnits).
+  const [lockAmt, setLockAmt] = useState("0.1");
+  const [topAmt, setTopAmt] = useState("10");
   // Only the latest read may write: a slow response must not put an older circle back.
   const latest = useRef(0);
 
@@ -286,6 +289,56 @@ export default function LiveCircle() {
     </div>
   );
 
+  // T18g: what the connected member can do with their own seat (SPEC §5): lock more stock and top
+  // up the reserve while the circle runs (not after a default), withdraw once it has ended. Each is
+  // enabled only when those conditions hold by this read; the program checks again and any refusal
+  // (InsufficientBalance, NotFinished, ...) is shown in its own words.
+  const mine = yourTurn !== null ? c.members.find((m) => m.turn === yourTurn) : undefined;
+  const mineDefaulted = yourTurn !== null && seatSet(c.defaultedBitmap, yourTurn);
+  const mineWithdrawn = yourTurn !== null && seatSet(c.withdrawnBitmap, yourTurn);
+  const ended = c.status === "Completed" || c.status === "Cancelled";
+  const lockUnits = parseUnits(lockAmt, 8);
+  const topUnits = parseUnits(topAmt, 6);
+  const memberTools = mine ? (
+    <div className={s.action} aria-live="polite">
+      <span className={s.actionText}>
+        <span className={s.bannerTitle}>Your seat: {mine.name}</span>
+        <p className={s.bannerText}>
+          {ended
+            ? mineWithdrawn
+              ? "You have withdrawn your stock and what was left of your guarantee."
+              : "The circle has ended: withdraw your stock, unused guarantee and top-ups."
+            : mineDefaulted
+              ? "This seat has defaulted, so it cannot add stock or top up."
+              : "Lock more of the NFLXx devnet mirror to raise your cover, or top up the shared reserve in test USDC (it fills any payout shortfall first)."}
+        </p>
+      </span>
+      {!ended && !mineDefaulted && (
+        <span className={s.actionButtons}>
+          <label className={s.amountRow}>
+            <input className={s.amount} inputMode="decimal" value={lockAmt} onChange={(e) => setLockAmt(e.target.value)} aria-label="NFLXx devnet mirror to lock" />
+            <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canSend || lockUnits === null || !(active || c.status === "Forming")}
+              onClick={() => lockUnits !== null && void send("Lock more stock", (me) => addStockIx(me, keys, lockUnits))}>
+              Lock {lockAmt || "0"} NFLXx mirror
+            </button>
+          </label>
+          <label className={s.amountRow}>
+            <input className={s.amount} inputMode="decimal" value={topAmt} onChange={(e) => setTopAmt(e.target.value)} aria-label="Test USDC to add to the reserve" />
+            <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canSend || topUnits === null || !active}
+              onClick={() => topUnits !== null && void send("Top up", (me) => topUpReserveIx(me, keys, topUnits))}>
+              Top up {topAmt || "0"} {USDC_WORD}
+            </button>
+          </label>
+        </span>
+      )}
+      {ended && !mineWithdrawn && (
+        <button type="button" className={s.pay} disabled={!canSend} onClick={() => void send("Withdraw", (me) => withdrawIx(me, keys))}>
+          Withdraw
+        </button>
+      )}
+    </div>
+  ) : null;
+
   const action = (
     <div className={s.action} aria-live="polite">
       <span className={s.actionText}>
@@ -324,6 +377,7 @@ export default function LiveCircle() {
         action: (
           <>
             {action}
+            {memberTools}
             {anyone}
           </>
         ),

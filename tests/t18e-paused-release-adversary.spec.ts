@@ -42,7 +42,7 @@ export default R;
 export const { useCallback, useEffect, useRef } = R;
 export function useState(init) {
   const [v, set] = R.useState(init);
-  const k = (globalThis.__n++) % 3;
+  const k = (globalThis.__n++) % 5; // LiveCircle's useState calls: live, error, pay, lockAmt, topAmt (T18g)
   const seeded = globalThis.__seed && k in globalThis.__seed ? globalThis.__seed[k] : v;
   return [seeded, (x) => { globalThis.__sets.push(x); try { set(x); } catch {} }];
 }`;

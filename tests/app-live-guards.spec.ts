@@ -44,7 +44,7 @@ export default R;
 export const { useCallback, useEffect, useRef } = R;
 export function useState(init) {
   const [v, set] = R.useState(init);
-  const k = (globalThis.__n++) % 3;
+  const k = (globalThis.__n++) % 5; // LiveCircle's useState calls: live, error, pay, lockAmt, topAmt (T18g)
   const seeded = globalThis.__seed && k in globalThis.__seed ? globalThis.__seed[k] : v;
   return [seeded, (x) => { globalThis.__sets.push(x); try { set(x); } catch {} }];
 }`;
@@ -211,5 +211,28 @@ describe("T18e: the live circle's buttons follow every known program condition (
     } finally {
       Date.now = real;
     }
+  });
+  // T18g: the member's own seat tools, shown only to the connected member.
+  it("a member of an Active circle can lock more stock and top up; a stranger sees neither", async () => {
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(allPaid.members[1]!.address), sendTransaction: async () => "x" };
+    const m = await buttons(allPaid);
+    assert.equal(m.on["Lock 0.1 NFLXx mirror"], true);
+    assert.equal(m.on["Top up 10 test USDC"], true);
+    assert.equal("Withdraw" in m.on, false);
+    g.__wallet = { publicKey: anchor.web3.Keypair.generate().publicKey, sendTransaction: async () => "x" };
+    const s = await buttons(allPaid);
+    assert.equal("Lock 0.1 NFLXx mirror" in s.on, false);
+    assert.equal("Top up 10 test USDC" in s.on, false);
+  });
+
+  it("a defaulted member cannot add stock or top up; once the circle ends, a member who has not withdrawn can", async () => {
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(adaLate.members[0]!.address), sendTransaction: async () => "x" };
+    const d = await buttons({ ...adaLate, defaultedBitmap: 0b00001 });
+    assert.equal("Lock 0.1 NFLXx mirror" in d.on, false);
+    assert.match(d.text, /This seat has defaulted/);
+    const done = await buttons({ ...allPaid, status: "Completed", withdrawnBitmap: 0 });
+    assert.equal(done.on["Withdraw"], true);
+    const gone = await buttons({ ...allPaid, status: "Completed", withdrawnBitmap: 0b00001 });
+    assert.equal("Withdraw" in gone.on, false);
   });
 });
