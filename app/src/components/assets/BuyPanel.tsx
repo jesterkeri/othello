@@ -14,6 +14,7 @@ import { VersionedTransaction } from "@solana/web3.js";
 
 import type { SwapBuild } from "@/app/api/swap/route";
 import type { SwapSent } from "@/app/api/swap/send/route";
+import { exactTokens, shownTokens } from "@/lib/format";
 import { useWalletUi } from "@/lib/wallet";
 
 import type { Quote } from "@/app/api/quote/route";
@@ -73,8 +74,6 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
     };
   }, [amount, symbol]);
 
-  const raw = quote ? Number(quote.outRaw) / 10 ** decimals : 0;
-  const shown = raw * multiplier;
   const busy = buy.phase === "building" || buy.phase === "wallet" || buy.phase === "sending";
   const highImpact = !!quote && quote.priceImpactPct >= 5;
 
@@ -138,12 +137,13 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
           <span className={s.row}>
             <span className={s.rowLabel}>You receive, as your wallet shows it</span>
             <span className={s.rowValue}>
-              about {shown.toLocaleString("en-US", { maximumFractionDigits: 6 })} {symbol}
+              about {shownTokens(quote.outRaw, decimals, multiplier)} {symbol}
             </span>
           </span>
           <span className={s.row}>
-            <span className={s.rowLabel}>Raw (before the multiplier)</span>
-            <span className={s.rowValue}>{raw.toLocaleString("en-US", { maximumFractionDigits: decimals })}</span>
+            {/* Codex T18d r3: Jupiter's integer, every digit, as tokens before the multiplier (not "raw" base units). */}
+            <span className={s.rowLabel}>Before the multiplier</span>
+            <span className={s.rowValue}>{exactTokens(quote.outRaw, decimals)}</span>
           </span>
           <span className={s.row}>
             <span className={s.rowLabel}>Price impact</span>

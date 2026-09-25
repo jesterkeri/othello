@@ -73,7 +73,8 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
         m.info.freezeAuthority,
         m.info.permanentDelegate,
         m.info.pausable?.authority,
-        m.info.transferHook?.program,
+        // Codex T18d r3: an enabled hook with no program is still a power: its authority can set one.
+        m.info.transferHook?.program ?? m.info.transferHook?.authority,
         m.info.defaultAccountState === "frozen" ? "frozen" : null,
         m.info.confidentialTransfers ? "on" : null,
         m.info.scaledUi ? m.info.scaledUiAuthority : null,

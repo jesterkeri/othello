@@ -166,4 +166,8 @@ describe("Codex T18d r2: Portfolio's figures are exact and its copy conditional"
     assert.doesNotMatch(text, /move it on: anyone can release a pot/);
     assert.match(text, /once every seat has paid and the program's checks pass, anyone can release the pot/);
   });
+  it("floors the multiplier exactly as the program does (Codex T18d r3: AAPLx 1.0026642075893797)", async () => {
+    const { shownTokens } = await import(pathToFileURL(resolve(SRC, "lib/format.ts")).href);
+    assert.equal(shownTokens("10000000000", 8, 1.0026642075893797), "100.26642070");
+  });
 });
