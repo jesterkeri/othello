@@ -495,3 +495,17 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       behaviour, but I18 reads "a top-up of exactly short_by makes the next gate pass" without
       that exception. Wording, or a note in the UI to recheck after repricing.
 
+
+- [ ] DEVNET DEPLOY COSTS MORE THAN AGENTS.md's "2.5 SOL budget" (S2, 2026-09-25). Measured, not
+      estimated: target/deploy/othello.so is 695,216 bytes; `solana rent -u devnet 695261` (ELF +
+      the 45-byte ProgramData header) = 3.53257612 SOL locked for the life of the program. Building
+      for size does not bring it under 2.5: opt-level "s" 597,232 bytes = 3.03 SOL, "z" 569,432
+      bytes = 2.89 SOL, and either would change compute costs and the tested binary. Devnet SOL is
+      free, so the fix is funding (at least 4 SOL), not a smaller program. AGENTS.md's figure is
+      Joshua's to update.
+- [ ] THE DEPLOY MUST USE ONE PARTICULAR PROGRAM KEYPAIR (S2, 2026-09-25). declare_id and
+      Anchor.toml say DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT. Of the othello-keypair.json
+      files on this machine, only ~/myvscode_linux/othello/target/deploy/ holds that one; every
+      worktree's `anchor build` made its own. target/ is gitignored, so that file has no backup.
+      Deploying from a worktree without copying it in would put the program at a different
+      address, and every instruction would fail DeclaredProgramIdMismatch.

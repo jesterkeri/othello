@@ -20,6 +20,9 @@ custom-heap = []
 custom-panic = []
 # Test-only instructions. Never enabled for a deployed build; see lib.rs.
 harness = []
+# The devnet deploy (S2, T23): accepts only the stand-in mints in devnet.rs,
+# never the mainnet xStocks. `anchor build -- --features devnet`.
+devnet = []
 
 [dependencies]
 # `init-if-needed` is required for the ATA constraints in join_and_lock. The

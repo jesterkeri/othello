@@ -25,7 +25,14 @@ pub const SPYX: Pubkey = Pubkey::from_str_const("XsoCS1TfEyfFhfvj8EtZ528L3CaKBDB
 pub const NVDAX: Pubkey = Pubkey::from_str_const("Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh");
 
 /// Every mint Othello will accept as collateral.
+#[cfg(not(feature = "devnet"))]
 pub const ALLOWED_STOCK_MINTS: [Pubkey; 4] = [AAPLX, NFLXX, SPYX, NVDAX];
+
+/// The devnet build (S2) accepts the NFLXx devnet mirror and nothing else: the
+/// real xStocks do not exist on devnet, and a build that accepted both lists
+/// could let a devnet mint stand in for a real one. See devnet.rs.
+#[cfg(feature = "devnet")]
+pub const ALLOWED_STOCK_MINTS: [Pubkey; 1] = [crate::devnet::NFLXX_MIRROR];
 
 pub fn is_allowed(mint: &Pubkey) -> bool {
     // Four entries, compared as 32-byte arrays. A linear scan is the whole cost.
@@ -37,6 +44,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(feature = "devnet"))]
     fn allowlist_holds_exactly_the_four_spec_mints() {
         assert_eq!(ALLOWED_STOCK_MINTS.len(), 4);
 
@@ -56,5 +64,29 @@ mod tests {
         // One character different from NFLXx, and still refused.
         let near_miss = Pubkey::from_str_const("XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpM");
         assert!(!is_allowed(&near_miss), "a near-miss address was allowed");
+    }
+
+    #[test]
+    #[cfg(not(feature = "devnet"))]
+    fn mainnet_build_refuses_both_devnet_stand_ins() {
+        assert!(!is_allowed(&crate::devnet::NFLXX_MIRROR));
+        assert!(!is_allowed(&crate::devnet::TEST_USDC));
+    }
+
+    #[test]
+    #[cfg(feature = "devnet")]
+    fn devnet_build_accepts_only_the_nflxx_mirror() {
+        assert_eq!(ALLOWED_STOCK_MINTS, [crate::devnet::NFLXX_MIRROR]);
+        assert!(is_allowed(&crate::devnet::NFLXX_MIRROR));
+        assert!(
+            !is_allowed(&crate::devnet::TEST_USDC),
+            "test USDC is not collateral"
+        );
+        for real in [AAPLX, NFLXX, SPYX, NVDAX] {
+            assert!(
+                !is_allowed(&real),
+                "{real} is a mainnet mint in a devnet build"
+            );
+        }
     }
 }

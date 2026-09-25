@@ -88,6 +88,15 @@ pub fn handle_init_pool(ctx: Context<InitPool>, discount_bps: u16) -> Result<()>
         allowlist::is_allowed(&ctx.accounts.stock_mint.key()),
         OthelloError::MintNotAllowed
     );
+    // S2: a devnet pool takes Othello's own test USDC and nothing else. Every
+    // circle takes its USDC mint from its pool's seeds, so this one check pins
+    // USDC for the whole devnet deploy. Mainnet is unchanged (TASKS: Circle USDC).
+    #[cfg(feature = "devnet")]
+    require_keys_eq!(
+        ctx.accounts.usdc_mint.key(),
+        crate::devnet::TEST_USDC,
+        OthelloError::MintNotAllowed
+    );
     // SPEC §5: discount_bps < 10000. A discount of 100% would be a pool that
     // pays nothing for stock, so every default would fund zero from collateral.
     require!(

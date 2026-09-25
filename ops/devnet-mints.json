@@ -1,0 +1,10 @@
+{
+  "cluster": "devnet",
+  "admin": "HXN8oAJFnbaeGLwLdJ129qwSrXUv4xfZ2Em8myu4rciy",
+  "nflxxMirror": "CymeZqJiKk2Nd4FkDvHduyrq3k3XbJELtifAbPqfdSuA",
+  "testUsdc": "HuNtRYjwPgqKANveLm5vRj9DveBnQAq4cFzWTEf4DoBV",
+  "labels": {
+    "nflxxMirror": "NFLXx devnet mirror (not the real NFLXx)",
+    "testUsdc": "Othello test USDC (devnet only, not real USDC)"
+  }
+}
