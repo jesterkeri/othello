@@ -38,9 +38,15 @@ export type ChartData = {
 const cache = new Map<string, { at: number; body: ChartData }>();
 
 async function json(url: string, what: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" }).catch(() => {
-    throw new Error(`${what} unreachable`);
-  });
+  // One retry after a short pause: a free, keyless API drops the odd request (seen as
+  // "GeckoTerminal unreachable" on the first judge walk) and rate-limits bursts (429).
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    res = await fetch(url, { headers: { accept: "application/json" }, cache: "no-store" }).catch(() => null);
+    if (res && res.status !== 429 && res.status < 500) break;
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
+  }
+  if (!res) throw new Error(`${what} unreachable`);
   if (!res.ok) throw new Error(`${what} answered ${res.status}`);
   return res.json().catch(() => {
     throw new Error(`${what} returned invalid JSON`);
