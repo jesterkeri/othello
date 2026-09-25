@@ -16,7 +16,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-import { REAL_XSTOCKS } from "@/lib/devnet";
+import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
 
@@ -106,8 +106,8 @@ async function read(symbol: string, mint: string): Promise<ChartData> {
 
 export async function GET(req: NextRequest) {
   const symbol = req.nextUrl.searchParams.get("symbol") ?? "";
-  const x = REAL_XSTOCKS.find((s) => s.symbol === symbol);
-  if (!x) return NextResponse.json({ error: "not an allowlisted xStock" }, { status: 404 });
+  const x = TRADABLE_XSTOCKS.find((s) => s.symbol === symbol);
+  if (!x) return NextResponse.json({ error: "not a listed xStock" }, { status: 404 });
 
   const hit = cache.get(symbol);
   const headers = { "cache-control": `public, s-maxage=${CACHE_SECONDS}` };
