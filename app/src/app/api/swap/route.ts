@@ -25,15 +25,20 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as { symbol?: unknown; usdc?: unknown; user?: unknown } | null;
   const x = TRADABLE_XSTOCKS.find((t) => t.symbol === body?.symbol);
   if (!x) return fail("not a listed xStock", 404);
-  const usdc = Number(body?.usdc);
-  if (!Number.isFinite(usdc) || usdc < 1 || usdc > 100_000) return fail("enter between 1 and 100,000 USDC", 400);
+  // Adversary pass 5: never round or reinterpret money. Only a plain decimal with at most 6 places
+  // ("1e2", "0x10", "1.0000005" are refused), converted with string arithmetic.
+  const typed = typeof body?.usdc === "number" && Number.isFinite(body.usdc) ? String(body.usdc) : body?.usdc;
+  const m = typeof typed === "string" ? /^(\d+)(?:\.(\d{1,6}))?$/.exec(typed.trim()) : null;
+  if (!m) return fail("enter a plain USDC amount with at most 6 decimal places", 400);
+  const micro = BigInt(m[1]!) * 1_000_000n + BigInt((m[2] ?? "").padEnd(6, "0") || "0");
+  if (micro < 1_000_000n || micro > 100_000_000_000n) return fail("enter between 1 and 100,000 USDC", 400);
   let user: string;
   try {
     user = new PublicKey(String(body?.user)).toBase58();
   } catch {
     return fail("not a wallet address", 400);
   }
-  const amount = Math.round(usdc * 1_000_000);
+  const amount = micro.toString();
   try {
     const q = await fetch(`${JUP}/quote?inputMint=${USDC}&outputMint=${x.address}&amount=${amount}&slippageBps=100&restrictIntermediateTokens=true`, { cache: "no-store" }).catch(() => null);
     if (!q) throw new Error("Jupiter unreachable");
@@ -57,7 +62,7 @@ export async function POST(req: NextRequest) {
     const check = checkSwapTx(swap.swapTransaction, user, false);
     if (!check.ok) throw new Error(`Jupiter's transaction was refused: ${check.reason}`);
 
-    const built: SwapBuild = { tx: swap.swapTransaction, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: amount / 1_000_000 };
+    const built: SwapBuild = { tx: swap.swapTransaction, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: Number(micro) / 1_000_000 };
     return NextResponse.json(built, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const said = e instanceof Error ? e.message : String(e);

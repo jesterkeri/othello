@@ -293,7 +293,9 @@ export default function LiveCircle() {
   // up the reserve while the circle runs (not after a default), withdraw once it has ended. Each is
   // enabled only when those conditions hold by this read; the program checks again and any refusal
   // (InsufficientBalance, NotFinished, ...) is shown in its own words.
-  const mine = yourTurn !== null ? c.members.find((m) => m.turn === yourTurn) : undefined;
+  // Adversary pass 5: the read lists every configured seat, joined or not; only a JOINED seat has a
+  // Member account, so only a joined seat gets tools (SPEC.md:112, :114).
+  const mine = yourTurn !== null && seatSet(c.joinedBitmap, yourTurn) ? c.members.find((m) => m.turn === yourTurn) : undefined;
   const mineDefaulted = yourTurn !== null && seatSet(c.defaultedBitmap, yourTurn);
   const mineWithdrawn = yourTurn !== null && seatSet(c.withdrawnBitmap, yourTurn);
   const ended = c.status === "Completed" || c.status === "Cancelled";
@@ -310,7 +312,7 @@ export default function LiveCircle() {
               : "The circle has ended: withdraw your stock, unused guarantee and top-ups."
             : mineDefaulted
               ? "This seat has defaulted, so it cannot add stock or top up."
-              : "Lock more of the NFLXx devnet mirror to raise your cover, or top up the shared reserve in test USDC (it fills any payout shortfall first)."}
+              : "Lock more of the NFLXx devnet mirror to raise your cover (amounts are tokens before the multiplier), or top up the shared reserve in test USDC (it fills any payout shortfall first)."}
         </p>
       </span>
       {!ended && !mineDefaulted && (

@@ -54,7 +54,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ signature, status: "expired", error: "not confirmed within 50 seconds; check the explorer" } satisfies SwapSent);
   } catch (e) {
     // The RPC URL can carry a key: only the method name and the chain's own message pass through.
-    const said = e instanceof Error ? e.message : String(e);
-    return fail(/^(sendTransaction|getSignatureStatuses|getBlockHeight):/.test(said) ? said.replace(/https?:\/\/\S+/g, "[rpc]") : "relay unavailable");
+    // Adversary pass 5: scrub the URL, and also any long piece of it (a key can be echoed alone).
+    let said = e instanceof Error ? e.message : String(e);
+    said = said.replace(/https?:\/\/\S+/g, "[rpc]");
+    for (const piece of url.split(/[/?&=:#]/).filter((p) => p.length >= 12)) said = said.split(piece).join("[rpc]");
+    return fail(/^(sendTransaction|getSignatureStatuses|getBlockHeight):/.test(said) ? said : "relay unavailable");
   }
 }

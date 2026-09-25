@@ -170,4 +170,15 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
       else process.env.MAINNET_RPC_URL = prev;
     }
   });
+  it("never echoes the key alone either (adversary pass 5)", async () => {
+    const prev = process.env.MAINNET_RPC_URL;
+    process.env.MAINNET_RPC_URL = "https://rpc.example/v2/abcdef0123456789SECRETKEY";
+    try {
+      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { error: { message: "invalid api key abcdef0123456789SECRETKEY" } } }));
+      assert.doesNotMatch(JSON.stringify(out.body), /SECRETKEY/);
+    } finally {
+      if (prev === undefined) delete process.env.MAINNET_RPC_URL;
+      else process.env.MAINNET_RPC_URL = prev;
+    }
+  });
 });

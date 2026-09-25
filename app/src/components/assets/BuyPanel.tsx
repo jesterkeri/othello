@@ -87,7 +87,7 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
     let sig: string | undefined;
     try {
       setBuy({ phase: "building" });
-      const b = (await fetch("/api/swap", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ symbol, usdc: quote.usdc, user }) }).then((r) => r.json())) as SwapBuild | { error: string };
+      const b = (await fetch("/api/swap", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ symbol, usdc: amount.trim(), user }) }).then((r) => r.json())) as SwapBuild | { error: string };
       if ("error" in b) throw new Error(b.error);
       setBuy({ phase: "wallet" });
       const signed = await wallet.signTransaction(VersionedTransaction.deserialize(fromB64(b.tx)));
@@ -125,7 +125,7 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
       {!embedded && <span className={s.bannerTitle}>Buy {symbol}</span>}
       <label className={s.panelNote}>
         Pay{" "}
-        <input className={s.search} style={{ width: 140, display: "inline-block", padding: "8px 12px" }} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} aria-label="USDC to pay" />{" "}
+        <input className={s.search} style={{ width: 140, display: "inline-block", padding: "8px 12px" }} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/^(\d*\.\d{0,6}).*$/, "$1"))} aria-label="USDC to pay" />{" "}
         USDC
       </label>
       {error ? (
