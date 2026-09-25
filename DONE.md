@@ -2032,7 +2032,7 @@ the hackathon scope. Next on the critical path: S2 devnet mirror mints, then
 T23 deploy (Joshua).
 
 ## S2 Devnet mirror mints and the devnet build (2026-09-25)
-reviewed: pending, Codex S2 r1 against reviews/s2-brief.md (verdict to be recorded here)
+reviewed: reviews/s2-review.md | verdict: implementation-ready | commit: b62565b (r1, no findings)
 adversary: ONE defect, fixed: a stranger's lamport transfer to a published stand-in address made createAccountWithSeed fail "already in use" for good (tests/s2-adversary.spec.ts, integrated, failed before the fix and passes after). 9 other attacks failed.
 
 Joshua's decisions: addresses derived from the admin's public key with createWithSeed; NFLXx
