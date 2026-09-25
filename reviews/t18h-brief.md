@@ -11,10 +11,10 @@ entirely on the site. All five are here.
 | | |
 |---|---|
 | branch | `task/T18h-final` (T18g plus adversary pass 5's fixes) |
-| commit | `47c85a9` |
-| range | `1efc57e..47c85a9` (r3's target, to this commit): 29 files, +1,495 / −58 |
+| commit | `dbf9a6e` |
+| range | `1efc57e..dbf9a6e` (r3's target, to this commit): 30 files, +1,595 / −58 |
 
-`6f512dc` and `4545e2f` only add r3's verdict and merge it; `a237438` adds the superseded T18g brief. Commits after `47c85a9` change only this file. Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
+`6f512dc` and `4545e2f` only add r3's verdict and merge it; `a237438` adds the superseded T18g brief. Commits after `dbf9a6e` change only this file. Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
 
 ## 1. The requirement
 
@@ -66,7 +66,7 @@ corepack pnpm@10.32.1 install --frozen-lockfile && (cd app && corepack pnpm@10.3
 for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 600000 "$f"; done
 pnpm exec tsc --noEmit -p tsconfig.json
 (cd app && corepack pnpm@10.32.1 exec tsc --noEmit && corepack pnpm@10.32.1 build)
-git diff --check 1efc57e..47c85a9
+git diff --check 1efc57e..dbf9a6e
 ./scripts/check-secrets.sh
 ```
 
