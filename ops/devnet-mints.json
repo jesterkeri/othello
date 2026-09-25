@@ -6,5 +6,6 @@
   "labels": {
     "nflxxMirror": "NFLXx devnet mirror (not the real NFLXx)",
     "testUsdc": "Othello test USDC (devnet only, not real USDC)"
-  }
+  },
+  "createdAt": "2026-09-25T00:57:21.072Z"
 }
