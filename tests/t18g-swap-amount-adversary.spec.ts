@@ -11,7 +11,12 @@ import { registerHooks } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { Keypair, MessageV0, PublicKey, TransactionInstruction, VersionedTransaction } from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
+
+// web3 through anchor: @solana/web3.js is not a root dependency (root tsc resolves types from here).
+const { Keypair, MessageV0, PublicKey, TransactionInstruction, VersionedTransaction } = anchor.web3;
+type PublicKey = anchor.web3.PublicKey;
+type Keypair = anchor.web3.Keypair;
 
 import { REPO } from "./artifacts.ts";
 
