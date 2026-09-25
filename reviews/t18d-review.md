@@ -1,58 +1,67 @@
 VERDICT: changes required
 
-Review target: `1efc57e` (`0f0b2b6..1efc57e`). The worktree remained on
-`task/T18f-assets-design`; `HEAD` is the brief-only follow-up `adfe4d2`.
-`git diff --stat 1efc57e adfe4d2` reports only `reviews/t18f-brief.md`.
+Review target: `dbf9a6e` (`1efc57e..dbf9a6e`). The worktree remained on
+`task/T18h-final`; `HEAD` is the brief-only follow-up `86d3796`.
+`git diff --stat dbf9a6e 86d3796` reports only `reviews/t18h-brief.md`.
 
-## Round-2 findings
+## Round-3 findings
 
-1. **Fixed — MAJOR — OUTSIDE — `app/src/components/live/LiveCircle.tsx:207-235`:** `canRelease` no longer includes the stored Paused bit, and the screen now calls that bit the result of the last check while leaving Release available for the program's fresh recomputation. `tests/app-live-guards.spec.ts` covers that UI condition, and `tests/t18e-paused-release-adversary.spec.ts` proves the program accepts release after recovery without another `update_coverage`.
+1. **Fixed — MAJOR — INSIDE — `app/src/lib/format.ts:22-28`:** `shownTokens` now uses the same bitwise-floor `toFixed1e9` implementation as the program. The real AAPLx multiplier adversary test covers the formerly incorrect final fixed-point digit.
 
-2. **Not fully fixed — MAJOR — INSIDE — `app/src/lib/format.ts:22-24`, consumed by `app/src/components/portfolio/Portfolio.tsx:216-220`:** the raw-u64 and units repair is present, but `shownTokens` again uses `Math.round(multiplier * 1e9)`. The program's `decode_multiplier_fixed` and the app's own `toFixed1e9` use the binary-f64 floor, not a rounded value. The code even documents this exact former defect in `app/src/lib/scaledUi.ts:76-111`: AAPLx's live `1.0026642075893797` must become `1002664207`, whereas this formatter makes `1002664208`.
+2. **Fixed — MINOR — INSIDE — `app/src/components/assets/BuyPanel.tsx:137-147`:** Jupiter's `outRaw` stays a decimal integer and is rendered with `exactTokens`; the label now accurately says it is before the multiplier rather than raw base units.
 
-   Concrete failure: for `raw = "10000000000"`, `decimals = 8`, and that multiplier, Portfolio says `100.26642080`; the program's fixed-point arithmetic says `100.26642070`. This is a displayed on-chain balance, not an approximation label. Derive the formatter's fixed multiplier with the same floor implementation as `toFixed1e9` (without reintroducing browser dependencies), and test this real fractional multiplier plus a raw value that exposes the final fixed-point digit.
-
-3. **Fixed — MINOR — INSIDE — `app/src/components/portfolio/Portfolio.tsx:185-190`:** the non-member card now says that anyone can release only once every seat has paid and the program's checks pass, rather than promising an unconditional release.
+3. **Fixed — MINOR — INSIDE — `app/src/components/assets/AssetDetail.tsx:73-80`:** the issuer-power count includes a transfer-hook authority when the extension is enabled but no hook program has yet been installed.
 
 ## New findings
 
-**MINOR — INSIDE — `app/src/components/assets/BuyPanel.tsx:45-70`:** the quote route deliberately preserves Jupiter's `outAmount` as a decimal integer string, but the client immediately converts that arbitrary integer to `Number` and labels the rounded result “Raw”. A valid Jupiter response above `Number.MAX_SAFE_INTEGER` therefore changes the claimed before-multiplier amount; even below that boundary the displayed value is tokens, not raw base units. The following `about` label only qualifies the multiplied amount, not this row.
+**MAJOR — INSIDE — `app/src/app/api/swap/route.ts:30-34`:** the Buy builder still accepts a JSON number, converts it through `String`, and then calls it a plain decimal. JSON has already discarded its lexical spelling at that point. In particular, a request body containing `"usdc": 1e2` is parsed as the number `100`, converted to `"100"`, and builds a 100-USDC Jupiter quote. That is precisely an exponent amount which the requirement and comment say must be refused, not reinterpreted.
 
-Concrete failure: if a valid response contains `outRaw: "9007199254740993"` for an 8-decimal mint, the row begins from `9007199254740992` and displays a figure Jupiter did not quote. Keep `outRaw` as a string/`bigint`, render its token amount with `exactTokens`, call it “Tokens before ×”, and use the same program-fixed multiplier rule for the qualified wallet amount.
+Concrete failure: a caller can send `{ "symbol": "NVDAx", "usdc": 1e2, "user": "..." }` to `/api/swap`; the route requests `amount=100000000` from Jupiter rather than returning 400. Require `body.usdc` to be a string and validate that string before any coercion, preferably without trimming it; add a route test whose `req.json()` result has numeric `usdc: 1e2`.
 
-**MINOR — INSIDE — `app/src/components/assets/AssetDetail.tsx:69-80,247-260`:** the header's count claims to be how many of the eight powers “a key can use today”, but it counts a transfer hook only when its program is already set. The detail row correctly says that an enabled hook with no program can be set by its decoded authority. That authority is therefore a live issuer power omitted from the advertised count.
+**MAJOR — INSIDE — `app/src/lib/swap.ts:33-38`, used by `app/src/app/api/swap/send/route.ts:35-43`:** `checkSwapTx` accepts a transaction if it contains Jupiter anywhere. It does not require the transaction to consist only of the approved swap, verify the USDC input, registry output mint, or prohibit unrelated value-moving instructions. Consequently the public relay is not limited to the claimed transaction class.
 
-Concrete failure: a mint with a transfer-hook extension, a non-null authority, and no current hook program shows “N issuer powers” while its own dialog identifies an additional key able to install transfer logic. Count the non-null transfer-hook authority in that state, or narrow the header wording to count only currently active powers.
+Concrete failure: I constructed locally, without connecting or sending, a buyer-signed V0 transaction with one Jupiter instruction followed by `SystemProgram.transfer` of one lamport to another key. `checkSwapTx(encoded, buyer, true).ok` returned `true`; `/api/swap/send` would relay it. A malicious or compromised upstream response can therefore hand the wallet a mixed transaction, and any caller can use the relay for a signed mixed transaction. The validator must decode and constrain the complete instruction set and account effects to an approved Jupiter swap for the requested USDC and registry mint, or remove the server relay and send the wallet's signed bytes directly through its wallet connection. Add this composite-instruction mutation to `tests/app-swap.spec.ts`.
+
+**MAJOR — INSIDE — `app/src/app/api/swap/send/route.ts:56-61`:** RPC-error scrubbing intentionally excludes URL pieces shorter than 12 characters. The route then returns the remaining RPC error verbatim to the browser. An RPC credential is not required to be 12 characters long, so the stated no-leak property does not hold for every valid `MAINNET_RPC_URL`.
+
+Concrete failure: with `MAINNET_RPC_URL=https://rpc.example/?api-key=shortkey`, an RPC response whose error is `invalid api key shortkey` becomes `sendTransaction: invalid api key shortkey` and reaches BuyPanel unchanged. Percent-encoded URL credentials can also be echoed decoded and miss the raw-string replacement. Do not forward provider error messages to the client; return fixed route-owned errors (or scrub parsed, raw, and decoded URL components regardless of length) and test a short, standalone credential plus a percent-encoded one.
 
 ## U7
 
-- Findings: **INSIDE 3, OUTSIDE 0**. This is indicative rather than a rigorous cold-read metric: the prompt and brief supplied the target, prior findings, and most intended behaviours (protocol U1).
+- Findings: **INSIDE 3, OUTSIDE 0**. This is indicative rather than a rigorous cold-read measurement: the prompt and brief supplied the target, prior findings, and the intended invariants in the same turn (protocol U1).
 
 ## U8 — not checked
 
 - I did not run an ops script, send a transaction, make live RPC/API reads, or read any keypair, `.env*` content, `~/.config/solana`, or `~/.config/othello-demo`. A presence-only check confirmed root `.env`, root `.env.local`, and `app/.env.local` are absent.
-- I did not run `anchor build`, as instructed: it can read the local deploy keypair. The already-built target artifact was used by the serial bankrun specs.
-- I did not reproduce browser-wallet signing, physical-device layout, deployment, or live devnet/mainnet/Jupiter/GeckoTerminal behaviour. I also did not make an unscoped review outside this target and its immediate protocol consumers.
+- I did not run `anchor build`, as instructed, because it can read the local deploy keypair. The already-built artifact was used by the serial bankrun specs.
+- I did not reproduce browser-wallet signing, deployment, a real Jupiter quote/swap, relay behaviour against a real RPC, or physical-device layout. The local mixed-instruction probe generated only ephemeral test keys and never connected to a cluster.
+- The serial asset adversary spec printed wallet-provider-missing stack traces during its deliberate server-render harness, but its process exited 0 and its stated assertion passed. I did not treat that test-harness noise as a product finding.
 
 ## Verification (serial)
 
 ```text
 git branch --show-current; git rev-parse --short HEAD
-task/T18f-assets-design
-adfe4d2
+task/T18h-final
+86d3796
 
-git diff --stat 1efc57e adfe4d2
-reviews/t18f-brief.md | 83 +
-1 file changed, 83 insertions(+)
+git diff --stat dbf9a6e 86d3796
+reviews/t18h-brief.md | 8 ++++----
+1 file changed, 4 insertions(+), 4 deletions(-)
 
 corepack pnpm@10.32.1 install --frozen-lockfile
-exit 0; lockfile up to date.
+exit 0; lockfile up to date (bufferutil, esbuild, utf-8-validate build scripts intentionally ignored).
 
 (cd app && corepack pnpm@10.32.1 install --frozen-lockfile)
-exit 0; lockfile up to date.
+exit 0; lockfile up to date (bufferutil, sharp, utf-8-validate build scripts intentionally ignored).
 
 for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 600000 "$f"; done
-44 files, one process per file: 254 passing, 0 failing.
+exit 0; each spec ran in its own process. The app-actions, app-live-guards, app-swap,
+T18f, T18g, T24, and T25 additions all passed. The asset adversary harness printed
+wallet-provider-missing stack traces but exited 0 and reported its assertion passing.
+
+Local decoder probe: a signed V0 transaction containing a Jupiter instruction plus
+SystemProgram.transfer, passed to checkSwapTx(encoded, buyer, true)
+true
 
 pnpm exec tsc --noEmit -p tsconfig.json
 exit 0.
@@ -60,7 +69,7 @@ exit 0.
 (cd app && corepack pnpm@10.32.1 exec tsc --noEmit && corepack pnpm@10.32.1 build)
 exit 0; Next.js 15.5.26 compiled, type-checked, and generated 109 pages.
 
-git diff --check 0f0b2b6..1efc57e
+git diff --check 1efc57e..dbf9a6e
 exit 0.
 
 ./scripts/check-secrets.sh
