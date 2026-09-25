@@ -2102,3 +2102,23 @@ re-run; resume after a dropped send; H = 132 after the 10x split; past split ref
 before Active and a second time); t24-adversary 3 passing (including every member paying all five
 rounds and releasing every pot on the seed's funding); measured seed cost 0.129576 SOL in 16
 transactions; tsc clean; check-secrets clean.
+
+## T24 devnet run (Joshua, 2026-09-25 ~02:34 WAT)
+reviewed: pending, Codex, together with the T18/S2b frontend (code reviewed as a1224f6's T24 entry above)
+adversary: see the T24 entry above
+
+`pnpm tsx ops/seed-demo-circle.ts --cluster devnet`, run twice: the first run stopped at member 3's
+join on "Blockhash not found" from the rate-limited public RPC (after 429s); the second run
+finished the three remaining joins and activated, as the resume test predicted. 16 transactions.
+Circle 8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q recorded in ops/demo-circle.json.
+
+verify: `pnpm tsx ops/verify-demo-circle.ts` (read-only, one getMultipleAccounts):
+  circle 8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q status active round 0 n 5 joined_bitmap 11111
+    contribution 50000000 guarantee 35000000 round_secs 120 deadline 2026-09-25T01:35:54.000Z
+  feed wrapper 150000000 share 150000000 priced_for 1000000000 updated 2026-09-25T01:33:09.000Z
+  circle stock vault 550000000 raw  circle usdc vault 175000000   pool usdc 1000000000
+  member 1 CEhgrP29TSkHnHJ5BBhUjbn4LD1AJRNUsfBV9hhCin23 turn 0 stock_raw 110000000
+  member 2 HjW7R1sUyUnRjjuRhFaVF696nUiwpw7qQ3vCFSxn4ytC turn 1 stock_raw 110000000
+  member 3 5QjP2WU25AmP6yYNoLpNciC9S2VV8j1VnVo55dPs7xd8 turn 2 stock_raw 110000000
+  member 4 EXdbuPTgBvoYDaToRa5zBYaGWUQoh3H9qa94pUBk5Sqs turn 3 stock_raw 110000000
+  member 5 BLhFjSFowYZSadXkLLCqahiQrHBtPZHm6RGmAJthTecP turn 4 stock_raw 110000000
