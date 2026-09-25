@@ -46,7 +46,11 @@ export async function POST(req: NextRequest) {
     while (Date.now() < deadline) {
       const st = (await rpc(url, "getSignatureStatuses", [[signature]])) as { value: ({ err: unknown; confirmationStatus?: string } | null)[] };
       const s = st.value[0];
-      if (s?.err) return NextResponse.json({ signature, status: "failed", error: JSON.stringify(s.err) } satisfies SwapSent);
+      // Codex T18d r5: no provider text, even the chain's error object: fixed words and a number.
+      if (s?.err) {
+        const code = /"Custom":\s*(\d+)/.exec(JSON.stringify(s.err))?.[1];
+        return NextResponse.json({ signature, status: "failed", error: code ? `the swap failed on chain (program error ${code})` : "the swap failed on chain" } satisfies SwapSent);
+      }
       if (s && (s.confirmationStatus === "confirmed" || s.confirmationStatus === "finalized")) return NextResponse.json({ signature, status: "confirmed" } satisfies SwapSent);
       const height = (await rpc(url, "getBlockHeight", [{ commitment: "confirmed" }])) as number;
       if (height > lvbh) return NextResponse.json({ signature, status: "expired", error: "the transaction's blockhash expired before it landed" } satisfies SwapSent);

@@ -79,6 +79,22 @@ describe("T18g: checkSwapTx against a REAL Jupiter transaction (Codex T18d r4)",
     const r = checkSwapTx(fx.swapTransaction, fx.user, false);
     assert.equal(r.ok, true, (r as { reason?: string }).reason);
   });
+  it("refuses a Jupiter swap with an SPL token transfer, or an Associated Token RecoverNested, beside it (Codex T18d r5)", async () => {
+    const { checkSwapTx } = await lib();
+    const payer = Keypair.generate();
+    const build = (extra: InstanceType<typeof TransactionInstruction>) => {
+      const m = MessageV0.compile({ payerKey: payer.publicKey, recentBlockhash: Keypair.generate().publicKey.toBase58(), instructions: [new TransactionInstruction({ programId: JUP, keys: [], data: Buffer.from([1]) }), extra] });
+      const v = new VersionedTransaction(m);
+      v.sign([payer]);
+      return Buffer.from(v.serialize()).toString("base64");
+    };
+    // SPL Token Transfer (3) of 1 unit to someone else.
+    const splTransfer = new TransactionInstruction({ programId: OTHER, keys: [{ pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: true }, { pubkey: Keypair.generate().publicKey, isSigner: false, isWritable: true }, { pubkey: payer.publicKey, isSigner: true, isWritable: false }], data: Buffer.from([3, 1, 0, 0, 0, 0, 0, 0, 0]) });
+    assert.match((checkSwapTx(build(splTransfer), payer.publicKey.toBase58(), true) as { reason: string }).reason, /does more than a Jupiter swap/);
+    const recover = new TransactionInstruction({ programId: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"), keys: [], data: Buffer.from([2]) });
+    assert.match((checkSwapTx(build(recover), payer.publicKey.toBase58(), true) as { reason: string }).reason, /does more than a Jupiter swap/);
+  });
+
   it("refuses a Jupiter swap with an unrelated transfer added", async () => {
     const { checkSwapTx } = await lib();
     const payer = Keypair.generate();
@@ -194,6 +210,8 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     );
     assert.equal(out.body.status, "failed");
     assert.equal(out.body.signature, "SIG");
+    // Codex T18d r5: fixed words and the program's error number only.
+    assert.equal(out.body.error, "the swap failed on chain (program error 6001)");
   });
   it("never echoes the RPC URL (it can carry a key)", async () => {
     const prev = process.env.MAINNET_RPC_URL;
@@ -227,6 +245,26 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
       else process.env.MAINNET_RPC_URL = prev;
+    }
+  });
+});
+
+describe("T18i: /api/wallet reads lamports digit for digit (Codex T18d r5)", () => {
+  it("keeps a balance above 2^53 lamports exact, on mainnet and devnet", async () => {
+    const route = await import(pathToFileURL(resolve(SRC, "app/api/wallet/route.ts")).href);
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      const method = JSON.parse(String(init?.body ?? "{}")).method as string;
+      const body = method === "getBalance" ? '{"jsonrpc":"2.0","id":1,"result":{"context":{"slot":1},"value":9007199254740993}}' : JSON.stringify({ jsonrpc: "2.0", id: 1, result: { value: [] } });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      const res = await route.GET({ nextUrl: new URL(`http://localhost/api/wallet?owner=${buyer.publicKey.toBase58()}`) });
+      const b = (await res.json()) as { lamports: string; devnet: { lamports: string } };
+      assert.equal(b.lamports, "9007199254740993");
+      assert.equal(b.devnet.lamports, "9007199254740993");
+    } finally {
+      globalThis.fetch = real;
     }
   });
 });

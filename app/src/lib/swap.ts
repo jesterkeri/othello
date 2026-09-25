@@ -16,17 +16,14 @@ import { PublicKey, VersionedTransaction } from "@solana/web3.js";
  */
 export const JUPITER_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 /**
- * The only programs a Jupiter USDC-to-xStock swap invokes at top level (compute budget, creating the
- * buyer's token account, the token programs for account housekeeping, Jupiter). Anything else, such
- * as a System or token transfer to someone else, is refused (Codex T18d r4).
+ * The only programs a Jupiter USDC-to-xStock swap invokes at top level, as the recorded transaction
+ * shows (tests/fixtures/jup-swap-qqqx.json): Compute Budget, the Associated Token program (only to
+ * create the buyer's account), and Jupiter. No token program at top level (Codex T18d r5: a token
+ * transfer beside Jupiter moved funds elsewhere), no System program.
  */
-export const ALLOWED_PROGRAMS = new Set([
-  "ComputeBudget111111111111111111111111111111",
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-  JUPITER_PROGRAM,
-]);
+const COMPUTE_BUDGET = "ComputeBudget111111111111111111111111111111";
+const ASSOCIATED_TOKEN = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+export const ALLOWED_PROGRAMS = new Set([COMPUTE_BUDGET, ASSOCIATED_TOKEN, JUPITER_PROGRAM]);
 /** Solana's packet limit: nothing larger can be a transaction. */
 export const MAX_TX_BYTES = 1232;
 
@@ -52,6 +49,12 @@ export function checkSwapTx(base64: string, payer: string, signed: boolean): TxC
   if (!programs.includes(JUPITER_PROGRAM)) return { ok: false, reason: "the transaction is not a Jupiter swap" };
   const other = programs.find((p) => !p || !ALLOWED_PROGRAMS.has(p));
   if (other !== undefined) return { ok: false, reason: "the transaction does more than a Jupiter swap" };
+  // The Associated Token program may only create (0) or create-idempotent (1) an account: its
+  // RecoverNested (2) moves tokens.
+  const atokenOther = tx.message.compiledInstructions.some(
+    (ix) => keys[ix.programIdIndex]?.toBase58() === ASSOCIATED_TOKEN && !(ix.data.length === 0 || (ix.data.length === 1 && ix.data[0]! <= 1)),
+  );
+  if (atokenOther) return { ok: false, reason: "the transaction does more than a Jupiter swap" };
   if (signed && !(tx.signatures[0] ?? new Uint8Array(64)).some((b) => b !== 0)) return { ok: false, reason: "the transaction is not signed by this wallet" };
   return { ok: true, tx };
 }

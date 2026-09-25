@@ -38,7 +38,7 @@ type Buy =
   | { phase: "building" }
   | { phase: "wallet" }
   | { phase: "sending" }
-  | { phase: "done"; sig: string }
+  | { phase: "done"; sig: string; outRaw: string; usdc: number }
   | { phase: "failed"; reason: string; sig?: string };
 
 /** The wallet-connect prompt, when the page has the wallet UI provider (tests render without it). */
@@ -106,7 +106,8 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
       const sent = r as SwapSent;
       sig = sent.signature;
       if (sent.status !== "confirmed") throw new Error(sent.status === "failed" ? `the swap failed on chain (${sent.error})` : (sent.error ?? "not confirmed"));
-      setBuy({ phase: "done", sig: sent.signature });
+      // Codex T18d r5: the pop-up describes what was bought, not whatever the amount box says later.
+      setBuy({ phase: "done", sig: sent.signature, outRaw: b.outRaw, usdc: b.usdc });
       setPopup(true);
       reloadFunds();
     } catch (e) {
@@ -198,12 +199,12 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
           <a className={s.link} href="/portfolio">portfolio</a> on the next read.
         </p>
       )}
-      {popup && buy.phase === "done" && quote && (
+      {popup && buy.phase === "done" && (
         <div className={s.buyScrim} onClick={() => setPopup(false)}>
           <div role="dialog" aria-modal="true" aria-label="Purchase complete" className={s.buyDialog} onClick={(e) => e.stopPropagation()}>
             <span className={s.buyDialogKicker}>Bought on Solana mainnet</span>
-            <b className={s.buyDialogBig}>about {shownTokens(quote.outRaw, decimals, multiplier)} {symbol}</b>
-            <span>for {quote.usdc} USDC, swapped through Jupiter and signed in your own wallet.</span>
+            <b className={s.buyDialogBig}>about {shownTokens(buy.outRaw, decimals, multiplier)} {symbol}</b>
+            <span>for {buy.usdc} USDC, swapped through Jupiter and signed in your own wallet.</span>
             <a className={s.buyDialogLink} href={txLink(buy.sig)} target="_blank" rel="noreferrer">View the transaction ↗</a>
             <span className={s.buyDialogBtns}>
               <a className={s.buyDialogPrimary} href="/portfolio">See it in your portfolio →</a>

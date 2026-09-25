@@ -23,6 +23,15 @@ export type WalletFunds = {
   readAt: number;
 };
 
+/** getBalance's lamports, digit for digit from the raw reply (Codex T18d r5: JSON numbers above 2^53 lose digits). */
+async function lamports(url: string, owner: string): Promise<string> {
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [owner, { commitment: "confirmed" }] }), cache: "no-store" }).catch(() => null);
+  const text = res && res.ok ? await res.text().catch(() => "") : "";
+  const m = /"value"\s*:\s*(\d+)/.exec(text);
+  if (!m || /"error"/.test(text)) throw new Error("getBalance failed");
+  return m[1]!;
+}
+
 async function rpc(url: string, method: string, params: unknown[]): Promise<unknown> {
   const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), cache: "no-store" }).catch(() => null);
   const body = res ? ((await res.json().catch(() => null)) as { result?: unknown; error?: unknown } | null) : null;
@@ -40,7 +49,7 @@ export async function GET(req: NextRequest) {
   const url = process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
   try {
     const [bal, accts] = await Promise.all([
-      rpc(url, "getBalance", [owner, { commitment: "confirmed" }]) as Promise<{ value: number }>,
+      lamports(url, owner),
       rpc(url, "getTokenAccountsByOwner", [owner, { mint: USDC }, { encoding: "jsonParsed", commitment: "confirmed" }]) as Promise<{
         value: { account: { data: { parsed: { info: { tokenAmount: { amount: string } } } } } }[];
       }>,
@@ -49,14 +58,14 @@ export async function GET(req: NextRequest) {
     // Devnet is read separately: a devnet failure never hides the mainnet figures Buy needs.
     const dev = process.env.DEVNET_RPC_URL || "https://api.devnet.solana.com";
     const devnet = await Promise.all([
-      rpc(dev, "getBalance", [owner, { commitment: "confirmed" }]) as Promise<{ value: number }>,
+      lamports(dev, owner),
       rpc(dev, "getTokenAccountsByOwner", [owner, { mint: TEST_USDC }, { encoding: "jsonParsed", commitment: "confirmed" }]) as Promise<{
         value: { account: { data: { parsed: { info: { tokenAmount: { amount: string } } } } } }[];
       }>,
     ])
-      .then(([b, t]) => ({ lamports: String(b.value), testUsdcRaw: t.value.reduce((s, a) => s + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n).toString() }))
+      .then(([b, t]) => ({ lamports: b, testUsdcRaw: t.value.reduce((s, a) => s + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n).toString() }))
       .catch(() => null);
-    const body: WalletFunds = { owner, usdcRaw: usdc.toString(), lamports: String(bal.value), devnet, readAt: Math.floor(Date.now() / 1000) };
+    const body: WalletFunds = { owner, usdcRaw: usdc.toString(), lamports: bal, devnet, readAt: Math.floor(Date.now() / 1000) };
     return NextResponse.json(body, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const said = e instanceof Error ? e.message : "";
