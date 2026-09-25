@@ -45,15 +45,16 @@ export default function HowItWorks() {
         <section className={`${s.card} ${s.hero}`}>
           <h1>How Othello works</h1>
           <p>
-            A savings circle (ajo, esusu, tontine) where members don&apos;t have to trust each other to keep paying. Friends pay
-            in every round and take the whole pot in turn. What backs the ones already paid is tokenized stock they lock on-chain
-            as a promise.
+            A savings circle (ajo, esusu, tontine) with a promise behind it. Friends pay in every round and take the whole pot
+            in turn. The usual risk is the member who has already taken the pot and stops paying: here, that member has
+            tokenized stock locked on-chain that covers what they still owe.
           </p>
-          {/* Codex T18c r1: state the limits (KNOWN-LIMITS L7, L10) rather than promise a trustless, automatic outcome. */}
+          {/* Codex T18c r1/r2: state the limits (KNOWN-LIMITS L3, L7, L10) rather than promise a trustless, automatic outcome. */}
           <p className={s.note}>
-            What it does not remove: the stock&apos;s issuer can freeze, pause or move its
-            tokens, and every step (paying out a pot, declaring a default, topping up) happens when someone sends the
-            transaction. Nothing runs by itself.
+            What it does not remove: a member who stops paying before their turn can stall the circle,
+            because in this version it waits for them; the stock&apos;s issuer can freeze, pause or move its tokens; and every
+            step (paying out a pot, declaring a default, topping up) happens when someone sends the transaction. Nothing runs by
+            itself.
           </p>
           <p className={s.note}>
             Everything below is the live demo circle on Solana devnet: its money is test USDC and its stock a labelled mirror of

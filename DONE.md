@@ -2836,3 +2836,21 @@ adversary: n/a (review fixes; the quote fix is guarded by tests and a mutation c
 Also merged task/T18-live-circle (r4 implementation-ready) into this branch.
 
 verify: app-quote 12 passing; root and app tsc; git diff --check clean.
+
+## T18c Codex r2: changes required, two findings fixed (2026-09-25)
+reviewed: reviews/t18c-review.md | verdict: changes required (r2) | commit: 155ee2f
+adversary: n/a (review fixes; the quote fix is guarded by tests and a mutation check)
+
+Codex r2 (37 spec files, 215 assertions; tsc, build, diff and secret checks pass):
+1. MAJOR: "members don't have to trust each other to keep paying" still over-claimed: a member who
+   stops before their turn can stall the circle (KNOWN-LIMITS L3). The hero now names the risk the
+   stock covers (a member who has already taken the pot) and the limits note adds the pre-payout
+   stall to the issuer powers (L7) and no keeper (L10).
+2. MINOR: Number(" ") is 0, so a blank impact passed as zero, and whitespace labels passed. The
+   impact must now be a decimal numeral or a finite number, and labels need visible text.
+   tests/app-quote.spec.ts 16 passing (four new cases); with the old checks restored the new cases
+   fail.
+Note from U8: Codex skipped `anchor build` because it reads the local deploy keypair
+(target/deploy/othello-keypair.json, the program id's key for anchor's id check).
+
+verify: app-quote 16 passing; root and app tsc; git diff --check clean.

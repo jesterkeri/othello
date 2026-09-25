@@ -37,9 +37,17 @@ export async function GET(req: NextRequest) {
     // Codex T18c r1: a quote missing any fact is not shown with a default in its place. Every field
     // the panel prints must come from Jupiter, well-formed, or there is no quote.
     const out = typeof q?.outAmount === "string" && /^[0-9]+$/.test(q.outAmount) && BigInt(q.outAmount) > 0n ? q.outAmount : null;
-    const impact = typeof q?.priceImpactPct === "string" || typeof q?.priceImpactPct === "number" ? Number(q.priceImpactPct) : Number.NaN;
+    // Codex T18c r2: Number(" ") is 0, so a blank impact passed as zero. The impact must be a real
+    // decimal numeral (or a finite number), and every route label must have visible text.
+    const DECIMAL = /^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+    const rawImpact = q?.priceImpactPct;
+    const impact =
+      typeof rawImpact === "number" ? rawImpact : typeof rawImpact === "string" && DECIMAL.test(rawImpact) ? Number(rawImpact) : Number.NaN;
     const plan = Array.isArray(q?.routePlan) ? (q!.routePlan as { swapInfo?: { label?: unknown } }[]) : [];
-    const route = plan.map((r) => r?.swapInfo?.label).filter((l): l is string => typeof l === "string" && l.length > 0);
+    const route = plan
+      .map((r) => r?.swapInfo?.label)
+      .filter((l): l is string => typeof l === "string" && l.trim().length > 0)
+      .map((l) => l.trim());
     if (!out || !Number.isFinite(impact) || impact < 0 || plan.length === 0 || route.length !== plan.length) {
       throw new Error("Jupiter returned an incomplete quote");
     }

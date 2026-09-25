@@ -1,81 +1,76 @@
 VERDICT: changes required
 
-Review target: `b223a46` (`f95c4b4..b223a46`). `HEAD` was
-`b223a46990060e506279e2889edfea349a771def`.
+Review target: `155ee2f` (`9ef92da..155ee2f`). `HEAD` was
+`155ee2f28182343ff2f846dff32545fe77d604ad`.
+
+## r1 findings
+
+1. **How It Works — not fully fixed.** The r1 L7 and L10 defects are fixed:
+   `HowItWorks.tsx:52-56` now names issuer powers and permissionless
+   transitions; `:78-80` makes the return conditional on no post-payout
+   default; and `:102-107` correctly describes the SPEC §6 sale, guarantee,
+   pause, pool-insufficient, and pre-payout cases. However, a new broad claim
+   remains at `:48-49`; see the MAJOR finding below.
+2. **`/api/quote` — not fully fixed.** It now rejects missing, non-numeric,
+   negative, and empty-array values; `tests/app-quote.spec.ts` verifies those
+   cases and canonical micro-USDC reporting. But whitespace-only input still
+   passes as a zero impact and a labelled route; see the MINOR finding below.
 
 ## Findings
 
-**MAJOR — INSIDE — `app/src/components/howitworks/HowItWorks.tsx:48-49,72,95-99`:**
-the judge-path explainer promises outcomes the protocol does not guarantee.
-“Nobody has to trust anybody” contradicts KNOWN-LIMITS L7 (a real-xStock
-issuer can freeze, pause, or move the vault) and L10 (a person must submit
-every release/default/top-up transition). “They still own it and get it back
-at the end” is false for a post-payout defaulter: SPEC §6 sells `sell_raw` and
-forfeits guarantee/top-ups. “The rest of the circle keeps getting paid” is
-also unconditional where SPEC §6 permits `pool_insufficient` (the default
-reverts) and an escrow deficit that pauses the next payout until somebody tops
-up. A judge following this new page is told the product eliminates precisely
-the residual risks the design pack says it retains. Make the healthy-case
-return conditional; say surplus collateral returns after default; say a
-shortfall may pause the circle; and state the issuer/permissionless-action
-limits without claiming a trustless automatic outcome.
+**MAJOR — INSIDE — `app/src/components/howitworks/HowItWorks.tsx:48-49`:**
+“members don't have to trust each other to keep paying” contradicts the
+protocol's stated liveness limit. KNOWN-LIMITS L3 and SPEC §5/
+`declare_default` explicitly exclude pre-payout default: a seat that has not
+received may stop contributing, cannot be defaulted, and prevents the current
+pot from being released. The same component acknowledges this at `:106-107`,
+so the page gives both the false general assurance and its exception. For
+example, seat 3 can stop paying in round 1; the other seats must wait for that
+wallet to pay late, despite having no on-chain remedy. State that the protocol
+does not need a trusted coordinator, rather than saying members need not trust
+each other to pay, or qualify the claim with the pre-payout liveness limit.
 
-**MAJOR — INSIDE — `app/src/app/api/quote/route.ts:34-41` and
-`app/src/components/assets/BuyPanel.tsx:73-80`:** a structurally incomplete
-but successful Jupiter response is converted into invented trade information.
-The route accepts any truthy `outAmount`, defaults a missing `priceImpactPct`
-to `0`, and turns a missing `routePlan` into `[]`; the UI consequently says
-`0.00%` impact and `direct`. For example, a compatible upstream response
-`{ outAmount: "100000000" }` returns HTTP 200 and tells the buyer a zero-impact
-direct route although Jupiter supplied neither fact. A non-numeric outAmount
-or impact reaches the UI as `NaN`. This violates the stated “real data or a
-clear error; never a made-up number” rule on a real-money hand-off. Validate a
-decimal-integer out amount, finite non-negative impact, and a non-empty route;
-otherwise return a route-owned 502/clear unavailable state. Canonicalize the
-quoted micro-USDC amount too: `Math.round(usdc * 1e6)` can differ from the
-unrounded `usdc` returned to the UI (for example `1.0000004` is quoted to
-Jupiter as 1.000000 but reported as 1.0000004).
-
-## Scope checks
-
-- The corrected live-round status uses the strict `now > deadline + grace`
-  boundary; the new adversary spec verifies exact-boundary refusal and the
-  next-second control.
-- The Portfolio suppresses its dollar total when any holding has no Jupiter
-  price; its adversary test covers the 429 case.
-- `/api/live` preserves readable catalog entries if one mint cannot decode,
-  and the detail page names that asset as unavailable. The catalog marks
-  paused mints and the detail page suppresses Buy for them.
-- The two external data endpoints most likely to drift, `/api/quote` and
-  `/api/chart`, have no direct route/component regression test. The quote
-  defect above is in that untested surface.
+**MINOR — INSIDE — `app/src/app/api/quote/route.ts:40-43`:** a whitespace-only
+impact and route label satisfy the new structural checks. JavaScript converts
+`Number(" ")` to `0`, and the length check accepts `" "`; consequently a
+successful upstream body such as
+`{outAmount:"1", priceImpactPct:" ", routePlan:[{swapInfo:{label:" "}}]}`
+returns 200, reports a zero impact that Jupiter did not provide, and renders a
+visually blank route. This is still an incomplete quote represented as a fact.
+Require a non-blank numeric representation for string impact values and a
+trimmed non-empty label (and return the trimmed label); add the two adversary
+cases to `tests/app-quote.spec.ts`.
 
 ## U7
 
 - Findings: **INSIDE 2, OUTSIDE 0**. This is indicative, not a rigorous
-  cold-read measurement: the prompt supplied its requirements and known
-  adversary concerns in one turn (protocol U1).
+  cold-read measurement: the prompt supplied its requirements and r1 findings
+  in the same turn (protocol U1).
 
 ## U8 — not checked
 
-- I did not run any ops script, send a transaction, make an RPC/API read, or
-  open any keypair, `.env*` content, `~/.config/solana`, or
-  `~/.config/othello-demo` file.
-- I did not run `anchor build`: its program-id validation automatically reads
-  the local deploy keypair, contrary to the no-keypair rule. No Rust program
-  source changes in this range require it.
-- I did not reproduce wallet signing, browser screenshots, Vercel deployment,
-  Jupiter/GeckoTerminal live behavior, or an audit of the snapshot registry's
-  issuer authority/liquidity/routability claims.
+- I did not run an ops script, send a transaction, make an RPC/API read, or
+  open a keypair, `.env*` content, `~/.config/solana`, or
+  `~/.config/othello-demo`. A presence-only check confirmed root `.env`, root
+  `.env.local`, and `app/.env.local` are absent.
+- I did not run `anchor build`: its program-ID validation automatically reads
+  the local deploy keypair, prohibited by this review. This range changes no
+  Rust program source.
+- I did not reproduce browser/wallet signing, Vercel deployment, or live
+  Jupiter/GeckoTerminal behaviour. The quote route tests stub `fetch`; no
+  request leaves the machine.
+- The original `reviews/t18c-brief.md` is absent from the target following the
+  merge. I used its version at the supplied range base and the r1 review for
+  the original-scope checks.
 
 ## Verification (serial)
 
 ```text
-git checkout b223a46
-HEAD is now at b223a46 Judge-path adversary fixes ...
+git rev-parse HEAD
+155ee2f28182343ff2f846dff32545fe77d604ad
 
-git diff --stat f95c4b4..b223a46
-38 files changed, 1681 insertions(+), 75 deletions(-)
+git diff --stat 9ef92da..155ee2f
+8 files changed, 309 insertions(+), 186 deletions(-)
 
 test ! -e .env && test ! -e .env.local && test ! -e app/.env.local
 exit 0; local env files absent (contents not read).
@@ -87,7 +82,7 @@ exit 0; lockfile up to date, already up to date.
 exit 0; lockfile up to date, already up to date.
 
 for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 120000 "$f"; done
-36 files, one process per file: 203 passing, 0 failing.
+37 files, one process per file: 215 passing, 0 failing.
 
 pnpm exec tsc --noEmit -p tsconfig.json
 exit 0.
@@ -95,7 +90,7 @@ exit 0.
 (cd app && corepack pnpm@10.32.1 exec tsc --noEmit && corepack pnpm@10.32.1 build)
 exit 0; Next.js 15.5.26 compiled, type-checked, and generated 109 pages.
 
-git diff --check f95c4b4..b223a46
+git diff --check 9ef92da..155ee2f
 exit 0.
 
 ./scripts/check-secrets.sh
