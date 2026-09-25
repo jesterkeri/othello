@@ -10,7 +10,7 @@
  * over it; a first read that fails shows the failure and a retry. Nothing is
  * ever filled in.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
 
@@ -47,16 +47,20 @@ export default function LiveCircle() {
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pay, setPay] = useState<Pay>({ phase: "idle" });
+  // Only the latest read may write: a slow response must not put an older circle back.
+  const latest = useRef(0);
 
   const refresh = useCallback(async () => {
+    const mine = ++latest.current;
     try {
       const res = await fetch("/api/circle", { cache: "no-store" });
       const body = (await res.json()) as Live | { error: string };
+      if (mine !== latest.current) return;
       if ("error" in body) throw new Error(body.error);
       setLive(body);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (mine === latest.current) setError(e instanceof Error ? e.message : String(e));
     }
   }, []);
 

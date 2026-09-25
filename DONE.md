@@ -2725,3 +2725,19 @@ verify: app tsc and next build clean (/assets 3.4 kB, /split-lab 58.1 kB); headl
 1280 and 390 px on /split-lab, /assets, /assets/NFLXx and /: no console errors, no horizontal
 overflow, screenshots checked (Split lab autoplay lands on After, 165.00 vs 16.50; NFLXx shows x10,
 1,550,568.48 as wallets show it, every issuer power); check-secrets clean.
+
+## Asset pages adversary: one defect fixed (2026-09-25)
+reviewed: pending, Codex T18 r2/r3
+adversary: ONE defect, fixed (tests/t18-assets-adversary.spec.ts, integrated unchanged: it fails on 0aac57c, passes now). Other attacks failed; one out-of-scope item and one suspicion taken, below.
+
+1. "Change the multiplier" answered "Yes" whenever ScaledUiAmount existed, never reading its
+   optional authority; with the authority revoked (all zeros) nobody can call UpdateMultiplier.
+   mintInfo.ts now decodes scaledUiAuthority, the page shows its holder or "Nobody: authority
+   revoked". app-mint-info asserts all four real mints' authority (S7vY...).
+2. Suspicion taken: every poller (useLiveXStocks, XStocksPanel, LiveCircle) could let a slow
+   response land after a newer one and show older data; each now writes only its latest request's
+   answer.
+3. Out of scope, recorded in OPEN-QUESTIONS: the nav's "How it works" is still a deliberate 404.
+
+verify: t18-assets-adversary 1, app-mint-info 5, app-live 10 passing; app and root tsc; next
+build; check-secrets; git diff --check clean.

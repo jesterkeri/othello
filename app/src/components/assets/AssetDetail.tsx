@@ -184,7 +184,19 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
                         : "Not enabled"
                     }
                   />
-                  <Row label="Change the multiplier (splits, dividends)" note="Scaled UI amount" value={m.info.scaledUi ? "Yes" : "No"} />
+                  <Row
+                    label="Change the multiplier (splits, dividends)"
+                    note="Scaled UI amount authority"
+                    value={
+                      !m.info.scaledUi ? (
+                        <span className={`${s.tag} ${s.tagNo}`}>Not enabled</span>
+                      ) : m.info.scaledUiAuthority ? (
+                        <Key address={m.info.scaledUiAuthority} />
+                      ) : (
+                        <span className={`${s.tag} ${s.tagNo}`}>Nobody: authority revoked</span>
+                      )
+                    }
+                  />
                 </tbody>
               </table>
             </div>

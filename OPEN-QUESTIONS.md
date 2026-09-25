@@ -525,3 +525,8 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       and the production build's browser chunks contain no toml code (grep of app/.next/static: 0
       files). No fixed toml release exists to override to. Revisit if anchor drops it or the app
       ever parses TOML.
+- [ ] "HOW IT WORKS" IS STILL A 404 (asset-page adversary, 2026-09-25). The nav's fifth item (Landing
+      and Shell, app/src/lib/nav.ts) routes to /how-it-works, which does not exist; nav.ts says that
+      is deliberate (the designed 404 explains it). With Split lab and xStocks now built it is the
+      only dead item in a nav judges will click. Joshua's call: build a How it works page, hide
+      unbuilt items (nav.ts already has BUILT), or leave it.

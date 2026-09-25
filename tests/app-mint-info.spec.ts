@@ -36,6 +36,7 @@ describe("asset page: mintInfo.ts on the real xStocks", () => {
       assert.equal(m.transferHook?.program, null, "a transfer hook extension, with no program set");
       assert.equal(m.confidentialTransfers?.autoApprove, false);
       assert.ok(m.scaledUi);
+      assert.ok(m.scaledUiAuthority?.startsWith("S7vY"), "who may change the multiplier");
       assert.deepEqual(
         m.extensions.map((e) => e.type),
         [18, 12, 6, 25, 26, 4, 14, 19],

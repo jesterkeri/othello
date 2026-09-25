@@ -16,16 +16,20 @@ export function useLiveXStocks(): { data: LiveXStocks | null; error: string | nu
 
   useEffect(() => {
     let alive = true;
+    // T18 adversary: a slow response must not land after a newer one. Only
+    // the latest request may write what the page shows.
+    let latest = 0;
     const load = async () => {
+      const mine = ++latest;
       try {
         const res = await fetch("/api/live", { cache: "no-store" });
         const body = (await res.json()) as LiveXStocks | { error: string };
-        if (!alive) return;
+        if (!alive || mine !== latest) return;
         if ("error" in body) throw new Error(body.error);
         setData(body);
         setError(null);
       } catch (e) {
-        if (alive) {
+        if (alive && mine === latest) {
           setData(null);
           setError(e instanceof Error ? e.message : String(e));
         }

@@ -46,6 +46,8 @@ export type MintInfo = {
   extensions: { type: number; name: string }[];
   metadata: { name: string; symbol: string; uri: string } | null;
   scaledUi: ScaledUi | null;
+  /** Who may change the multiplier (UpdateMultiplier); null means nobody can. */
+  scaledUiAuthority: string | null;
   permanentDelegate: string | null;
   pausable: { authority: string | null; paused: boolean } | null;
   /** New token accounts start usable ("initialized") or frozen. */
@@ -93,6 +95,7 @@ export function readMintInfo(data: Uint8Array): MintInfo {
     extensions: [],
     metadata: null,
     scaledUi: readScaledUi(data),
+    scaledUiAuthority: null,
     permanentDelegate: null,
     pausable: null,
     defaultAccountState: null,
@@ -111,6 +114,8 @@ export function readMintInfo(data: Uint8Array): MintInfo {
     const value = data.subarray(off + 4, off + 4 + len);
     info.extensions.push({ type, name: EXTENSION_NAMES[type] ?? `Extension ${type}` });
     if (type === 12 && len >= 32) info.permanentDelegate = optionalKey(value.subarray(0, 32));
+    // T18 adversary: the extension's authority is optional; revoked (all zeros), nobody can change it.
+    if (type === 25 && len >= 32) info.scaledUiAuthority = optionalKey(value.subarray(0, 32));
     if (type === 26 && len >= 33) info.pausable = { authority: optionalKey(value.subarray(0, 32)), paused: value[32] === 1 };
     if (type === 6 && len >= 1) info.defaultAccountState = value[0] === 2 ? "frozen" : "initialized";
     if (type === 14 && len >= 64) info.transferHook = { authority: optionalKey(value.subarray(0, 32)), program: optionalKey(value.subarray(32, 64)) };

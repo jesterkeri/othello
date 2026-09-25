@@ -36,18 +36,21 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
 
   useEffect(() => {
     let alive = true;
+    // Only the latest request may write: a slow response must not land after a newer one.
+    let latest = 0;
     const load = async () => {
+      const mine = ++latest;
       try {
         const res = await fetch("/api/live", { cache: "no-store" });
         const body = (await res.json()) as LiveXStocks | { error: string };
-        if (!alive) return;
+        if (!alive || mine !== latest) return;
         if ("error" in body) throw new Error(body.error);
         setData(body);
         setError(null);
       } catch (e) {
         // S2b: "never a stale or made-up number". A failed refresh drops the
         // previous read rather than leaving it under "Multiplier now".
-        if (alive) {
+        if (alive && mine === latest) {
           setData(null);
           setError(e instanceof Error ? e.message : String(e));
         }
