@@ -24,7 +24,8 @@
  * app/src/components/assets/AssetDetail.tsx rendered with react-dom/server.
  * The only substitutions are the ones a server render needs: CSS modules
  * become class-name stubs, and useLiveXStocks (a useEffect fetch, which a
- * server render never runs) returns the route's own body.
+ * server render never runs) returns the route's own body. Since T18d the
+ * Shell's WalletControl (it needs the wallet provider) also renders as nothing.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -46,6 +47,11 @@ registerHooks({
         url: "data:text/javascript,export default new Proxy({}, { get: (_, k) => String(k) });",
         shortCircuit: true,
       };
+    }
+    // T18d: the pages now sit in the Shell, whose wallet button needs the wallet provider;
+    // it renders as nothing here, as in app-circle-status-adversary.
+    if (specifier === "@/components/othello/WalletConnect" || specifier === "./WalletConnect") {
+      return { url: "data:text/javascript,export function WalletControl() { return null; }", shortCircuit: true };
     }
     if (specifier.startsWith("@/")) {
       const base = resolve(SRC, specifier.slice(2));

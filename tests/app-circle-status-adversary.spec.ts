@@ -31,7 +31,8 @@ registerHooks({
     if (specifier.endsWith(".module.css")) {
       return { url: "data:text/javascript,export default new Proxy({}, { get: (_, k) => String(k) });", shortCircuit: true };
     }
-    if (specifier === "@/components/othello/WalletConnect") {
+    // The Shell imports it as ./WalletConnect, other components by the @/ alias.
+    if (specifier === "@/components/othello/WalletConnect" || specifier === "./WalletConnect") {
       return { url: "data:text/javascript,export function WalletControl() { return null; }", shortCircuit: true };
     }
     if (specifier.startsWith("@/")) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { ThemeRoot } from "@/components/theme/ThemeRoot";
+import Shell from "@/components/othello/Shell";
 import shell from "@/components/circle/Circle.module.css";
 import {
   coverageLabel,
@@ -52,7 +52,7 @@ export default function Position({
 
   if (!m) {
     return (
-      <ThemeRoot className={shell.root}>
+      <Shell active="Circles">
         <div className={shell.frame}>
           <div className={s.wrap}>
             <h1 className={`${shell.display} ${s.headline}`}>No such seat</h1>
@@ -61,7 +61,7 @@ export default function Position({
             </Link>
           </div>
         </div>
-      </ThemeRoot>
+      </Shell>
     );
   }
 
@@ -132,23 +132,22 @@ export default function Position({
     },
     {
       label: "Last checked",
-      value: `${formatDuration(d.coverageAge)} ago`,
-      note: "Coverage is only as fresh as the last update.",
+      // last_coverage_at is 0 until the first recompute; "20,000 days ago" would be a lie (as in Circle.tsx).
+      value: c.lastCoverageAt === 0 ? "Not yet" : `${formatDuration(d.coverageAge)} ago`,
+      note:
+        c.lastCoverageAt === 0
+          ? "First computed when a pot is released or coverage is updated."
+          : "Coverage is only as fresh as the last update.",
     },
   ];
 
   return (
-    <ThemeRoot className={shell.root}>
+    <Shell active="Circles">
       <div className={shell.frame}>
         <header className={shell.nav}>
-          <span className={shell.logo} aria-label="Othello">
-            O
-          </span>
           <Link href={`/circle/${stateKey}`} className={shell.back}>
             <span aria-hidden>{"←"}</span> Back
           </Link>
-          <span className={shell.navSpacer} />
-          <span className={`${shell.viewerPill} ${shell.micro}`}>Viewing, no wallet</span>
         </header>
 
         <div className={s.wrap}>
@@ -240,6 +239,6 @@ export default function Position({
           </nav>
         </div>
       </div>
-    </ThemeRoot>
+    </Shell>
   );
 }

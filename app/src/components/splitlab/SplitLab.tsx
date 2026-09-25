@@ -175,8 +175,9 @@ export default function SplitLab({ data = NFLX_RECORDED, autoplay = true, initia
     </dl>
   );
 
+  // Split lab is part of How it works in the five-item nav (Joshua, 2026-09-25).
   return (
-    <Shell active="Split lab" surface="gutter">
+    <Shell active="How it works" surface="gutter">
       <MotionConfig reducedMotion="user">
         <motion.div className={`${s.grid} ${data ? '' : s.gridEmpty}`} initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.06 } } }}>
 

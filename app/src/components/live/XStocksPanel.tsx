@@ -96,21 +96,21 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
             <tbody>
               {data.mints.filter((m) => m.accepted).map((m) => (
                 <tr key={m.address}>
-                  <td>
+                  <td data-label="xStock">
                     <a href={`/assets/${m.symbol}`} className={s.seatName}>
                       <span className={s.link}>{m.symbol}</span>
                       <span className={s.seatAddr}>{m.name}</span>
                     </a>
                   </td>
-                  <td>
+                  <td data-label="Mint (mainnet)">
                     <a className={s.link} href={explorer("address", m.address, "mainnet")} target="_blank" rel="noreferrer">
                       {shortAddress(m.address)}
                     </a>
                   </td>
                   {/* By this browser's clock at render, not the server's cached moment,
                       so a change that takes effect mid-cache shows at once. */}
-                  <td className={s.num}>{mult(multiplierAt(m, Date.now() / 1000))}</td>
-                  <td>
+                  <td data-label="Multiplier now" className={s.num}>{mult(multiplierAt(m, Date.now() / 1000))}</td>
+                  <td data-label="Last scheduled change">
                     {change(m)}
                     {m.symbol === "NFLXx" && (
                       <p className={s.panelNote}>

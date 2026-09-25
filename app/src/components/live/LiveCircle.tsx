@@ -16,7 +16,7 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 
 import Circle from "@/components/circle/Circle";
 import s from "@/components/circle/Circle.module.css";
-import { ThemeRoot } from "@/components/theme/ThemeRoot";
+import Shell from "@/components/othello/Shell";
 import { formatUsdc, seatSet } from "@/lib/circle";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer } from "@/lib/devnet";
@@ -96,7 +96,7 @@ export default function LiveCircle() {
 
   if (!live) {
     return (
-      <ThemeRoot className={s.root}>
+      <Shell active="Circles">
         <div className={s.frame}>
           <div className={s.banners} style={{ padding: 24 }}>
             {error ? (
@@ -115,7 +115,7 @@ export default function LiveCircle() {
             )}
           </div>
         </div>
-      </ThemeRoot>
+      </Shell>
     );
   }
 

@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import s from "@/components/circle/Circle.module.css";
 import Join from "@/components/join/Join";
 import Position from "@/components/position/Position";
-import { ThemeRoot } from "@/components/theme/ThemeRoot";
+import Shell from "@/components/othello/Shell";
 import type { LiveCircle } from "@/lib/live";
 
 export default function LiveSeat({ kind, seat }: { kind: "position" | "join"; seat: number }) {
@@ -35,13 +35,13 @@ export default function LiveSeat({ kind, seat }: { kind: "position" | "join"; se
 
   if (!live) {
     return (
-      <ThemeRoot className={s.root}>
+      <Shell active="Circles">
         <div className={s.frame}>
           <div className={s.banners} style={{ padding: 24 }}>
             <p className={s.panelNote}>{error ? `Live data unavailable: ${error}` : "Reading the demo circle from devnet…"}</p>
           </div>
         </div>
-      </ThemeRoot>
+      </Shell>
     );
   }
 

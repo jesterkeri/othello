@@ -134,12 +134,12 @@
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 @media (max-width: 1100px) { .sheet { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 760px), (max-height: 620px) {
+@media (max-width: 759px), (max-height: 620px) {
   .grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: 'members' 'promise' 'settings'; }
   .rows, .sheet { overflow: visible; }
   .chart { min-height: 170px; }
 }
-@media (max-width: 760px) {
+@media (max-width: 759px) {
   .headActions { display: none; }
   .phoneBar { position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 50; display: flex; gap: 8px; border: 3px solid var(--line); border-radius: 999px; background: #FBF9F2; padding: 6px; }
   .phoneBar .ghost { color: #0B0B0B; }

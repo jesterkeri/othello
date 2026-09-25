@@ -1,24 +1,30 @@
-/* Shell: frame, icon rail, panel, topbar, colours menu. Tokens come from innerVars() in theme.ts. */
-.root { min-height: 100vh; height: 100vh; box-sizing: border-box; padding: clamp(8px, 1.4vw, 18px); background: var(--desk); font-family: var(--font-jakarta, 'Plus Jakarta Sans'), Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; transition: background .3s; }
+/* Shell: frameless (Portfolio.dc.html handoff). The page is --panel edge to edge; the rail floats
+   over it on desktop and becomes the bottom pill on phone. Tokens come from innerVars() in theme.ts.
+   No transitions on background or color anywhere here: background iframes never finish them and keep
+   the old colours (handoff rule). */
+.root { min-height: 100vh; overflow-x: clip; background: var(--panel); color: var(--onPanel); font-family: var(--font-jakarta, 'Plus Jakarta Sans'), Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
 .root *, .root *::before, .root *::after { box-sizing: border-box; }
 :where(.root) button { font-family: inherit; cursor: pointer; color: inherit; }
 .root button:disabled { cursor: default; opacity: .28; }
 .root :focus-visible { outline: 3px solid var(--line); outline-offset: 3px; }
 
-.frame { max-width: 1440px; height: 100%; margin: 0 auto; border: 3px solid var(--line); border-radius: clamp(24px, 3.2vw, 44px); background: var(--frame); color: #FBF9F2; display: flex; }
-
-.rail { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 22px 12px 22px 16px; }
-.logo { width: 48px; height: 48px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 21px; }
-.railNav { display: flex; flex-direction: column; gap: 8px; }
-.railBtn { width: 52px; height: 52px; border: 3px solid var(--line); border-radius: 999px; background: transparent; color: var(--railMuted); display: flex; align-items: center; justify-content: center; padding: 0; transition: background .15s, color .15s; }
-.railBtn:hover { background: var(--railHover); color: #FBF9F2; }
-.railOn, .railOn:hover { background: #FBF9F2; color: #0B0B0B; }
+/* The floating rail (desktop). Its glass follows the MODE, not the palette. */
+.rail { position: fixed; left: 18px; top: 18px; bottom: 18px; width: 76px; z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0 12px; border: 3px solid #0B0B0B; border-radius: 999px; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5); background: rgba(11, 11, 11, .82); color: #FBF9F2; }
+.root[data-mode='light'] .rail { background: rgba(251, 249, 242, .82); color: #0B0B0B; }
+.logo { flex: 0 0 auto; width: 46px; height: 46px; margin-bottom: 10px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 20px; }
+.railNav { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.railBtn { width: 46px; height: 46px; border: 3px solid transparent; border-radius: 16px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; padding: 0; }
+.railBtn:hover { border-color: currentColor; }
+.railOn, .railOn:hover { background: var(--clay); color: var(--clayInk); border-color: #0B0B0B; }
 .railLabel, .logoTop { display: none; }
+.railBottom { margin-top: auto; position: relative; }
+.paletteRail { width: 46px; height: 46px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--card); color: #FBF9F2; display: flex; align-items: center; justify-content: center; padding: 0; }
 
-.panel { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; margin: 4px 4px 4px 0; border: 2px solid var(--line); border-radius: clamp(20px, 2.6vw, 34px); background: var(--panel); color: var(--onPanel); padding: clamp(18px, 2vw, 24px) clamp(18px, 2.2vw, 28px) clamp(22px, 2.6vw, 32px); display: flex; flex-direction: column; gap: 14px; transition: background .3s; }
+/* The page: full width, no frame. Desktop content clears the rail. */
+.panel { width: 100%; min-height: 100vh; border: 0; border-radius: 0; background: var(--panel); color: var(--onPanel); padding: clamp(18px, 2vw, 24px) clamp(18px, 2.2vw, 28px) clamp(22px, 2.6vw, 32px) calc(112px + clamp(0px, 0.4vw, 6px)); display: flex; flex-direction: column; gap: 14px; }
 
-/* Split lab handoff: surface="gutter" drops the panel fill so colour cards sit on --gutter. */
-.panelGutter { background: var(--gutter); padding: 6px; gap: 6px; }
+/* Split lab handoff: surface="gutter" lays colour cards on --gutter. */
+.panelGutter { background: var(--gutter); padding: 6px 6px 6px 112px; gap: 6px; }
 .panelGutter .topbar { padding: 10px 12px 6px; }
 .panelGutter .devnetText { color: var(--gutterMuted); }
 .panelGutter .palette { background: var(--tile); }
@@ -30,7 +36,8 @@
 .dots span:nth-child(n+4) { opacity: .4; }
 .devnetText { margin: 0; flex: 1 1 240px; min-width: 0; font-size: 12.5px; line-height: 1.45; font-weight: 600; color: var(--panelMuted); }
 .actions { display: flex; gap: 8px; align-items: center; margin-left: auto; position: relative; }
-.palette { width: 46px; height: 46px; border: 3px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--onPanel); display: flex; align-items: center; justify-content: center; padding: 0; }
+/* The top bar's palette button is the phone one; on desktop the rail carries it. */
+.palette { display: none; width: 46px; height: 46px; border: 3px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--onPanel); align-items: center; justify-content: center; padding: 0; }
 
 .menu { position: absolute; top: 56px; right: 0; z-index: 60; width: min(320px, 86vw); border: 3px solid var(--line); border-radius: 26px; background: #FBF9F2; color: #0B0B0B; padding: 16px; display: flex; flex-direction: column; gap: 8px; animation: rowIn .25s cubic-bezier(.2, 1.4, .35, 1) both; }
 .menuLabel { margin-top: 4px; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #5C594F; }
@@ -50,26 +57,38 @@
 .modes button { flex: 1 1 0; border: 0; border-radius: 999px; background: transparent; min-height: 40px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .modes .modeOn { background: #0B0B0B; color: #FBF9F2; }
 
+/* The rail's popover opens to the RIGHT of the rail. */
+.menuRail { top: auto; right: auto; left: calc(100% + 16px); bottom: -6px; }
+
 @keyframes rowIn { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 760px), (max-height: 620px) {
-  .root { height: auto; }
-  .frame { height: auto; flex-direction: column; }
-  /* Split lab handoff: phone nav floats as a pill 22px from the bottom; the active item widens and shows its label. */
-  .rail { position: fixed; left: 22px; right: 22px; bottom: 22px; z-index: 40; flex-direction: row; gap: 0; padding: 6px; border: 3px solid var(--line); border-radius: 999px; background: #0B0B0B; }
-  .rail > .logo { display: none; }
+@media (max-width: 759px) {
+  /* Phone: the bottom nav pill, 14px inset; the active item is a wide clay pill with its label. */
+  .rail { top: auto; left: 14px; right: 14px; bottom: 14px; width: auto; flex-direction: row; gap: 0; padding: 6px; background: #0B0B0B; color: #FBF9F2; }
+  .root[data-mode='light'] .rail { background: #0B0B0B; color: #FBF9F2; }
+  .rail > .logo, .railBottom { display: none; }
   .railNav { flex: 1 1 auto; flex-direction: row; justify-content: space-between; gap: 4px; }
-  .railBtn { min-width: 44px; width: auto; flex: 0 1 52px; }
-  .railOn, .railOn:hover { flex: 1 1 auto; gap: 9px; padding: 0 16px; background: var(--acid); color: var(--acidInk); }
+  .railBtn { min-width: 44px; width: auto; flex: 0 1 52px; border-radius: 999px; }
+  .railOn, .railOn:hover { flex: 1 1 auto; gap: 9px; padding: 0 16px; border-radius: 999px; }
   .railOn .railLabel { display: inline; font-size: 15px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
   .logoTop { display: flex; flex: 0 0 auto; width: 40px; height: 40px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 18px; }
-  .devnetText { order: 3; flex-basis: 100%; }
+  .palette { display: flex; }
+  /* Row one: logo and the buttons. Row two: the network chip and its note, side by side. */
+  .actions { order: 2; }
+  .devnet { order: 3; }
+  .devnetText { order: 4; flex: 1 1 0; }
   .topbar { gap: 8px; }
   .dots { display: none; }
   .devnet { padding: 6px 11px; }
   .devnetFull { display: none; }
-  .panel { overflow: visible; margin: 0; border: 0; border-radius: clamp(20px, 2.6vw, 34px); padding: 14px 12px 112px; }
+  .panel { padding: 14px 12px 112px; }
   .panelGutter { padding: 6px 6px 100px; }
   .panelGutter .topbar { padding: 8px 6px 4px; }
 }
-@media (prefers-reduced-motion: reduce) { .root * { animation: none !important; transition: none !important; } }
+@media (max-width: 400px) {
+  /* The five-item pill fits a 360px screen: tighter buttons, a smaller active label. */
+  .railBtn { min-width: 40px; flex-basis: 44px; }
+  .railOn, .railOn:hover { padding: 0 11px; gap: 6px; }
+  .railOn .railLabel { font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .root *, .root *::before, .root *::after { animation: none !important; transition: none !important; } }

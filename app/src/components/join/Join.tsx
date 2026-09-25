@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { ThemeRoot } from "@/components/theme/ThemeRoot";
+import Shell from "@/components/othello/Shell";
 import shell from "@/components/circle/Circle.module.css";
 import s from "@/components/ui/Screen.module.css";
 import {
@@ -57,7 +57,7 @@ export default function Join({
 
   if (!m) {
     return (
-      <ThemeRoot className={shell.root}>
+      <Shell active="Circles">
         <div className={shell.frame}>
           <div className={s.wrap}>
             <h1 className={`${shell.display} ${s.headline}`}>No such seat</h1>
@@ -66,7 +66,7 @@ export default function Join({
             </Link>
           </div>
         </div>
-      </ThemeRoot>
+      </Shell>
     );
   }
 
@@ -83,17 +83,12 @@ export default function Join({
   const lockRaw = m.lockedRaw > 0 ? m.lockedRaw : suggestedLockRaw;
 
   return (
-    <ThemeRoot className={shell.root}>
+    <Shell active="Circles">
       <div className={shell.frame}>
         <header className={shell.nav}>
-          <span className={shell.logo} aria-label="Othello">
-            O
-          </span>
           <Link href={`/circle/${stateKey}`} className={shell.back}>
             <span aria-hidden>{"←"}</span> Back
           </Link>
-          <span className={shell.navSpacer} />
-          <span className={`${shell.viewerPill} ${shell.micro}`}>Viewing, no wallet</span>
         </header>
 
         <div className={s.wrap}>
@@ -230,6 +225,6 @@ export default function Join({
           </nav>
         </div>
       </div>
-    </ThemeRoot>
+    </Shell>
   );
 }

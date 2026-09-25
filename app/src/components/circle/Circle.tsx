@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { WalletControl } from "@/components/othello/WalletConnect";
-import { ThemeRoot } from "@/components/theme/ThemeRoot";
+import Shell from "@/components/othello/Shell";
 import {
   coverageLabel,
   derive,
@@ -55,16 +55,6 @@ export type CircleProps = {
   stateKey: CircleStateKey | "demo";
   live?: LiveProps;
 };
-
-function Dots() {
-  return (
-    <span className={s.dotRun} aria-hidden>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <span key={i} />
-      ))}
-    </span>
-  );
-}
 
 function Banner({
   kind,
@@ -146,28 +136,11 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
   const gateNeeded = d.remains + c.nextGateShortBy;
 
   return (
-    <ThemeRoot className={s.root}>
+    <Shell active="Circles">
       <div className={s.frame}>
-        <header className={s.nav}>
-          <span className={s.logo} aria-label="Othello">
-            O
-          </span>
-          <Link href="/" className={s.back}>
-            <span aria-hidden>{"←"}</span> Back
-          </Link>
-          <span className={s.navSpacer} />
-          {live ? (
-            <WalletControl />
-          ) : (
-            <span className={`${s.viewerPill} ${s.micro}`}>Viewing, no wallet</span>
-          )}
-        </header>
 
+        {/* The Shell's top bar carries the Devnet chip; this line says which circle and when. */}
         <div className={s.devnet}>
-          <span className={s.devnetPill}>
-            <Dots />
-            <span className={s.micro}>Devnet demo</span>
-          </span>
           {live ? (
             <p className={s.devnetText}>
               Live from devnet:{" "}
@@ -461,17 +434,11 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
                   const isNow = isActive && m.turn === c.round;
                   return (
                     <tr key={m.address}>
-                      <td>
-                        {/* design/FLOWS.md §4: member row -> [Position]. The
-                            Position place reads fixtures, so a live row links
-                            to the member's account on the explorer instead. */}
+                      <td data-label="Seat">
+                        {/* design/FLOWS.md §4: member row -> [Position]. The live
+                            circle's seat pages read the chain too (LiveSeat, T18c). */}
                         <Link
-                          href={
-                            live
-                              ? explorer("address", m.address)
-                              : `/circle/${stateKey}/position/${m.turn + 1}`
-                          }
-                          target={live ? "_blank" : undefined}
+                          href={`/circle/${stateKey}/position/${m.turn + 1}`}
                           className={s.seatCell}
                         >
                           <span className={`${s.seatDisc} ${isNow ? s.seatDiscNow : ""}`}>
@@ -488,11 +455,9 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
                           </span>
                         </Link>
                       </td>
-                      <td>
+                      <td data-label="This round">
                         {defaulted ? (
                           <span className={`${s.tag} ${s.tagGone}`}>Defaulted</span>
-                        ) : !joined && live ? (
-                          <span className={`${s.tag} ${s.tagNo}`}>Not joined</span>
                         ) : !joined ? (
                           <Link
                             href={`/circle/${stateKey}/join/${m.turn + 1}`}
@@ -510,23 +475,23 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
                           <span className={`${s.tag} ${s.tagDue}`}>Due</span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Pot">
                         <span className={`${s.tag} ${received ? s.tagDone : s.tagNo}`}>
                           {received ? "Received" : isNow ? "Receiving" : "Waiting"}
                         </span>
                       </td>
-                      <td className={s.num}>{joined ? formatRaw(m.lockedRaw) : "—"}</td>
-                      <td className={s.num}>
+                      <td data-label={`Locked ${c.stockSymbol}`} className={s.num}>{joined ? formatRaw(m.lockedRaw) : "—"}</td>
+                      <td data-label="Stock cover" className={s.num}>
                         {!joined
                           ? "—"
                           : d.repricing
                             ? "Not countable"
                             : `${formatUsdc(stockCover(m, c))} ${USDC_SUFFIX}`}
                       </td>
-                      <td className={s.num}>
+                      <td data-label="Owed" className={s.num}>
                         {joined ? `${formatUsdc(obligations(c, m))} ${USDC_SUFFIX}` : "—"}
                       </td>
-                      <td className={s.num}>
+                      <td data-label="Coverage" className={s.num}>
                         {!joined ? "—" : d.repricing ? "Not countable" : coverageLabel(c, m)}
                       </td>
                     </tr>
@@ -576,6 +541,6 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
           )}
         </div>
       </div>
-    </ThemeRoot>
+    </Shell>
   );
 }

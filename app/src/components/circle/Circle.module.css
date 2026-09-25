@@ -7,7 +7,9 @@
 :where(.root) button { font-family: inherit; cursor: pointer; color: inherit; }
 :where(.root) a { color: inherit; text-decoration: none; }
 
-.frame { max-width: 1440px; margin: 0 auto; border: 5px solid var(--line); border-radius: clamp(24px, 3.2vw, 44px); background: var(--paper); color: var(--ink); }
+/* Inside the Shell (frameless handoff): the page is the Shell's --panel, so the frame is only a width. */
+.frame { --line: #0B0B0B; max-width: 1440px; margin: 0 auto; color: var(--ink); }
+:where(.frame) a { color: inherit; text-decoration: none; }
 
 .display { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; text-transform: uppercase; letter-spacing: -.02em; line-height: .9; }
 .micro { font-size: 9.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
@@ -132,6 +134,30 @@
 .chartArea { width: 100%; height: clamp(220px, 32vw, 340px); }
 .ranges { display: flex; gap: 5px; }
 .rangeOn { background: var(--line); color: var(--paper); }
+
+/* Phone: nothing may sit off-screen. Tables become labelled cards (each td carries data-label),
+   the round timeline wraps, and long values wrap instead of pushing the page wide. */
+@media (max-width: 759px) {
+  .timeline { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); overflow: visible; }
+  .round { min-width: 0; }
+  .stockPill { white-space: normal; }
+  .row { flex-wrap: wrap; }
+  .rowValue { white-space: normal; overflow-wrap: anywhere; text-align: right; margin-left: auto; }
+  .num { white-space: normal; }
+  .tableWrap { overflow: visible; }
+  .table { min-width: 0; }
+  .table thead { display: none; }
+  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+  .table tr { padding: 10px 14px; border-bottom: 3px solid var(--line); }
+  .table tr:last-child { border-bottom: 0; }
+  .table td { padding: 6px 0; border-bottom: 0; overflow-wrap: anywhere; }
+  .table td[data-label] { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; text-align: right; }
+  .table td[data-label]::before { content: attr(data-label); flex: 0 0 auto; max-width: 45%; text-align: left; font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
+  .table td[data-label]:first-child { display: block; text-align: left; }
+  .table td[data-label] { flex-wrap: wrap; }
+  .table td[data-label] > p { flex: 1 0 100%; margin: 0; text-align: left; }
+  .table td[data-label]:first-child::before { content: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .root *, .root *::before, .root *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }

@@ -198,6 +198,12 @@
 @keyframes sheen { from { background-position: -140% 0; } to { background-position: 240% 0; } }
 @keyframes tick { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 
+/* Phone: the tab row wraps instead of hiding tabs off the right edge. */
+@media (max-width: 759px) {
+  .tabs { flex-wrap: wrap; justify-content: center; border-radius: 26px; overflow-x: visible; }
+  .tab { padding: 10px 12px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .root *, .root { animation: none !important; transition: none !important; }
 }
