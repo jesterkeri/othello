@@ -38,7 +38,8 @@
 .realMoney { border: 2px solid #0B0B0B; border-radius: 999px; background: var(--clay); color: var(--clayInk); padding: 3px 10px; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .buyCard :global(input) { background: #FBF9F2; color: #0B0B0B; }
 .buyCard p, .buyCard label, .buyCard span { color: inherit; }
-.buyCard a[href^="https://jup.ag"] { align-self: stretch !important; display: flex; align-items: center; justify-content: center; min-height: 56px; border: 3px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; box-shadow: none; font-size: 14px; }
+.buyCard button[data-buy]:disabled { opacity: .6; }
+.buyCard button[data-buy] { align-self: stretch !important; display: flex; align-items: center; justify-content: center; min-height: 56px; border: 3px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; box-shadow: none; font-size: 14px; }
 
 .outlined { align-self: flex-start; border: 2px solid currentColor; border-radius: 999px; padding: 3px 11px; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .multBig { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 68%; font-weight: 900; font-size: clamp(54px, 6vw, 96px); line-height: .85; font-variant-numeric: tabular-nums; }
