@@ -2054,3 +2054,30 @@ t08 7, t09 5+12, t09b 6, t10 9+11, t11 6, t12 4, t13 2, t14 10+13, t15 4+11, t16
 cargo test 57 passed default, 56 passed --features devnet; clippy -D warnings clean on both;
 cargo fmt --check clean; tsc clean; check-secrets "no credential-shaped strings in client output".
 Deploy cost measured: othello.so 695,216 bytes; with PREFLIGHT's 1.2x max-len, 4.23891456 SOL.
+
+## T23 Devnet deploy (Joshua, 2026-09-25)
+reviewed: n/a (deploys the binary Codex S2 r1 reviewed at b62565b; byte identity below is the check)
+adversary: n/a (no code change)
+
+Joshua ran, in his own terminal:
+`solana program deploy target/devnet/othello.so --program-id ~/myvscode_linux/othello/target/deploy/othello-keypair.json --max-len 832876 --url devnet`
+-> Program Id: DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT
+   Signature: 5eM4B1DLD13pXkPZ5Ej8jhgorFPYiG3KLb2arYBJ6u9MBoTedfWLYAWeFX4MBhCExYR74bdEE5ZoMU7xa7H7Cuoo
+
+A first attempt with `--use-rpc` (my suggestion) got 0% of 686 writes confirmed: the public
+devnet RPC answered 429 Too Many Requests. Its buffer 9pXpn69eu6KuSAgYax1W6igSLX7eDtvALFWAzdu17WXv
+was closed (AccountNotFound afterwards) and its lamports returned. Its recovery phrase was pasted in
+the conversation; the account no longer exists, so the phrase controls nothing.
+
+verify: `solana program show DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT --url devnet`
+  Owner: BPFLoaderUpgradeab1e11111111111111111111111
+  ProgramData Address: 5p9ZMGR2juLbofPvf2qEzriRMhuedDy4NFHgF47KTpt8
+  Authority: HXN8oAJFnbaeGLwLdJ129qwSrXUv4xfZ2Em8myu4rciy
+  Last Deployed In Slot: 503743094
+  Data Length: 832876 (0xcb56c) bytes
+  Balance: 4.23188892 SOL
+byte identity (`solana program dump`, first 694,064 bytes vs target/devnet/othello.so):
+  local bedc5c8fbe99b360cbb9ce313162b20730b9b41a928e1d8c57dd4f215a3e7ec5
+  chain bedc5c8fbe99b360cbb9ce313162b20730b9b41a928e1d8c57dd4f215a3e7ec5
+  the remaining 138,812 bytes of max-len headroom: 0 nonzero bytes
+admin balance after: 0.7593544 SOL
