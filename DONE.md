@@ -2591,3 +2591,36 @@ verify: tests/t25-demo-play.spec.ts 3 passing on target/devnet/othello.so: round
 scripted seats plus seat 2 through the app's contributeIx, pot 250 to seat 1; split scheduled and
 effective with H 132 before and after; round 2 paid, pot 250 to seat 2; unfunded release refused
 naming seats 2 and 4 with nothing sent; a second payRound sends nothing. Root tsc clean.
+
+## T18 adversary fixes + shared devnet reads (2026-09-25)
+reviewed: pending, Codex, together with T18, T24, T25
+adversary: ONE defect, fixed (tests/t18-adversary.spec.ts, integrated unchanged). Its three lower findings also taken.
+
+1. DEFECT: the reader fixed the mint's multiplier with Math.round(m * 1e9); the program floors
+   from the f64 bits (SPEC I5, valuation.rs). For the real AAPLx (1.0026642075893797) the app had
+   1002664208 against the program's 1002664207, so the screen said Repricing while the program
+   quoted the prices as current. scaledUi.ts's toFixed1e9 is now a bit-exact port of
+   decode_multiplier_fixed and refuses the same values (negative, -0, NaN, infinity, past u64,
+   flooring to 0). New test: I5 vectors 1002664207 and 1003269012, T02's 1.0000003 -> 1000000299,
+   and seven refused values. Mutation (Math.round back): t18-adversary 1 failing, app-live 1 failing.
+2. The real-xStocks panel kept the previous read under "Multiplier now" after a failed refresh; it
+   now drops it and shows only "Live data unavailable" (S2b: never a stale number). "Multiplier
+   now" is computed in the browser at render, not taken from the server's 60 s cache.
+3. A malformed MAINNET_RPC_URL put the keyed URL in the 502 body via fetch's own error text. The
+   routes now return only their own words. Checked with sentinels: MAINNET_RPC_URL and
+   DEVNET_RPC_URL set to "*.example.com/?api-key=SENTINEL..." -> {"error":"mainnet RPC
+   unreachable"} and {"error":"devnet RPC unreachable or rate-limited"}, HTTP 502, no sentinel.
+4. readScaledUi now requires account type 1 (Mint) at byte 165.
+
+Also: /api/circle reads the demo circle on the server (DEVNET_RPC_URL, server-only, default public
+devnet), cached 4 s and shared, so several viewers do not each hit public devnet's rate limit (429s
+were seen during the seed). The browser polls it every 5 s; Contribute is still sent by the
+member's own wallet. Known limit: which multiplier is "in force" is chosen by the server's clock,
+not the chain's; they can differ by seconds around a split.
+
+verify: app-live 10, app-contribute 3, t18-adversary 1, t25-demo-play 3, t24-seed-demo 6,
+t24-adversary 3, s2-devnet-build 7, s2-devnet-mints 6, s2-adversary 2 (each file in its own
+process, 0 failing); GET /api/circle 200 x3 (Active, round 1, joined 0b11111, multiplier 1e9);
+headless Chromium at 1280/390 px through /api/circle: no console errors, no overflow; next build;
+app and root tsc; check-secrets clean; client chunks naming DEVNET_RPC_URL, MAINNET_RPC_URL or
+toml: 0.

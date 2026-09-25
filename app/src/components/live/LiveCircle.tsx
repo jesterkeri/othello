@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * T18: the demo circle, live from devnet. Reads through lib/live.ts every
- * REFRESH_MS, renders the ordinary Circle screen in live mode, and gives a
+ * T18: the demo circle, live from devnet. Reads through /api/circle (the
+ * server reads devnet once and shares it) every REFRESH_MS, renders the ordinary Circle screen in live mode, and gives a
  * connected member one action: pay this round (`contribute`), signed in their
  * own wallet.
  *
@@ -20,13 +20,12 @@ import { ThemeRoot } from "@/components/theme/ThemeRoot";
 import { formatUsdc, seatSet } from "@/lib/circle";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer } from "@/lib/devnet";
-import { readLiveCircle, type LiveCircle as Live } from "@/lib/live";
+import type { LiveCircle as Live } from "@/lib/live";
 import { multiplierAt } from "@/lib/scaledUi";
 
 import XStocksPanel from "./XStocksPanel";
 
-const REFRESH_MS = 8_000;
-const STOCK_WORD = "NFLXx mirror";
+const REFRESH_MS = 5_000;
 const USDC_WORD = "test USDC";
 
 type Pay =
@@ -51,12 +50,15 @@ export default function LiveCircle() {
 
   const refresh = useCallback(async () => {
     try {
-      setLive(await readLiveCircle(connection, DEMO_CIRCLE, STOCK_WORD));
+      const res = await fetch("/api/circle", { cache: "no-store" });
+      const body = (await res.json()) as Live | { error: string };
+      if ("error" in body) throw new Error(body.error);
+      setLive(body);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [connection]);
+  }, []);
 
   useEffect(() => {
     void refresh();

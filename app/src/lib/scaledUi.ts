@@ -40,6 +40,8 @@ function view(data: Uint8Array): DataView {
 /** The extension's value, or null if the mint has none (or is not Token-2022). */
 export function readScaledUi(data: Uint8Array): ScaledUi | null {
   if (data.length <= TLV_START) return null;
+  // Account type at 165: 1 = Mint. Anything else is not a Token-2022 mint.
+  if (data[165] !== 1) return null;
   const v = view(data);
   let off = TLV_START;
   while (off + 4 <= data.length) {
@@ -71,7 +73,35 @@ export function multiplierAt(s: ScaledUi, now: number): number {
   return now >= s.effectiveAt ? s.newMultiplier : s.multiplier;
 }
 
-/** Fixed-point x1e9, the unit the program and CircleView use. */
+/**
+ * floor(m x 1e9), EXACTLY, from the f64's bits: a port of the program's
+ * decode_multiplier_fixed (programs/othello/src/valuation.rs, SPEC I5).
+ *
+ * T18 adversary: this used to be Math.round(m * 1e9), which puts AAPLx's real
+ * 1.0026642075893797 at 1002664208 where the program has 1002664207, so the
+ * screen said Repricing while the program quoted the prices as current. The
+ * app must land on the program's integer, not a nearby one.
+ *
+ * Throws, as the program refuses, for anything that cannot be a live
+ * multiplier: negative (including -0), NaN, infinity, past u64, or flooring to 0.
+ */
 export function toFixed1e9(m: number): number {
-  return Math.round(m * 1e9);
+  const v = new DataView(new ArrayBuffer(8));
+  v.setFloat64(0, m, true);
+  const bits = v.getBigUint64(0, true);
+  const invalid = () => new Error(`Multiplier ${m} cannot be a live multiplier (the program refuses it)`);
+
+  if (bits & 0x8000_0000_0000_0000n) throw invalid();
+  const exponentField = Number((bits >> 52n) & 0x7ffn);
+  const mantissa = bits & 0x000f_ffff_ffff_ffffn;
+  if (exponentField === 0x7ff) throw invalid();
+
+  const [significand, exponent] =
+    exponentField === 0 ? [mantissa, 1 - 1023 - 52] : [mantissa | (1n << 52n), exponentField - 1023 - 52];
+  const scaled = significand * 1_000_000_000n;
+  const fixed = exponent >= 0 ? scaled << BigInt(exponent) : scaled >> BigInt(-exponent);
+
+  if (fixed === 0n || fixed > 0xffff_ffff_ffff_ffffn) throw invalid();
+  if (fixed > BigInt(Number.MAX_SAFE_INTEGER)) throw invalid();
+  return Number(fixed);
 }

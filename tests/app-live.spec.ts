@@ -18,7 +18,7 @@ import { REPO } from "./artifacts.ts";
 import { derive, stockCover } from "../app/src/lib/circle.ts";
 import { DEMO_CIRCLE, LABELS, NFLXX_MIRROR, PROGRAM_ID, REAL_XSTOCKS, TEST_USDC } from "../app/src/lib/devnet.ts";
 import { IDL, accountsCoder, decodeLive } from "../app/src/lib/live.ts";
-import { multiplierAt, readMint, readScaledUi } from "../app/src/lib/scaledUi.ts";
+import { multiplierAt, readMint, readScaledUi, toFixed1e9 } from "../app/src/lib/scaledUi.ts";
 
 const { BN } = (anchor as unknown as { default: { BN: new (v: number | string) => unknown } }).default;
 const json = (p: string) => JSON.parse(readFileSync(resolve(REPO, p), "utf8"));
@@ -46,11 +46,29 @@ describe("T18/S2b app readers", () => {
       }
     });
 
+    // SPEC I5's vectors and gate 1's T02 case: the app must land on the
+    // program's integer (valuation.rs decode_multiplier_fixed), not a neighbour.
+    it("fixes multipliers exactly as the program does: floor(m x 1e9), from the bits", () => {
+      const aapl = readScaledUi(Buffer.from(fixture("AAPLx").dataBase64, "base64"))!;
+      assert.equal(toFixed1e9(1.0026642075893797), 1_002_664_207);
+      assert.equal(toFixed1e9(1.0032690125398187), 1_003_269_012);
+      assert.equal(toFixed1e9(1.0000003), 1_000_000_299);
+      assert.equal(toFixed1e9(1), 1_000_000_000);
+      assert.equal(toFixed1e9(10), 10_000_000_000);
+      assert.ok([aapl.multiplier, aapl.newMultiplier].every((m) => Number.isInteger(toFixed1e9(m))));
+      for (const bad of [0, -0, -1, Number.NaN, Number.POSITIVE_INFINITY, 5e-324, 1e-10]) {
+        assert.throws(() => toFixed1e9(bad), /cannot be a live multiplier/, `accepted ${bad}`);
+      }
+    });
+
     it("returns null, never a made-up multiplier, for a mint without the extension", () => {
       assert.equal(readScaledUi(Buffer.alloc(82)), null, "a classic SPL mint");
       const noExt = Buffer.alloc(170);
       noExt[165] = 1; // account type Mint, then an Uninitialized TLV entry
       assert.equal(readScaledUi(noExt), null);
+      const notAMint = Buffer.from(fixture("NFLXx").dataBase64, "base64");
+      notAMint[165] = 2; // account type Account, not Mint
+      assert.equal(readScaledUi(notAMint), null);
     });
   });
 

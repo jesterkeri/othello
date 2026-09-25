@@ -33,6 +33,9 @@ export type LiveXStocks = { readAt: number; slot: number; mints: LiveXStock[] };
 
 async function readMainnet(): Promise<LiveXStocks> {
   const url = process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
+  // T18 adversary: a malformed MAINNET_RPC_URL made fetch throw "Failed to parse
+  // URL from <url>", and the 502 carried a keyed URL to the browser. Nothing
+  // fetch says is passed on; only this route's own words are.
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -43,13 +46,17 @@ async function readMainnet(): Promise<LiveXStocks> {
       params: [REAL_XSTOCKS.map((x) => x.address), { encoding: "base64", commitment: "confirmed" }],
     }),
     cache: "no-store",
+  }).catch(() => {
+    throw new Error("mainnet RPC unreachable");
   });
   if (!res.ok) throw new Error(`mainnet RPC answered ${res.status}`);
-  const body = (await res.json()) as {
+  const body = (await res.json().catch(() => {
+    throw new Error("mainnet RPC returned invalid JSON");
+  })) as {
     result?: { context: { slot: number }; value: ({ data: [string, string]; owner: string } | null)[] };
     error?: { message: string };
   };
-  if (!body.result) throw new Error(body.error?.message ?? "mainnet RPC returned no result");
+  if (!body.result) throw new Error("mainnet RPC returned no result");
 
   const readAt = Math.floor(Date.now() / 1000);
   const mints = REAL_XSTOCKS.map((x, i) => {

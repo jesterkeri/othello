@@ -15,6 +15,7 @@ import type { LiveXStocks } from "@/app/api/live/route";
 import s from "@/components/circle/Circle.module.css";
 import { explorer } from "@/lib/devnet";
 import { formatDuration, shortAddress } from "@/lib/circle";
+import { multiplierAt } from "@/lib/scaledUi";
 
 const REFRESH_MS = 60_000;
 
@@ -44,7 +45,12 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
         setData(body);
         setError(null);
       } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : String(e));
+        // S2b: "never a stale or made-up number". A failed refresh drops the
+        // previous read rather than leaving it under "Multiplier now".
+        if (alive) {
+          setData(null);
+          setError(e instanceof Error ? e.message : String(e));
+        }
       }
     };
     void load();
@@ -63,7 +69,7 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
           {data ? `slot ${data.slot.toLocaleString("en-US")}, ${formatDuration(Date.now() / 1000 - data.readAt)} ago` : ""}
         </span>
       </div>
-      {error && !data ? (
+      {error ? (
         <div className={`${s.banner} ${s.bannerRefusal}`} role="status">
           <span className={s.bannerMark} aria-hidden>?</span>
           <span className={s.bannerBody}>
@@ -98,7 +104,9 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
                       {shortAddress(m.address)}
                     </a>
                   </td>
-                  <td className={s.num}>{mult(m.multiplierNow)}</td>
+                  {/* By this browser's clock at render, not the server's cached moment,
+                      so a change that takes effect mid-cache shows at once. */}
+                  <td className={s.num}>{mult(multiplierAt(m, Date.now() / 1000))}</td>
                   <td>
                     {change(m)}
                     {m.symbol === "NFLXx" && (
@@ -114,7 +122,6 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
           </table>
         </div>
       )}
-      {error && data && <p className={s.panelNote}>Last refresh failed ({error}); showing the previous read.</p>}
     </div>
   );
 }
