@@ -11,14 +11,16 @@ import { useWalletUi } from "@/lib/wallet";
  *
  * With no wallet the screen shows "Connect wallet" and opens the connect modal.
  *
- * With a wallet, the form can be submitted, and `onCreate` refuses with a plain
- * reason. It must be passed: Create treats a missing `onCreate` as success and
- * would show "created" for a circle that does not exist. The create_circle
- * transaction lands when the program is on devnet (T23), and replaces this.
+ * With a wallet, the form can be submitted, and `onCreate` refuses with the TRUE reason. It must
+ * be passed: Create treats a missing `onCreate` as success and would show "created" for a circle
+ * that does not exist. The program is on devnet (T23), but a circle made here could never start:
+ * each member must lock the NFLXx devnet mirror and pay test USDC, and this demo cannot hand
+ * those out yet (Joshua, 2026-09-25: the judge path uses the live demo circle instead).
  */
 const notYet: CreateError = {
   kind: "program",
-  reason: "Creating a circle needs the Othello program on devnet, and it is not deployed yet. Nothing was sent.",
+  reason:
+    "Not in this demo yet. Every member of a new circle must lock the NFLXx devnet mirror and pay test USDC, and this demo can't hand those out, so a circle made here would wait forever. The live demo circle (Circles, in the menu) shows a complete one. Nothing was sent.",
 };
 export default function CreateCirclePage() {
   const router = useRouter();

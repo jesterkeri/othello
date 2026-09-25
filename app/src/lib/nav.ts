@@ -23,7 +23,7 @@ export const NAV_HREF: Record<string, string> = {
 };
 
 /** The labels that lead somewhere real today. */
-export const BUILT = new Set(["Home", "Circles", "xStocks", "Split lab"]);
+export const BUILT = new Set(["Home", "Circles", "xStocks", "Split lab", "How it works"]);
 
 export function hrefFor(label: string): string {
   return NAV_HREF[label] ?? "/";

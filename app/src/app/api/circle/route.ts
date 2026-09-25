@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { Connection, clusterApiUrl } from "@solana/web3.js";
 
-import { DEMO_CIRCLE } from "@/lib/devnet";
+import { DEMO_CIRCLE, DEMO_NAMES } from "@/lib/devnet";
 import { readLiveCircle, type LiveCircle } from "@/lib/live";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +30,7 @@ export async function GET() {
 
   const url = process.env.DEVNET_RPC_URL || clusterApiUrl("devnet");
   try {
-    const body = await readLiveCircle(new Connection(url, "confirmed"), DEMO_CIRCLE, STOCK_WORD);
+    const body = await readLiveCircle(new Connection(url, "confirmed"), DEMO_CIRCLE, STOCK_WORD, DEMO_NAMES);
     cache = { at: now, body };
     return NextResponse.json(body, { headers });
   } catch (e) {

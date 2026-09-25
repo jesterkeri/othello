@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 
+import LiveSeat from "@/components/live/LiveSeat";
+
 import Join from "@/components/join/Join";
 import {
   CIRCLE_STATES,
   DEMO_LOCK_RAW,
-  DEMO_STATE,
   FIXTURE_NOW,
   STATE_KEYS,
   type CircleStateKey,
@@ -30,7 +31,13 @@ export default async function JoinPage({
   params: Promise<{ id: string; seat: string }>;
 }) {
   const { id, seat } = await params;
-  const key = (id === "demo" ? DEMO_STATE : id) as CircleStateKey;
+  // The live demo circle reads the chain, like /circle/demo itself (T18).
+  if (id === "demo") {
+    const n = Number(seat);
+    if (!Number.isInteger(n) || n < 1 || n > 5) notFound();
+    return <LiveSeat kind="join" seat={n} />;
+  }
+  const key = id as CircleStateKey;
   const circle = CIRCLE_STATES[key];
   const n = Number(seat);
   if (!circle || !Number.isInteger(n) || n < 1 || n > circle.n) notFound();

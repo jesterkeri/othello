@@ -15,6 +15,13 @@ export const PROGRAM_ID = "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT";
 
 export const DEMO_CIRCLE = "8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q";
 
+/**
+ * Display names for the demo circle's five seats, in turn order: the same cast the design
+ * fixtures use (fixtures/circles.ts), so every screen tells one story. The chain stores only
+ * addresses; these are labels, and a connected member's own seat still shows "You".
+ */
+export const DEMO_NAMES = ["Ada", "Tunde", "Kemi", "Chidi", "Nneka"] as const;
+
 export const NFLXX_MIRROR = "CymeZqJiKk2Nd4FkDvHduyrq3k3XbJELtifAbPqfdSuA";
 export const TEST_USDC = "HuNtRYjwPgqKANveLm5vRj9DveBnQAq4cFzWTEf4DoBV";
 

@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 
+import LiveSeat from "@/components/live/LiveSeat";
+
 import Position from "@/components/position/Position";
 import {
   CIRCLE_STATES,
-  DEMO_STATE,
   FIXTURE_NOW,
   STATE_KEYS,
   type CircleStateKey,
@@ -29,7 +30,13 @@ export default async function PositionPage({
   params: Promise<{ id: string; seat: string }>;
 }) {
   const { id, seat } = await params;
-  const key = (id === "demo" ? DEMO_STATE : id) as CircleStateKey;
+  // The live demo circle reads the chain, like /circle/demo itself (T18).
+  if (id === "demo") {
+    const n = Number(seat);
+    if (!Number.isInteger(n) || n < 1 || n > 5) notFound();
+    return <LiveSeat kind="position" seat={n} />;
+  }
+  const key = id as CircleStateKey;
   const circle = CIRCLE_STATES[key];
   const n = Number(seat);
   if (!circle || !Number.isInteger(n) || n < 1 || n > circle.n) notFound();

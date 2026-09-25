@@ -95,7 +95,7 @@ export type RawAccounts = { circle: Buffer; feed: Buffer; mint: Buffer; members:
  * always give the same view. `now` only chooses which multiplier the mint has
  * in force, exactly as the program's Clock does.
  */
-export function decodeLive(raw: RawAccounts, stockSymbol: string, now: number): CircleView {
+export function decodeLive(raw: RawAccounts, stockSymbol: string, now: number, names: readonly string[] = []): CircleView {
   const coder = accountsCoder();
   const c = coder.decode<DecodedCircle>("circle", raw.circle);
   const feed = coder.decode<DecodedFeed>("priceFeed", raw.feed);
@@ -109,8 +109,8 @@ export function decodeLive(raw: RawAccounts, stockSymbol: string, now: number): 
   if (raw.members.length !== c.n) throw new Error(`Expected ${c.n} member slots, got ${raw.members.length}`);
   const members: MemberView[] = c.members.slice(0, c.n).map((wallet, turn) => {
     const bytes = raw.members[turn];
-    // The chain stores only the address; seats are named by their number.
-    const name = `Seat ${turn + 1}`;
+    // The chain stores only the address; a display name if the caller has one, else the seat number.
+    const name = names[turn] ?? `Seat ${turn + 1}`;
     const joined = (c.joinedBitmap & (1 << turn)) !== 0;
     if (!bytes) {
       if (joined) throw new Error(`Seat ${turn + 1} has joined but its Member account is missing`);
@@ -176,6 +176,7 @@ export async function readLiveCircle(
   connection: anchor.web3.Connection,
   circleAddress: string,
   stockSymbol: string,
+  names: readonly string[] = [],
 ): Promise<LiveCircle> {
   const programId = new anchor.web3.PublicKey(IDL.address);
   const circleKey = new anchor.web3.PublicKey(circleAddress);
@@ -198,6 +199,7 @@ export async function readLiveCircle(
     { circle: circleInfo.data, feed: feedInfo.data, mint: mintInfo.data, members: memberInfos.map((m) => m?.data ?? null) },
     stockSymbol,
     now,
+    names,
   );
   const scaled = readScaledUi(mintInfo.data)!;
   return {
