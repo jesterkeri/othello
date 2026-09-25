@@ -96,7 +96,7 @@ export async function fetchLookupTables(rpcUrl: string, tx: VersionedTransaction
   const out: Record<string, Uint8Array> = {};
   for (const l of tx.message.addressTableLookups) {
     const addr = l.accountKey.toBase58();
-    const res = await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getAccountInfo", params: [addr, { encoding: "base64" }] }), cache: "no-store" }).catch(() => null);
+    const res = await fetch(rpcUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getAccountInfo", params: [addr, { encoding: "base64" }] }) }).catch(() => null);
     const body = res && res.ok ? ((await res.json().catch(() => null)) as { result?: { value?: { data?: [string, string] } | null } } | null) : null;
     const data = body?.result?.value?.data?.[0];
     if (typeof data !== "string") return null;
