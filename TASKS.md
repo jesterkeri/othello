@@ -195,3 +195,14 @@ should start before the hackathon build is finished.
       programs/othello/src/devnet.rs to Circle's devnet USDC (confirm the address from Circle's
       own docs, and that it is classic SPL Token, before changing it), re-run the S2 specs and
       re-deploy. Pools already opened on test USDC stay on it; a new pool is needed per pair.
+
+- [ ] SUI_EDITION (Joshua, 2026-09-25: "after submission", and "for sui we dont need to use only
+      stocks"). Research before any code: an Othello edition on Sui, same product (savings circles
+      backed by locked collateral) and the same UI/design system (Next.js, Slush via dapp-kit), with
+      the program rewritten in Move and liquidation through DeepBook's order book instead of the
+      admin-seeded pool (ADR-004; "open-market liquidation" was a SPEC cut). Collateral is not limited
+      to stocks: any asset with a deep enough DeepBook market. Questions to answer first: which
+      assets have DeepBook depth that survives SPEC's depth rule; what price source values them
+      on-chain; what the Sui edition's own headline is (Token-2022's scaled UI "split" story does not
+      carry over to Sui's coin standard); and which grant or hackathon funds it, against Colosseum
+      (Solana) competing for the same time.
