@@ -530,3 +530,8 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       is deliberate (the designed 404 explains it). With Split lab and xStocks now built it is the
       only dead item in a nav judges will click. Joshua's call: build a How it works page, hide
       unbuilt items (nav.ts already has BUILT), or leave it.
+- [ ] LANDING'S TAGLINE MAKES THE CLAIM CODEX T18c r1 FLAGGED (2026-09-25). "Savings circles where
+      nobody has to trust anybody" (Landing, the design session's copy; also SPEC's Landing row) is
+      the same overstatement How it works was fixed for: KNOWN-LIMITS L7 (issuer powers) and L10 (no
+      keeper) remain. How it works now says "members don't have to trust each other to keep paying"
+      and states the limits. The Landing line is Joshua's and the design session's to change.

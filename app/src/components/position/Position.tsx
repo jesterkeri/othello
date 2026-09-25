@@ -29,20 +29,24 @@ import s from "@/components/ui/Screen.module.css";
 // helper "Counted at the lower of its market price and its share price, minus a
 // {haircut}% safety margin", and empty "Not joined yet".
 
-const USDC = "USDC";
 
 export default function Position({
   circle,
   seat,
   now,
   stateKey,
+  usdcWord,
 }: {
   circle: CircleView;
   seat: number;
   now: number;
-  stateKey: CircleStateKey;
+  /** Where its links point: a fixture state, or "demo" for the live devnet circle (T18). */
+  stateKey: CircleStateKey | "demo";
+  /** The money word. The live demo's money is test USDC and must never read as real USDC. */
+  usdcWord?: string;
 }) {
   const c = circle;
+  const USDC = usdcWord ?? "USDC";
   const m = memberBySeat(c, seat);
   const d = derive(c, now);
 

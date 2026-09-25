@@ -31,23 +31,27 @@ import type { CircleStateKey } from "@/fixtures/circles";
  * amounts, that both come back, and the maximum loss with its condition.
  */
 
-const USDC = "USDC";
 
 export default function Join({
   circle,
   seat,
   now,
   stateKey,
+  usdcWord,
   suggestedLockRaw,
 }: {
   circle: CircleView;
   seat: number;
   now: number;
-  stateKey: CircleStateKey;
+  /** Where its links point: a fixture state, or "demo" for the live devnet circle (T18). */
+  stateKey: CircleStateKey | "demo";
+  /** The money word. The live demo's money is test USDC and must never read as real USDC. */
+  usdcWord?: string;
   /** What this circle tells a joiner to lock. Above the minimum on purpose. */
   suggestedLockRaw: number;
 }) {
   const c = circle;
+  const USDC = usdcWord ?? "USDC";
   const m = memberBySeat(c, seat);
   const d = derive(c, now);
 

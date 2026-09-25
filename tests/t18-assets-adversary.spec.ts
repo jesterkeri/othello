@@ -95,21 +95,34 @@ function withScaledUiAuthorityRevoked(data: Buffer): Buffer {
 async function liveBody(nflxx: Buffer): Promise<unknown> {
   const route = await import(pathToFileURL(resolve(SRC, "app/api/live/route.ts")).href + `?t=${Math.random()}`);
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(
+  // Answers like a real RPC: getMultipleAccounts in the order the route asked, the four fixture
+  // mints (NFLXx as given) and null for any other listed mint. (Updated when /api/live began
+  // reading all listed xStocks: the stub had answered a fixed four-mint order, so the route
+  // received the wrong bytes at each index. The assertions are unchanged.) Other fetches
+  // (Jupiter prices) get an empty object: no price.
+  const bytesFor = (address: string): string | null => {
+    const x = REAL_XSTOCKS.find((r) => r.address === address);
+    if (!x) return null;
+    return (x.symbol === "NFLXx" ? nflxx : Buffer.from(fixture(x.symbol).dataBase64, "base64")).toString("base64");
+  };
+  globalThis.fetch = (async (_url: unknown, init?: { body?: unknown }) => {
+    const req = typeof init?.body === "string" ? (JSON.parse(init.body) as { method?: string; params?: [string[]] }) : null;
+    if (req?.method !== "getMultipleAccounts") return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(
       JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         result: {
           context: { slot: 449_145_146 },
-          value: REAL_XSTOCKS.map((x) => ({
-            owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-            data: [(x.symbol === "NFLXx" ? nflxx : Buffer.from(fixture(x.symbol).dataBase64, "base64")).toString("base64"), "base64"],
-          })),
+          value: req.params![0].map((address) => {
+            const data = bytesFor(address);
+            return data ? { owner: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", data: [data, "base64"] } : null;
+          }),
         },
       }),
       { status: 200, headers: { "content-type": "application/json" } },
-    )) as typeof fetch;
+    );
+  }) as typeof fetch;
   try {
     const res = await route.GET();
     assert.equal(res.status, 200, "the route reads the bytes");

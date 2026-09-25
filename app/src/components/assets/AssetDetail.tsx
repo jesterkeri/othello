@@ -13,6 +13,8 @@ import { shortAddress } from "@/lib/circle";
 import { explorer } from "@/lib/devnet";
 import { multiplierAt } from "@/lib/scaledUi";
 
+import BuyPanel from "./BuyPanel";
+import PriceChart from "./PriceChart";
 import AssetShell, { Unavailable } from "./Shell";
 import { exactTokens } from "@/lib/format";
 
@@ -50,6 +52,12 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
     <AssetShell back={{ href: "/assets", label: "All xStocks" }}>
       {error ? (
         <Unavailable error={error} />
+      ) : data && !m ? (
+        <Unavailable
+          error={`${symbol} could not be read from mainnet this time${
+            data.unavailable.find((u) => u.symbol === symbol) ? ` (${data.unavailable.find((u) => u.symbol === symbol)!.reason})` : ""
+          }.`}
+        />
       ) : !m ? (
         <div className={s.section}>
           <p className={s.panelNote}>Reading {symbol} from mainnet…</p>
@@ -59,7 +67,9 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
           <section className={s.head}>
             <div className={s.headTop}>
               <span className={`${s.statusPill} ${s.statusActive} ${s.micro}`}>Real xStock</span>
-              <span className={`${s.stockPill} ${s.micro}`}>Accepted as cover in Othello&apos;s mainnet build</span>
+              <span className={`${s.stockPill} ${s.micro}`}>
+                {m.accepted ? "Accepted as cover in Othello's mainnet build" : "Buy and hold; not accepted as cover yet"}
+              </span>
             </div>
             <h1 className={`${s.display} ${s.h1}`}>{m.info.metadata?.name ?? m.name}</h1>
             <p className={s.sub}>
@@ -73,6 +83,25 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
               , not by that name.
             </p>
           </section>
+
+          <div className={s.section}>
+            <div className={s.sectionHead}>
+              <span className={s.sectionLabel}>Price</span>
+              <span className={s.sectionLabel}>
+                {m.market ? `Jupiter: $${m.market.usdPrice.toFixed(2)} per token as wallets show it` : "Jupiter price unavailable"}
+              </span>
+            </div>
+            <PriceChart
+              symbol={m.symbol}
+              multiplierNow={multiplierAt(m, now)}
+              change={m.effectiveAt && m.newMultiplier !== m.multiplier ? { from: m.multiplier, to: m.newMultiplier, at: m.effectiveAt } : null}
+            />
+            {m.info.pausable?.paused ? (
+              <Unavailable error={`${m.symbol} is paused by its issuer right now: nobody can transfer or buy it until they unpause it.`} />
+            ) : (
+              <BuyPanel symbol={m.symbol} address={m.address} decimals={m.decimals} multiplier={multiplierAt(m, now)} accepted={m.accepted} />
+            )}
+          </div>
 
           <div className={s.cards}>
             <div className={`${s.card} ${s.cardReserve}`}>

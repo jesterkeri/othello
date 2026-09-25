@@ -228,7 +228,11 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
               kind="neutral"
               mark={String(d.missing)}
               title={`${d.missing} contributions still missing`}
-              text="Wait, or remind them."
+              text={
+                live
+                  ? `Once everyone has paid, anyone can release the pot${d.recipient ? ` to ${d.recipient.name}` : ""}. Paying late still counts.`
+                  : "Wait, or remind them."
+              }
             />
           )}
           {!isActive && c.status !== "Forming" && (
@@ -252,7 +256,42 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
             the whole pot once, in turn.
           </p>
 
-          {isActive && (
+          {isActive && live && d.toDeadline <= 0 && (() => {
+            // Live mode, deadline passed. Lateness alone is not a failure: contribute has no time
+            // check, and only a seat that has already received its pot can be defaulted (SPEC §5,
+            // KNOWN-LIMITS L3). Say which of those is true, instead of OVERDUE and ELAPSED.
+            const defaultable = c.members.filter(
+              (m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.receivedBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn),
+            );
+            return (
+              <div className={s.clock}>
+                <span className={s.clockBox}>
+                  <span className={s.clockLabel}>Paid this round</span>
+                  <span className={`${s.display} ${s.clockValue}`}>
+                    {c.n - d.missing} of {c.n}
+                  </span>
+                </span>
+                {/* SPEC §5 / I7: declare_default needs now > deadline + grace, strictly. */}
+                {defaultable.length > 0 && d.toGraceEnd < 0 ? (
+                  <span className={`${s.clockBox} ${s.clockOver}`}>
+                    <span className={s.clockLabel}>Can be declared in default</span>
+                    <span className={`${s.display} ${s.clockValue}`}>{defaultable.map((m) => m.name).join(", ")}</span>
+                  </span>
+                ) : (
+                  <span className={s.clockBox}>
+                    <span className={s.clockLabel}>Deadline passed</span>
+                    <span className={`${s.display} ${s.clockValue}`}>Late still counts</span>
+                  </span>
+                )}
+                <span className={s.clockBox}>
+                  <span className={s.clockLabel}>Pot this round</span>
+                  <span className={`${s.display} ${s.clockValue}`}>{formatUsdc(c.contribution * c.n, 0)}</span>
+                </span>
+              </div>
+            );
+          })()}
+
+          {isActive && !(live && d.toDeadline <= 0) && (
             <div className={s.clock}>
               <span className={`${s.clockBox} ${d.toDeadline <= 0 ? s.clockOver : ""}`}>
                 <span className={s.clockLabel}>

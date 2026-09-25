@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import type { LiveXStocks } from "@/app/api/live/route";
 
+
 const REFRESH_MS = 60_000;
 
 export function useLiveXStocks(): { data: LiveXStocks | null; error: string | null } {

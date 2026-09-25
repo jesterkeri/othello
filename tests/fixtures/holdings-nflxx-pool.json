@@ -1,0 +1,154 @@
+{
+  "provenance": {
+    "recordedAt": "2026-09-25T10:35:32.380Z",
+    "owner": "7RQXW5KEBgHCcy1eSNs1Kh7BWaEL46q8jb9t18S151bL",
+    "ownerIs": "GeckoTerminal's busiest NFLXx/USDC pool address (raydium-clmm, read 2026-09-25); on mainnet it owns one NFLXx Token-2022 account",
+    "mainnet": {
+      "endpoint": "https://api.mainnet-beta.solana.com",
+      "slots": [
+        450327406,
+        450327375
+      ]
+    },
+    "devnet": {
+      "endpoint": "https://api.devnet.solana.com",
+      "slots": [
+        503946969,
+        503946970
+      ]
+    },
+    "requests": "the four JSON-RPC calls app/src/app/api/holdings/route.ts makes, with its exact params"
+  },
+  "mainnet": {
+    "getTokenAccountsByOwner": {
+      "jsonrpc": "2.0",
+      "result": {
+        "context": {
+          "slot": 450327406,
+          "apiVersion": "4.3.0-beta.2"
+        },
+        "value": [
+          {
+            "pubkey": "E2LVnmUoa8doVvF6r1CBA7XZqHVH4kR5aDRX1b2mVZDG",
+            "account": {
+              "lamports": 2108880,
+              "data": {
+                "program": "spl-token-2022",
+                "parsed": {
+                  "info": {
+                    "extensions": [
+                      {
+                        "extension": "pausableAccount"
+                      },
+                      {
+                        "extension": "transferHookAccount",
+                        "state": {
+                          "transferring": false
+                        }
+                      }
+                    ],
+                    "isNative": false,
+                    "mint": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+                    "owner": "7RQXW5KEBgHCcy1eSNs1Kh7BWaEL46q8jb9t18S151bL",
+                    "state": "initialized",
+                    "tokenAmount": {
+                      "amount": "1163418125",
+                      "decimals": 8,
+                      "uiAmount": 116.3418125,
+                      "uiAmountString": "116.3418125"
+                    }
+                  },
+                  "type": "account"
+                },
+                "space": 175
+              },
+              "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+              "executable": false,
+              "rentEpoch": 18446744073709552000,
+              "space": 175
+            }
+          }
+        ]
+      },
+      "id": 1
+    },
+    "getMultipleAccounts": {
+      "jsonrpc": "2.0",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 450327375
+        },
+        "value": [
+          {
+            "data": [
+              "AQAAAGVqQkIv6okUBqQZ0dHeCPQqhHlBtaGulevOYZrDFyk0ixHVMhoOAAAIAQEAAAD/3+wbzSzTg5PITaoIyRzA041nf/jQq3tdAz8A9zLMMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARIAQABD+fHuLje4B+pFy3TmAJcivsAJKWAm5ORVi0NeJKXpxgfoN+LIQ7TZ2JXKDHJIcxFvSd5VFlRbdnyWRdakOGiRDAAgAEP58e4uN7gH6kXLdOYAlyK+wAkpYCbk5FWLQ14kpenGBgABAAEZADgABm9ZIlHMR3R4JaWa0UIupDVz9SjaXe4q94ErMU+ZReMAAAAAAADwP1RkGmkAAAAAAAAAAAAAJEAaACEA/9/sG80s04OTyE2qCMkcwNONZ3/40Kt7XQM/APcyzDAABABBAEP58e4uN7gH6kXLdOYAlyK+wAkpYCbk5FWLQ14kpenGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgBAAEP58e4uN7gH6kXLdOYAlyK+wAkpYCbk5FWLQ14kpenGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATAKcAQ/nx7i43uAfqRct05gCXIr7ACSlgJuTkVYtDXiSl6cYH6DfiyEO02diVygxySHMRb0neVRZUW3Z8lkXWpDhokQ4AAABOZXRmbGl4IHhTdG9jawUAAABORkxYeEQAAABodHRwczovL3hzdG9ja3MtbWV0YWRhdGEuYmFja2VkLmZpL3Rva2Vucy9Tb2xhbmEvTkZMWHgvbWV0YWRhdGEuanNvbgAAAAA=",
+              "base64"
+            ],
+            "executable": false,
+            "lamports": 5623680,
+            "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+            "rentEpoch": 18446744073709552000,
+            "space": 680
+          }
+        ]
+      },
+      "id": 1
+    },
+    "mints": [
+      "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL"
+    ]
+  },
+  "devnet": {
+    "mirror": {
+      "jsonrpc": "2.0",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 503946969
+        },
+        "value": []
+      },
+      "id": 1
+    },
+    "testUsdc": {
+      "jsonrpc": "2.0",
+      "result": {
+        "context": {
+          "apiVersion": "4.3.0",
+          "slot": 503946970
+        },
+        "value": []
+      },
+      "id": 1
+    }
+  },
+  "jupiter": {
+    "url": "https://lite-api.jup.ag/price/v3?ids=XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+    "recordedAt": "2026-09-25T10:36:14Z",
+    "body": {
+      "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL": {
+        "createdAt": "2025-06-11T09:39:49Z",
+        "liquidity": 2811.127335722871,
+        "usdPrice": 71.63205077764825,
+        "blockId": 450305824,
+        "decimals": 8,
+        "priceChange24h": 1.0675848499869356,
+        "stockData": {
+          "id": "xstocks",
+          "price": 71.6,
+          "mcap": 298637753562.72,
+          "updatedAt": "2026-09-25T10:32:45.335Z"
+        },
+        "scaledUiConfig": {
+          "multiplier": 1,
+          "newMultiplier": 10,
+          "newMultiplierEffectiveAt": "2025-11-16T23:55:00Z",
+          "circSupplyPrescaled": 155056.84763019,
+          "totalSupplyPrescaled": 155056.84763019,
+          "usdPricePrescaled": 716.3205077764825
+        }
+      }
+    }
+  }
+}
