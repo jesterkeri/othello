@@ -2775,3 +2775,12 @@ worktree during the review.
 
 verify: root tsc clean; app tsc clean; t18-assets-adversary 1, app-mint-info 6, app-live 10
 passing; next build; git diff --check; check-secrets clean.
+
+## T18 Codex r4: implementation-ready (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: implementation-ready | commit: f95c4b4 (r4)
+adversary: see the T18, T24, T25 and asset-page entries above
+
+Codex r4 confirmed both r3 findings fixed (root tsc; the adversary's asset test). All 33 isolated
+spec files passed (195 assertions); root and app TypeScript and the app build pass.
+T24 + T18/S2b + T25 (the seed, the live circle, the real xStocks panel, Contribute, the demo round
+scripts) are closed.
