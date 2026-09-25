@@ -2665,3 +2665,11 @@ Vercel (Joshua approved "Vercel, preview first, production only on his go"):
   deployment protection (302 to login). Through `vercel curl`: /api/circle -> Active, round 1,
   joined 0b11111; /api/live -> AAPLx 1.0032690125398187, NFLXx 10, SPYx 1.005714560286254,
   NVDAx 1.001701196801074; /circle/demo title "Othello".
+- Later the same hour: `vercel link` had also connected the GitHub repo, so pushes build on
+  Vercel. The first Git build (00ca07c) failed "No Next.js version detected": builds started at
+  the repo root. Set the project's rootDirectory to `app` (`vercel api /v9/projects/othello -X
+  PATCH -f rootDirectory=app`; read back: rootDirectory app, framework nextjs, GitHub-linked,
+  productionBranch main). So production builds only from `main`, which needs Joshua's go; feature
+  branches build previews. Redeployed that commit as a preview:
+  https://othello-cnlr7j24p-jesters-projects-340c1a8c.vercel.app, Ready; /api/circle -> Active,
+  joined 0b11111.
