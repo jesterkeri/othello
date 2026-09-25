@@ -31,7 +31,11 @@ It is a wallet app, and `HACKATHON.md` records the only published criterion: "co
       purchases, no live split to replay, and ROTATE_AUTHORITY is owed first | verify: a test that
       decodes the mainnet fixture through the same reader the page uses | done when: the page shows
       both, labelled, from live reads, with a clear error (never a stale or made-up number) when the
-      mainnet read fails
+      mainnet read fails. SCOPE (Joshua, 2026-09-25): all four verified real xStocks (AAPLx,
+      NFLXx, SPYx, NVDAx) live, NFLXx paired with its devnet mirror; "with plans for" verifying
+      more from Backed's published list after deploy + seed, if time allows. Each new address
+      goes through T00's check (on Backed's list; symbol from the mint's own metadata) before it
+      is shown, and none enters the program's allowlist before submission.
 
 ## Sequencing decision, 2026-09-22 (Joshua, with Codex)
 
