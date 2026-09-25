@@ -24,6 +24,8 @@ import { useWalletUi } from '@/lib/wallet';
 
 import s from './Portfolio.module.css';
 
+/** Exact digits, trailing zeros dropped (nothing rounded). */
+const trimZeros = (x: string) => (x.includes('.') ? x.replace(/0+$/, '').replace(/\.$/, '') : x);
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 const Arrow = ({ d = 'M7 17 17 7M9 7h8v8' }: { d?: string }) => (
@@ -70,16 +72,17 @@ export default function Portfolio() {
   const dayMove = total !== null && moves.length > 0 && moves.every((m) => m !== null) ? moves.reduce((a, b) => a + b!, 0) : null;
   const rows = (hold?.xstocks ?? []).map((h) => ({ ...h, slot: slotFor(h.symbol), share: total ? (h.usdValue ?? 0) / total : null, chg: change(h.address) }));
   const anyDown = !!(circleErr || holdErr);
+  // The mainnet total: xStocks (only when every one is priced), wallet USDC counted at $1, and SOL at
+  // Jupiter's price. Any missing piece means no total, never a partial one shown as whole.
+  const usdcUsd = funds ? Number(funds.usdcRaw) / 1e6 : null;
+  const solValue = funds && funds.solUsd !== null ? (Number(funds.lamports) / 1e9) * funds.solUsd : null;
+  const grand = total !== null && usdcUsd !== null && solValue !== null ? total + usdcUsd + solValue : null;
 
   return (
     <Shell active="Portfolio">
       <header className={s.head}>
         <h1 className={s.title}>Portfolio</h1>
-        {w.address && (
-          <div className={s.walletBox}>
-            <WalletFunds funds={funds} error={fundsError} devnet />
-          </div>
-        )}
+
         {w.address && (
           <span className={s.readLine}>
             <span className={s.read}><span style={{ background: anyDown ? 'var(--clay)' : 'var(--teal)' }} />{anyDown ? 'A read failed' : 'Live · devnet and mainnet'}</span>
@@ -98,55 +101,78 @@ export default function Portfolio() {
       ) : (
         <>
           <div className={s.top}>
-            <section aria-label="Your xStocks" className={s.total}>
+            {/* Joshua: one card that answers "what do I have": the mainnet total (xStocks + wallet USDC and
+                SOL), the wallet's funds, the xStocks, and the devnet circle funds kept out of the total. */}
+            <section aria-label="Your portfolio" className={s.total}>
               <span aria-hidden className={s.corner} />
               <span aria-hidden className={s.dashes}><span /><span /><span /></span>
               <div className={s.pills}>
-                <span className={s.pillLine}>Your xStocks · mainnet</span>
-
+                <span className={s.pillLine}>Your portfolio · mainnet</span>
                 {dayMove !== null && (
                   <span className={s.pillDay} style={{ background: dayMove >= 0 ? 'var(--teal)' : 'var(--clay)', color: dayMove >= 0 ? 'var(--tealInk)' : 'var(--clayInk)' }}>
-                    {dayMove >= 0 ? '+' : '−'}{usd(Math.abs(dayMove))} · 24h
+                    xStocks {dayMove >= 0 ? '+' : '−'}{usd(Math.abs(dayMove))} · 24h
                   </span>
                 )}
               </div>
-              {holdErr ? (
-                <div className={s.down}><b>Live data unavailable</b><span>We could not read this wallet on mainnet ({holdErr}), so no amounts or values are shown.</span></div>
-              ) : !hold ? (
-                <div className={s.skel} />
-              ) : hold.xstocks.length === 0 ? (
-                <div className={s.down}>
-                  <b className={s.bigMuted}>$0.00</b>
-                  <b>No xStocks yet</b>
-                  <span>Anything you buy shows up here.</span>
-                  <Link href="/assets" className={s.btnInk}>Browse assets<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
-                </div>
+              {grand !== null ? (
+                <b className={s.big}>{usd(grand)}</b>
+              ) : holdErr || fundsError ? (
+                <b className={s.bigMuted}>Value unavailable</b>
               ) : (
-                <>
-                  {total !== null ? (
-                    <b className={s.big}>{usd(total)}</b>
-                  ) : (
-                    <b className={s.bigMuted}>Value unavailable</b>
-                  )}
-                  <span className={s.holdLabel}>
-                    {hold.xstocks.length === 1 ? '1 holding' : `${hold.xstocks.length} holdings`}
-                    {unpriced.length > 0 ? `. Jupiter has no price right now for ${unpriced.map((h) => h.symbol).join(', ')}, so no total is shown.` : ''}
+                <div className={s.skel} />
+              )}
+              <span className={s.holdLabel}>
+                {grand !== null
+                  ? `xStocks ${usd(total ?? 0)} · USDC ${usd(usdcUsd!)} · SOL ${usd(solValue!)} (at Jupiter's price; USDC counted at $1)`
+                  : holdErr || fundsError
+                    ? 'A mainnet read failed, so no total is shown.'
+                    : unpriced.length > 0
+                      ? `Jupiter has no price right now for ${unpriced.map((h) => h.symbol).join(', ')}, so no total is shown.`
+                      : funds && funds.solUsd === null
+                        ? "Jupiter has no SOL price right now, so no total is shown."
+                        : 'Reading your wallet and prices…'}
+              </span>
+              <WalletFunds funds={funds} error={fundsError} label="In your wallet" />
+
+              <section aria-label="Your xStocks" className={s.xsub}>
+                <span className={s.pillLine}>Your xStocks · mainnet</span>
+                {holdErr ? (
+                  <span className={s.xsubNote}>We could not read this wallet&apos;s xStocks ({holdErr}), so none are shown.</span>
+                ) : !hold ? (
+                  <span className={s.xsubNote}>Reading…</span>
+                ) : hold.xstocks.length === 0 ? (
+                  <span className={s.xsubNote}>
+                    None yet. <Link href="/assets" className={s.inlineLink}>Browse assets →</Link>
                   </span>
-                  {total !== null && (
-                    <>
-                      <div className={s.bar}>
-                        {rows.map((h, i) => (
-                          <span key={h.address} title={`${h.symbol} ${((h.share ?? 0) * 100).toFixed(1)}%`} style={{ flex: `${h.share ?? 0} 1 0`, background: `var(--${h.slot})`, animationDelay: `${0.25 + i * 0.08}s` }} />
-                        ))}
-                      </div>
-                      <div className={s.legend}>
-                        {rows.map((h) => (
-                          <span key={h.address}><span style={{ background: `var(--${h.slot})` }} />{h.symbol} {((h.share ?? 0) * 100).toFixed(1)}%</span>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </>
+                ) : (
+                  <>
+                    {total !== null ? <b className={s.xsubValue}>{usd(total)}</b> : <b className={s.xsubValue}>Value unavailable</b>}
+                    <span className={s.xsubNote}>{hold.xstocks.length === 1 ? '1 holding' : `${hold.xstocks.length} holdings`}</span>
+                    {total !== null && (
+                      <>
+                        <div className={s.bar}>
+                          {rows.map((h, i) => (
+                            <span key={h.address} title={`${h.symbol} ${((h.share ?? 0) * 100).toFixed(1)}%`} style={{ flex: `${h.share ?? 0} 1 0`, background: `var(--${h.slot})`, animationDelay: `${0.25 + i * 0.08}s` }} />
+                          ))}
+                        </div>
+                        <div className={s.legend}>
+                          {rows.map((h) => (
+                            <span key={h.address}><span style={{ background: `var(--${h.slot})` }} />{h.symbol} {((h.share ?? 0) * 100).toFixed(1)}%</span>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </section>
+
+              {funds?.devnet && (
+                <div className={s.devnetStrip}>
+                  <span className={s.xsubNote}><b>Devnet · the demo circle</b> · no real value, not in the total</span>
+                  <span className={s.devnetFigures}>
+                    {trimZeros(exactTokens(funds.devnet.lamports, 9))} devnet SOL · {trimZeros(exactTokens(funds.devnet.testUsdcRaw, 6))} test USDC
+                  </span>
+                </div>
               )}
             </section>
 

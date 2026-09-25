@@ -4,6 +4,13 @@
 .head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 24px; padding: 0 clamp(4px, .9vw, 12px); }
 .title { margin: 0; font-size: clamp(24px, 2.4vw, 32px); line-height: 1; font-weight: 700; letter-spacing: -.035em; color: var(--onPanel); }
 .walletBox { border: 3px solid #0B0B0B; border-radius: 26px; background: var(--raised); color: var(--onPanel); padding: 10px 14px; }
+.xsub { position: relative; display: flex; flex-direction: column; gap: 8px; border-top: 2px dotted currentColor; padding-top: 12px; }
+.xsub .pillLine { align-self: flex-start; }
+.xsubValue { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 68%; font-weight: 900; font-size: clamp(30px, 3.4vw, 48px); line-height: .9; font-variant-numeric: tabular-nums; }
+.xsubNote { font-size: 13px; font-weight: 700; }
+.inlineLink { color: inherit; font-weight: 800; text-decoration: underline; }
+.devnetStrip { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; border: 2px dashed currentColor; border-radius: 18px; padding: 10px 14px; }
+.devnetFigures { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .readLine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; font-weight: 700; color: var(--panelMuted); }
 .read { display: flex; align-items: center; gap: 7px; border: 2px solid currentColor; border-radius: 999px; padding: 4px 11px; }
 .read > span { width: 8px; height: 8px; border-radius: 999px; }

@@ -12,7 +12,7 @@ import s from "./WalletFunds.module.css";
 
 const trim = (x: string) => (x.includes(".") ? x.replace(/0+$/, "").replace(/\.$/, "") : x);
 
-export default function WalletFunds({ funds, error, compact = false, devnet = false }: { funds: Funds | null; error: string | null; compact?: boolean; /** Also show the devnet balances the circle spends. */ devnet?: boolean }) {
+export default function WalletFunds({ funds, error, compact = false, devnet = false, label }: { funds: Funds | null; error: string | null; compact?: boolean; /** Also show the devnet balances the circle spends. */ devnet?: boolean; label?: string }) {
   return (
     <div className={`${s.wallet} ${compact ? s.compact : ""}`} aria-live="polite">
       {devnet && funds && (
@@ -21,7 +21,7 @@ export default function WalletFunds({ funds, error, compact = false, devnet = fa
           {funds.devnet ? (
             <span className={s.row}>
               <span className={s.token}>
-                <span className={`${s.badge} ${s.sol}`} aria-hidden>◎</span>
+                <span className={`${s.badge} ${s.sol}`} aria-hidden>S</span>
                 <b>{trim(exactTokens(funds.devnet.lamports, 9))}</b>
                 <small>devnet SOL</small>
               </span>
@@ -36,7 +36,7 @@ export default function WalletFunds({ funds, error, compact = false, devnet = fa
           )}
         </>
       )}
-      <span className={s.kicker}>{devnet ? "Mainnet · for Buy" : "Your wallet · mainnet, for Buy"}</span>
+      <span className={s.kicker}>{label ?? (devnet ? "Mainnet · for Buy" : "Your wallet · mainnet, for Buy")}</span>
       {funds ? (
         <span className={s.row}>
           <span className={s.token}>
@@ -45,7 +45,7 @@ export default function WalletFunds({ funds, error, compact = false, devnet = fa
             <small>USDC</small>
           </span>
           <span className={s.token}>
-            <span className={`${s.badge} ${s.sol}`} aria-hidden>◎</span>
+            <span className={`${s.badge} ${s.sol}`} aria-hidden>S</span>
             <b>{trim(exactTokens(funds.lamports, 9))}</b>
             <small>SOL for fees</small>
           </span>

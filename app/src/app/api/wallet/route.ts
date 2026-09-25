@@ -18,6 +18,8 @@ export type WalletFunds = {
   /** Mainnet: what Buy spends. */
   usdcRaw: string;
   lamports: string;
+  /** Jupiter's SOL price in USD (null if Jupiter had none), to value SOL in the portfolio total. */
+  solUsd: number | null;
   /** Devnet: what the demo circle's actions spend (null if devnet could not be read). */
   devnet: { lamports: string; testUsdcRaw: string } | null;
   readAt: number;
@@ -65,7 +67,12 @@ export async function GET(req: NextRequest) {
     ])
       .then(([b, t]) => ({ lamports: b, testUsdcRaw: t.value.reduce((s, a) => s + BigInt(a.account.data.parsed.info.tokenAmount.amount), 0n).toString() }))
       .catch(() => null);
-    const body: WalletFunds = { owner, usdcRaw: usdc.toString(), lamports: bal, devnet, readAt: Math.floor(Date.now() / 1000) };
+    const SOL = "So11111111111111111111111111111111111111112";
+    const solUsd = await fetch(`https://lite-api.jup.ag/price/v3?ids=${SOL}`, { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<Record<string, { usdPrice?: unknown } | undefined>>) : null))
+      .then((j) => (j && typeof j[SOL]?.usdPrice === "number" && Number.isFinite(j[SOL]!.usdPrice) ? (j[SOL]!.usdPrice as number) : null))
+      .catch(() => null);
+    const body: WalletFunds = { owner, usdcRaw: usdc.toString(), lamports: bal, solUsd, devnet, readAt: Math.floor(Date.now() / 1000) };
     return NextResponse.json(body, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const said = e instanceof Error ? e.message : "";
