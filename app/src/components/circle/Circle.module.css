@@ -134,6 +134,7 @@
 /* asset pages: search, chart, market line */
 .search { width: min(100%, 420px); border: 3px solid var(--line); border-radius: 999px; background: var(--paper); color: var(--ink); padding: 12px 18px; font: inherit; font-size: 14px; font-weight: 700; }
 .chartBox { border: 3px solid var(--line); border-radius: clamp(16px, 2vw, 22px); background: var(--paper); padding: clamp(10px, 1.4vw, 16px); display: flex; flex-direction: column; gap: 10px; }
+.chartBare { display: flex; flex-direction: column; gap: 10px; }
 .chartArea { width: 100%; height: clamp(220px, 32vw, 340px); }
 .ranges { display: flex; gap: 5px; }
 .rangeOn { background: var(--line); color: #FBF9F2; }

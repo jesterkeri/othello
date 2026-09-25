@@ -14,6 +14,7 @@ import { multiplierAt } from "@/lib/scaledUi";
 
 import AssetShell, { Unavailable } from "./Shell";
 import s from "./AssetsIndex.module.css";
+import { slotFor } from "./slots";
 import { useLiveXStocks } from "./useLiveXStocks";
 
 export function usd(n: number, dp = 2): string {
@@ -23,9 +24,6 @@ export function usdShort(n: number): string {
   return n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}k` : `$${n.toFixed(0)}`;
 }
 
-/** Each accepted stock's colour, as on the circle page; the rest cycle through the palette. */
-const COVER_SLOT: Record<string, string> = { SPYx: "teal", NVDAx: "cobalt", AAPLx: "sky", NFLXx: "acid" };
-const SLOTS = ["clay", "sky", "teal", "cobalt", "acid"] as const;
 const SORTS = ["Liquidity", "Price", "24h change"] as const;
 type Sort = (typeof SORTS)[number];
 const VIEWS = ["List", "Grid"] as const;
@@ -48,7 +46,7 @@ const Arrow = () => (
 );
 
 function CoverCard({ m, i, now }: { m: LiveXStock; i: number; now: number }) {
-  const slot = COVER_SLOT[m.symbol] ?? "raised";
+  const slot = slotFor(m.symbol);
   const liq = m.market?.liquidity ?? null;
   return (
     <Link href={`/assets/${m.symbol}`} className={s.cover} style={{ background: `var(--${slot})`, color: `var(--${slot}Ink)`, animationDelay: `${i * 0.06}s` }}>
@@ -211,7 +209,7 @@ export default function AssetsIndex() {
               {view === "Grid" ? (
                 <div className={s.tileGrid}>
                   {rest.map((m, i) => {
-                    const slot = SLOTS[i % SLOTS.length]!;
+                    const slot = slotFor(m.symbol);
                     const liq = m.market?.liquidity ?? null;
                     return (
                       <Link key={m.address} href={`/assets/${m.symbol}`} className={s.tile} style={{ animationDelay: `${0.1 + (i % 6) * 0.05}s`, "--slot": `var(--${slot})` } as CSSProperties}>
@@ -251,7 +249,7 @@ export default function AssetsIndex() {
               ) : (
               <div className={s.rowGrid}>
                 {rest.map((m, i) => {
-                  const slot = SLOTS[i % SLOTS.length]!;
+                  const slot = slotFor(m.symbol);
                   const liq = m.market?.liquidity ?? null;
                   return (
                     <Link key={m.address} href={`/assets/${m.symbol}`} className={s.row} style={{ "--slot": `var(--${slot})` } as CSSProperties}>

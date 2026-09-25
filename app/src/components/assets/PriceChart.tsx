@@ -27,10 +27,13 @@ export default function PriceChart({
   symbol,
   multiplierNow,
   change,
+  embedded = false,
 }: {
   symbol: string;
   multiplierNow: number;
   change: { from: number; to: number; at: number } | null;
+  /** Inside the stock page's chart card: no box of its own. */
+  embedded?: boolean;
 }) {
   const [data, setData] = useState<ChartData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +65,7 @@ export default function PriceChart({
 
   if (error) {
     return (
-      <div className={s.chartBox}>
+      <div className={embedded ? s.chartBare : s.chartBox}>
         <span className={s.bannerTitle}>Price history unavailable</span>
         <p className={s.panelNote}>{error}</p>
       </div>
@@ -70,7 +73,7 @@ export default function PriceChart({
   }
   if (!data) {
     return (
-      <div className={s.chartBox}>
+      <div className={embedded ? s.chartBare : s.chartBox}>
         <p className={s.panelNote}>Reading {symbol}&apos;s price history…</p>
       </div>
     );
@@ -83,7 +86,7 @@ export default function PriceChart({
   const marker = change && points.length && change.at >= points[0]!.t && change.at <= points.at(-1)!.t + 86400 ? change : null;
 
   return (
-    <div className={s.chartBox}>
+    <div className={embedded ? s.chartBare : s.chartBox}>
       <div className={s.sectionHead}>
         <span className={s.bannerTitle}>
           {usd(last)} per raw token{" "}

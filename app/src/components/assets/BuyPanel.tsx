@@ -15,7 +15,7 @@ const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 // Checked in a browser 2026-09-25: jup.ag/swap/<in>-<out> redirects to buying SOL; the query form
 // ?sell=<in>&buy=<out> opens the right pair.
 
-export default function BuyPanel({ symbol, address, decimals, multiplier, accepted }: { symbol: string; address: string; decimals: number; multiplier: number; accepted: boolean }) {
+export default function BuyPanel({ symbol, address, decimals, multiplier, accepted, embedded = false }: { symbol: string; address: string; decimals: number; multiplier: number; accepted: boolean; /** Inside the stock page's Buy card: no box or title of its own. */ embedded?: boolean }) {
   const [amount, setAmount] = useState("50");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,8 +46,8 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
   const shown = raw * multiplier;
 
   return (
-    <div className={s.chartBox}>
-      <span className={s.bannerTitle}>Buy {symbol}</span>
+    <div className={embedded ? s.chartBare : s.chartBox}>
+      {!embedded && <span className={s.bannerTitle}>Buy {symbol}</span>}
       <label className={s.panelNote}>
         Pay{" "}
         <input className={s.search} style={{ width: 140, display: "inline-block", padding: "8px 12px" }} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} aria-label="USDC to pay" />{" "}
