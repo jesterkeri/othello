@@ -2813,3 +2813,26 @@ Codex r4 confirmed both r3 findings fixed (root tsc; the adversary's asset test)
 spec files passed (195 assertions); root and app TypeScript and the app build pass.
 T24 + T18/S2b + T25 (the seed, the live circle, the real xStocks panel, Contribute, the demo round
 scripts) are closed.
+
+## T18c Codex r1: changes required, two findings fixed (2026-09-25)
+reviewed: reviews/t18c-review.md | verdict: changes required (r1) | commit: b223a46
+adversary: n/a (review fixes; the quote fix is guarded by tests and a mutation check)
+
+1. MAJOR, How it works over-promised: "nobody has to trust anybody", "they get it back at the end",
+   "the rest of the circle keeps getting paid". Now: members don't have to trust each other to keep
+   paying; a note states what it does not remove (issuer can freeze, pause or move tokens, L7; every
+   step needs someone to send it, L10); the stock returns at the end unless they default after
+   taking the pot; on default enough stock is sold to cover what is owed, the guarantee covers any
+   shortfall left after the sale (SPEC §6 forfeited = min(shortfall, guarantee + top-ups)), unneeded
+   stock returns at withdraw, a remaining shortfall pauses the next payout until a top-up, and a
+   pool that cannot buy makes the default wait (L8). The Landing tagline has the same claim:
+   recorded in OPEN-QUESTIONS for Joshua and the design session.
+2. MAJOR, /api/quote invented facts: a partial Jupiter answer became "0.00% impact, direct". The
+   route now requires a positive integer out amount, a finite non-negative impact and a non-empty
+   route with every step labelled, else 502 "Jupiter returned an incomplete quote"; the quoted and
+   reported amounts are one canonical micro-USDC figure. tests/app-quote.spec.ts: 12 passing
+   (Codex's example, eight other malformed answers, 1.0000004 -> 1 both ways, refusals before any
+   request). Mutation (validation removed): 3 passing, 9 failing.
+Also merged task/T18-live-circle (r4 implementation-ready) into this branch.
+
+verify: app-quote 12 passing; root and app tsc; git diff --check clean.

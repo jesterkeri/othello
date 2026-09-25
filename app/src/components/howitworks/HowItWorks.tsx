@@ -45,8 +45,15 @@ export default function HowItWorks() {
         <section className={`${s.card} ${s.hero}`}>
           <h1>How Othello works</h1>
           <p>
-            A savings circle (ajo, esusu, tontine) where nobody has to trust anybody. Friends pay in every round and take the
-            whole pot in turn. What stops the ones already paid from walking away is tokenized stock they lock as a promise.
+            A savings circle (ajo, esusu, tontine) where members don&apos;t have to trust each other to keep paying. Friends pay
+            in every round and take the whole pot in turn. What backs the ones already paid is tokenized stock they lock on-chain
+            as a promise.
+          </p>
+          {/* Codex T18c r1: state the limits (KNOWN-LIMITS L7, L10) rather than promise a trustless, automatic outcome. */}
+          <p className={s.note}>
+            What it does not remove: the stock&apos;s issuer can freeze, pause or move its
+            tokens, and every step (paying out a pot, declaring a default, topping up) happens when someone sends the
+            transaction. Nothing runs by itself.
           </p>
           <p className={s.note}>
             Everything below is the live demo circle on Solana devnet: its money is test USDC and its stock a labelled mirror of
@@ -69,7 +76,7 @@ export default function HowItWorks() {
           <h2 className={s.title}>Each locks a promise</h2>
           <p className={s.body}>
             {c && m0
-              ? `Each locked ${formatRaw(m0.lockedRaw, 2)} NFLXx (mirror), counted at ${cover} ${money} after a 20% safety margin, and put ${formatUsdc(c.guaranteePerMember, 0)} into a shared reserve (${formatUsdc(c.reserveTotal, 0)} in all). They still own it and get it back at the end.`
+              ? `Each locked ${formatRaw(m0.lockedRaw, 2)} NFLXx (mirror), counted at ${cover} ${money} after a 20% safety margin, and put ${formatUsdc(c.guaranteePerMember, 0)} into a shared reserve (${formatUsdc(c.reserveTotal, 0)} in all). The stock stays theirs: when the circle ends, each member withdraws it with what is left of their guarantee, unless they default after taking the pot (step 4).`
               : pending}
           </p>
           <Link className={s.cta} href="/circle/demo/position/2">See Tunde&apos;s seat</Link>
@@ -93,10 +100,11 @@ export default function HowItWorks() {
           <h2 className={s.title}>If someone stops paying</h2>
           <p className={s.body}>
             The risk is a member who has already taken the pot and stops paying. Once the round&apos;s grace runs out, anyone
-            can declare the default: their locked stock is sold to a liquidation pool at a discount to cover every payment they
-            still owe, so the rest of the circle keeps getting paid, and what isn&apos;t needed goes back to them at the end.
-            Someone who stops before their turn has taken nothing; in this version the circle waits for them, and they can
-            still pay late.
+            can declare the default: enough of their locked stock is sold to a liquidation pool, at a discount, to cover the
+            payments they still owe, and their guarantee covers any shortfall left after the sale. Stock that isn&apos;t needed goes back to
+            them when they withdraw. If the sale and the reserve still fall short, the next payout pauses until someone tops
+            up; if the pool can&apos;t buy, the default waits until it is refilled. Someone who stops before their turn has
+            taken nothing; in this version the circle waits for them, and they can still pay late.
           </p>
         </section>
 

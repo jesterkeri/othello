@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
   if (!x) return NextResponse.json({ error: "not a listed xStock" }, { status: 404 });
   if (!Number.isFinite(usdc) || usdc < 1 || usdc > 100_000) return NextResponse.json({ error: "enter between 1 and 100,000 USDC" }, { status: 400 });
 
+  // Codex T18c r1: quote and report the SAME amount. The micro-USDC integer sent to Jupiter is the
+  // canonical figure; the USDC shown back is derived from it (1.0000004 is quoted and shown as 1).
   const amount = Math.round(usdc * 1_000_000);
   const slippageBps = 100;
   const url = `https://lite-api.jup.ag/swap/v1/quote?inputMint=${USDC}&outputMint=${x.address}&amount=${amount}&slippageBps=${slippageBps}&restrictIntermediateTokens=true`;
@@ -26,18 +28,27 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url, { cache: "no-store" }).catch(() => null);
     if (!res) throw new Error("Jupiter unreachable");
     const q = (await res.json().catch(() => null)) as {
-      outAmount?: string;
-      priceImpactPct?: string;
-      routePlan?: { swapInfo?: { label?: string } }[];
+      outAmount?: unknown;
+      priceImpactPct?: unknown;
+      routePlan?: unknown;
       error?: string;
     } | null;
-    if (!res.ok || !q?.outAmount) throw new Error(q?.error ? "Jupiter found no route" : `Jupiter answered ${res.status}`);
+    if (!res.ok) throw new Error(q?.error ? "Jupiter found no route" : `Jupiter answered ${res.status}`);
+    // Codex T18c r1: a quote missing any fact is not shown with a default in its place. Every field
+    // the panel prints must come from Jupiter, well-formed, or there is no quote.
+    const out = typeof q?.outAmount === "string" && /^[0-9]+$/.test(q.outAmount) && BigInt(q.outAmount) > 0n ? q.outAmount : null;
+    const impact = typeof q?.priceImpactPct === "string" || typeof q?.priceImpactPct === "number" ? Number(q.priceImpactPct) : Number.NaN;
+    const plan = Array.isArray(q?.routePlan) ? (q!.routePlan as { swapInfo?: { label?: unknown } }[]) : [];
+    const route = plan.map((r) => r?.swapInfo?.label).filter((l): l is string => typeof l === "string" && l.length > 0);
+    if (!out || !Number.isFinite(impact) || impact < 0 || plan.length === 0 || route.length !== plan.length) {
+      throw new Error("Jupiter returned an incomplete quote");
+    }
     const body: Quote = {
       symbol,
-      usdc,
-      outRaw: q.outAmount,
-      priceImpactPct: Number(q.priceImpactPct ?? 0) * 100,
-      route: (q.routePlan ?? []).map((r) => r.swapInfo?.label ?? "?"),
+      usdc: amount / 1_000_000,
+      outRaw: out,
+      priceImpactPct: impact * 100,
+      route,
       slippageBps,
     };
     return NextResponse.json(body, { headers: { "cache-control": "no-store" } });
