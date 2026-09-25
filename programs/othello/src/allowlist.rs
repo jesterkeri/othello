@@ -68,9 +68,10 @@ mod tests {
 
     #[test]
     #[cfg(not(feature = "devnet"))]
-    fn mainnet_build_refuses_both_devnet_stand_ins() {
+    fn mainnet_build_refuses_the_devnet_mirror_as_collateral() {
+        // Collateral only. This list says nothing about USDC: the default
+        // build's init_pool takes any classic SPL mint (OPEN-QUESTIONS, S2).
         assert!(!is_allowed(&crate::devnet::NFLXX_MIRROR));
-        assert!(!is_allowed(&crate::devnet::TEST_USDC));
     }
 
     #[test]

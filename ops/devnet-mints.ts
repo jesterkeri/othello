@@ -56,8 +56,19 @@ export async function devnetMintAddresses(admin: PublicKeyT) {
   };
 }
 
-/** SystemProgram.createAccountWithSeed, the admin as both payer and base. */
-export function createMintAccountIx(
+/**
+ * Makes the mint's account at its createWithSeed address, as three System
+ * instructions rather than createAccountWithSeed.
+ *
+ * S2 adversary: the addresses are public before the mints exist, and anyone
+ * can send lamports to one. createAccountWithSeed refuses any address that
+ * already holds lamports ("already in use"), so a stranger's 0.0009 SOL would
+ * have blocked the devnet deploy's mints for good. A transfer tops the account
+ * up whether or not it exists, and allocate/assign with seed still need the
+ * admin's signature as the base, so only the admin can give it data or an
+ * owner. The stranger's lamports simply end up in the mint's rent.
+ */
+export function createMintAccountIxs(
   admin: PublicKeyT,
   address: PublicKeyT,
   seed: string,
@@ -65,15 +76,11 @@ export function createMintAccountIx(
   lamports: number,
   owner: PublicKeyT,
 ) {
-  return SystemProgram.createAccountWithSeed({
-    fromPubkey: admin,
-    newAccountPubkey: address,
-    basePubkey: admin,
-    seed,
-    lamports,
-    space,
-    programId: owner,
-  });
+  return [
+    SystemProgram.transfer({ fromPubkey: admin, toPubkey: address, lamports }),
+    SystemProgram.allocate({ accountPubkey: address, basePubkey: admin, seed, space, programId: owner }),
+    SystemProgram.assign({ accountPubkey: address, basePubkey: admin, seed, programId: owner }),
+  ];
 }
 
 /**
@@ -186,17 +193,48 @@ export function mintToCheckedIx(
   });
 }
 
+/** Every instruction that creates the NFLXx mirror, in order. */
+export async function createNflxxMirrorIxs(admin: PublicKeyT, rent: number) {
+  const { nflxxMirror } = await devnetMintAddresses(admin);
+  return [
+    ...createMintAccountIxs(admin, nflxxMirror, NFLXX_MIRROR_SEED, NFLXX_MIRROR_SPACE, rent, TOKEN_2022),
+    initializeScaledUiAmountIx(nflxxMirror, admin, 1.0),
+    initializeMint2Ix(nflxxMirror, NFLXX_MIRROR_DECIMALS, admin, TOKEN_2022),
+  ];
+}
+
+/** Every instruction that creates the test USDC, in order. */
+export async function createTestUsdcIxs(admin: PublicKeyT, rent: number) {
+  const { testUsdc } = await devnetMintAddresses(admin);
+  return [
+    ...createMintAccountIxs(admin, testUsdc, TEST_USDC_SEED, TEST_USDC_SPACE, rent, SPL_TOKEN),
+    initializeMint2Ix(testUsdc, TEST_USDC_DECIMALS, admin, SPL_TOKEN),
+  ];
+}
+
 /** Every instruction that creates both mints, in order. */
 export async function createDevnetMintsIxs(
   admin: PublicKeyT,
   rent: { nflxxMirror: number; testUsdc: number },
 ) {
-  const { nflxxMirror, testUsdc } = await devnetMintAddresses(admin);
-  return [
-    createMintAccountIx(admin, nflxxMirror, NFLXX_MIRROR_SEED, NFLXX_MIRROR_SPACE, rent.nflxxMirror, TOKEN_2022),
-    initializeScaledUiAmountIx(nflxxMirror, admin, 1.0),
-    initializeMint2Ix(nflxxMirror, NFLXX_MIRROR_DECIMALS, admin, TOKEN_2022),
-    createMintAccountIx(admin, testUsdc, TEST_USDC_SEED, TEST_USDC_SPACE, rent.testUsdc, SPL_TOKEN),
-    initializeMint2Ix(testUsdc, TEST_USDC_DECIMALS, admin, SPL_TOKEN),
-  ];
+  return [...(await createNflxxMirrorIxs(admin, rent.nflxxMirror)), ...(await createTestUsdcIxs(admin, rent.testUsdc))];
+}
+
+/**
+ * What is at a stand-in address. "absent" includes a stranger's pre-funded,
+ * empty, System-owned account: the create instructions above handle it.
+ * Anything else that is not the expected mint is refused, never overwritten.
+ */
+export function standInState(
+  info: { owner: PublicKeyT; data: Uint8Array } | null,
+  expect: { owner: PublicKeyT; space: number; decimals: number; admin: PublicKeyT },
+): "absent" | "ready" | { refused: string } {
+  if (!info || (info.owner.equals(SystemProgram.programId) && info.data.length === 0)) return "absent";
+  const data = Buffer.from(info.data);
+  if (!info.owner.equals(expect.owner)) return { refused: `owned by ${info.owner.toBase58()}, expected ${expect.owner.toBase58()}` };
+  if (data.length !== expect.space) return { refused: `${data.length} bytes, expected ${expect.space}` };
+  if (data[45] !== 1) return { refused: "not an initialized mint" };
+  if (data.readUInt32LE(0) !== 1 || !new PublicKey(data.subarray(4, 36)).equals(expect.admin)) return { refused: "its mint authority is not the admin" };
+  if (data[44] !== expect.decimals) return { refused: `${data[44]} decimals, expected ${expect.decimals}` };
+  return "ready";
 }

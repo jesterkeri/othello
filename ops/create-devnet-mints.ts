@@ -8,8 +8,10 @@
  *
  *   pnpm tsx ops/create-devnet-mints.ts --create
  *       Creates both mints on devnet, signed by the wallet at $ANCHOR_WALLET or
- *       ~/.config/solana/id.json, then mints 20,000 test USDC to the admin for
- *       seeding the demo. Safe to re-run: an existing mint is checked and left.
+ *       ~/.config/solana/id.json, then tops the admin up to 20,000 test USDC
+ *       for seeding the demo. Refuses any RPC that is not devnet. Safe to
+ *       re-run: an existing mint is checked (owner, size, decimals, mint
+ *       authority) and left; a stranger's pre-funded empty account is taken over.
  *
  * The program's devnet build must already contain these addresses
  * (programs/othello/src/allowlist.rs, feature "devnet"). --create refuses if
@@ -23,6 +25,7 @@ import { resolve } from "node:path";
 import * as anchor from "@coral-xyz/anchor";
 
 import {
+  NFLXX_MIRROR_DECIMALS,
   NFLXX_MIRROR_SPACE,
   SPL_TOKEN,
   TEST_USDC_DECIMALS,
@@ -30,22 +33,27 @@ import {
   TOKEN_2022,
   ataAddress,
   createAtaIdempotentIx,
-  createDevnetMintsIxs,
+  createNflxxMirrorIxs,
+  createTestUsdcIxs,
   devnetMintAddresses,
   mintToCheckedIx,
+  standInState,
 } from "./devnet-mints.ts";
 
 const RECORD = resolve(import.meta.dirname, "devnet-mints.json");
 const DEVNET = "https://api.devnet.solana.com";
 const SEED_USDC = 20_000n * 1_000_000n;
 
-type Record = { cluster: string; admin: string; nflxxMirror: string; testUsdc: string };
+type Record = { cluster: string; admin: string; nflxxMirror: string; testUsdc: string; createdAt?: string };
 
 async function print(adminArg: string) {
   const admin = new anchor.web3.PublicKey(adminArg);
   const a = await devnetMintAddresses(admin);
   console.log(JSON.stringify({ cluster: "devnet", admin: admin.toBase58(), nflxxMirror: a.nflxxMirror.toBase58(), testUsdc: a.testUsdc.toBase58() }, null, 2));
 }
+
+/** `solana genesis-hash -u devnet`, 2026-09-25. Mainnet's is 5eykt4Us…; anything else is refused. */
+const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 
 async function create() {
   const walletPath = process.env.ANCHOR_WALLET ?? resolve(homedir(), ".config/solana/id.json");
@@ -61,38 +69,49 @@ async function create() {
   }
 
   const connection = new anchor.web3.Connection(process.env.SOLANA_RPC ?? DEVNET, "confirmed");
-  const existing = await connection.getMultipleAccountsInfo([a.nflxxMirror, a.testUsdc]);
-
-  if (existing[0] || existing[1]) {
-    // Re-run: check what is there rather than trusting it.
-    if (!existing[0]?.owner.equals(TOKEN_2022) || existing[0].data.length !== NFLXX_MIRROR_SPACE) {
-      throw new Error("An account exists at the NFLXx mirror address but is not the expected Token-2022 mint.");
-    }
-    if (!existing[1]?.owner.equals(SPL_TOKEN) || existing[1].data.length !== TEST_USDC_SPACE) {
-      throw new Error("An account exists at the test USDC address but is not the expected SPL mint.");
-    }
-    console.log("Both mints already exist and have the expected owner and size. Not re-created.");
-  } else {
-    const ixs = await createDevnetMintsIxs(admin.publicKey, {
-      nflxxMirror: await connection.getMinimumBalanceForRentExemption(NFLXX_MIRROR_SPACE),
-      testUsdc: await connection.getMinimumBalanceForRentExemption(TEST_USDC_SPACE),
-    });
-    const sig = await anchor.web3.sendAndConfirmTransaction(connection, new anchor.web3.Transaction().add(...ixs), [admin]);
-    console.log(`Created both mints: ${sig}`);
+  // S2 adversary: SOLANA_RPC could point anywhere. These are devnet stand-ins,
+  // so refuse any cluster that is not devnet before a single lamport moves.
+  const genesis = await connection.getGenesisHash();
+  if (genesis !== DEVNET_GENESIS) {
+    throw new Error(`The RPC is not devnet (genesis ${genesis}, expected ${DEVNET_GENESIS}). Nothing was sent.`);
   }
 
-  const sig = await anchor.web3.sendAndConfirmTransaction(
-    connection,
-    new anchor.web3.Transaction().add(
-      createAtaIdempotentIx(admin.publicKey, admin.publicKey, a.testUsdc, SPL_TOKEN),
-      mintToCheckedIx(a.testUsdc, ataAddress(a.testUsdc, admin.publicKey, SPL_TOKEN), admin.publicKey, SEED_USDC, TEST_USDC_DECIMALS, SPL_TOKEN),
-    ),
-    [admin],
-  );
-  console.log(`Minted 20,000 test USDC to the admin for seeding: ${sig}`);
+  const [mirrorInfo, usdcInfo] = await connection.getMultipleAccountsInfo([a.nflxxMirror, a.testUsdc]);
+  const mirror = standInState(mirrorInfo ?? null, { owner: TOKEN_2022, space: NFLXX_MIRROR_SPACE, decimals: NFLXX_MIRROR_DECIMALS, admin: admin.publicKey });
+  const usdc = standInState(usdcInfo ?? null, { owner: SPL_TOKEN, space: TEST_USDC_SPACE, decimals: TEST_USDC_DECIMALS, admin: admin.publicKey });
+  for (const [name, state] of [["NFLXx mirror", mirror], ["test USDC", usdc]] as const) {
+    if (typeof state === "object") throw new Error(`The ${name} address holds an account that is not the expected mint: ${state.refused}. Nothing was sent.`);
+  }
+
+  // Each mint on its own, so a run that made one and not the other finishes.
+  const ixs = [
+    ...(mirror === "absent" ? await createNflxxMirrorIxs(admin.publicKey, await connection.getMinimumBalanceForRentExemption(NFLXX_MIRROR_SPACE)) : []),
+    ...(usdc === "absent" ? await createTestUsdcIxs(admin.publicKey, await connection.getMinimumBalanceForRentExemption(TEST_USDC_SPACE)) : []),
+  ];
+  if (ixs.length) {
+    const sig = await anchor.web3.sendAndConfirmTransaction(connection, new anchor.web3.Transaction().add(...ixs), [admin]);
+    console.log(`Created ${[mirror === "absent" && "the NFLXx mirror", usdc === "absent" && "test USDC"].filter(Boolean).join(" and ")}: ${sig}`);
+  } else {
+    console.log("Both mints already exist with the expected owner, size, decimals and mint authority. Not re-created.");
+  }
+
+  // Top the admin up to 20,000 test USDC, never past it: a re-run does not mint more.
+  const adminUsdc = ataAddress(a.testUsdc, admin.publicKey, SPL_TOKEN);
+  const have = (await connection.getAccountInfo(adminUsdc))?.data.readBigUInt64LE(64) ?? 0n;
+  if (have < SEED_USDC) {
+    const sig = await anchor.web3.sendAndConfirmTransaction(
+      connection,
+      new anchor.web3.Transaction().add(
+        createAtaIdempotentIx(admin.publicKey, admin.publicKey, a.testUsdc, SPL_TOKEN),
+        mintToCheckedIx(a.testUsdc, adminUsdc, admin.publicKey, SEED_USDC - have, TEST_USDC_DECIMALS, SPL_TOKEN),
+      ),
+      [admin],
+    );
+    console.log(`Admin topped up to 20,000 test USDC for seeding: ${sig}`);
+  }
   console.log(`NFLXx devnet mirror: ${a.nflxxMirror.toBase58()}`);
   console.log(`Othello test USDC:   ${a.testUsdc.toBase58()}`);
-  writeFileSync(RECORD, JSON.stringify({ ...record, createdAt: new Date().toISOString() }, null, 2) + "\n");
+  writeFileSync(RECORD, JSON.stringify({ ...record, createdAt: record.createdAt ?? new Date().toISOString() }, null, 2) + "\n");
 }
 
 const [mode, arg] = process.argv.slice(2);

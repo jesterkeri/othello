@@ -2030,3 +2030,27 @@ tests, clippy, fmt and TypeScript pass; check-reviews.sh "reviews ok".
 Gates 1, 2 and 3 are all implementation-ready: the program is complete for
 the hackathon scope. Next on the critical path: S2 devnet mirror mints, then
 T23 deploy (Joshua).
+
+## S2 Devnet mirror mints and the devnet build (2026-09-25)
+reviewed: pending, Codex S2 r1 against reviews/s2-brief.md (verdict to be recorded here)
+adversary: ONE defect, fixed: a stranger's lamport transfer to a published stand-in address made createAccountWithSeed fail "already in use" for good (tests/s2-adversary.spec.ts, integrated, failed before the fix and passes after). 9 other attacks failed.
+
+Joshua's decisions: addresses derived from the admin's public key with createWithSeed; NFLXx
+mirror only; test USDC is a classic SPL mint, devnet-only, never shown as real USDC (Circle USDC
+after submission, TASKS CIRCLE_USDC); network "Devnet + real data shown" (TASKS S2b).
+
+- `--features devnet`: allowlist = [NFLXx mirror] only; init_pool pins test USDC. Default build unchanged.
+- Admin HXN8oAJFnbaeGLwLdJ129qwSrXUv4xfZ2Em8myu4rciy; mirror CymeZqJiKk2Nd4FkDvHduyrq3k3XbJELtifAbPqfdSuA;
+  test USDC HuNtRYjwPgqKANveLm5vRj9DveBnQAq4cFzWTEf4DoBV (ops/devnet-mints.json, devnet.rs, both re-derived by tests).
+- Adversary fixes also taken: the create script refuses any RPC whose genesis hash is not devnet;
+  tops the admin up to 20,000 test USDC instead of minting 20,000 per run; checks an existing
+  mint's owner, size, initialised flag, decimals and mint authority; creates each mint separately.
+- Mutations: devnet USDC pin disabled -> s2-devnet-build 5 passing, 1 failing; devnet allowlist
+  also admitting real NFLXx -> 4 passing, 2 failing. Restored -> 6 passing (7 with the label test).
+
+verify (01:42 WAT): every spec file in its own process, 24 files, 159 passing, 0 failing
+(deploy-artifact 2, s2-adversary 2, s2-devnet-build 7, s2-devnet-mints 6, t04 2+9, t05 9, t06 5,
+t08 7, t09 5+12, t09b 6, t10 9+11, t11 6, t12 4, t13 2, t14 10+13, t15 4+11, t16 7+6, workspace 4);
+cargo test 57 passed default, 56 passed --features devnet; clippy -D warnings clean on both;
+cargo fmt --check clean; tsc clean; check-secrets "no credential-shaped strings in client output".
+Deploy cost measured: othello.so 695,216 bytes; with PREFLIGHT's 1.2x max-len, 4.23891456 SOL.

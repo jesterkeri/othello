@@ -21,8 +21,10 @@ import {
   ataAddress,
   createAtaIdempotentIx,
   createDevnetMintsIxs,
+  createTestUsdcIxs,
   devnetMintAddresses,
   mintToCheckedIx,
+  standInState,
   updateMultiplierIx,
 } from "../ops/devnet-mints.ts";
 
@@ -147,5 +149,38 @@ describe("S2 devnet stand-in mints", () => {
       sendAll([updateMultiplierIx(nflxxMirror, stranger.publicKey, 10.0, clock.unixTimestamp + 600n)], stranger),
       "a stranger cannot schedule a split",
     );
+  });
+
+  // What `--create` does on a re-run, a partial run, or after a squat.
+  it("reads each stand-in address's state: absent, squatted-but-empty, ready, or refused", async () => {
+    const { nflxxMirror, testUsdc } = await devnetMintAddresses(admin.publicKey);
+    const mirrorExpect = { owner: TOKEN_2022, space: NFLXX_MIRROR_SPACE, decimals: NFLXX_MIRROR_DECIMALS, admin: admin.publicKey };
+    const usdcExpect = { owner: SPL_TOKEN, space: TEST_USDC_SPACE, decimals: TEST_USDC_DECIMALS, admin: admin.publicKey };
+    const read = async (a: anchor.web3.PublicKey) => {
+      const info = await h.context.banksClient.getAccount(a);
+      return info ? { owner: info.owner, data: info.data } : null;
+    };
+
+    assert.equal(standInState(await read(nflxxMirror), mirrorExpect), "absent");
+
+    // A stranger's lamports: still "absent", so the create path runs.
+    const stranger = h.fund();
+    await sendAll([anchor.web3.SystemProgram.transfer({ fromPubkey: stranger.publicKey, toPubkey: testUsdc, lamports: 1_000_000 })], stranger);
+    assert.equal(standInState(await read(testUsdc), usdcExpect), "absent");
+
+    // A partial run: only test USDC is made; the mirror is still absent.
+    await h.nextSlot();
+    await sendAll(await createTestUsdcIxs(admin.publicKey, await rentFor(TEST_USDC_SPACE)));
+    assert.equal(standInState(await read(testUsdc), usdcExpect), "ready");
+    assert.equal(standInState(await read(nflxxMirror), mirrorExpect), "absent");
+
+    // The right account checked against the wrong expectations is refused, never "ready".
+    const usdc = (await read(testUsdc))!;
+    assert.equal(typeof standInState(usdc, { ...usdcExpect, admin: stranger.publicKey }), "object", "another mint authority");
+    assert.equal(typeof standInState(usdc, { ...usdcExpect, decimals: 8 }), "object", "other decimals");
+    assert.equal(typeof standInState(usdc, mirrorExpect), "object", "other owner");
+    const uninitialised = Buffer.from(usdc.data);
+    uninitialised[45] = 0;
+    assert.equal(typeof standInState({ owner: usdc.owner, data: uninitialised }, usdcExpect), "object", "not initialized");
   });
 });
