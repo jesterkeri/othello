@@ -19,6 +19,9 @@ import { multiplierAt, readScaledUi, toFixed1e9 } from "./scaledUi";
 type PublicKeyT = anchor.web3.PublicKey;
 type BNLike = { toNumber(): number; toString(): string };
 
+const SPL_TOKEN = new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ASSOCIATED_TOKEN = new anchor.web3.PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
 export const IDL = idlJson as anchor.Idl & { address: string };
 
 /** The IDL's account coder, with the camelCase names the rest of the app uses. */
@@ -168,6 +171,8 @@ export type LiveCircle = {
   accounts: { circle: string; usdcMint: string; stockMint: string };
   /** The mint's pending split, for the screen to say when the multiplier changes. */
   split: { multiplier: number; newMultiplier: number; effectiveAt: number };
+  /** The liquidation pool declare_default sells to: its discount and its USDC vault's balance (SPEC §6). */
+  pool: { discountBps: number; usdc: number };
   readAt: number;
 };
 
@@ -186,12 +191,19 @@ export async function readLiveCircle(
 
   const c = accountsCoder().decode<DecodedCircle>("circle", circleInfo.data);
   const wallets = c.members.slice(0, c.n);
-  const keys = [c.priceFeed, c.stockMint, ...wallets.map((w) => memberAddress(programId, circleKey, w))];
+  const poolUsdcVault = anchor.web3.PublicKey.findProgramAddressSync(
+    [c.pool.toBytes(), SPL_TOKEN.toBytes(), c.usdcMint.toBytes()],
+    ASSOCIATED_TOKEN,
+  )[0];
+  const keys = [c.priceFeed, c.stockMint, c.pool, poolUsdcVault, ...wallets.map((w) => memberAddress(programId, circleKey, w))];
   const infos = await connection.getMultipleAccountsInfo(keys);
   // A Forming circle may have seats not yet joined; only joined seats have a
   // Member account, and decodeLive checks that against joined_bitmap's seats.
-  const [feedInfo, mintInfo, ...memberInfos] = infos;
+  const [feedInfo, mintInfo, poolInfo, poolVaultInfo, ...memberInfos] = infos;
   if (!feedInfo) throw new Error(`Missing price feed ${c.priceFeed.toBase58()}`);
+  if (!poolInfo) throw new Error(`Missing liquidation pool ${c.pool.toBase58()}`);
+  if (!poolVaultInfo) throw new Error(`Missing liquidation pool USDC vault ${poolUsdcVault.toBase58()}`);
+  const pool = accountsCoder().decode<{ discountBps: number }>("liquidationPool", poolInfo.data);
   if (!mintInfo) throw new Error(`Missing stock mint ${c.stockMint.toBase58()}`);
 
   const now = Math.floor(Date.now() / 1000);
@@ -206,6 +218,11 @@ export async function readLiveCircle(
     view,
     accounts: { circle: circleAddress, usdcMint: c.usdcMint.toBase58(), stockMint: c.stockMint.toBase58() },
     split: scaled,
+    // SPL token account amount: u64 at byte 64 (DataView, not Buffer: this module is also in the browser bundle).
+    pool: {
+      discountBps: pool.discountBps,
+      usdc: Number(new DataView(poolVaultInfo.data.buffer, poolVaultInfo.data.byteOffset, poolVaultInfo.data.byteLength).getBigUint64(64, true)),
+    },
     readAt: now,
   };
 }

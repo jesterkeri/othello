@@ -291,6 +291,26 @@ export function stockCover(m: MemberView, c: CircleView): number {
   return Number((lower * (BPS - BigInt(c.haircutBps))) / BPS);
 }
 
+/**
+ * SPEC §6, `recovered`: the test USDC the liquidation pool pays for a defaulter's stock, with
+ * the program's own rounding (declare_default.rs `waterfall`). declare_default refuses with
+ * PoolInsufficient unless the pool's USDC vault holds at least this, so the app checks it
+ * before offering the button.
+ *   O            = contribution x (n - rounds_paid)
+ *   conservative = floor(wrapper_price x (10000 - discount_bps) / 10000)
+ *   sell_raw     = min(stock_raw, ceil(O x 1e8 / conservative))   (0 when conservative is 0)
+ *   recovered    = floor(sell_raw x conservative / 1e8)
+ */
+export function defaultRecovered(c: CircleView, m: MemberView, discountBps: number): number {
+  const owed = BigInt(c.contribution) * BigInt(c.n - m.roundsPaid);
+  const conservative = (BigInt(c.feed.wrapperPrice) * (BPS - BigInt(discountBps))) / BPS;
+  if (conservative <= 0n) return 0;
+  const wanted = (owed * ONE_E8 + conservative - 1n) / conservative;
+  const raw = BigInt(m.lockedRaw);
+  const sell = wanted < raw ? wanted : raw;
+  return Number((sell * conservative) / ONE_E8);
+}
+
 /** need_i, the reserve a member requires to reach the coverage target. */
 export function needG(c: CircleView, m: MemberView): number {
   const o = BigInt(obligations(c, m));

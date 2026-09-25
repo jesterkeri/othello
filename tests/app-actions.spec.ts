@@ -16,6 +16,8 @@ import { DEMO, payRound, seedDemoCircle, type Chain } from "../ops/demo.ts";
 import { NFLXX_MIRROR_SPACE, SPL_TOKEN, TEST_USDC_SPACE, ataAddress, createDevnetMintsIxs, devnetMintAddresses } from "../ops/devnet-mints.ts";
 import { explainFailure } from "../app/src/lib/contribute.ts";
 import { declareDefaultIx, releasePotIx, updateCoverageIx, type CircleKeys } from "../app/src/lib/actions.ts";
+import { defaultRecovered } from "../app/src/lib/circle.ts";
+import { decodeLive, memberAddress } from "../app/src/lib/live.ts";
 
 const DEVNET_SO = "target/devnet/othello.so";
 const record = JSON.parse(readFileSync(resolve(REPO, "ops/devnet-mints.json"), "utf8")) as { nflxxMirror: string; testUsdc: string };
@@ -148,6 +150,38 @@ describe("T18d the app's anyone-may-send actions, on the devnet build", () => {
     await h.setClock(graceEnd + 1);
     await sendAs(await declareDefaultIx(stranger.publicKey, keys(circle), 0), stranger);
     assert.equal((await read(circle)).defaultedBitmap, 0b00001);
+  });
+
+  it("the app's recovered (SPEC §6) is exactly what the pool pays when the default is declared", async () => {
+    const circle = await seedDemoCircle(chain, MINTS, members);
+    await payRound(chain, MINTS, members);
+    const stranger = h.fund();
+    await sendAs(await releasePotIx(stranger.publicKey, keys(circle), members[0]!.publicKey), stranger);
+    await payRound(chain, MINTS, members, [0]);
+    const c = await read(circle);
+    await h.setClock(c.roundDeadline.toNumber() + c.graceSecs.toNumber() + 1);
+
+    // The view the app decodes from the same accounts, and the pool the live read reports.
+    const raw = async (k: anchor.web3.PublicKey) => Buffer.from((await h.context.banksClient.getAccount(k))!.data);
+    const decoded = await fetchAccount<{ priceFeed: anchor.web3.PublicKey; pool: anchor.web3.PublicKey }>(h.program, "circle", circle);
+    const view = decodeLive(
+      {
+        circle: await raw(circle),
+        feed: await raw(decoded.priceFeed),
+        mint: await raw(MINTS.stock),
+        members: await Promise.all(members.map((m) => raw(memberAddress(h.program.programId, circle, m.publicKey)))),
+      },
+      "NFLXx mirror",
+      Number((await h.context.banksClient.getClock()).unixTimestamp),
+    );
+    const pool = await fetchAccount<{ discountBps: number }>(h.program, "liquidationPool", decoded.pool);
+    const expected = defaultRecovered(view, view.members[0]!, pool.discountBps);
+    const before = await usdcOf(decoded.pool);
+
+    await sendAs(await declareDefaultIx(stranger.publicKey, keys(circle), 0), stranger);
+
+    assert.ok(expected > 0);
+    assert.equal(before - (await usdcOf(decoded.pool)), BigInt(expected));
   });
 
   it("declare_default on a seat that has not taken the pot is refused", async () => {

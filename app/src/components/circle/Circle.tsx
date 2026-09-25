@@ -6,6 +6,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { WalletControl } from "@/components/othello/WalletConnect";
 import Shell from "@/components/othello/Shell";
 import {
+  execValue,
+  fundValue,
   coverageLabel,
   derive,
   formatDuration,
@@ -55,6 +57,9 @@ export type CircleProps = {
   stateKey: CircleStateKey | "demo";
   live?: LiveProps;
 };
+
+/** Each seat's colour, in turn order (Circle.dc.html handoff). */
+const SEAT_SLOTS = ["teal", "acid", "sky", "clay", "cobalt"] as const;
 
 function Banner({
   kind,
@@ -134,6 +139,9 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
   // is `remaining`, R - L, not the Guarantee panel's `free`, R - L - allocated.
   // Printing free here would understate what the reserve holds.
   const gateNeeded = d.remains + c.nextGateShortBy;
+  // What each member locked, in the words it must always carry: the demo's stock is a labelled mirror.
+  // The live read names it "NFLXx mirror"; say which network it is a mirror on, once.
+  const stockUnit = live ? `${c.stockSymbol.replace(/\s*mirror$/i, "")} devnet mirror` : c.stockSymbol;
 
   return (
     <Shell active="Circles">
@@ -203,7 +211,7 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
               title={`${d.missing} contributions still missing`}
               text={
                 live
-                  ? `Once everyone has paid, anyone can release the pot${d.recipient ? ` to ${d.recipient.name}` : ""}. Paying late still counts.`
+                  ? `Once everyone has paid${d.paused ? " and the reserve covers the next payout" : ""}${d.stale ? " and the price is fresh" : ""}, anyone can release the pot${d.recipient ? ` to ${d.recipient.name}` : ""}. Paying late still counts.`
                   : "Wait, or remind them."
               }
             />
@@ -218,7 +226,8 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
           )}
         </div>
 
-        <section className={s.head}>
+        <section className={s.hero} aria-label="This round">
+          <div className={s.heroMain}>
           <div className={s.headTop}>
             <span className={`${s.statusPill} ${statusClass} ${s.micro}`}>{statusWord}</span>
             <span className={`${s.stockPill} ${s.micro}`}>{c.stockSymbol} locked as cover</span>
@@ -292,9 +301,18 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
               </span>
             </div>
           )}
+          </div>
+          <div className={s.act}>
+            {live ? (
+              live.action
+            ) : (
+              <p className={s.actFixture}>
+                A committed fixture, shown for its design state. Nothing here sends a transaction; the live
+                circle is at /circle/demo.
+              </p>
+            )}
+          </div>
         </section>
-
-        {live?.action}
 
         {c.status === "Forming" ? (
           <div className={s.section}>
@@ -338,169 +356,206 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
           </div>
         )}
 
-        <div className={s.cards}>
-          <div className={`${s.card} ${s.cardReserve}`}>
-            <span className={s.micro}>Shared reserve, free</span>
-            <span className={`${s.display} ${s.cardBig}`}>
-              {formatUsdc(d.free, 0)} {USDC_SUFFIX}
-            </span>
-            <div className={s.bar} aria-hidden>
+        <div className={s.money}>
+          <section className={s.reserve} aria-label="Shared reserve">
+            <span className={s.kicker}>Shared reserve, free</span>
+            <div className={s.reserveTop}>
+              <b className={`${s.display} ${s.reserveBig}`}>
+                {formatUsdc(d.free)}
+                <small>{USDC_SUFFIX}</small>
+              </b>
               <span
-                className={s.barFill}
-                style={{
-                  width: `${c.reserveTotal > 0 ? Math.round((d.free / c.reserveTotal) * 100) : 0}%`,
-                }}
-              />
-            </div>
-            <div className={s.rows}>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Deposited</span>
-                <span className={s.rowValue}>{formatUsdc(c.reserveTotal)}</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Spent on defaults</span>
-                <span className={s.rowValue}>{formatUsdc(c.reserveLosses)}</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Allocated to cover</span>
-                <span className={s.rowValue}>{formatUsdc(c.reserveAllocated)}</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Remains, the gate's figure</span>
-                <span className={s.rowValue}>{formatUsdc(d.remains)}</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Next payout needs</span>
-                <span className={s.rowValue}>{formatUsdc(gateNeeded)}</span>
+                className={s.coins}
+                role="img"
+                aria-label={`${d.joined} deposits of ${formatUsdc(c.guaranteePerMember)} ${USDC_SUFFIX}, one per joined seat`}
+              >
+                <span className={s.coinRow}>
+                  {c.members
+                    .filter((m) => seatSet(c.joinedBitmap, m.turn))
+                    .map((m, i) => (
+                      <span key={m.address} className={s.coin} style={{ transform: `rotate(${[-8, 4, -3, 7, -5, 3, -6, 5][i % 8]}deg)` }}>
+                        {m.turn + 1}
+                      </span>
+                    ))}
+                </span>
+                <span className={s.coinNote}>
+                  {d.joined} deposits of {formatUsdc(c.guaranteePerMember)}, one per seat
+                </span>
               </span>
             </div>
-          </div>
+            <dl className={s.ledger}>
+              {(
+                [
+                  ["+", "Deposited", c.reserveTotal],
+                  ["−", "Spent on defaults", c.reserveLosses],
+                  ["−", "Allocated to cover", c.reserveAllocated],
+                  ["=", "Remains, the gate's figure", d.remains],
+                  ["→", "Next payout needs", gateNeeded],
+                ] as const
+              ).map(([sign, k, v]) => (
+                <div key={k} className={`${s.ledgerRow} ${sign === "=" ? s.ledgerSum : ""}`}>
+                  <span aria-hidden className={s.ledgerSign}>
+                    {sign}
+                  </span>
+                  <dt>{k}</dt>
+                  <dd>
+                    {formatUsdc(v)} {USDC_SUFFIX}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
 
-          <div className={`${s.card} ${s.cardCoverage}`}>
-            <span className={s.micro}>Cover per member</span>
-            <span className={`${s.display} ${s.cardBig}`}>
-              {d.repricing
-                ? "Not countable"
-                : `${formatUsdc(c.members[0] ? stockCover(c.members[0], c) : 0, 0)} ${USDC_SUFFIX}`}
+          <section className={s.cover} aria-label="Cover per member">
+            <span className={s.kicker}>Cover per member</span>
+            {(() => {
+              const m0 = c.members.find((m) => seatSet(c.joinedBitmap, m.turn));
+              if (!m0) return <span className={s.coverIntro}>Nobody has locked stock yet.</span>;
+              const steps: [string, string][] = [
+                [formatRaw(m0.lockedRaw), `${stockUnit} locked`],
+                [formatUsdc(Math.min(fundValue(m0, c), execValue(m0, c))), `${USDC_SUFFIX}, lower of market and share price`],
+                [`−${c.haircutBps / 100}%`, "safety margin"],
+                [d.repricing ? "Not countable" : formatUsdc(stockCover(m0, c), 0), d.repricing ? "price and split disagree" : `${USDC_SUFFIX} of cover`],
+              ];
+              return (
+                <>
+                  <span className={s.coverIntro}>
+                    How {m0.name}&apos;s locked {stockUnit} becomes cover.
+                  </span>
+                  <ol className={s.steps}>
+                    {steps.map(([v, k], i) => (
+                      <li key={k} className={`${s.step} ${i === 3 ? s.stepLast : ""}`}>
+                        <span className={s.stepN}>{i + 1}</span>
+                        <b className={s.display}>{v}</b>
+                        <span>{k}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              );
+            })()}
+            <span className={s.coverChips}>
+              <span className={s.coverChip}>
+                <span>Minimum to join</span>
+                {formatUsdc(c.minStockCover)} {USDC_SUFFIX} of cover
+              </span>
+              <span className={s.coverChip}>
+                <span>Coverage target</span>
+                {c.coverageBps / 100}%
+              </span>
+              <span className={s.coverChip}>
+                <span>Held this round</span>
+                {formatUsdc(c.heldContributions)} {USDC_SUFFIX}
+              </span>
             </span>
-            <div className={s.rows}>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Minimum to join</span>
-                <span className={s.rowValue}>{formatUsdc(c.minStockCover)}</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Safety margin</span>
-                <span className={s.rowValue}>{c.haircutBps / 100}%</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Coverage target</span>
-                <span className={s.rowValue}>{c.coverageBps / 100}%</span>
-              </span>
-              <span className={s.row}>
-                <span className={s.rowLabel}>Held this round</span>
-                <span className={s.rowValue}>{formatUsdc(c.heldContributions)}</span>
-              </span>
-            </div>
-          </div>
+          </section>
         </div>
 
-        <div className={s.section}>
+        <section className={s.section} aria-label="Members">
           <div className={s.sectionHead}>
-            <span className={s.sectionLabel}>Members</span>
             <span className={s.sectionLabel}>
-              {d.joined} of {c.n} joined
+              Members ({d.joined} of {c.n} joined)
+            </span>
+            <span className={s.sectionNote}>
+              <b>Each stake is still its owner&apos;s.</b> Returned when the circle ends, unless they default after
+              taking the pot.
             </span>
           </div>
-          <div className={s.tableWrap}>
-            <table className={s.table}>
-              <thead>
-                <tr>
-                  <th scope="col">Seat</th>
-                  <th scope="col">This round</th>
-                  <th scope="col">Pot</th>
-                  <th scope="col">Locked {c.stockSymbol}</th>
-                  <th scope="col">Stock cover</th>
-                  <th scope="col">Owed</th>
-                  <th scope="col">Coverage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {c.members.map((m) => {
-                  const joined = seatSet(c.joinedBitmap, m.turn);
-                  const paid = seatSet(c.paidBitmap, m.turn);
-                  const received = seatSet(c.receivedBitmap, m.turn);
-                  const defaulted = seatSet(c.defaultedBitmap, m.turn);
-                  const withdrawn = seatSet(c.withdrawnBitmap, m.turn);
-                  const isNow = isActive && m.turn === c.round;
-                  return (
-                    <tr key={m.address}>
-                      <td data-label="Seat">
-                        {/* design/FLOWS.md §4: member row -> [Position]. The live
-                            circle's seat pages read the chain too (LiveSeat, T18c). */}
-                        <Link
-                          href={`/circle/${stateKey}/position/${m.turn + 1}`}
-                          className={s.seatCell}
-                        >
-                          <span className={`${s.seatDisc} ${isNow ? s.seatDiscNow : ""}`}>
-                            {m.turn + 1}
-                          </span>
-                          <span className={s.seatName}>
-                            <span>
-                              {m.name}
-                              {live?.yourTurn === m.turn && (
-                                <span className={`${s.tag} ${s.tagYes} ${s.you}`}>You</span>
-                              )}
-                            </span>
-                            <span className={s.seatAddr}>{shortAddress(m.address)}</span>
-                          </span>
-                        </Link>
-                      </td>
-                      <td data-label="This round">
-                        {defaulted ? (
-                          <span className={`${s.tag} ${s.tagGone}`}>Defaulted</span>
-                        ) : !joined ? (
-                          <Link
-                            href={`/circle/${stateKey}/join/${m.turn + 1}`}
-                            className={`${s.tag} ${s.tagNo}`}
-                          >
-                            Not joined
-                          </Link>
-                        ) : !isActive ? (
-                          <span className={`${s.tag} ${s.tagDone}`}>
-                            {withdrawn ? "Withdrawn" : "To withdraw"}
-                          </span>
-                        ) : paid ? (
-                          <span className={`${s.tag} ${s.tagYes}`}>Paid</span>
-                        ) : (
-                          <span className={`${s.tag} ${s.tagDue}`}>Due</span>
-                        )}
-                      </td>
-                      <td data-label="Pot">
-                        <span className={`${s.tag} ${received ? s.tagDone : s.tagNo}`}>
-                          {received ? "Received" : isNow ? "Receiving" : "Waiting"}
+          <div className={s.memberGrid}>
+            {c.members.map((m) => {
+              const joined = seatSet(c.joinedBitmap, m.turn);
+              const paid = seatSet(c.paidBitmap, m.turn);
+              const received = seatSet(c.receivedBitmap, m.turn);
+              const defaulted = seatSet(c.defaultedBitmap, m.turn);
+              const withdrawn = seatSet(c.withdrawnBitmap, m.turn);
+              const isNow = isActive && m.turn === c.round;
+              const you = live?.yourTurn === m.turn;
+              const slot = SEAT_SLOTS[m.turn % SEAT_SLOTS.length]!;
+              const [roundWord, roundTag] = defaulted
+                ? ["Defaulted", s.tagClay]
+                : !joined
+                  ? ["Not joined", ""]
+                  : !isActive
+                    ? [withdrawn ? "Withdrawn" : "To withdraw", ""]
+                    : paid
+                      ? ["Paid", s.tagTeal]
+                      : ["Due", s.tagAcid];
+              const [potWord, potTag] = received ? ["Received", s.tagTeal] : isNow ? ["Receiving", s.tagCobalt] : ["Waiting", ""];
+              return (
+                /* design/FLOWS.md §4: member row -> [Position]; a seat not joined yet -> [Join].
+                   The live circle's seat pages read the chain too (LiveSeat, T18c). */
+                <Link
+                  key={m.address}
+                  href={`/circle/${stateKey}/${joined ? "position" : "join"}/${m.turn + 1}`}
+                  className={s.member}
+                  aria-label={`Seat ${m.turn + 1}, ${m.name}, ${shortAddress(m.address)}.${joined ? ` Locked ${formatRaw(m.lockedRaw)} ${stockUnit}.` : " Not joined."}`}
+                >
+                  <span className={s.stub} style={{ background: `var(--${slot})`, color: `var(--${slot}Ink)` }}>
+                    <span className={s.micro}>Seat</span>
+                    <b className={`${s.display} ${s.stubNum}`}>{m.turn + 1}</b>
+                    <span className={s.stubWho}>
+                      <b>{m.name}</b>
+                      <span>{shortAddress(m.address)}</span>
+                    </span>
+                  </span>
+                  <span className={s.memberBody}>
+                    <span className={s.memberTop}>
+                      <span className={s.kicker}>{you ? "Your stake" : `${m.name}'s stake`}</span>
+                      {you && <span className={s.youTag}>You</span>}
+                      <span className={s.arrow} aria-hidden>
+                        <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M7 17 17 7M9 7h8v8" />
+                        </svg>
+                      </span>
+                    </span>
+                    {joined ? (
+                      <span className={s.stake}>
+                        <span className={s.lockedLine}>
+                          <span className={s.lockedLabel}>Locked:</span>
+                          <b className={`${s.display} ${s.lockedAmt}`}>{formatRaw(m.lockedRaw)}</b>
+                          <span className={s.lockedUnit}>{stockUnit}</span>
                         </span>
-                      </td>
-                      <td data-label={`Locked ${c.stockSymbol}`} className={s.num}>{joined ? formatRaw(m.lockedRaw) : "—"}</td>
-                      <td data-label="Stock cover" className={s.num}>
-                        {!joined
-                          ? "—"
-                          : d.repricing
-                            ? "Not countable"
-                            : `${formatUsdc(stockCover(m, c))} ${USDC_SUFFIX}`}
-                      </td>
-                      <td data-label="Owed" className={s.num}>
+                        <span className={s.coverLine}>
+                          {d.repricing ? (
+                            "Cover not countable while price and split disagree"
+                          ) : (
+                            <>
+                              Counts as{" "}
+                              <b style={{ boxShadow: `inset 0 -6px 0 var(--${slot})` }}>
+                                {formatUsdc(stockCover(m, c))} {USDC_SUFFIX}
+                              </b>{" "}
+                              of cover
+                            </>
+                          )}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className={s.coverLine}>Not joined yet: nothing locked.</span>
+                    )}
+                    <span className={s.chips}>
+                      <span className={`${s.chip} ${roundTag}`}>
+                        <span>This round</span>
+                        {roundWord}
+                      </span>
+                      <span className={`${s.chip} ${potTag}`}>
+                        <span>Pot</span>
+                        {potWord}
+                      </span>
+                      <span className={s.chip}>
+                        <span>Owed</span>
                         {joined ? `${formatUsdc(obligations(c, m))} ${USDC_SUFFIX}` : "—"}
-                      </td>
-                      <td data-label="Coverage" className={s.num}>
+                      </span>
+                      <span className={s.chip}>
+                        <span>Coverage</span>
                         {!joined ? "—" : d.repricing ? "Not countable" : coverageLabel(c, m)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </span>
+                    </span>
+                  </span>
+                </Link>
+              );
+            })}
           </div>
-        </div>
+        </section>
 
         {live?.below}
 

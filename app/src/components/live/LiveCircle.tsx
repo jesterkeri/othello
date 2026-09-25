@@ -19,7 +19,7 @@ import { PublicKey, Transaction, type TransactionInstruction } from "@solana/web
 import Circle from "@/components/circle/Circle";
 import s from "@/components/circle/Circle.module.css";
 import Shell from "@/components/othello/Shell";
-import { formatUsdc, seatSet } from "@/lib/circle";
+import { defaultRecovered, derive, formatDuration, formatUsdc, seatSet } from "@/lib/circle";
 import { declareDefaultIx, releasePotIx, updateCoverageIx } from "@/lib/actions";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer } from "@/lib/devnet";
@@ -37,7 +37,7 @@ type Pay =
   | { phase: "wallet"; what: string }
   | { phase: "confirming"; what: string; sig: string }
   | { phase: "done"; what: string; sig: string }
-  | { phase: "failed"; what: string; reason: string };
+  | { phase: "failed"; what: string; reason: string; sig?: string };
 
 function isRejection(e: unknown): boolean {
   const inner = (e as { error?: { code?: number; message?: string } }).error;
@@ -81,21 +81,33 @@ export default function LiveCircle() {
     async (what: string, build: (me: PublicKey) => Promise<TransactionInstruction>) => {
       if (!live || !wallet.publicKey) return;
       setPay({ phase: "wallet", what });
+      // Once the wallet returns a signature the transaction was sent, and the fee is spent, even
+      // if the chain then refuses it: the screen must never say "not sent" after that point.
+      let sent: string | null = null;
       try {
         const ix = await build(wallet.publicKey);
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
         const tx = new Transaction({ feePayer: wallet.publicKey, blockhash, lastValidBlockHeight }).add(ix);
         const sig = await wallet.sendTransaction(tx, connection);
+        sent = sig;
         setPay({ phase: "confirming", what, sig });
         const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
         if (res.value.err) {
           const t = await connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
-          throw Object.assign(new Error(JSON.stringify(res.value.err)), { logs: t?.meta?.logMessages ?? [] });
+          throw Object.assign(new Error(JSON.stringify(res.value.err)), { logs: t?.meta?.logMessages ?? [], onChain: true });
         }
         setPay({ phase: "done", what, sig });
         await refresh();
       } catch (e) {
-        setPay({ phase: "failed", what, reason: isRejection(e) ? "You declined in your wallet. Nothing was sent." : explainFailure(e) });
+        const reason = !sent
+          ? isRejection(e)
+            ? "you declined in your wallet. Nothing was sent."
+            : `not sent. ${explainFailure(e)}`
+          : (e as { onChain?: boolean }).onChain
+            ? `sent, and the program refused it. ${explainFailure(e)}`
+            : `sent, but not confirmed: ${explainFailure(e)}. Check the transaction below.`;
+        setPay(sent ? { phase: "failed", what, reason, sig: sent } : { phase: "failed", what, reason });
+        if (sent) await refresh();
       }
     },
     [live, wallet, connection, refresh],
@@ -162,9 +174,9 @@ export default function LiveCircle() {
       : pay.phase === "confirming"
         ? `${pay.what}: sent. Confirming on devnet…`
         : pay.phase === "failed"
-          ? `${pay.what}: not sent. ${pay.reason}`
+          ? `${pay.what}: ${pay.reason}`
           : null;
-  const sig = pay.phase === "confirming" || pay.phase === "done" ? pay.sig : null;
+  const sig = pay.phase === "confirming" || pay.phase === "done" ? pay.sig : pay.phase === "failed" ? (pay.sig ?? null) : null;
 
   // The anyone-may-send actions (SPEC §5), enabled only when the program's own conditions hold
   // by this read; the program still checks, and a refusal is shown in its own words.
@@ -176,6 +188,8 @@ export default function LiveCircle() {
   };
   const active = c.status === "Active";
   const owing = c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn));
+  // SPEC §5: a defaulted seat that has not paid is covered from the escrow its stock sale funded.
+  const covered = c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.defaultedBitmap, m.turn));
   const recipient = c.members.find((m) => m.turn === c.round);
   const wallClock = Math.floor(Date.now() / 1000);
   // SPEC §5 / I7: strictly after deadline + grace, only a seat that has received and has not paid.
@@ -184,18 +198,50 @@ export default function LiveCircle() {
       ? c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.receivedBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn))
       : [];
   const canSend = !!wallet.publicKey && !busy;
+
+  // Codex T18d r1: every condition this read already knows the program checks. A stale price or a
+  // repricing blocks release_pot and update_coverage (price_stale, multiplier_price_mismatch);
+  // Paused (next_gate_short_by > 0) blocks release_pot (reserve_overcommitted); a stale price or a
+  // pool without the USDC to buy the stock blocks declare_default (price_stale, pool_insufficient).
+  const dv = derive(c, wallClock);
+  const priceBlock = dv.stale
+    ? `The price is ${formatDuration(dv.priceAge)} old, and the program acts only on a fresh one.`
+    : dv.repricing
+      ? "Price and split disagree (repricing): the program waits for a price set for the new multiplier."
+      : null;
+  const canRelease = active && owing.length === 0 && !priceBlock && !dv.paused && !!recipient;
+  const canCover = active && !priceBlock;
+  const defaults = defaultable.map((m) => {
+    const needs = defaultRecovered(c, m, live.pool.discountBps);
+    return { m, needs, poolShort: live.pool.usdc < needs };
+  });
+  const releaseText = !active
+    ? `The circle is ${c.status}; these open while it is Active.`
+    : owing.length > 0
+      ? `The pot can be released once every seat has paid or been declared in default. Still to pay: ${owing.map((m) => m.name).join(", ")}.`
+      : priceBlock
+        ? `Every seat is settled, but the pot waits. ${priceBlock}`
+        : dv.paused
+          ? `Every seat is settled, but payouts are paused: the reserve is ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD} short of what the next payout needs, until a member tops up.`
+          : `${covered.length ? `Every other seat has paid, and ${covered.map((m) => m.name).join(", ")} is covered by the default` : "Every seat has paid"}: anyone can release the pot to ${recipient?.name ?? "this round's seat"}.`;
+  const defaultText = defaults
+    .map(({ m, needs, poolShort }) =>
+      dv.stale
+        ? `${m.name} can be declared in default once the price is fresh.`
+        : poolShort
+          ? `${m.name} can be declared in default, but the liquidation pool holds ${formatUsdc(live.pool.usdc)} ${USDC_WORD} and buying the stock needs ${formatUsdc(needs)}; it waits until the pool is refilled.`
+          : `${m.name} took the pot and has not paid after the grace: anyone can declare the default.`,
+    )
+    .join(" ");
   const anyone = (
     <div className={s.action} aria-live="polite">
       <span className={s.actionText}>
         <span className={s.bannerTitle}>Anyone can move the circle on</span>
         <p className={s.bannerText}>
-          {!active
-            ? `The circle is ${c.status}; these open while it is Active.`
-            : owing.length > 0
-              ? `The pot is released once every seat has paid. Still to pay: ${owing.map((m) => m.name).join(", ")}.`
-              : `Every seat has paid: anyone can release the pot to ${recipient?.name ?? "this round's seat"}.`}{" "}
+          {releaseText} {defaultText ? `${defaultText} ` : ""}
+          {active && !canCover && owing.length > 0 && priceBlock ? `${priceBlock} ` : ""}
           {wallet.publicKey
-            ? "Your wallet signs and pays the devnet fee; it gets nothing and risks nothing."
+            ? "Your wallet signs and pays the devnet costs (the fee, plus the rent for the recipient's test USDC account if it has none yet); it receives nothing."
             : "Connect any devnet wallet to send these. It pays the fee in devnet SOL (free from faucet.solana.com)."}
         </p>
       </span>
@@ -203,17 +249,17 @@ export default function LiveCircle() {
         <button
           type="button"
           className={s.pay}
-          disabled={!canSend || !active || owing.length > 0 || !recipient}
+          disabled={!canSend || !canRelease}
           onClick={() => recipient && void send("Release", (me) => releasePotIx(me, keys, new PublicKey(recipient.address)))}
         >
           Release pot{recipient ? ` to ${recipient.name}` : ""}
         </button>
-        {defaultable.map((m) => (
+        {defaults.map(({ m, poolShort }) => (
           <button
             key={m.turn}
             type="button"
             className={s.pay}
-            disabled={!canSend}
+            disabled={!canSend || dv.stale || poolShort}
             onClick={() => void send(`Default on ${m.name}`, (me) => declareDefaultIx(me, keys, m.turn))}
           >
             Declare {m.name} in default
@@ -222,7 +268,7 @@ export default function LiveCircle() {
         <button
           type="button"
           className={`${s.pay} ${s.payQuiet}`}
-          disabled={!canSend || !active}
+          disabled={!canSend || !canCover}
           onClick={() => void send("Coverage update", (me) => updateCoverageIx(me, keys))}
         >
           Update coverage

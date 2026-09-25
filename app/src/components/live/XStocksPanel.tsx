@@ -64,12 +64,16 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
     };
   }, []);
 
+  // Circle.dc.html handoff: a quiet reference list, not anyone's holdings (Joshua, T18e).
+  const SLOT: Record<string, string> = { SPYx: "teal", NVDAx: "cobalt", AAPLx: "sky", NFLXx: "acid" };
   return (
-    <div className={s.section}>
+    <section className={s.section} aria-label="Stocks a circle can accept as cover">
       <div className={s.sectionHead}>
-        <span className={s.sectionLabel}>Real xStocks, read from mainnet</span>
-        <span className={s.sectionLabel}>
-          {data ? `slot ${data.slot.toLocaleString("en-US")}, ${formatDuration(Date.now() / 1000 - data.readAt)} ago` : ""}
+        <span className={s.refTitle}>Stocks a circle can accept as cover</span>
+        <span className={s.refChip}>Real, on mainnet · read only</span>
+        <span className={s.sectionNote}>
+          Reference list. The demo members lock the {mirror.label}; each member&apos;s stake is under Members.
+          {data ? ` Mainnet slot ${data.slot.toLocaleString("en-US")}, read ${formatDuration(Date.now() / 1000 - data.readAt)} ago.` : ""}
         </span>
       </div>
       {error ? (
@@ -83,48 +87,44 @@ export default function XStocksPanel({ mirror }: { mirror: { multiplierNow: numb
       ) : !data ? (
         <p className={s.panelNote}>Reading mainnet…</p>
       ) : (
-        <div className={s.tableWrap}>
-          <table className={s.table}>
-            <thead>
-              <tr>
-                <th scope="col">xStock</th>
-                <th scope="col">Mint (mainnet)</th>
-                <th scope="col">Multiplier now</th>
-                <th scope="col">Last scheduled change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.mints.filter((m) => m.accepted).map((m) => (
-                <tr key={m.address}>
-                  <td data-label="xStock">
-                    <a href={`/assets/${m.symbol}`} className={s.seatName}>
-                      <span className={s.link}>{m.symbol}</span>
-                      <span className={s.seatAddr}>{m.name}</span>
+        <div className={s.refList}>
+          {data.mints
+            .filter((m) => m.accepted)
+            .map((m) => {
+              const slot = SLOT[m.symbol] ?? "raised";
+              return (
+                <div key={m.address} className={s.refRow}>
+                  <a href={`/assets/${m.symbol}`} className={s.refBadge} style={{ background: `var(--${slot})`, color: `var(--${slot}Ink)` }} aria-label={`${m.symbol} stock page`}>
+                    {m.symbol.slice(0, 2)}
+                  </a>
+                  <span className={s.refName}>
+                    <a href={`/assets/${m.symbol}`}>
+                      <b>{m.symbol}</b>
                     </a>
-                  </td>
-                  <td data-label="Mint (mainnet)">
-                    <a className={s.link} href={explorer("address", m.address, "mainnet")} target="_blank" rel="noreferrer">
-                      {shortAddress(m.address)}
-                    </a>
-                  </td>
+                    <span>
+                      {m.name} · Mint{" "}
+                      <a className={s.link} href={explorer("address", m.address, "mainnet")} target="_blank" rel="noreferrer">
+                        {shortAddress(m.address)}
+                      </a>
+                    </span>
+                  </span>
                   {/* By this browser's clock at render, not the server's cached moment,
                       so a change that takes effect mid-cache shows at once. */}
-                  <td data-label="Multiplier now" className={s.num}>{mult(multiplierAt(m, Date.now() / 1000))}</td>
-                  <td data-label="Last scheduled change">
-                    {change(m)}
-                    {m.symbol === "NFLXx" && (
-                      <p className={s.panelNote}>
-                        The circle above locks the {mirror.label}, now at {mult(mirror.multiplierNow)}. The demo
-                        replays this split on it.
-                      </p>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <span className={s.refFacts}>
+                    <span className={s.refFact}>Multiplier now {mult(multiplierAt(m, Date.now() / 1000))}</span>
+                    <span className={s.refFact}>Last change: {change(m)}</span>
+                  </span>
+                  {m.symbol === "NFLXx" && (
+                    <p className={s.refNote}>
+                      The circle above locks the {mirror.label}, now at {mult(mirror.multiplierNow)}. The demo replays
+                      this split on it.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
         </div>
       )}
-    </div>
+    </section>
   );
 }
