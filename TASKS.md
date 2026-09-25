@@ -22,7 +22,20 @@ It is a wallet app, and `HACKATHON.md` records the only published criterion: "co
 - [ ] S4 Circle place, read-only, no wallet: timeline, member table, reserve, whose turn, the countdown | verify: `pnpm -C app build` | done when: every FLOWS section 7 Circle state renders from a fixture
 - [ ] S5 Join and Position: what you put in and what comes back, stated before the button (design/UX-REVIEW.md STOP) | verify: `pnpm -C app build` | done when: Join names both amounts and the max loss before the action
 - [ ] S1 DEMOTED 2026-09-22, build only after S3 to S5. Split lab: naive vault vs Othello side by side on the real NFLXx split, no wallet needed | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: both columns render from the committed NFLXx fixture; naive FUND 16.5 USDC vs Othello 165; H 132 on both sides of 1763337300; the page states whether it is showing recorded mainnet bytes or live devnet
-- [ ] S2 Devnet mirror mints: Token-2022 mints with ScaledUiAmountConfig, a labelled devnet allowlist entry that cannot coexist with the mainnet one (ADR-012) | verify: `anchor test` | done when: the mirror set is refused on the mainnet allowlist and accepted on the devnet one, and the label is asserted by a test
+- [x] S2 Devnet mirror mints: Token-2022 mints with ScaledUiAmountConfig, a labelled devnet allowlist entry that cannot coexist with the mainnet one (ADR-012) | verify: `anchor test` | done when: the mirror set is refused on the mainnet allowlist and accepted on the devnet one, and the label is asserted by a test
+- [ ] S2b Real NFLXx shown beside the mirror (Joshua, 2026-09-25: "Devnet + real data shown"). The
+      demo runs on devnet with the labelled NFLXx mirror so the split replays live; the app ALSO
+      reads the real NFLXx mint (XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL) from mainnet, read-only,
+      and shows its multiplier and scheduled change next to the mirror's, each clearly labelled.
+      Mainnet deploy with real xStocks was considered and not chosen: ~3.5 real SOL, token
+      purchases, no live split to replay, and ROTATE_AUTHORITY is owed first | verify: a test that
+      decodes the mainnet fixture through the same reader the page uses | done when: the page shows
+      both, labelled, from live reads, with a clear error (never a stale or made-up number) when the
+      mainnet read fails. SCOPE (Joshua, 2026-09-25): all four verified real xStocks (AAPLx,
+      NFLXx, SPYx, NVDAx) live, NFLXx paired with its devnet mirror; "with plans for" verifying
+      more from Backed's published list after deploy + seed, if time allows. Each new address
+      goes through T00's check (on Backed's list; symbol from the mint's own metadata) before it
+      is shown, and none enters the program's allowlist before submission.
 
 ## Sequencing decision, 2026-09-22 (Joshua, with Codex)
 
@@ -84,8 +97,8 @@ deadline rather than now.
 - [ ] T22 Gate 4 brief for Codex | verify: `./scripts/check-reviews.sh` | done when: verdict implementation-ready
 
 ## Gate 5: demo and submission (Joshua)
-- [ ] T23 Devnet deploy by Joshua (PREFLIGHT first) | verify: `solana program show <PROGRAM_ID> --url devnet` | done when: program id recorded
-- [ ] T24 ops/seed-demo-circle.ts with SPEC §5 demo parameters | verify: `pnpm tsx ops/seed-demo-circle.ts --cluster devnet` | done when: circle address recorded; all five joined before the split
+- [x] T23 Devnet deploy by Joshua (PREFLIGHT first) | verify: `solana program show <PROGRAM_ID> --url devnet` | done when: program id recorded
+- [x] T24 ops/seed-demo-circle.ts with SPEC §5 demo parameters | verify: `pnpm tsx ops/seed-demo-circle.ts --cluster devnet` | done when: circle address recorded; all five joined before the split
 - [ ] T25 Seven-step demo run + video | verify: n/a (human) | done when: video link in DONE.md
 - [ ] T27 Repo tidy before the repo is a judged artifact (Joshua, 2026-09-22: "after we are done building you'll have to delete all the unimportant information"). Joshua approves the list before anything is deleted | verify: `anchor test && ./scripts/check-reviews.sh && git log --oneline -1` | done when: the list is approved, the deletions are one commit, and CI is still green
 - [ ] T26 Submit on Stocklana; run ops/touch-prices.ts at submission | verify: n/a (human) | done when: submission link in DONE.md before Fri 25 Sep 21:00 Lagos
@@ -175,3 +188,10 @@ should start before the hackathon build is finished.
       code, so it needs a SPEC change, its own tests, an adversary pass and a Codex review.
       Today's behaviour, (a), is recorded in OPEN-QUESTIONS "ADMIN ROTATION".
 
+
+- [ ] CIRCLE_USDC (Joshua, 2026-09-25): "after we submit, we will have to switch to circle USDC".
+      The devnet build (S2) pins init_pool to Othello's own test USDC, a classic SPL mint made so
+      a faucet outage cannot break the demo, and never presented as real USDC. Switch the pin in
+      programs/othello/src/devnet.rs to Circle's devnet USDC (confirm the address from Circle's
+      own docs, and that it is classic SPL Token, before changing it), re-run the S2 specs and
+      re-deploy. Pools already opened on test USDC stay on it; a new pool is needed per pair.

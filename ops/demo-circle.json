@@ -1,0 +1,19 @@
+{
+  "cluster": "devnet",
+  "program": "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT",
+  "circle": "8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q",
+  "circleId": "0",
+  "creator": "CEhgrP29TSkHnHJ5BBhUjbn4LD1AJRNUsfBV9hhCin23",
+  "members": [
+    "CEhgrP29TSkHnHJ5BBhUjbn4LD1AJRNUsfBV9hhCin23",
+    "HjW7R1sUyUnRjjuRhFaVF696nUiwpw7qQ3vCFSxn4ytC",
+    "5QjP2WU25AmP6yYNoLpNciC9S2VV8j1VnVo55dPs7xd8",
+    "EXdbuPTgBvoYDaToRa5zBYaGWUQoh3H9qa94pUBk5Sqs",
+    "BLhFjSFowYZSadXkLLCqahiQrHBtPZHm6RGmAJthTecP"
+  ],
+  "pool": "481bnUgKStE4wxcF7WcS6Wbx3mG6Sn5uRNw4KTZHqQJs",
+  "priceFeed": "9ANBiaLbCd11kY1dYshiEvKe23nyMB4qQMx7LgFNhoH9",
+  "stockMint": "CymeZqJiKk2Nd4FkDvHduyrq3k3XbJELtifAbPqfdSuA",
+  "usdcMint": "HuNtRYjwPgqKANveLm5vRj9DveBnQAq4cFzWTEf4DoBV",
+  "seededAt": "2026-09-25T01:33:56.293Z"
+}

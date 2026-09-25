@@ -6,6 +6,7 @@
 //! before the task that implements it.
 
 pub mod allowlist;
+pub mod devnet;
 pub mod errors;
 pub mod events;
 pub mod gate;

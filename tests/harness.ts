@@ -126,12 +126,15 @@ export type Harness = {
   nextSlot: () => Promise<void>;
 };
 
-/** Starts bankrun with the program loaded and the named real mints in place. */
-export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
+/**
+ * Starts bankrun with the program loaded and the named real mints in place.
+ * `programSo` is the ELF to load; only the devnet-build spec (S2) passes one.
+ */
+export async function harness(mints: FixtureSymbol[], programSo = PROGRAM_SO): Promise<Harness> {
   // bankrun loads target/deploy/othello.so, so these specs are exactly as
   // trustworthy as that file is current. Running one spec on its own used to
   // skip this and could test bytes that no longer matched the source.
-  assertFresh(PROGRAM_SO);
+  assertFresh(programSo);
   assertFresh(PROGRAM_IDL);
 
   // The bundled Token-2022 is too old to parse a real xStock. bankrun 0.4.0
@@ -163,7 +166,7 @@ export async function harness(mints: FixtureSymbol[]): Promise<Harness> {
   const authority = anchor.web3.Keypair.generate();
   const context = await start(
     [{ name: "spl_token_2022", programId: new anchor.web3.PublicKey(TOKEN_2022_PROGRAM) }],
-    upgradeableProgram(new anchor.web3.PublicKey(idl.address), authority.publicKey),
+    upgradeableProgram(new anchor.web3.PublicKey(idl.address), authority.publicKey, programSo),
   );
   const provider = new BankrunProvider(context);
   const program = new anchor.Program(idl, provider);
@@ -657,9 +660,10 @@ export function programDataAddress(programId: anchor.web3.PublicKey): anchor.web
 export function upgradeableProgram(
   programId: anchor.web3.PublicKey,
   upgradeAuthority: anchor.web3.PublicKey | null,
+  programSo = PROGRAM_SO,
 ): { address: anchor.web3.PublicKey; info: { lamports: number; data: Buffer; owner: anchor.web3.PublicKey; executable: boolean } }[] {
   const programData = programDataAddress(programId);
-  const elf = readFileSync(resolve(REPO, PROGRAM_SO));
+  const elf = readFileSync(resolve(REPO, programSo));
 
   const program = Buffer.alloc(36);
   program.writeUInt32LE(2, 0);

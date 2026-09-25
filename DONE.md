@@ -2030,3 +2030,95 @@ tests, clippy, fmt and TypeScript pass; check-reviews.sh "reviews ok".
 Gates 1, 2 and 3 are all implementation-ready: the program is complete for
 the hackathon scope. Next on the critical path: S2 devnet mirror mints, then
 T23 deploy (Joshua).
+
+## S2 Devnet mirror mints and the devnet build (2026-09-25)
+reviewed: reviews/s2-review.md | verdict: implementation-ready | commit: b62565b (r1, no findings)
+adversary: ONE defect, fixed: a stranger's lamport transfer to a published stand-in address made createAccountWithSeed fail "already in use" for good (tests/s2-adversary.spec.ts, integrated, failed before the fix and passes after). 9 other attacks failed.
+
+Joshua's decisions: addresses derived from the admin's public key with createWithSeed; NFLXx
+mirror only; test USDC is a classic SPL mint, devnet-only, never shown as real USDC (Circle USDC
+after submission, TASKS CIRCLE_USDC); network "Devnet + real data shown" (TASKS S2b).
+
+- `--features devnet`: allowlist = [NFLXx mirror] only; init_pool pins test USDC. Default build unchanged.
+- Admin HXN8oAJFnbaeGLwLdJ129qwSrXUv4xfZ2Em8myu4rciy; mirror CymeZqJiKk2Nd4FkDvHduyrq3k3XbJELtifAbPqfdSuA;
+  test USDC HuNtRYjwPgqKANveLm5vRj9DveBnQAq4cFzWTEf4DoBV (ops/devnet-mints.json, devnet.rs, both re-derived by tests).
+- Adversary fixes also taken: the create script refuses any RPC whose genesis hash is not devnet;
+  tops the admin up to 20,000 test USDC instead of minting 20,000 per run; checks an existing
+  mint's owner, size, initialised flag, decimals and mint authority; creates each mint separately.
+- Mutations: devnet USDC pin disabled -> s2-devnet-build 5 passing, 1 failing; devnet allowlist
+  also admitting real NFLXx -> 4 passing, 2 failing. Restored -> 6 passing (7 with the label test).
+
+verify (01:42 WAT): every spec file in its own process, 24 files, 159 passing, 0 failing
+(deploy-artifact 2, s2-adversary 2, s2-devnet-build 7, s2-devnet-mints 6, t04 2+9, t05 9, t06 5,
+t08 7, t09 5+12, t09b 6, t10 9+11, t11 6, t12 4, t13 2, t14 10+13, t15 4+11, t16 7+6, workspace 4);
+cargo test 57 passed default, 56 passed --features devnet; clippy -D warnings clean on both;
+cargo fmt --check clean; tsc clean; check-secrets "no credential-shaped strings in client output".
+Deploy cost measured: othello.so 695,216 bytes; with PREFLIGHT's 1.2x max-len, 4.23891456 SOL.
+
+## T23 Devnet deploy (Joshua, 2026-09-25)
+reviewed: n/a (deploys the binary Codex S2 r1 reviewed at b62565b; byte identity below is the check)
+adversary: n/a (no code change)
+
+Joshua ran, in his own terminal:
+`solana program deploy target/devnet/othello.so --program-id ~/myvscode_linux/othello/target/deploy/othello-keypair.json --max-len 832876 --url devnet`
+-> Program Id: DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT
+   Signature: 5eM4B1DLD13pXkPZ5Ej8jhgorFPYiG3KLb2arYBJ6u9MBoTedfWLYAWeFX4MBhCExYR74bdEE5ZoMU7xa7H7Cuoo
+
+A first attempt with `--use-rpc` (my suggestion) got 0% of 686 writes confirmed: the public
+devnet RPC answered 429 Too Many Requests. Its buffer 9pXpn69eu6KuSAgYax1W6igSLX7eDtvALFWAzdu17WXv
+was closed (AccountNotFound afterwards) and its lamports returned. Its recovery phrase was pasted in
+the conversation; the account no longer exists, so the phrase controls nothing.
+
+verify: `solana program show DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT --url devnet`
+  Owner: BPFLoaderUpgradeab1e11111111111111111111111
+  ProgramData Address: 5p9ZMGR2juLbofPvf2qEzriRMhuedDy4NFHgF47KTpt8
+  Authority: HXN8oAJFnbaeGLwLdJ129qwSrXUv4xfZ2Em8myu4rciy
+  Last Deployed In Slot: 503743094
+  Data Length: 832876 (0xcb56c) bytes
+  Balance: 4.23188892 SOL
+byte identity (`solana program dump`, first 694,064 bytes vs target/devnet/othello.so):
+  local bedc5c8fbe99b360cbb9ce313162b20730b9b41a928e1d8c57dd4f215a3e7ec5
+  chain bedc5c8fbe99b360cbb9ce313162b20730b9b41a928e1d8c57dd4f215a3e7ec5
+  the remaining 138,812 bytes of max-len headroom: 0 nonzero bytes
+admin balance after: 0.7593544 SOL
+
+## T24 Demo seed and split scripts (2026-09-25, built; devnet run pending)
+reviewed: pending, Codex, together with the T18/S2b frontend
+adversary: TWO defects, both fixed (tests/t24-adversary.spec.ts, integrated; one call updated for scheduleSplit's new creator argument). 9 other attacks failed.
+
+1. A split scheduled before the seed finished re-stamped the feed for 10x, after which the seed's
+   own set_prices(Current, 1x) failed MultiplierPriceMismatch on every re-run: the demo circle could
+   never be seeded on the one deployed mirror. scheduleSplit now refuses unless the demo circle is
+   Active (activate requires every seat joined, which is SPEC.md:137's "all join before the split"),
+   and refuses a second split. Mutation (guard removed): t24-seed-demo 5 passing 1 failing,
+   t24-adversary 2 passing 1 failing.
+2. After a demo default, re-running a finished seed refilled the pool (3 transactions). The pool and
+   the prices are now only seeded before the circle exists. Mutation: t24-adversary 1 failing.
+Suspicions also taken: the seed checks the exact demo prices (150/150 at 1.0), not just non-zero;
+existing member key files are chmodded 0600 on every run.
+
+verify: t24-seed-demo 6 passing (seed to Active, five joined in turn order, H = 132; idempotent
+re-run; resume after a dropped send; H = 132 after the 10x split; past split refused; split refused
+before Active and a second time); t24-adversary 3 passing (including every member paying all five
+rounds and releasing every pot on the seed's funding); measured seed cost 0.129576 SOL in 16
+transactions; tsc clean; check-secrets clean.
+
+## T24 devnet run (Joshua, 2026-09-25 ~02:34 WAT)
+reviewed: pending, Codex, together with the T18/S2b frontend (code reviewed as a1224f6's T24 entry above)
+adversary: see the T24 entry above
+
+`pnpm tsx ops/seed-demo-circle.ts --cluster devnet`, run twice: the first run stopped at member 3's
+join on "Blockhash not found" from the rate-limited public RPC (after 429s); the second run
+finished the three remaining joins and activated, as the resume test predicted. 16 transactions.
+Circle 8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q recorded in ops/demo-circle.json.
+
+verify: `pnpm tsx ops/verify-demo-circle.ts` (read-only, one getMultipleAccounts):
+  circle 8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q status active round 0 n 5 joined_bitmap 11111
+    contribution 50000000 guarantee 35000000 round_secs 120 deadline 2026-09-25T01:35:54.000Z
+  feed wrapper 150000000 share 150000000 priced_for 1000000000 updated 2026-09-25T01:33:09.000Z
+  circle stock vault 550000000 raw  circle usdc vault 175000000   pool usdc 1000000000
+  member 1 CEhgrP29TSkHnHJ5BBhUjbn4LD1AJRNUsfBV9hhCin23 turn 0 stock_raw 110000000
+  member 2 HjW7R1sUyUnRjjuRhFaVF696nUiwpw7qQ3vCFSxn4ytC turn 1 stock_raw 110000000
+  member 3 5QjP2WU25AmP6yYNoLpNciC9S2VV8j1VnVo55dPs7xd8 turn 2 stock_raw 110000000
+  member 4 EXdbuPTgBvoYDaToRa5zBYaGWUQoh3H9qa94pUBk5Sqs turn 3 stock_raw 110000000
+  member 5 BLhFjSFowYZSadXkLLCqahiQrHBtPZHm6RGmAJthTecP turn 4 stock_raw 110000000
