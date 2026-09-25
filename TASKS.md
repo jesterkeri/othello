@@ -224,6 +224,7 @@ should start before the hackathon build is finished.
       submission per team, every member registers. Judged on functionality/code quality, potential
       impact, novelty, UX, open source/composability, business plan. Tracks "integrate with" the
       chain: Solana $100k across 10; Arbitrum $25k across 5; Robinhood Chain $25k across 5; plus
-      Grand $30k and $15k to 20 more. Silent on: entering a project also submitted elsewhere (Othello
-      started ~21 Sep, inside the window; still ask hello@colosseum.com), and winning several tracks.
+      Grand $30k and $15k to 20 more. Othello's eligibility: CONFIRMED by Joshua ("solana actually said it"; built
+      during the hackathon, from ~21 Sep); keep that confirmation in writing. Rules silent on winning
+      several tracks.
       Section 9: disclose open-source/third-party code. Section 17: no Colosseum marks without consent.
