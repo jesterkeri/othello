@@ -517,3 +517,16 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       way (alongside CIRCLE_USDC and ROTATE_AUTHORITY in TASKS.md). create-devnet-mints.ts now
       refuses any RPC whose genesis hash is not devnet, so the test USDC cannot be made on mainnet
       by that script.
+- [ ] ANCHOR IN THE APP BRINGS TWO HIGH ADVISORIES IN `toml` (T18, 2026-09-25). Joshua approved
+      adding @coral-xyz/anchor 0.32.1 to app/ to decode accounts and build `contribute` from the
+      IDL. `pnpm audit --prod` went from 8 (4 moderate, 4 high; all via next and web3.js, already
+      on task/S7) to 10: the two new ones are toml-node's uncontrolled recursion and prototype
+      pollution, reached only by anchor's Node-side Anchor.toml loader. The app never parses TOML,
+      and the production build's browser chunks contain no toml code (grep of app/.next/static: 0
+      files). No fixed toml release exists to override to. Revisit if anchor drops it or the app
+      ever parses TOML.
+- [ ] "HOW IT WORKS" IS STILL A 404 (asset-page adversary, 2026-09-25). The nav's fifth item (Landing
+      and Shell, app/src/lib/nav.ts) routes to /how-it-works, which does not exist; nav.ts says that
+      is deliberate (the designed 404 explains it). With Split lab and xStocks now built it is the
+      only dead item in a nav judges will click. Joshua's call: build a How it works page, hide
+      unbuilt items (nav.ts already has BUILT), or leave it.

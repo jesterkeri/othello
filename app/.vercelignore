@@ -1,0 +1,7 @@
+# Never upload local env files (vercel link writes a VERCEL_OIDC_TOKEN to .env.local).
+.env
+.env.*
+.vercel
+.next
+node_modules
+tsconfig.tsbuildinfo

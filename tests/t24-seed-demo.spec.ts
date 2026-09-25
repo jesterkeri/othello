@@ -17,7 +17,7 @@ import { resolve } from "node:path";
 import * as anchor from "@coral-xyz/anchor";
 
 import { REPO, TOOLCHAIN_PATH } from "./artifacts.ts";
-import { BEFORE_SPLIT, decodeValuation, fetchAccount, harness, quoteIx, send, type Harness } from "./harness.ts";
+import { BEFORE_SPLIT, decodeValuation, fetchAccount, harness, initPoolIx, quoteIx, send, type Harness } from "./harness.ts";
 import {
   DEMO,
   MEMBER_STOCK,
@@ -198,5 +198,22 @@ describe("T24 demo seed, on the devnet build", () => {
     await seedDemoCircle(chain, MINTS, members);
     await scheduleSplit(chain, MINTS, members[0]!.publicKey, (await chain.now()) + 120);
     await assert.rejects(scheduleSplit(chain, MINTS, members[0]!.publicKey, (await chain.now()) + 300), /already priced for the split/);
+  });
+
+  // Codex T18 r1 (MAJOR): the seed on another machine, with other member keys.
+  it("refuses, sending nothing, when the existing circle's members are not these keys", async () => {
+    await seedDemoCircle(chain, MINTS, members);
+    const others = [members[0]!, ...Array.from({ length: DEMO.n - 1 }, () => anchor.web3.Keypair.generate())];
+    const before = sent;
+    await assert.rejects(seedDemoCircle(chain, MINTS, others), /its members are not these keys\. Nothing was sent/);
+    assert.equal(sent, before, "the seed sent transactions before refusing");
+  });
+
+  // Codex T18 r1 (MINOR): a pool someone opened at another discount.
+  it("refuses, sending nothing, an existing pool at another discount than the demo's", async () => {
+    await initPoolIx(h, { usdcMint: MINTS.usdc, stockMint: MINTS.stock, discountBps: 1500 }).rpc();
+    const before = sent;
+    await assert.rejects(seedDemoCircle(chain, MINTS, members), /discount 1500 bps, not this admin at the demo's 2000\. Nothing was sent/);
+    assert.equal(sent, before);
   });
 });

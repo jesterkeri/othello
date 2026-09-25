@@ -14,7 +14,9 @@
  * Writes ops/demo-circle.json: public addresses only.
  */
 import { DEMO, addresses, seedDemoCircle } from "./demo.ts";
-import { demoMembers, devnetChain, writeDemoRecord } from "./devnet-cli.ts";
+import { existsSync } from "node:fs";
+
+import { DEMO_RECORD, demoMembers, devnetChain, loadDemoMembers, writeDemoRecord } from "./devnet-cli.ts";
 
 const [flag, cluster] = process.argv.slice(2);
 if (flag !== "--cluster" || cluster !== "devnet") {
@@ -23,7 +25,10 @@ if (flag !== "--cluster" || cluster !== "devnet") {
 }
 
 const { chain, mints } = await devnetChain();
-const members = demoMembers(DEMO.n);
+// Codex T18 r1: once a circle is recorded, only its recorded member keys may
+// seed it (load-only, refuses if missing); new keys are made only for the
+// very first seed.
+const members = existsSync(DEMO_RECORD) ? loadDemoMembers() : demoMembers(DEMO.n);
 console.log(`Seeding the demo circle on devnet as ${chain.admin.publicKey.toBase58()}`);
 
 const circle = await seedDemoCircle(chain, mints, members);

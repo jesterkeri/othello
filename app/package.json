@@ -2,7 +2,9 @@
   "name": "othello-app",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,9 +13,15 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "next": "15.5.4",
+    "@coral-xyz/anchor": "0.32.1",
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/wallet-adapter-react": "^0.15.40",
+    "@solana/web3.js": "^1.99.0",
+    "framer-motion": "^13.4.3",
+    "next": "15.5.26",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -935,6 +935,424 @@ blank line, and `git diff --ignore-blank-lines` over programs, ops, tests, scrip
 .github is empty; everything else is documentation. Whether that earns a re-review round
 is his call, not the builder's, so it is recorded rather than waived.
 
+## S3 - 2026-09-22
+
+reviewed: n/a (frontend, no money path; the design was supplied finished and this task installs it. Codex reviews the program, not the app)
+adversary: not run, attacks run: 0, test: none. The adversary writes a failing test against a spec, and there is no test suite in app/. Recorded as a gap rather than claimed as a pass
+
+Landing, from Joshua's own design handoff. Four earlier attempts re-authored the
+design from a reading of it and each lost most of it: the nav, the tab control, the
+three step tiles, both tapes and every decorative motif. Joshua's question, "didnt
+the markup come with code?", was the fix. The zip carried the screen as plain React
+(Landing.tsx, Landing.module.css, theme.ts), so the work became installing it, not
+rebuilding it.
+
+theme.ts is marked "port verbatim" by the handoff and is unchanged in content at
+app/src/lib/theme.ts, shared with S4 and S5. Landing.tsx and its module sit at
+app/src/components/landing/. Two edits and no others: the theme import path, and
+eight non-null assertions this repo's noUncheckedIndexedAccess demands of indexes
+into fixed-length tuples.
+
+verify: `pnpm -C app build && pnpm -C app typecheck`
+  ✓ Compiled successfully in 6.3s
+  ✓ Generating static pages (4/4)
+  Route (app)        Size  First Load JS
+  ┌ ○ /           8.23 kB         110 kB
+  tsc --noEmit, clean
+
+Fidelity checked against the artifact rather than asserted, after Joshua said twice
+it still did not match. The kit's Landing.dc.html and the 846KB original decode to
+the same markup, differing only in attribute naming. Against that source: all 53
+text nodes match in order, the colour engine is byte-identical, all 8 keyframes are
+present and applied, the fonts resolve (Archivo 100-900 variable, italic, stretch
+62-125%, covering the 68-82% the design sets), and 317 of 334 style declarations
+match, the 17 being ones the handoff moved into JSX inline styles.
+
+Three real defects, all in the handoff, all found from Joshua's screenshots:
+
+1. The Home pill rendered black on black. `.root button { color: inherit }` is
+   (0,1,1) and beat `.navItemActive { color: var(--paper) }` at (0,1,0). The
+   handoff had already patched six rules with !important and missed this one plus
+   four more. Fixed at the cause with `:where(.root) button`, which contributes no
+   specificity, so all six latent cases go with it.
+2. Borders and offset shadows were var(--ink), the text colour, so the whole
+   outline system inverted in dark mode. 49 declarations moved to --line, constant
+   #0B0B0B. Joshua's call, and it departs from the artifact, which does invert.
+3. The round card's pills rendered cream. The handoff wrote currentColor where the
+   artifact writes literal #0B0B0B, and .round sets color: var(--clayInk); clay's
+   luminance is 0.316 against inkFor's 0.32 threshold, so clayInk is cream.
+
+Frame width is 1440px, Joshua's number, chosen from the rendered page. The design
+system still records 1240px in design/OTHELLO-STYLE.md, so the two disagree until
+that design-owned file is updated.
+
+done when, honestly: the premise reads in one screen and the demo entry point is
+the most prominent control on it. NOT yet backed: "Open demo circle" routes to
+/circle/demo, which is 404 until S4. The sticker "One click, no wallet, nothing to
+sign" is accurate to design/FLOWS.md:195 ("none (no wallet)") and SPEC.md:272 G4,
+but nothing implements it yet. Joshua raised this; the copy is design-owned and was
+not changed.
+
+Not wired: the four nav items are buttons with no routes, and onConnectWallet is
+unset. design/OTHELLO-STYLE.md was added as the visual spec S4 and S5 build from.
+
+## S4 - 2026-09-22
+
+reviewed: n/a (frontend, read-only, no money path and no wallet; Codex reviews the program)
+adversary: not run, attacks run: 0, test: none. Same gap as S3: the adversary returns a failing test and app/ has no test suite. The fixture's arithmetic is instead pinned against the program's own unit tests, below
+
+Circle place, viewer state. design/FLOWS.md §2.4 gives Viewer exactly one verb,
+view, so this screen carries no action controls at all rather than disabled ones.
+
+verify: `pnpm -C app build`
+  ✓ Generating static pages (12/12)
+  Route (app)                    Size  First Load JS
+  ┌ ○ /                       8.42 kB         110 kB
+  └ ● /circle/[id]              10 kB         112 kB
+  tsc --noEmit, clean
+
+done when: every FLOWS §7 Circle state renders from a fixture. Each one has its
+own URL, so this is checked rather than claimed:
+
+  /circle/demo        200   what "Open demo circle" opens, no longer a 404
+  /circle/forming     200   /circle/active     200   /circle/paused      200
+  /circle/repricing   200   /circle/completed  200   /circle/cancelled   200
+  /circle/stale       200   the demo circle read past max_price_age (D6)
+  /circle/nonsense    404
+
+Copy checked in the served HTML, all FLOWS §8 verbatim:
+  forming    "Waiting for 3 members to join"
+  active     "Round 2 of 5 · Tunde's turn", "1 contributions still missing"
+  paused     "The next payout needs 75.00 USDC of reserve and 70.00 remains",
+             "Top up 5.00 USDC"
+  repricing  "Repricing. Price and split disagree."
+  completed  "This circle isn't running right now (Completed)"
+  cancelled  "This circle isn't running right now (Cancelled)"
+  stale      "Prices are 8d 1h old"
+  active     "Coverage uses prices from ... ago"
+
+"1 contributions" is FLOWS' own "{k} contributions still missing" and is left
+verbatim rather than corrected, because the handoff rule is that design/ wins.
+
+THE FIXTURE IS DERIVED, NOT INVENTED. SPEC §10 G2 states the peak table as
+"needs 140, 150, 30, 0" and requires g = 29 refused. Four terms means n = 5 and
+the peak is 150, so n x g >= peak puts the guarantee at 30 USDC exactly.
+Solving the four terms with coverage_bps 13000 (SPEC.md:44) gives
+contribution x coverage = 65 USDC, so contribution 50 USDC and min_stock_cover
+120 USDC. I12's worked example (1.1 token, 150/150, multiplier 10, share 15,
+H = 132) fixes haircut_bps at 2000. D10 gives 120 s rounds and 60 s grace,
+SPEC.md:48 gives max_price_age 691_200.
+
+Those were derived from the documents before reading the program, then checked
+against it. programs/othello/src/instructions/create_circle.rs:273-277 declares
+N 5, CONTRIBUTION 50 USDC, COVERAGE_BPS 13_000, MIN_STOCK_COVER 120 USDC. Every
+one matches.
+
+  cargo test -p othello peak
+  test peak_reproduces_the_spec_demo_table ... ok
+  test peak_is_the_boundary_between_g29_and_g30 ... ok
+  test result: ok. 6 passed; 0 failed
+
+The paused fixture reproduces SPEC §7's halt example rather than inventing a
+shortfall: reserve 150, losses 80, so 70 remains, next_gate_short_by 5, and the
+screen prints needs 75 and 70 remains.
+
+Paused and Repricing are rendered as facts about an Active circle, not as
+statuses, because that is what they are: Paused is next_gate_short_by > 0
+(I18) and Repricing is the feed's stamped multiplier disagreeing with the
+mint's effective one (D5). The status pill shows the derived word; the account's
+own status is unchanged underneath.
+
+The countdown starts at the fixture's own moment, one minute before the real
+NFLXx 10-for-1 at 1763337300, and ticks, so a round runs open -> overdue ->
+grace elapsed without a reload. Starting from the fixture's clock rather than
+Date.now() is also what keeps the server and first client paint identical.
+
+app/src/lib/circle.ts mirrors the on-chain account field for field, so a fixture
+and a decoded account are the same shape. It computes no collateral: coverage is
+quote_valuation's answer and the app displays it, which is what
+design/reviews/design-review-r2.md:69 warned against duplicating.
+
+NEW COMPONENT, not from the handoff: components/theme/ThemeRoot.tsx applies the
+stored profile to a screen that is not Landing. It reads the same othello.theme
+key through lib/theme, so a palette chosen on Landing is the one Circle opens
+with. Landing keeps its own copy because it also owns the picker that writes it;
+folding the two together is a frontend refactor pass, not a change to make
+inside a faithful port.
+
+NOT DONE: no live devnet read. The screen says so on its face, "This circle
+renders from a committed fixture, not from a live devnet account", rather than
+letting a judge assume otherwise. Wiring it to a real account is T23 and needs
+S2's devnet mints first.
+
+## S4 correction - 2026-09-22
+
+reviewed: n/a (same frontend scope as S4)
+adversary: not run, attacks run: 0, test: none. Same gap as S3 and S4
+
+Two defects in the S4 commit, both found by reading SPEC §4 more carefully
+while starting S5, and both fixed before building anything on top.
+
+1. THE FIXTURE CONTRADICTED THE PROGRAM. SPEC §4 defines the derived
+   quantities exactly:
+
+     O_i  = received_i ? contribution x (n - rounds_paid_i) : 0
+     FUND = floor( raw x mult_fixed x share_price / (1e9 x 1e8) )
+     EXEC = floor( raw x wrapper_price / 1e8 )
+     H_i  = floor( min(FUND, EXEC) x (10000 - haircut_bps) / 10000 )
+     need_i = max(0, ceil(O_i x coverage_bps / 10000) - H_i)
+
+   The active fixture had reserve_allocated 0 while Ada had already received
+   her pot. Her O is 50 x (5 - 2) = 150, so need_i is ceil(150 x 1.3) - 132 =
+   63, and an allocation of 0 is impossible. reserve_allocated is now 63 USDC
+   and free reserve reads 87 rather than 150.
+
+   The paused fixture had the same problem in reverse: it needed free reserve
+   to be exactly 70 to reproduce SPEC §7, but losses of 80 imply a default,
+   and a default implies a member who had received. It is now round 2 with Ada
+   received-then-defaulted and Tunde received. Ada's allocation is released and
+   her obligations prepaid; Tunde owes 100 and ceil(100 x 1.3) = 130 is under
+   his 132 of cover, so he needs no reserve. Nothing is allocated, 150 - 80
+   leaves 70, the gate needs 75, short by 5. SPEC §7's numbers now follow from
+   the waterfall instead of being asserted next to it.
+
+2. STOCK COVER WAS A STORED NUMBER. MemberView carried `stockCover` as a
+   field, which made it unfalsifiable: it could hold any value and nothing
+   would disagree. It is now computed by lib/circle.ts from raw, the prices,
+   the multiplier and the haircut, in BigInt, with the program's own rounding.
+   The fixture states raw and prices only, so 132 is now a result rather than
+   a claim. MemberView gained rounds_paid and allocated, the two Member fields
+   O_i and coverage actually read.
+
+The screen now renders Owed and Coverage per member, and honours SPEC.md:70:
+coverage saturates rather than dividing by zero, and the UI prints "Nothing
+owed" when O_i is 0 and "Prepaid" for a defaulted member, never a percentage.
+
+D5 is now honoured on the member table too. During Repricing the program
+refuses to compute fundamental value, so stock cover and coverage render as
+"Not countable" instead of a number computed from a multiplier the prices were
+never stamped for. Without this the repricing screen showed a confident 132
+derived from a mismatched pair.
+
+verify: `pnpm -C app build` green, `tsc --noEmit` clean, and the derived
+quantities read back out of the served HTML:
+
+  active     132.00 USDC   H_i, computed not stated
+  active     150.00 USDC   O_i for the member who has received
+  active     Nothing owed  the four who have not
+  active     130%          (132 + 63) / 150, exactly the coverage target
+  paused     Prepaid       the defaulted member
+  paused     "The next payout needs 75.00 USDC of reserve and 70.00 remains"
+  repricing  Not countable
+  completed  Nothing owed
+
+ALSO: design/OTHELLO-STYLE.md moved to app/OTHELLO-STYLE.md. AGENTS.md says
+"design/ is read-only history; never edit it", and adding a file to it in the
+S3 commit was a violation of that even though nothing existing was changed. The
+reference in Circle.module.css was updated with it. If the design session wants
+it under design/, that is theirs to place, not the build's.
+
+## S4 correction r2 - 2026-09-23
+
+reviewed: n/a (frontend; corrections raised by Joshua before merge, applied and re-verified)
+adversary: not run, attacks run: 0, test: none. Same gap as S3 and S4
+
+Joshua held the merge and named two factual errors. Both were real. Checking
+the second against the SPEC found a third.
+
+1. THE GUARANTEE WAS THE BOUNDARY, NOT THE DEMO'S. The fixture used g = 30 and
+   reserve 150. SPEC.md:134 states the seeded demo as g = 35, reserve 175,
+   "25 of slack so one base unit of price drift cannot pause the demo".
+
+   The S4 entry above derived 30 from SPEC.md:133's peak table and called it the
+   demo's value. That was a category error: n x g >= peak makes 30 the SMALLEST
+   guarantee create_circle will accept, which is what
+   peak_is_the_boundary_between_g29_and_g30 pins. What the demo seeds is a
+   separate, deliberately larger choice. The arithmetic was right and the
+   conclusion did not follow from it.
+
+2. "Create a circle" routes to /circle/new, which is a real 404. Left as it is,
+   on Joshua's instruction: he is having the design session produce a true 404
+   page. The route already falls through to the app's not-found, so that page
+   drops in at app/src/app/not-found.tsx with no routing change.
+
+3. FOUND WHILE CHECKING 1: the paused banner printed the wrong quantity.
+   SPEC.md:126 separates two numbers and tells the UI to keep the words apart:
+
+     free    = R - L - reserve_allocated   the Guarantee panel
+     remains = R - L                       the gate's own `remaining`
+
+   The banner printed free where the program means remains, which understates
+   what the reserve holds in exactly the message asking someone for money.
+   lib/circle.ts now exposes both as reserveFree and reserveRemains, the gate
+   banner uses remains, the reserve card is labelled "Shared reserve, free" and
+   lists Allocated and Remains as separate rows.
+
+   The paused fixture moved with it: SPEC §7 wants remaining = 70, and remaining
+   is R - L, so with reserve 175 the losses are 105, not 80. Ada's own 35 USDC
+   guarantee went first, then 70 from the pool.
+
+warn_bps 11000 (SPEC.md:134) was missing from CircleView entirely and is added.
+
+Also in this batch, both from Joshua's list:
+
+  app/OTHELLO-STYLE.md line 65 said "Frame maxes at 1240px" while the code says
+  1440. The doc now says 1440 and records that it was raised on 2026-09-22 and
+  why. Code and doc agree again.
+
+  Dark mode left a light strip behind the frame when scrolling past either end.
+  Each screen wrote its variables onto its own root element, but body and the
+  browser's overscroll area sit outside it and read :root, which layout.tsx
+  renders with the light default. lib/applyTheme.ts mirrors the variables onto
+  document.documentElement, and sets colorScheme so the scrollbar follows.
+  Wired into both ThemeRoot and Landing.
+
+verify: `pnpm -C app build` green, 12/12 static pages, `tsc --noEmit` clean, and
+read back out of the served HTML:
+
+  paused     "The next payout needs 75.00 USDC of reserve and 70.00 remains"
+  paused     "Top up 5.00 USDC"
+  active     175.00   reserve total, 5 x 35
+  active     112      free, 175 - 63 allocated
+  forming    "35.00 USDC into the shared reserve"
+  active     132.00 USDC and 130%, both unchanged by the above
+
+Merge stays held. Joshua's decision: stack S5 on this branch and merge the
+frontend as one piece, then one targeted frontend review plus the real-person
+UX check SPEC G4 requires, before submission. A broad Codex pass now would be
+stale the moment the join flow lands.
+
+## S5 - 2026-09-23
+
+reviewed: n/a (frontend, read-only, no wallet; Codex reviews the program)
+adversary: not run, attacks run: 0, test: none. Same gap as S3 and S4, now three tasks old and worth fixing before the frontend grows again
+
+Join and Position, both viewer-state. Nested under the circle state so every
+Data state of both places comes from a fixture that already existed rather than
+from a second set written to flatter the screen:
+
+  /circle/forming/join/3        the open invite
+  /circle/forming/join/1        a seat that has already joined
+  /circle/active/join/3         "This circle already started" (circle_not_forming)
+  /circle/forming/position/3    before join
+  /circle/active/position/1     locked
+  /circle/completed/position/1  withdrawn
+  /circle/repricing/position/1  D5, nothing fundamental is countable
+  /circle/active/position/9     404
+
+verify: `pnpm -C app build`
+  ● /circle/[id]/join/[seat]       2.15 kB   111 kB   35 paths
+  ● /circle/[id]/position/[seat]   2.41 kB   111 kB   35 paths
+  tsc --noEmit, clean
+
+done when: Join names both amounts and the max loss before the action. It does,
+as three blocks ABOVE the button rather than a helper line beneath it, which is
+what design/UX-REVIEW.md's only STOP asked for. Read back from the served HTML:
+
+  "Turn 3 of 5. 50.00 USDC per round."
+  "You lock 1.1000 NFLXx and put 35.00 USDC into the circle's shared reserve."
+  "Most you could lose ... only if other members default and their stock
+   doesn't cover it"
+  "You need stock worth 120.00 USDC of cover to join"
+
+TWO THINGS FOUND WHILE VERIFYING, both real:
+
+1. The invite first offered the BARE MINIMUM to lock. rawForCover inverts H, and
+   at 150 a token with a 20% margin exactly 1.0000 token counts for 120.00 USDC,
+   which IS min_stock_cover. Telling a joiner to lock that is telling them to
+   start with zero headroom, and the first tick of price drift puts them under
+   their own minimum. SPEC.md:134 seeds 1.1 for the same reason the guarantee is
+   35 and not 30. The screen now offers 1.1 and states the 1.0 floor next to it,
+   so the slack is visible rather than silent.
+
+2. My own verification was wrong before it was right. The checker stripped tags
+   by replacing them with a space, and React separates adjacent text nodes with
+   an SSR comment, so "5. 50.00" read back as "5 . 50.00" and a correct line
+   looked broken. Comments are now stripped without a space. Worth recording
+   because the first reading would have had me "fix" copy that was already
+   right.
+
+Position renders the full FLOWS §4 list: raw, the scaled figure a wallet shows,
+multiplier, both prices, haircut, stock cover with the two values it is the
+lower of, reserve cover, owed, coverage, max loss and last checked. D5 is
+honoured here too: under Repricing stock cover and coverage read "Not
+countable" rather than a number built from a multiplier the prices were never
+stamped for.
+
+design/FLOWS.md §4's "member row -> [Position]" is wired: the member table's
+seat cell links to that seat's position, and an unjoined seat links to its
+invite instead.
+
+Screen.module.css is shared by Join and Position; both also import
+Circle.module.css for the shell. Folding the shared primitives out of the Circle
+module into one ui module is a refactor pass, deliberately not done mid-task.
+
+NOT DONE: no wallet, so "Join and lock" and "Lock more stock" render disabled
+with the reason stated next to them. FLOWS §2.4 gives Viewer one verb, view, and
+both of these are transactions. The async axis (submitting, confirming) and the
+wrong-network and low-balance states are not rendered, because none of them can
+occur without a wallet. They arrive with the wallet, not before it.
+
+## Create and 404 - 2026-09-23
+
+reviewed: n/a (frontend, no money path; Codex reviews the program)
+adversary: not run, attacks run: 0, test: none. app/ still has no test suite; the gap is four tasks old now
+
+The design session's handoff-create-v2: Create, the 404, a shared Shell, a
+Recharts peak-need chart, and an extended theme.ts. Installed rather than
+re-authored, which is the standing correction from S3.
+
+verify: `pnpm -C app build`
+  └ ○ /circle/new    115 kB   220 kB
+  tsc --noEmit clean
+
+  /                       200
+  /circle/new             200   was a REAL 404 until this landed
+  /circle/demo            200
+  /definitely-not-a-page  404   and now renders the designed page
+
+Copy read back from the served HTML: "New circle", "Cancel", "Contribution",
+"Round length", "Grace", "Haircut", and "Connect wallet" where FLOWS' "Create
+circle" would be. That last one is not a miss: the component reads its own
+walletAddress prop, and with no wallet it shows Connect wallet and refuses to
+submit. That is the truth about what the app can do today, and it is the
+component's behaviour rather than anything this build stubbed.
+
+FOUR CHANGES TO THE HANDOFF, and no others.
+
+theme.ts was APPENDED to, not replaced. The new file is byte-identical to the
+installed one except that it lacks the eight non-null assertions this repo's
+noUncheckedIndexedAccess needs, and adds innerVars(). Overwriting would have
+silently reintroduced eight type errors, so innerVars was appended with its own
+two assertions and the rest left alone.
+
+Five more assertions in Create, NeedChart and Shell, same reason. Each is an
+index bounded by the array it reads: rows, probs and addrs are all length n,
+payload.length is checked on the line above, PALETTES[1] is a literal.
+
+`composes: display` on FOUR COMPOUND SELECTORS broke the build outright:
+
+  Error: composition is only allowed when selector is single :local class name
+  not in ":local(.seat) span"
+
+CSS Modules allows composes only on a single local class. .seat span, .track
+span, .add span and .invites b each got the composed declarations inlined
+instead, placed FIRST so that a rule which then overrides font-stretch still
+wins. The single-class uses are untouched.
+
+The 404's createHref defaults to /circles/new and this app routes /circle/new,
+so the page passes the right value rather than editing the component. The design
+session owns that file and will hand it again.
+
+recharts added as a dependency, because NeedChart is the design's own chart and
+re-drawing it as inline SVG would be re-authoring.
+
+FRONTEND DEBT, RECORDED IN TASKS.md RATHER THAN FIXED. The handoff ships a
+shared Shell, and Create and the 404 use it. Circle, Join and Position were
+hand-built before Shell existed and carry their own frame, so the app now has
+TWO shells and a judge clicking through will see both. Moving those three onto
+Shell is the right fix and is not a small one.
+
 ## T08 - 2026-09-23
 
 reviewed: n/a (covered by the Gate 2 Codex review at T13)
@@ -2122,3 +2540,247 @@ verify: `pnpm tsx ops/verify-demo-circle.ts` (read-only, one getMultipleAccounts
   member 3 5QjP2WU25AmP6yYNoLpNciC9S2VV8j1VnVo55dPs7xd8 turn 2 stock_raw 110000000
   member 4 EXdbuPTgBvoYDaToRa5zBYaGWUQoh3H9qa94pUBk5Sqs turn 3 stock_raw 110000000
   member 5 BLhFjSFowYZSadXkLLCqahiQrHBtPZHm6RGmAJthTecP turn 4 stock_raw 110000000
+
+## T18 + S2b Live demo circle, real xStocks panel, Contribute (2026-09-25, built)
+reviewed: pending, Codex, together with T24
+adversary: pending (run after this commit)
+
+- /circle/demo reads the devnet demo circle live (app/src/lib/live.ts, decoded with the deployed
+  program's IDL) and renders the existing Circle screen in live mode: where the data comes from,
+  "test USDC" everywhere money is shown (never "USDC"), the NFLXx mirror's label, a connected
+  member's Contribute, seat links to the explorer (the Position place reads fixtures). Fixture
+  URLs are unchanged.
+- /api/live reads the four real xStocks from MAINNET on the server (MAINNET_RPC_URL, server-only,
+  defaults to the public RPC), cached 60 s, 502 with the reason on failure; the panel then says
+  "Live data unavailable" and shows no number.
+- Two display bugs fixed on the way: the Circle cards never applied the shared .card class (no
+  padding or radius on every circle screen), and "Coverage uses prices from 20721d ago" when
+  last_coverage_at is 0; it now says coverage has not been computed yet.
+- Dependency: @coral-xyz/anchor 0.32.1 in app/ (Joshua approved); audit note in OPEN-QUESTIONS.
+
+verify:
+- tests/app-live.spec.ts 9 passing: scaledUi.ts on the four REAL mainnet fixtures (NFLXx
+  1 -> 10 at 1763337300); decodeLive on IDL-encoded demo-shaped accounts (H = 132; Repricing until
+  the effective time, H still 132 after); unjoined seats; mismatched Member refused; app constants
+  equal ops/demo-circle.json, ops/devnet-mints.json, the IDL, declare_id and allowlist.rs.
+- tests/app-contribute.spec.ts 3 passing, on target/devnet/othello.so after the real seed code:
+  exactly 50 test USDC from seat 2 and only its bit; a second payment named AlreadyContributed;
+  a stranger refused.
+- readLiveCircle against the real devnet circle: Active, round 1 of 5, joined 11111, H 132 for
+  every seat, not stale.
+- GET /api/live (next start): HTTP 200, slot 450208721, NFLXx x1 -> x10 effective 1763337300,
+  AAPLx/SPYx/NVDAx with their current dividend multipliers.
+- Headless Chromium on /circle/demo at 1280 and 390 px: no console errors, no horizontal overflow
+  (screenshots checked). NOT verified: a real wallet signing Contribute in the browser; that is
+  Joshua's first morning check, with member 2's key in Phantom.
+- next build clean; app tsc and root tsc clean; check-secrets clean; toml and MAINNET_RPC_URL
+  absent from app/.next/static.
+
+## T25 prep: the demo's round scripts (2026-09-25, built)
+reviewed: pending, Codex, together with T18 and T24
+adversary: pending (with T18's pass or the next)
+
+ops/demo.ts gains payRound (every unpaid seat except those skipped, each member signing its own
+contribute) and releasePot (admin as caller; refuses an unfunded round naming the seats, before
+sending). ops/play-round.ts runs them on devnet (--skip <seat>, --release) and refuses if the
+member keys on disk are not the circle's recorded members. ops/export-member-key.ts prints one
+member's key in base58 for Phantom's import and refuses unless stdout is a terminal (checked:
+piped, it prints "Refused: stdout is not a terminal" and no key).
+
+verify: tests/t25-demo-play.spec.ts 3 passing on target/devnet/othello.so: round 1 paid by four
+scripted seats plus seat 2 through the app's contributeIx, pot 250 to seat 1; split scheduled and
+effective with H 132 before and after; round 2 paid, pot 250 to seat 2; unfunded release refused
+naming seats 2 and 4 with nothing sent; a second payRound sends nothing. Root tsc clean.
+
+## T18 adversary fixes + shared devnet reads (2026-09-25)
+reviewed: pending, Codex, together with T18, T24, T25
+adversary: ONE defect, fixed (tests/t18-adversary.spec.ts, integrated unchanged). Its three lower findings also taken.
+
+1. DEFECT: the reader fixed the mint's multiplier with Math.round(m * 1e9); the program floors
+   from the f64 bits (SPEC I5, valuation.rs). For the real AAPLx (1.0026642075893797) the app had
+   1002664208 against the program's 1002664207, so the screen said Repricing while the program
+   quoted the prices as current. scaledUi.ts's toFixed1e9 is now a bit-exact port of
+   decode_multiplier_fixed and refuses the same values (negative, -0, NaN, infinity, past u64,
+   flooring to 0). New test: I5 vectors 1002664207 and 1003269012, T02's 1.0000003 -> 1000000299,
+   and seven refused values. Mutation (Math.round back): t18-adversary 1 failing, app-live 1 failing.
+2. The real-xStocks panel kept the previous read under "Multiplier now" after a failed refresh; it
+   now drops it and shows only "Live data unavailable" (S2b: never a stale number). "Multiplier
+   now" is computed in the browser at render, not taken from the server's 60 s cache.
+3. A malformed MAINNET_RPC_URL put the keyed URL in the 502 body via fetch's own error text. The
+   routes now return only their own words. Checked with sentinels: MAINNET_RPC_URL and
+   DEVNET_RPC_URL set to "*.example.com/?api-key=SENTINEL..." -> {"error":"mainnet RPC
+   unreachable"} and {"error":"devnet RPC unreachable or rate-limited"}, HTTP 502, no sentinel.
+4. readScaledUi now requires account type 1 (Mint) at byte 165.
+
+Also: /api/circle reads the demo circle on the server (DEVNET_RPC_URL, server-only, default public
+devnet), cached 4 s and shared, so several viewers do not each hit public devnet's rate limit (429s
+were seen during the seed). The browser polls it every 5 s; Contribute is still sent by the
+member's own wallet. Known limit: which multiplier is "in force" is chosen by the server's clock,
+not the chain's; they can differ by seconds around a split.
+
+verify: app-live 10, app-contribute 3, t18-adversary 1, t25-demo-play 3, t24-seed-demo 6,
+t24-adversary 3, s2-devnet-build 7, s2-devnet-mints 6, s2-adversary 2 (each file in its own
+process, 0 failing); GET /api/circle 200 x3 (Active, round 1, joined 0b11111, multiplier 1e9);
+headless Chromium at 1280/390 px through /api/circle: no console errors, no overflow; next build;
+app and root tsc; check-secrets clean; client chunks naming DEVNET_RPC_URL, MAINNET_RPC_URL or
+toml: 0.
+
+## T25 adversary fixes (2026-09-25)
+reviewed: pending, Codex, together with T18, T24, T25
+adversary: TWO defects, both fixed (tests/t25-adversary.spec.ts, integrated unchanged; failed on b848d11, passes now). All other attacks failed; list in the adversary report.
+
+1. export-member-key.ts used demoMembers(), which on a machine without the member keys GENERATED
+   five, wrote them to disk, and printed one as "seat 2" although it belonged to no circle. New
+   loadDemoMembers() (ops/devnet-cli.ts) only loads, refuses if any key file is missing, and
+   refuses unless the keys are exactly, in order, ops/demo-circle.json's members. Used by
+   export-member-key.ts and play-round.ts; only the seed still creates keys. Checked on this
+   machine: loads seats 1-5 = the recorded members; directory 700, key files 600.
+2. toFixed1e9 refused multipliers above ~9,007,199x that the program accepts (valuation.rs:917
+   takes 2^34) and said "the program refuses it". It now returns any result a JS number holds
+   exactly and otherwise says the value is valid on chain but too precise for the app; /api/circle
+   passes any "Multiplier ..." message through.
+
+verify: t25-adversary 2, app-live 10, t18-adversary 1, t25-demo-play 3 passing; root and app tsc
+clean; export-member-key with a non-terminal stdout: "Refused: stdout is not a terminal".
+
+## T25 adversary r3 + full regression + Vercel preview (2026-09-25 ~04:20 WAT)
+reviewed: pending, Codex (brief next)
+adversary: r3 on 0265f83, NO DEFECT FOUND in 10 attacks (toFixed1e9 against an independent exact
+reference on 630,020 bit patterns, 0 mismatches; export-member-key cannot print or create a
+non-member key; play-round signs only with recorded members; no URL reaches /api/circle).
+
+Full regression on 0265f83, each spec file in its own process: 31 files, 187 passing, 0 failing;
+cargo test 57 (default) / 56 (devnet); clippy -D warnings clean on both; fmt, root tsc, app tsc,
+check-secrets clean. CI on PR #14 green.
+
+Vercel (Joshua approved "Vercel, preview first, production only on his go"):
+- `vercel link --yes --project othello` in app/ created project jesters-projects-340c1a8c/othello
+  and wrote app/.env.local (a VERCEL_OIDC_TOKEN; not read, gitignored by app/.gitignore). Added
+  app/.vercelignore so .env* never uploads (the CLI's default ignore list does not cover it).
+- My FIRST `vercel deploy` went to PRODUCTION: a new project's first deploy is production by
+  default, which I did not intend. It failed at build (/vercel/path0/path0/.next: next.config's
+  outputFileTracingRoot pointed above app/), so no production deployment exists. Fixed by rooting
+  the trace at app/ itself (nothing in app/ reads outside it since the IDL moved in).
+- Preview https://othello-5yvyp54rc-jesters-projects-340c1a8c.vercel.app: Ready, behind Vercel
+  deployment protection (302 to login). Through `vercel curl`: /api/circle -> Active, round 1,
+  joined 0b11111; /api/live -> AAPLx 1.0032690125398187, NFLXx 10, SPYx 1.005714560286254,
+  NVDAx 1.001701196801074; /circle/demo title "Othello".
+- Later the same hour: `vercel link` had also connected the GitHub repo, so pushes build on
+  Vercel. The first Git build (00ca07c) failed "No Next.js version detected": builds started at
+  the repo root. Set the project's rootDirectory to `app` (`vercel api /v9/projects/othello -X
+  PATCH -f rootDirectory=app`; read back: rootDirectory app, framework nextjs, GitHub-linked,
+  productionBranch main). So production builds only from `main`, which needs Joshua's go; feature
+  branches build previews. Redeployed that commit as a preview:
+  https://othello-cnlr7j24p-jesters-projects-340c1a8c.vercel.app, Ready; /api/circle -> Active,
+  joined 0b11111.
+
+## T18 Codex r1: changes required, three findings fixed (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: changes required (r1) | commit: 87f1dfe
+adversary: n/a (review fixes; each guarded by a test and a mutation check below)
+
+1. MAJOR, the seed with other member keys: seedDemoCircle now checks, before sending anything,
+   that an existing circle's ordered members are exactly the supplied keys, and
+   seed-demo-circle.ts uses loadDemoMembers() (load-only, refuses if missing) whenever
+   ops/demo-circle.json records a circle; new keys are made only for the first seed. Note beyond
+   the finding: with a different member 1 the circle PDA differs, so the old code would have
+   started a SECOND circle, not just funded strangers. New test: other keys refused, 0 sends.
+2. MINOR, an existing pool unchecked: the same pre-send block requires an existing pool's
+   authority = admin and discount_bps = 2000, and an existing feed's authority = admin. New test:
+   a pool opened at 1500 bps refused, 0 sends.
+   Mutation (both checks disabled): t24-seed-demo 6 passing, 2 failing.
+3. MINOR, blank line at EOF in tests/app-live.spec.ts: removed; `git diff --check` clean.
+
+Also from U8: `next build` loads app/.env.local (the Vercel OIDC token written by `vercel link`)
+into the build environment; it is not NEXT_PUBLIC, so it does not reach client output
+(check-secrets clean). Not read.
+
+verify: t24-seed-demo 8, t24-adversary 3, t25-demo-play 3, app-contribute 3 passing; root tsc
+clean; git diff --check clean.
+
+## Asset pages + Split lab (2026-09-25, built)
+reviewed: pending, Codex T18 r2 (with the r1 fixes)
+adversary: pending
+
+- /assets and /assets/[symbol] (Joshua: "we do not have a dedicated asset page yet"): the four real
+  xStocks read live from mainnet through /api/live. Per mint: its own on-chain name and symbol, the
+  multiplier and last scheduled change, supply raw and as wallets show it, and the issuer powers
+  decoded from its extensions (mint and freeze authority, permanent delegate, pausable, transfer
+  hook with no program set, default account state, confidential transfers), with KNOWN-LIMITS L7
+  stated. No price: Othello has no price source for the real mints. app/src/lib/mintInfo.ts;
+  tests/app-mint-info.spec.ts 5 passing against the four real fixtures, expected values taken
+  from an independent Python decode of the same bytes.
+- /split-lab: the design session's handoff (handoff-split-lab/, board Split Lab Board.dc.html)
+  installed. Kept from the app, not the handoff: the Shell's real nav links and the wallet control
+  you can disconnect from (the handoff Shell predates both); taken from the handoff: surface
+  "gutter", the phone nav pill with the active label, the top-bar logo, and theme.ts's --gutter,
+  --gutterMuted, --tile. Changed to fit the site: "See a live circle" -> /circle/demo (handoff had
+  /circles/demo); the source line links to /assets/NFLXx. Its NFLXx data is the T00 fixture's
+  (slot 449,145,146) and its prices SPEC.md:137's.
+- Flow: nav gains xStocks and Split lab is marked built; the xStocks panel's symbols link to their
+  asset pages; NFLXx's asset page and the live circle's devnet line link to Split lab.
+- Dependency: framer-motion 13.4.3 (the handoff's README requires it). pnpm audit --prod unchanged
+  at 10 (4 moderate, 6 high), so it adds none.
+
+verify: app tsc and next build clean (/assets 3.4 kB, /split-lab 58.1 kB); headless Chromium at
+1280 and 390 px on /split-lab, /assets, /assets/NFLXx and /: no console errors, no horizontal
+overflow, screenshots checked (Split lab autoplay lands on After, 165.00 vs 16.50; NFLXx shows x10,
+1,550,568.48 as wallets show it, every issuer power); check-secrets clean.
+
+## Asset pages adversary: one defect fixed (2026-09-25)
+reviewed: pending, Codex T18 r2/r3
+adversary: ONE defect, fixed (tests/t18-assets-adversary.spec.ts, integrated unchanged: it fails on 0aac57c, passes now). Other attacks failed; one out-of-scope item and one suspicion taken, below.
+
+1. "Change the multiplier" answered "Yes" whenever ScaledUiAmount existed, never reading its
+   optional authority; with the authority revoked (all zeros) nobody can call UpdateMultiplier.
+   mintInfo.ts now decodes scaledUiAuthority, the page shows its holder or "Nobody: authority
+   revoked". app-mint-info asserts all four real mints' authority (S7vY...).
+2. Suspicion taken: every poller (useLiveXStocks, XStocksPanel, LiveCircle) could let a slow
+   response land after a newer one and show older data; each now writes only its latest request's
+   answer.
+3. Out of scope, recorded in OPEN-QUESTIONS: the nav's "How it works" is still a deliberate 404.
+
+verify: t18-assets-adversary 1, app-mint-info 5, app-live 10 passing; app and root tsc; next
+build; check-secrets; git diff --check clean.
+
+## T18 Codex r2: r1 fixed, one MINOR fixed (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: changes required (r2) | commit: 0aac57c
+adversary: n/a (review fix; guarded by a test)
+
+Codex r2 confirmed all three r1 findings fixed (32 spec files, 194 passing; Rust, clippy, fmt,
+tsc, diff check, secret scan). One new MINOR: AssetDetail's "Supply, raw" showed a rounded decimal.
+It now shows the exact on-chain u64 split at the mint's decimals with string arithmetic
+(exactTokens), labelled "Supply, raw (exact, before the multiplier)"; the multiplied figure is
+labelled "about". New test: NFLXx fixture 15505685531324 -> "155,056.85531324", u64 max exact,
+tiny and zero-decimal cases.
+Codex skipped the app build because it auto-loads app/.env.local: that file was the Vercel OIDC
+token `vercel link` wrote; deploys build from Git, so it is deleted (not read). `next build` no
+longer reports loading any env file.
+Note: Codex r2 ran in this worktree while 67cebbc (asset-page adversary fix) was committed here;
+r2's target was 0aac57c. 67cebbc and this fix go to r3.
+
+verify: app-mint-info 6 passing; app tsc; next build; git diff --check; check-secrets clean.
+
+## T18 Codex r3: r2 fixed, two findings fixed (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: changes required (r3) | commit: c3f09ef
+adversary: n/a (review fixes; guarded by the root typecheck and the adversary's own test)
+
+Codex r3 confirmed r2's raw-supply finding fixed. New: MAJOR, `pnpm exec tsc` at the root failed
+because tests/app-mint-info.spec.ts imported exactTokens from a browser hook module
+(useLiveXStocks.ts, window/fetch/"@/" types); MINOR, tests/t18-assets-adversary.spec.ts stubs that
+hook module, so AssetDetail's exactTokens import was undefined and the test failed before its
+assertions. Fix: exactTokens moves to app/src/lib/format.ts (pure, no "@/" imports, no browser
+APIs); AssetDetail and the test import it from there; the hook no longer carries it.
+I had found the MAJOR myself while r3 ran (in the charts worktree) but could not change this
+worktree during the review.
+
+verify: root tsc clean; app tsc clean; t18-assets-adversary 1, app-mint-info 6, app-live 10
+passing; next build; git diff --check; check-secrets clean.
+
+## T18 Codex r4: implementation-ready (2026-09-25)
+reviewed: reviews/t18-review.md | verdict: implementation-ready | commit: f95c4b4 (r4)
+adversary: see the T18, T24, T25 and asset-page entries above
+
+Codex r4 confirmed both r3 findings fixed (root tsc; the adversary's asset test). All 33 isolated
+spec files passed (195 assertions); root and app TypeScript and the app build pass.
+T24 + T18/S2b + T25 (the seed, the live circle, the real xStocks panel, Contribute, the demo round
+scripts) are closed.

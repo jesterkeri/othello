@@ -18,9 +18,9 @@ Format: `- [ ] Txx <what> | verify: <exact command> | done when: <observable con
 
 ## Frontend, built in parallel with gate 2 (Joshua, 2026-09-22)
 It is a wallet app, and `HACKATHON.md` records the only published criterion: "could this be a real app that people will actually use?". No correctness proof is required in the app, so the user-facing product is the whole score. All of these render from fixtures and none needs gate 2 finished.
-- [ ] S3 Landing: the premise in one screen, per design/FRAME.md:24 | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: a reader with no crypto background can say what Othello is after one screen, and the seven-step demo's entry point is obvious
-- [ ] S4 Circle place, read-only, no wallet: timeline, member table, reserve, whose turn, the countdown | verify: `pnpm -C app build` | done when: every FLOWS section 7 Circle state renders from a fixture
-- [ ] S5 Join and Position: what you put in and what comes back, stated before the button (design/UX-REVIEW.md STOP) | verify: `pnpm -C app build` | done when: Join names both amounts and the max loss before the action
+- [x] S3 Landing: the premise in one screen, per design/FRAME.md:24 | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: a reader with no crypto background can say what Othello is after one screen, and the seven-step demo's entry point is obvious
+- [x] S4 Circle place, read-only, no wallet: timeline, member table, reserve, whose turn, the countdown | verify: `pnpm -C app build` | done when: every FLOWS section 7 Circle state renders from a fixture
+- [x] S5 Join and Position: what you put in and what comes back, stated before the button (design/UX-REVIEW.md STOP) | verify: `pnpm -C app build` | done when: Join names both amounts and the max loss before the action
 - [ ] S1 DEMOTED 2026-09-22, build only after S3 to S5. Split lab: naive vault vs Othello side by side on the real NFLXx split, no wallet needed | verify: `pnpm -C app build && pnpm -C app typecheck` | done when: both columns render from the committed NFLXx fixture; naive FUND 16.5 USDC vs Othello 165; H 132 on both sides of 1763337300; the page states whether it is showing recorded mainnet bytes or live devnet
 - [x] S2 Devnet mirror mints: Token-2022 mints with ScaledUiAmountConfig, a labelled devnet allowlist entry that cannot coexist with the mainnet one (ADR-012) | verify: `anchor test` | done when: the mirror set is refused on the mainnet allowlist and accepted on the devnet one, and the label is asserted by a test
 - [ ] S2b Real NFLXx shown beside the mirror (Joshua, 2026-09-25: "Devnet + real data shown"). The
@@ -195,3 +195,41 @@ should start before the hackathon build is finished.
       programs/othello/src/devnet.rs to Circle's devnet USDC (confirm the address from Circle's
       own docs, and that it is classic SPL Token, before changing it), re-run the S2 specs and
       re-deploy. Pools already opened on test USDC stay on it; a new pool is needed per pair.
+
+- [ ] MULTI_CHAIN, Sui first (Joshua, 2026-09-25: after submission; "it'll still be othello but the
+      different wallet will represent the type of assets the user can use"; "for sui we dont need to
+      use only stocks"). ONE Othello: the connected wallet chooses the chain, and the chain chooses the
+      assets. Phantom (Solana): xStocks, the Anchor program as built. Slush (Sui): Sui assets with a
+      real market, a Move program, liquidation through DeepBook's order book instead of the
+      admin-seeded pool (ADR-004; "open-market liquidation" was a SPEC cut). Same screens and design
+      system; the frontend's chain-specific parts (lib/live.ts circle reader, lib/xstocks.ts asset
+      registry, the /api routes) become per-chain adapters selected by the wallet. Research before
+      code: which Sui assets have DeepBook depth that survives SPEC's depth rule; the on-chain price
+      source; DeepBook's newer products (e.g. DeepBook Predict) and whether any fit; the Sui side's own
+      headline (the Token-2022 scaled-UI "split" story does not carry over); funding and time.
+      ROBINHOOD (Joshua, 2026-09-25: Colosseum lets an entry pick several chains; he picked Solana,
+      Robinhood and, he thinks, Arbitrum; to confirm). Robinhood Chain is built on Arbitrum Orbit, so
+      both are EVM: ONE Solidity contract (SPEC's integer maths ports to uint256; the Anchor tests are
+      its specification), reviewed once, deployed to Arbitrum and Robinhood Chain, behind the same UI
+      via an EVM adapter (wagmi; MetaMask, Robinhood Wallet). Order: Solana (submitted) -> EVM for
+      Colosseum -> Sui. Two separate items, both to VERIFY before planning:
+      (a) Robinhood Wallet as a connection: does it implement Solana's Wallet Standard in a desktop
+      browser (then it appears in the app with no code), or only on mobile (WalletConnect / mobile
+      wallet adapter)? (b) Robinhood's own stock tokens as an asset family: which chain they live on
+      today (believed EVM: Arbitrum / Robinhood Chain, unverified), what a Robinhood-chain adapter
+      needs (EVM wallet, a Solidity or Stylus contract, their price and corporate-action model), and
+      whether Colosseum's Robinhood track expects a deployment on that chain.
+      COLOSSEUM RULES (Crypto World's Fair official rules PDF, read 2026-09-25): contest 14 Sep to
+      12 Oct 2026 11:59pm PT (13 Oct 07:59 Lagos); winners by 5 Dec; Nigeria not excluded; one
+      submission per team, every member registers. Judged on functionality/code quality, potential
+      impact, novelty, UX, open source/composability, business plan. Tracks "integrate with" the
+      chain: Solana $100k across 10; Arbitrum $25k across 5; Robinhood Chain $25k across 5; plus
+      Grand $30k and $15k to 20 more. Othello's eligibility: CONFIRMED by Joshua ("solana actually said it"; built
+      during the hackathon, from ~21 Sep); keep that confirmation in writing. Rules silent on winning
+      several tracks.
+      Section 9: disclose open-source/third-party code. Section 17: no Colosseum marks without consent.
+      TRACKS (Joshua, 2026-09-25): keep Solana (primary, $100k/10, built), Robinhood Chain (best story:
+      tokenized stocks) and Arbitrum (same EVM contract). FIRST TASK AFTER TODAY'S SUBMISSION: research
+      Tempo ($100k/10; Stripe's payments chain; savings circles are a payments product): does it run EVM
+      contracts, is there a public testnet to deploy to, what does its track expect, and can the entry
+      form's chains be changed. If it fits, the same Solidity contract may cover it.

@@ -1,0 +1,48 @@
+/* Shared by the Join and Position screens. Both also import the Circle module
+   for the shell: frame, nav, pills and status colours. Folding those shared
+   primitives out of Circle.module.css into this file is a frontend refactor
+   pass, not something to do mid-task. */
+
+.wrap { padding: clamp(14px, 2.2vw, 26px) clamp(14px, 2.4vw, 26px) clamp(20px, 2.6vw, 30px); display: flex; flex-direction: column; gap: clamp(14px, 2vw, 20px); }
+
+.headline { margin: 0; font-size: clamp(26px, 4.2vw, 52px); max-width: 20ch; text-wrap: balance; }
+.lede { margin: 0; font-size: clamp(15px, 1.7vw, 19px); line-height: 1.45; font-weight: 500; color: var(--muted); max-width: 54ch; text-wrap: pretty; }
+
+/* the terms block: what you put in, what comes back, what you could lose */
+.terms { display: flex; flex-wrap: wrap; gap: clamp(12px, 1.8vw, 18px); }
+.term { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 9px; border: 3px solid var(--line); border-radius: clamp(18px, 2.4vw, 28px); padding: clamp(17px, 2.2vw, 24px); }
+.termIn { background: var(--sky); color: var(--skyInk); box-shadow: 4px 4px 0 var(--line); }
+.termBack { background: var(--teal); color: var(--tealInk); box-shadow: 4px 4px 0 var(--line); }
+.termRisk { background: var(--acid); color: var(--acidInk); box-shadow: 4px 4px 0 var(--line); }
+.termBig { font-size: clamp(22px, 2.8vw, 32px); }
+.termNote { margin: 0; font-size: 12.5px; line-height: 1.45; font-weight: 600; opacity: .82; text-wrap: pretty; }
+.amount { display: flex; flex-direction: column; gap: 2px; }
+.amountLabel { font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; opacity: .72; }
+
+/* the numbers table */
+.figures { border: 3px solid var(--line); border-radius: clamp(18px, 2.2vw, 26px); background: var(--paper); overflow: hidden; }
+.figGroup { display: flex; flex-wrap: wrap; }
+.fig { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding: clamp(14px, 1.8vw, 18px) clamp(15px, 2vw, 20px); border-right: 2px solid var(--greyFill); border-bottom: 2px solid var(--greyFill); }
+.figLabel { font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
+.figValue { font-size: clamp(16px, 1.9vw, 21px); font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.figNote { font-size: 11px; font-weight: 600; color: var(--muted); }
+.figWide { flex: 1 1 100%; }
+
+/* actions */
+.actions { display: flex; flex-wrap: wrap; gap: 11px; align-items: center; }
+.primary { display: flex; align-items: center; gap: 11px; border: 3px solid var(--line); border-radius: 999px; background: var(--clay); color: var(--clayInk); padding: 16px 26px; font-size: 15px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; box-shadow: 4px 4px 0 var(--line); }
+.primary:disabled { opacity: .55; cursor: not-allowed; box-shadow: 2px 2px 0 var(--line); }
+.secondary { border: 3px solid var(--line); border-radius: 999px; background: var(--paper); padding: 16px 24px; font-size: 15px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+.secondary:hover { background: var(--greyFill); }
+.why { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--muted); flex: 1 1 240px; min-width: 0; text-wrap: pretty; }
+
+/* refusals, neutral per FLOWS section 8 */
+.refusal { display: flex; flex-direction: column; gap: 6px; border: 3px solid var(--line); border-radius: clamp(16px, 2vw, 22px); background: var(--greyFill); padding: clamp(15px, 1.8vw, 19px); box-shadow: 3px 3px 0 var(--line); }
+.refusalTitle { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
+.refusalText { margin: 0; font-size: 13px; line-height: 1.45; font-weight: 600; opacity: .82; text-wrap: pretty; }
+
+/* seat index */
+.seats { display: flex; gap: 5px; flex-wrap: wrap; border: 3px solid var(--line); border-radius: 999px; background: var(--paper); padding: 4px; }
+.seatLink { border-radius: 999px; padding: 9px 14px; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.seatLink:hover { background: var(--greyFill); }
+.seatOn, .seatOn:hover { background: var(--line); color: var(--paper); }

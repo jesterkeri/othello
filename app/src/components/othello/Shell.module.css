@@ -1,0 +1,75 @@
+/* Shell: frame, icon rail, panel, topbar, colours menu. Tokens come from innerVars() in theme.ts. */
+.root { min-height: 100vh; height: 100vh; box-sizing: border-box; padding: clamp(8px, 1.4vw, 18px); background: var(--desk); font-family: var(--font-jakarta, 'Plus Jakarta Sans'), Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; transition: background .3s; }
+.root *, .root *::before, .root *::after { box-sizing: border-box; }
+:where(.root) button { font-family: inherit; cursor: pointer; color: inherit; }
+.root button:disabled { cursor: default; opacity: .28; }
+.root :focus-visible { outline: 3px solid var(--line); outline-offset: 3px; }
+
+.frame { max-width: 1440px; height: 100%; margin: 0 auto; border: 3px solid var(--line); border-radius: clamp(24px, 3.2vw, 44px); background: var(--frame); color: #FBF9F2; display: flex; }
+
+.rail { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 22px 12px 22px 16px; }
+.logo { width: 48px; height: 48px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 21px; }
+.railNav { display: flex; flex-direction: column; gap: 8px; }
+.railBtn { width: 52px; height: 52px; border: 3px solid var(--line); border-radius: 999px; background: transparent; color: var(--railMuted); display: flex; align-items: center; justify-content: center; padding: 0; transition: background .15s, color .15s; }
+.railBtn:hover { background: var(--railHover); color: #FBF9F2; }
+.railOn, .railOn:hover { background: #FBF9F2; color: #0B0B0B; }
+.railLabel, .logoTop { display: none; }
+
+.panel { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; margin: 4px 4px 4px 0; border: 2px solid var(--line); border-radius: clamp(20px, 2.6vw, 34px); background: var(--panel); color: var(--onPanel); padding: clamp(18px, 2vw, 24px) clamp(18px, 2.2vw, 28px) clamp(22px, 2.6vw, 32px); display: flex; flex-direction: column; gap: 14px; transition: background .3s; }
+
+/* Split lab handoff: surface="gutter" drops the panel fill so colour cards sit on --gutter. */
+.panelGutter { background: var(--gutter); padding: 6px; gap: 6px; }
+.panelGutter .topbar { padding: 10px 12px 6px; }
+.panelGutter .devnetText { color: var(--gutterMuted); }
+.panelGutter .palette { background: var(--tile); }
+
+.topbar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+.devnet { display: flex; align-items: center; gap: 9px; border: 3px solid var(--line); border-radius: 999px; background: var(--cobalt); color: var(--cobaltInk); padding: 7px 14px; font-size: 9.5px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; white-space: nowrap; }
+.dots { display: flex; gap: 3px; }
+.dots span { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.dots span:nth-child(n+4) { opacity: .4; }
+.devnetText { margin: 0; flex: 1 1 240px; min-width: 0; font-size: 12.5px; line-height: 1.45; font-weight: 600; color: var(--panelMuted); }
+.actions { display: flex; gap: 8px; align-items: center; margin-left: auto; position: relative; }
+.palette { width: 46px; height: 46px; border: 3px solid var(--line); border-radius: 999px; background: var(--raised); color: var(--onPanel); display: flex; align-items: center; justify-content: center; padding: 0; }
+
+.menu { position: absolute; top: 56px; right: 0; z-index: 60; width: min(320px, 86vw); border: 3px solid var(--line); border-radius: 26px; background: #FBF9F2; color: #0B0B0B; padding: 16px; display: flex; flex-direction: column; gap: 8px; animation: rowIn .25s cubic-bezier(.2, 1.4, .35, 1) both; }
+.menuLabel { margin-top: 4px; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #5C594F; }
+.profile { display: flex; align-items: center; gap: 11px; border: 3px solid #D8D2C4; border-radius: 18px; background: transparent; padding: 7px; width: 100%; text-align: left; }
+.profile:hover { border-color: var(--line); }
+.profileOn { border-color: var(--line); background: #EFE9DC; }
+.thumb { flex: 0 0 auto; width: 72px; height: 52px; border: 2px solid var(--line); border-radius: 11px; display: flex; flex-direction: column; gap: 5px; padding: 7px; }
+.thumbRow { display: flex; gap: 5px; height: 16px; }
+.thumbRow span { border: 2px solid var(--line); border-radius: 4px; }
+.thumbRow span:first-child { flex: 1 1 0; }
+.thumbRow span:last-child { flex: 0 0 18px; }
+.thumbBtn { width: 80%; height: 11px; border: 2px solid var(--line); border-radius: 999px; }
+.profileText { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.profileText b { font-size: 12.5px; font-weight: 800; }
+.profileText small { font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #5C594F; }
+.modes { display: flex; gap: 3px; border: 3px solid var(--line); border-radius: 999px; padding: 4px; }
+.modes button { flex: 1 1 0; border: 0; border-radius: 999px; background: transparent; min-height: 40px; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.modes .modeOn { background: #0B0B0B; color: #FBF9F2; }
+
+@keyframes rowIn { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 760px), (max-height: 620px) {
+  .root { height: auto; }
+  .frame { height: auto; flex-direction: column; }
+  /* Split lab handoff: phone nav floats as a pill 22px from the bottom; the active item widens and shows its label. */
+  .rail { position: fixed; left: 22px; right: 22px; bottom: 22px; z-index: 40; flex-direction: row; gap: 0; padding: 6px; border: 3px solid var(--line); border-radius: 999px; background: #0B0B0B; }
+  .rail > .logo { display: none; }
+  .railNav { flex: 1 1 auto; flex-direction: row; justify-content: space-between; gap: 4px; }
+  .railBtn { min-width: 44px; width: auto; flex: 0 1 52px; }
+  .railOn, .railOn:hover { flex: 1 1 auto; gap: 9px; padding: 0 16px; background: var(--acid); color: var(--acidInk); }
+  .railOn .railLabel { display: inline; font-size: 15px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; }
+  .logoTop { display: flex; flex: 0 0 auto; width: 40px; height: 40px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 18px; }
+  .devnetText { order: 3; flex-basis: 100%; }
+  .topbar { gap: 8px; }
+  .dots { display: none; }
+  .devnet { padding: 6px 11px; }
+  .devnetFull { display: none; }
+  .panel { overflow: visible; margin: 0; border: 0; border-radius: clamp(20px, 2.6vw, 34px); padding: 14px 12px 112px; }
+  .panelGutter { padding: 6px 6px 100px; }
+  .panelGutter .topbar { padding: 8px 6px 4px; }
+}
+@media (prefers-reduced-motion: reduce) { .root * { animation: none !important; transition: none !important; } }
