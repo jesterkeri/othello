@@ -196,13 +196,15 @@ should start before the hackathon build is finished.
       own docs, and that it is classic SPL Token, before changing it), re-run the S2 specs and
       re-deploy. Pools already opened on test USDC stay on it; a new pool is needed per pair.
 
-- [ ] SUI_EDITION (Joshua, 2026-09-25: "after submission", and "for sui we dont need to use only
-      stocks"). Research before any code: an Othello edition on Sui, same product (savings circles
-      backed by locked collateral) and the same UI/design system (Next.js, Slush via dapp-kit), with
-      the program rewritten in Move and liquidation through DeepBook's order book instead of the
-      admin-seeded pool (ADR-004; "open-market liquidation" was a SPEC cut). Collateral is not limited
-      to stocks: any asset with a deep enough DeepBook market. Questions to answer first: which
-      assets have DeepBook depth that survives SPEC's depth rule; what price source values them
-      on-chain; what the Sui edition's own headline is (Token-2022's scaled UI "split" story does not
-      carry over to Sui's coin standard); and which grant or hackathon funds it, against Colosseum
+- [ ] MULTI_CHAIN, Sui first (Joshua, 2026-09-25: after submission; "it'll still be othello but the
+      different wallet will represent the type of assets the user can use"; "for sui we dont need to
+      use only stocks"). ONE Othello: the connected wallet chooses the chain, and the chain chooses the
+      assets. Phantom (Solana): xStocks, the Anchor program as built. Slush (Sui): Sui assets with a
+      real market, a Move program, liquidation through DeepBook's order book instead of the
+      admin-seeded pool (ADR-004; "open-market liquidation" was a SPEC cut). Same screens and design
+      system; the frontend's chain-specific parts (lib/live.ts circle reader, lib/xstocks.ts asset
+      registry, the /api routes) become per-chain adapters selected by the wallet. Research before
+      code: which Sui assets have DeepBook depth that survives SPEC's depth rule; the on-chain price
+      source; DeepBook's newer products (e.g. DeepBook Predict) and whether any fit; the Sui side's own
+      headline (the Token-2022 scaled-UI "split" story does not carry over); funding, against Colosseum
       (Solana) competing for the same time.
