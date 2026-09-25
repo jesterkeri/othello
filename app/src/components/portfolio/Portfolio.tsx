@@ -17,6 +17,7 @@ import type { Holdings } from '@/app/api/holdings/route';
 import { RAW_DECIMALS, USDC_DECIMALS, formatRaw, formatUsdc, obligations, seatSet, stockCover } from '@/lib/circle';
 import { exactTokens, shownTokens } from '@/lib/format';
 import { slotFor } from '@/components/assets/slots';
+import { useWalletFunds } from '@/components/assets/useWalletFunds';
 import type { LiveCircle } from '@/lib/live';
 import { useWalletUi } from '@/lib/wallet';
 
@@ -39,6 +40,8 @@ export default function Portfolio() {
   const [how, setHow] = useState(false);
   // Jupiter's 24h move per mint, from the same read the Stocks page uses. Missing means not shown.
   const { data: market } = useLiveXStocks();
+  // Joshua: show the wallet's spendable mainnet USDC and SOL.
+  const { funds, error: fundsError } = useWalletFunds(w.address ?? null);
 
   useEffect(() => {
     if (!w.address) return;
@@ -94,6 +97,11 @@ export default function Portfolio() {
               <span aria-hidden className={s.dashes}><span /><span /><span /></span>
               <div className={s.pills}>
                 <span className={s.pillLine}>Your xStocks · mainnet</span>
+                {funds ? (
+                  <span className={s.pillCream}>Wallet {exactTokens(funds.usdcRaw, 6)} USDC · {exactTokens(funds.lamports, 9)} SOL</span>
+                ) : fundsError ? (
+                  <span className={s.pillCream}>Wallet balance unavailable</span>
+                ) : null}
                 {dayMove !== null && (
                   <span className={s.pillDay} style={{ background: dayMove >= 0 ? 'var(--teal)' : 'var(--clay)', color: dayMove >= 0 ? 'var(--tealInk)' : 'var(--clayInk)' }}>
                     {dayMove >= 0 ? '+' : '−'}{usd(Math.abs(dayMove))} · 24h

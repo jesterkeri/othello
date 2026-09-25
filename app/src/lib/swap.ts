@@ -9,8 +9,24 @@
  */
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 
-/** Jupiter's swap program (v6), which every transaction Jupiter's /swap builds invokes. */
-export const JUPITER_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5L3aH9Q8b";
+/**
+ * Jupiter's swap program (v6), read from a transaction Jupiter's /swap built on 2026-09-25
+ * (tests/fixtures/jup-swap-qqqx.json). An earlier value was typed from memory and was wrong, so every
+ * real Jupiter transaction was refused: the fixture now pins it.
+ */
+export const JUPITER_PROGRAM = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+/**
+ * The only programs a Jupiter USDC-to-xStock swap invokes at top level (compute budget, creating the
+ * buyer's token account, the token programs for account housekeeping, Jupiter). Anything else, such
+ * as a System or token transfer to someone else, is refused (Codex T18d r4).
+ */
+export const ALLOWED_PROGRAMS = new Set([
+  "ComputeBudget111111111111111111111111111111",
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+  JUPITER_PROGRAM,
+]);
 /** Solana's packet limit: nothing larger can be a transaction. */
 export const MAX_TX_BYTES = 1232;
 
@@ -34,6 +50,8 @@ export function checkSwapTx(base64: string, payer: string, signed: boolean): TxC
   if (!keys[0] || !keys[0].equals(new PublicKey(payer))) return { ok: false, reason: "the transaction is not paid for by this wallet" };
   const programs = tx.message.compiledInstructions.map((ix) => keys[ix.programIdIndex]?.toBase58());
   if (!programs.includes(JUPITER_PROGRAM)) return { ok: false, reason: "the transaction is not a Jupiter swap" };
+  const other = programs.find((p) => !p || !ALLOWED_PROGRAMS.has(p));
+  if (other !== undefined) return { ok: false, reason: "the transaction does more than a Jupiter swap" };
   if (signed && !(tx.signatures[0] ?? new Uint8Array(64)).some((b) => b !== 0)) return { ok: false, reason: "the transaction is not signed by this wallet" };
   return { ok: true, tx };
 }

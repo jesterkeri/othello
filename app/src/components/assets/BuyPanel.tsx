@@ -17,6 +17,8 @@ import type { SwapSent } from "@/app/api/swap/send/route";
 import { exactTokens, shownTokens } from "@/lib/format";
 import { useWalletUi } from "@/lib/wallet";
 
+import { useWalletFunds } from "./useWalletFunds";
+
 import type { Quote } from "@/app/api/quote/route";
 import s from "@/components/circle/Circle.module.css";
 
@@ -51,6 +53,9 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
   const wallet = useWallet();
   const connect = useConnectPrompt();
   const [buy, setBuy] = useState<Buy>({ phase: "idle" });
+  // Joshua: show what the wallet can spend (mainnet USDC for the swap, SOL for the fee).
+  const { funds, error: fundsError, reload: reloadFunds } = useWalletFunds(wallet.publicKey?.toBase58() ?? null);
+  const [popup, setPopup] = useState(false);
 
   useEffect(() => {
     const usdc = Number(amount);
@@ -98,6 +103,8 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
       sig = sent.signature;
       if (sent.status !== "confirmed") throw new Error(sent.status === "failed" ? `the swap failed on chain (${sent.error})` : (sent.error ?? "not confirmed"));
       setBuy({ phase: "done", sig: sent.signature });
+      setPopup(true);
+      reloadFunds();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setBuy({ phase: "failed", reason: /reject|declin|denied|cancel/i.test(msg) ? "You declined in your wallet. Nothing was sent." : msg, sig });
@@ -157,6 +164,16 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
           </span>
         </div>
       )}
+      {wallet.publicKey && (
+        <p className={s.panelNote} data-funds>
+          {funds
+            ? `Your wallet on mainnet: ${exactTokens(funds.usdcRaw, 6)} USDC · ${exactTokens(funds.lamports, 9)} SOL for fees.`
+            : fundsError
+              ? `Could not read your wallet's mainnet balance: ${fundsError}.`
+              : "Reading your wallet's mainnet balance…"}
+          {funds && quote && BigInt(funds.usdcRaw) < BigInt(Math.round(quote.usdc * 1_000_000)) ? " Not enough USDC for this amount." : ""}
+        </p>
+      )}
       <button
         type="button"
         className={s.pay}
@@ -172,6 +189,21 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
           Bought. <a className={s.link} href={txLink(buy.sig)} target="_blank" rel="noreferrer">View the transaction</a>. It shows in your{" "}
           <a className={s.link} href="/portfolio">portfolio</a> on the next read.
         </p>
+      )}
+      {popup && buy.phase === "done" && quote && (
+        <div className={s.buyScrim} onClick={() => setPopup(false)}>
+          <div role="dialog" aria-modal="true" aria-label="Purchase complete" className={s.buyDialog} onClick={(e) => e.stopPropagation()}>
+            <span className={s.buyDialogKicker}>Bought on Solana mainnet</span>
+            <b className={s.buyDialogBig}>about {shownTokens(quote.outRaw, decimals, multiplier)} {symbol}</b>
+            <span>for {quote.usdc} USDC, swapped through Jupiter and signed in your own wallet.</span>
+            <a className={s.buyDialogLink} href={txLink(buy.sig)} target="_blank" rel="noreferrer">View the transaction ↗</a>
+            <span className={s.buyDialogBtns}>
+              <a className={s.buyDialogPrimary} href="/portfolio">See it in your portfolio →</a>
+              {accepted && <a className={s.buyDialogGhost} href="/how-it-works">How a circle locks it →</a>}
+              <button type="button" className={s.buyDialogGhost} onClick={() => setPopup(false)}>Close</button>
+            </span>
+          </div>
+        </div>
       )}
       {buy.phase === "failed" && (
         <p className={s.panelNote}>

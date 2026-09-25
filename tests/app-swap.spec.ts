@@ -37,7 +37,7 @@ registerHooks({
   },
 });
 
-const JUP = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5L3aH9Q8b");
+const JUP = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 const OTHER = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 const NVDAX = "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh";
 const buyer = Keypair.generate();
@@ -72,6 +72,32 @@ describe("T18g: lib/swap.ts checkSwapTx", () => {
   });
 });
 
+describe("T18g: checkSwapTx against a REAL Jupiter transaction (Codex T18d r4)", () => {
+  const fx = JSON.parse(readFileSync(resolve(REPO, "tests/fixtures/jup-swap-qqqx.json"), "utf8")) as { user: string; swapTransaction: string };
+  it("accepts the transaction Jupiter's /swap actually built (its program id is the one we check)", async () => {
+    const { checkSwapTx } = await lib();
+    const r = checkSwapTx(fx.swapTransaction, fx.user, false);
+    assert.equal(r.ok, true, (r as { reason?: string }).reason);
+  });
+  it("refuses a Jupiter swap with an unrelated transfer added", async () => {
+    const { checkSwapTx } = await lib();
+    const payer = Keypair.generate();
+    const msg = MessageV0.compile({
+      payerKey: payer.publicKey,
+      recentBlockhash: Keypair.generate().publicKey.toBase58(),
+      instructions: [
+        new TransactionInstruction({ programId: JUP, keys: [], data: Buffer.from([1]) }),
+        anchor.web3.SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: Keypair.generate().publicKey, lamports: 1 }),
+      ],
+    });
+    const t = new VersionedTransaction(msg);
+    t.sign([payer]);
+    const r = checkSwapTx(Buffer.from(t.serialize()).toString("base64"), payer.publicKey.toBase58(), true);
+    assert.equal(r.ok, false);
+    assert.match((r as { reason: string }).reason, /does more than a Jupiter swap/);
+  });
+});
+
 type Answer = { status?: number; body: unknown };
 async function withFetch<T>(answers: (url: string, init?: RequestInit) => Answer, run: () => Promise<T>): Promise<{ out: T; asked: string[] }> {
   const asked: string[] = [];
@@ -103,28 +129,33 @@ describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed
   };
 
   it("returns Jupiter's transaction, and asks Jupiter for the registry's mint, not the browser's", async () => {
-    const { out, asked } = await build({ symbol: "NVDAx", usdc: 50, user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
+    const { out, asked } = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
     assert.equal(out.status, 200);
     assert.equal(out.body.outRaw, "220000000");
     assert.equal(out.body.minOutRaw, "217800000");
     assert.ok(asked[0]!.includes(`outputMint=${NVDAX}`) && asked[0]!.includes("amount=50000000"));
   });
   it("refuses an unlisted symbol and a bad wallet before asking Jupiter", async () => {
-    const a = await build({ symbol: "FAKEx", usdc: 50, user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
+    const a = await build({ symbol: "FAKEx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
     assert.equal(a.out.status, 404);
     assert.equal(a.asked.length, 0);
-    const b = await build({ symbol: "NVDAx", usdc: 50, user: "nope" }, tx(buyer.publicKey, JUP));
+    const b = await build({ symbol: "NVDAx", usdc: "50", user: "nope" }, tx(buyer.publicKey, JUP));
     assert.equal(b.out.status, 400);
   });
   it("refuses Jupiter's transaction if someone else pays it or it is not a Jupiter swap", async () => {
-    const a = await build({ symbol: "NVDAx", usdc: 50, user: buyer.publicKey.toBase58() }, tx(Keypair.generate().publicKey, JUP));
+    const a = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(Keypair.generate().publicKey, JUP));
     assert.equal(a.out.status, 502);
     assert.match(String(a.out.body.error), /not paid for by this wallet/);
-    const b = await build({ symbol: "NVDAx", usdc: 50, user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, OTHER));
+    const b = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, OTHER));
     assert.match(String(b.out.body.error), /not a Jupiter swap/);
   });
+  it("refuses a JSON number amount (1e2 arrives as 100; Codex T18d r4)", async () => {
+    const { out, asked } = await build({ symbol: "NVDAx", usdc: 1e2, user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP));
+    assert.equal(out.status, 400);
+    assert.equal(asked.length, 0);
+  });
   it("refuses a quote for a different token", async () => {
-    const { out } = await build({ symbol: "NVDAx", usdc: 50, user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP), { ...QUOTE, outputMint: OTHER.toBase58() });
+    const { out } = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, JUP), { ...QUOTE, outputMint: OTHER.toBase58() });
     assert.equal(out.status, 502);
     assert.match(String(out.body.error), /different token/);
   });
@@ -181,6 +212,18 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     try {
       const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { error: { message: "invalid api key abcdef0123456789SECRETKEY" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /SECRETKEY/);
+    } finally {
+      if (prev === undefined) delete process.env.MAINNET_RPC_URL;
+      else process.env.MAINNET_RPC_URL = prev;
+    }
+  });
+  it("returns no provider text at all, only fixed words (Codex T18d r4: a short key could be in it)", async () => {
+    const prev = process.env.MAINNET_RPC_URL;
+    process.env.MAINNET_RPC_URL = "https://rpc.example/?k=ab12";
+    try {
+      const { out } = await send({ tx: signed(), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999 }, () => ({ body: { error: { message: "Transaction simulation failed: key ab12 rejected" } } }));
+      assert.doesNotMatch(JSON.stringify(out.body), /ab12|rejected/);
+      assert.match(String(out.body.error), /^sendTransaction: the network's simulation of the swap failed$/);
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
       else process.env.MAINNET_RPC_URL = prev;

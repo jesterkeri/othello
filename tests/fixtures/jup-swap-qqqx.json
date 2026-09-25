@@ -1,0 +1,12 @@
+{
+  "provenance": {
+    "fetchedAt": "2026-09-25T17:55:43.070Z",
+    "quote": "https://lite-api.jup.ag/swap/v1/quote?inputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&outputMint=Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ&amount=1000000&slippageBps=100&restrictIntermediateTokens=true",
+    "swap": "POST https://lite-api.jup.ag/swap/v1/swap (wrapAndUnwrapSol, dynamicComputeUnitLimit, prioritizationFeeLamports auto)",
+    "note": "Unsigned transaction Jupiter built for the demo's seat-2 wallet (a public address); never signed or sent."
+  },
+  "user": "HjW7R1sUyUnRjjuRhFaVF696nUiwpw7qQ3vCFSxn4ytC",
+  "outputMint": "Xs8S1uUs1zvS2p7iwtsG3b6fkhpvmwz4GYU3gWAmWHZ",
+  "swapTransaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAFC/ieTN0W9IHiW8MyL2zZp9Lc12FHcZUXSczBQtRUe6dhS3uSNxMy36OzTfd43YkKtBdxWffTGiOd914UyptacC59jvmk9Db5kNHl5oQYjbPz0APpzpq/LbtyHYcQ61SOsZSllJWzdu86i0KRBVtrkFSm3KdwcxcP+V+nBD4+kPjNx0+J2b2o5Ycv4Bfa4USxNZ9IrcT1prg9TIQIB0kFg8DOmvx3jUR0n3TQBDO3N8PH76QeoAKF3VvcY6kuwaUQ+gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwZGb+UhFzL/7K26csOb57yM5bvF9xJrLEObOkAAAAAEedVb8jHAbu50xW7OaBUH/bGy3qP0jlECsc2iVrwTj4yXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZtD/6J/XX9kp0wJsfKVh53ksJqzbfyd1RSzIap7OM5eh0/t939oB5GJVt+zLWIcgn7yotQ2R7Xr9vyiY7W6ZMfwMHAAUCwFwVAAkGAAMAEwYSAQEIHBIAAgMIEwgKCBUAFA8CAwwODRESEBYTCwEEBQgj5RfLl3rjrSoBAAAAKGQAAUBCDwAAAAAA/QoCAAAAAABkAAAB1E0oTkHLyiPhDjnoRFadGxdldIxtN0h08L+OfYIl/yIFRk5MVE8HGg0QSC8RHw==",
+  "lastValidBlockHeight": 428465946
+}

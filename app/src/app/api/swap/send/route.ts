@@ -1,8 +1,8 @@
 /**
  * T18g: relays a buyer-signed Jupiter swap to Solana mainnet through the server's RPC and waits for
  * it to confirm. It relays nothing else: the bytes must decode, fit a packet, be paid for and signed
- * by the stated wallet, and invoke Jupiter (lib/swap.ts). The RPC URL never reaches the browser, and
- * errors carry only this route's own words or the chain's.
+ * by the stated wallet, and invoke only Jupiter and its housekeeping programs (lib/swap.ts). Neither the
+ * RPC URL nor any provider text reaches the browser: errors are this route's own fixed words.
  */
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -22,6 +22,7 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
   if (!res) throw new Error(`${method}: mainnet RPC unreachable`);
   const body = (await res.json().catch(() => null)) as { result?: unknown; error?: { message?: string } } | null;
   if (!res.ok || !body) throw new Error(`${method}: mainnet RPC answered ${res.status}`);
+  // The message is used only to classify the failure (the route never returns it).
   if (body.error) throw new Error(`${method}: ${String(body.error.message ?? "refused").slice(0, 300)}`);
   return body.result;
 }
@@ -53,11 +54,20 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ signature, status: "expired", error: "not confirmed within 50 seconds; check the explorer" } satisfies SwapSent);
   } catch (e) {
-    // The RPC URL can carry a key: only the method name and the chain's own message pass through.
-    // Adversary pass 5: scrub the URL, and also any long piece of it (a key can be echoed alone).
-    let said = e instanceof Error ? e.message : String(e);
-    said = said.replace(/https?:\/\/\S+/g, "[rpc]");
-    for (const piece of url.split(/[/?&=:#]/).filter((p) => p.length >= 12)) said = said.split(piece).join("[rpc]");
-    return fail(/^(sendTransaction|getSignatureStatuses|getBlockHeight):/.test(said) ? said : "relay unavailable");
+    // Codex T18d r4: no provider text reaches the browser at all (a credential of any length could be
+    // in it). Only the method and a fixed description of what went wrong.
+    const said = e instanceof Error ? e.message : String(e);
+    const method = /^(sendTransaction|getSignatureStatuses|getBlockHeight):/.exec(said)?.[1];
+    if (!method) return fail("relay unavailable");
+    const why = /insufficient|0x1\b|not enough/i.test(said)
+      ? "not enough funds in the wallet (USDC for the swap, SOL for the fee)"
+      : /blockhash/i.test(said)
+        ? "the quote expired before it landed; try again"
+        : /slippage|0x1771|6001/i.test(said)
+          ? "the price moved beyond the 1% slippage; try again"
+          : /simulat/i.test(said)
+            ? "the network's simulation of the swap failed"
+            : "the network refused it";
+    return fail(`${method}: ${why}`);
   }
 }

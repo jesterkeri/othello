@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
   if (!x) return fail("not a listed xStock", 404);
   // Adversary pass 5: never round or reinterpret money. Only a plain decimal with at most 6 places
   // ("1e2", "0x10", "1.0000005" are refused), converted with string arithmetic.
-  const typed = typeof body?.usdc === "number" && Number.isFinite(body.usdc) ? String(body.usdc) : body?.usdc;
+  // Codex T18d r4: a JSON number has already lost its spelling (1e2 arrives as 100), so only a
+  // string is accepted.
+  const typed = body?.usdc;
   const m = typeof typed === "string" ? /^(\d+)(?:\.(\d{1,6}))?$/.exec(typed.trim()) : null;
   if (!m) return fail("enter a plain USDC amount with at most 6 decimal places", 400);
   const micro = BigInt(m[1]!) * 1_000_000n + BigInt((m[2] ?? "").padEnd(6, "0") || "0");
