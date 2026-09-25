@@ -20,8 +20,8 @@ runs. This is the last review before the video and the submission.
 
 `fd470c7` merges `task/S2-devnet-mints` into the frontend line; its only conflict was DONE.md
 (both sides appended; both kept). `46614fc` is the frontend line's head before this work
-(wallet connect, S7); the frontend before it is out of scope. The branch head may be ONE commit
-later than `87f1dfe`; that commit adds only this file.
+(wallet connect, S7); the frontend before it is out of scope. Commits after `87f1dfe` change only
+this file and DONE.md (`git diff --stat 87f1dfe..HEAD` shows exactly those two).
 
 Review under `/home/hr/myvscode_linux/orca-sentinel/docs/REVIEW-PROTOCOL.md`, U1 to U9.
 
