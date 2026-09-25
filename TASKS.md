@@ -218,5 +218,12 @@ should start before the hackathon build is finished.
       wallet adapter)? (b) Robinhood's own stock tokens as an asset family: which chain they live on
       today (believed EVM: Arbitrum / Robinhood Chain, unverified), what a Robinhood-chain adapter
       needs (EVM wallet, a Solidity or Stylus contract, their price and corporate-action model), and
-      whether Colosseum's Robinhood track expects a deployment on that chain. Colosseum's rules for
-      multi-chain entries are binding: read them before choosing scope.
+      whether Colosseum's Robinhood track expects a deployment on that chain.
+      COLOSSEUM RULES (Crypto World's Fair official rules PDF, read 2026-09-25): contest 14 Sep to
+      12 Oct 2026 11:59pm PT (13 Oct 07:59 Lagos); winners by 5 Dec; Nigeria not excluded; one
+      submission per team, every member registers. Judged on functionality/code quality, potential
+      impact, novelty, UX, open source/composability, business plan. Tracks "integrate with" the
+      chain: Solana $100k across 10; Arbitrum $25k across 5; Robinhood Chain $25k across 5; plus
+      Grand $30k and $15k to 20 more. Silent on: entering a project also submitted elsewhere (Othello
+      started ~21 Sep, inside the window; still ask hello@colosseum.com), and winning several tracks.
+      Section 9: disclose open-source/third-party code. Section 17: no Colosseum marks without consent.
