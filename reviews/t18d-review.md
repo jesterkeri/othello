@@ -1,79 +1,60 @@
 VERDICT: changes required
 
-Review target: `d0afc33` (`ec574c3..d0afc33`). The worktree remained on
-`task/T18d-shell`; `HEAD` was the brief-only follow-up `0c953d1` (the diff
-from target to HEAD adds only `reviews/t18d-brief.md`).
+Review target: `0f0b2b6` (`d0afc33..0f0b2b6`). The worktree remained on
+`task/T18e-circle-design`; `HEAD` was the brief-only follow-up `ef79981`.
+`git diff --stat 0f0b2b6 ef79981` reports only `reviews/t18e-brief.md`.
 
-## Findings
+## r1 finding
 
-**MAJOR — INSIDE — `app/src/components/live/LiveCircle.tsx:169-226` and
-`app/src/lib/live.ts:165-171`:** the action controls claim to enable only
-when the program's conditions hold, but only implement a subset of them.
-`Release pot` is enabled whenever every seat is paid, even if the same decoded
-view says the price is stale, the multiplier/feed is Repricing, or
-`nextGateShortBy > 0` (Paused); the program then refuses with `PriceStale`,
-`MultiplierPriceMismatch`, or `ReserveOvercommitted`. `Update coverage` is
-enabled while stale or Repricing even though `value_position` makes it refuse
-for those conditions. `Declare default` checks time and seat bits but not a
-stale wrapper price, and `LiveCircle` never reads the pool USDC vault, so it
-cannot withhold the button when its known `pool_insufficient` precondition is
-false.
+**Not fully fixed — MAJOR — OUTSIDE — `app/src/components/live/LiveCircle.tsx:202-226,252`:** the r1 repair correctly adds fresh-price, repricing, pool-liquidity, and strict-grace guards, and `app/src/lib/circle.ts:304-311` reproduces `declare_default.rs:137-176`'s `recovered` rounding. Its paused guard, however, treats the stored `next_gate_short_by` as a current `release_pot` precondition:
 
-For example, after a price fall sets `nextGateShortBy > 0`, every member can
-pay; this page enables and says “anyone can release the pot,” while the
-program necessarily rejects the signed transaction as `ReserveOvercommitted`.
-This directly violates brief §1's button rule and reintroduces the false
-automatic-release implication at `LiveCircle.tsx:195-196`. Derive the button
-guards from the live `stale`, `repricing`, and paused state; fetch the pool
-vault/required recovery for the default control (or state its availability is
-unknown rather than enabling it); and add component-level enabled/disabled
-tests for every refusal state.
+```ts
+const canRelease = active && owing.length === 0 && !priceBlock && !dv.paused && !!recipient;
+```
+
+That conflicts with SPEC.md:129. `next_gate_short_by` is the result of the last `update_coverage`, `release_pot`, `declare_default`, or `top_up_reserve`; `add_stock` and price changes deliberately do not refresh it. The specification therefore says the UI must show Paused but never disable Release pot on that field. `release_pot.rs:219-265` recomputes the actual gate from the current members and price; it does not reject merely because the stored field is non-zero.
+
+Concrete failure: a price fall sets `next_gate_short_by > 0`; then a member adds enough stock, or a fresh recovered price makes the current gate pass. `add_stock` intentionally leaves Paused unchanged (covered by `tests/t16-top-up.spec.ts`'s “leaves Paused alone” case). The program would release the fully funded pot after recomputing its gate, but this screen disables the only Release control until someone first sends an unnecessary coverage update. Restore the SPEC behaviour: keep Release enabled when its directly knowable prerequisites hold, state that Paused is from the last check, and let the program return its typed current-gate refusal if it still fails. Replace the paused-disabled expectation in `tests/app-live-guards.spec.ts` with the stale-state recovery case.
+
+This is OUTSIDE rather than a confirmation of the prompt: the brief explicitly required the opposite paused behaviour, while the controlling SPEC and the instruction's actual gate say it is wrong.
+
+## New findings
+
+**MAJOR — INSIDE — `app/src/components/portfolio/Portfolio.tsx:213-215`:** the new holdings row converts the on-chain `u64` raw balance to a JavaScript `Number` before rendering it, then labels the scaled decimal as `raw`. The token-account amount is a full `u64` and has no JavaScript-safe upper bound. For example, raw `9007199254740993` is rounded to `9007199254740992` before division; both the shown amount and the subsequent multiplier/value presentation can be wrong. Even at ordinary size, a balance of one 8-decimal token is rendered as `1.000000 raw`, though SPEC.md:33 defines raw as base units, i.e. `100000000 raw`.
+
+This is a made-up mainnet holdings figure on the redesigned Portfolio page, contrary to the brief's “chain or clear error” requirement. Keep raw values as `bigint`/decimal strings and use the existing exact-token formatter (or label the displayed pre-multiplier amount accurately); add a boundary test above `Number.MAX_SAFE_INTEGER` and a units assertion.
+
+**MINOR — INSIDE — `app/src/components/portfolio/Portfolio.tsx:185`:** the redesigned non-member circle card says “move it on: anyone can release a pot.” Anyone may sign `release_pot`, but it is only releasable after every seat has paid or defaulted, with sufficient escrow, a fresh matching price, and a passing gate (SPEC.md:109 and `release_pot.rs:117-265`). A visitor viewing a circle with an unpaid seat, stale feed, or failed gate is told an action is presently available when the program refuses it. Say “anyone may release it once its gate permits,” or direct the visitor to the live circle’s condition-specific action panel. Add this state to the screen-copy test.
 
 ## U7
 
-- Findings: **INSIDE 1, OUTSIDE 0**. This is indicative, not a rigorous
-  cold-read measurement: the brief supplied scope and requirements in the
-  same turn (protocol U1).
+- Findings: **INSIDE 2, OUTSIDE 1**. Indicative only, not a rigorous cold-read measurement: the prompt supplied scope and expected guard behaviour in the same turn (protocol U1).
 
 ## U8 — not checked
 
-- I did not run an ops script, send a transaction, make an RPC/API read, or
-  open a keypair, `.env*` content, `~/.config/solana`, or
-  `~/.config/othello-demo`. A presence-only check confirmed root `.env`, root
-  `.env.local`, and `app/.env.local` are absent.
-- I did not run `anchor build`: Anchor's program-ID validation reads the local
-  deploy keypair, prohibited by this review. The action test itself builds the
-  devnet feature inside bankrun and passed.
-- I did not reproduce browser clicks, wallet signing, headless phone-layout
-  checks, Vercel deployment, or live devnet/mainnet/Jupiter/GeckoTerminal
-  behaviour. In particular, the new tests cover instruction construction and
-  execution but not the button guards, which is the finding above.
+- I did not run an ops script, send a transaction, make live RPC/API reads, or read any keypair, `.env*` content, `~/.config/solana`, or `~/.config/othello-demo`. A presence-only check confirmed root `.env`, root `.env.local`, and `app/.env.local` are absent.
+- I did not run `anchor build`, as instructed; it can read the local deploy keypair. The existing target artifact was used by the serial bankrun specs.
+- I did not reproduce browser wallet signing, physical-device layout, deployment, or live devnet/mainnet/Jupiter behaviour. I also did not run an unscoped review outside this target and its immediate protocol consumers.
 
 ## Verification (serial)
 
 ```text
 git branch --show-current; git rev-parse --short HEAD
-task/T18d-shell
-0c953d1
+task/T18e-circle-design
+ef79981
 
-git diff --stat d0afc33 0c953d1
-reviews/t18d-brief.md | 90 +++++++++++++++++++++++++++++++++++++++++++++++++++
-1 file changed, 90 insertions(+)
-
-git diff --stat ec574c3..d0afc33
-22 files changed, 769 insertions(+), 231 deletions(-)
-
-test ! -e .env && test ! -e .env.local && test ! -e app/.env.local
-exit 0; local env files absent (contents not read).
+git diff --stat 0f0b2b6 ef79981
+reviews/t18e-brief.md | 84 +++++++++++++++++++++++++++++++++++++++++++++++++++
+1 file changed, 84 insertions(+)
 
 corepack pnpm@10.32.1 install --frozen-lockfile
-exit 0; lockfile up to date, already up to date.
+exit 0; lockfile up to date.
 
 (cd app && corepack pnpm@10.32.1 install --frozen-lockfile)
-exit 0; lockfile up to date, already up to date.
+exit 0; lockfile up to date.
 
 for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 600000 "$f"; done
-40 files, one process per file: 236 passing, 0 failing.
+42 files, one process per file: 248 passing, 0 failing.
 
 pnpm exec tsc --noEmit -p tsconfig.json
 exit 0.
@@ -81,13 +62,12 @@ exit 0.
 (cd app && corepack pnpm@10.32.1 exec tsc --noEmit && corepack pnpm@10.32.1 build)
 exit 0; Next.js 15.5.26 compiled, type-checked, and generated 109 pages.
 
-git diff --check ec574c3..d0afc33
+git diff --check d0afc33..0f0b2b6
 exit 0.
 
 ./scripts/check-secrets.sh
 no credential-shaped strings in client output
 
-./scripts/check-reviews.sh
-FAIL reviews/t18d-review.md says changes required. Fix and re-review, or record
-a deliberate override in KNOWN-LIMITS.md and remove the file from this gate.
+test ! -e .env && test ! -e .env.local && test ! -e app/.env.local
+exit 0; local env files absent (contents not read).
 ```
