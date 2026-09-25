@@ -5,6 +5,7 @@
 // menu (palettes AND the light/dark switch). Shared by every page but Landing.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import s from './Shell.module.css';
+import StockSearch from './StockSearch';
 import { WalletControl } from './WalletConnect';
 import { hrefFor } from '@/lib/nav';
 import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
@@ -207,6 +208,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
           ) : (
             <span className={s.devnet}><span className={s.dots} aria-hidden>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>Devnet<span className={s.devnetFull}>&nbsp;demo</span></span>
           )}
+          <StockSearch />
           <p className={s.devnetText}>{network ? network.note : 'The demo trades labelled mirrors of these shares, not the real xStocks.'}</p>
           <span className={s.actions}>
             <button type="button" className={s.palette} aria-label="Colours and mode" aria-expanded={menu === 'top'} onClick={() => setMenu(menu === 'top' ? null : 'top')}>

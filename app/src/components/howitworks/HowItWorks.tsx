@@ -76,10 +76,10 @@ export default function HowItWorks() {
 
         <section className={`${s.card} ${s.step} ${s.s2}`}>
           <span className={s.num}>2</span>
-          <h2 className={s.title}>Each locks a promise</h2>
+          <h2 className={s.title}>Each locks collateral</h2>
           <p className={s.body}>
             {c && m0
-              ? `Each locked ${formatRaw(m0.lockedRaw, 2)} NFLXx (mirror), counted at ${cover} ${money} after a 20% safety margin, and put ${formatUsdc(c.guaranteePerMember, 0)} into a shared reserve (${formatUsdc(c.reserveTotal, 0)} in all). The stock stays theirs: when the circle ends, each member withdraws it with what is left of their guarantee, unless they default after taking the pot (step 4).`
+              ? `Each locked ${formatRaw(m0.lockedRaw, 2)} NFLXx (mirror) as collateral, counted at ${cover} ${money} after a 20% safety margin, and put ${formatUsdc(c.guaranteePerMember, 0)} into a shared reserve (${formatUsdc(c.reserveTotal, 0)} in all). The stock stays theirs: when the circle ends, each member withdraws it with what is left of their guarantee, unless they default after taking the pot (step 4).`
               : pending}
           </p>
           <Link className={s.cta} href="/circle/demo/position/2">See Tunde&apos;s seat</Link>
@@ -129,7 +129,24 @@ export default function HowItWorks() {
             xStocks are real shares tokenized on Solana. You can buy them today, and four of them (S&amp;P 500, NVIDIA, Apple,
             Netflix) are the cover a circle accepts.
           </p>
-          <Link className={s.cta} href="/assets">Browse xStocks</Link>
+          <Link className={s.cta} href="/assets">Browse assets</Link>
+        </section>
+
+        {/* Joshua, 2026-09-25: say how Othello earns, and that locking pays no APR. The fee is a plan,
+            not in this program: stated as such so nobody reads it as live. */}
+        <section className={`${s.card} ${s.wide} ${s.s2}`}>
+          <span className={s.num}>7</span>
+          <h2 className={s.title}>What members get, and how Othello earns</h2>
+          <p className={s.body}>
+            Othello pays no APR for locking, and does not pretend to. What members get: the whole pot, interest-free (early
+            seats get an interest-free loan of it, late seats save with a guarantee behind them), and their collateral keeps
+            earning what the stock earns, dividends included, since xStocks pay dividends by raising the multiplier.
+          </p>
+          <p className={s.note}>
+            How Othello plans to earn, not in this version: a 0.5% fee on each pot as it is paid out, the job an ajo or esusu
+            collector does for a larger cut, done here by locked collateral instead of trust in one person. Later, a share of
+            the liquidation spread and integrator fees on buys routed through Jupiter. This demo charges nothing.
+          </p>
         </section>
       </div>
     </Shell>
