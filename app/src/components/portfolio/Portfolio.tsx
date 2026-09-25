@@ -108,7 +108,7 @@ export default function Portfolio() {
                   <b className={s.bigMuted}>$0.00</b>
                   <b>No xStocks yet</b>
                   <span>Anything you buy shows up here.</span>
-                  <Link href="/assets" className={s.btnInk}>Browse stocks<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
+                  <Link href="/assets" className={s.btnInk}>Browse assets<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
                 </div>
               ) : (
                 <>
@@ -203,7 +203,7 @@ export default function Portfolio() {
                     </span>
                   )}
                 </span>
-                <Link href="/assets" className={s.allStocks}>All stocks<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
+                <Link href="/assets" className={s.allStocks}>All assets<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
               </div>
               {rows.map((h) => (
                 <Link key={h.address} href={`/assets/${h.symbol}`} className={s.row} style={{ '--slot': `var(--${h.slot})` } as CSSProperties}>

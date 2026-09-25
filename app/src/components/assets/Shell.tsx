@@ -9,7 +9,7 @@ import Shell from "@/components/othello/Shell";
 /** The asset pages' frame: the Circle place's nav and devnet strip, restated for mainnet reads. */
 export default function AssetShell({ back, children }: { back: { href: string; label: string }; children: ReactNode }) {
   return (
-    <Shell active="Stocks" network={{ chip: "Mainnet, read only", note: "Real xStocks, read live from Solana mainnet. Othello sends nothing to mainnet." }}>
+    <Shell active="Assets" network={{ chip: "Mainnet, read only", note: "Real xStocks, read live from Solana mainnet. Othello sends nothing to mainnet." }}>
       <div className={s.frame}>
         {children}
       </div>

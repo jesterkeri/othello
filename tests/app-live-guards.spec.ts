@@ -161,12 +161,25 @@ describe("T18e: the live circle's buttons follow every known program condition (
     assert.doesNotMatch(text, /anyone can release the pot/);
   });
 
-  it("paused (next_gate_short_by > 0): Release is disabled, Update coverage stays enabled", async () => {
+  it("paused (next_gate_short_by > 0): Release stays enabled (SPEC.md:129), and the page says the program re-checks", async () => {
+    // SPEC.md:129: the UI "never disables Release pot on it: the program refuses with numbers if the
+    // gate fails". Paused is as of the last coverage check; release_pot recomputes the gate itself.
     const { on, text } = await buttons({ ...allPaid, nextGateShortBy: 12_000_000 });
-    assert.equal(on["Release pot to Ada"], false);
+    assert.equal(on["Release pot to Ada"], true);
     assert.equal(on["Update coverage"], true);
-    assert.match(text, /payouts are paused/);
-    assert.doesNotMatch(text, /anyone can release the pot/);
+    assert.match(text, /payouts were paused, 12\.00 test USDC short/);
+    assert.match(text, /the program re-checks the reserve/);
+    assert.doesNotMatch(text, /until a member tops up/);
+  });
+
+  it("a feed that was never priced (prices 0, fresh stamp): Release, Update and Declare are disabled", async () => {
+    const unpriced = { ...allPaid.feed, wrapperPrice: 0, sharePrice: 0 };
+    const a = await buttons({ ...allPaid, feed: unpriced });
+    assert.equal(a.on["Release pot to Ada"], false);
+    assert.equal(a.on["Update coverage"], false);
+    assert.match(a.text, /No price has been set/);
+    const b = await buttons({ ...adaLate, feed: { ...adaLate.feed, wrapperPrice: 0, sharePrice: 0 } });
+    assert.equal(b.on["Declare Ada in default"], false);
   });
 
   it("control: Ada past grace, pool holds enough: Declare Ada in default is enabled", async () => {

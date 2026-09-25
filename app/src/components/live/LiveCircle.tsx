@@ -204,12 +204,21 @@ export default function LiveCircle() {
   // Paused (next_gate_short_by > 0) blocks release_pot (reserve_overcommitted); a stale price or a
   // pool without the USDC to buy the stock blocks declare_default (price_stale, pool_insufficient).
   const dv = derive(c, wallClock);
-  const priceBlock = dv.stale
+  // A feed that was never priced reads as fresh after touch_prices but prices at 0, which the
+  // program refuses as PriceStale (adversary pass 3's suspicion; admin-only, cheap to state).
+  const priceBlock = c.feed.wrapperPrice === 0 || c.feed.sharePrice === 0
+    ? "No price has been set for the stock yet, and the program acts only on a set, fresh price."
+    : dv.stale
     ? `The price is ${formatDuration(dv.priceAge)} old, and the program acts only on a fresh one.`
     : dv.repricing
       ? "Price and split disagree (repricing): the program waits for a price set for the new multiplier."
       : null;
-  const canRelease = active && owing.length === 0 && !priceBlock && !dv.paused && !!recipient;
+  // SPEC.md:129: Paused (next_gate_short_by > 0) is only as fresh as the last update_coverage /
+  // release_pot / declare_default / top_up_reserve, and "the UI ... never disables Release pot on
+  // it: the program refuses with numbers if the gate fails". release_pot recomputes the gate itself
+  // (adversary pass 3 proved a Paused circle whose release the program accepts), so Paused only
+  // adds a note here, never a disabled button.
+  const canRelease = active && owing.length === 0 && !priceBlock && !!recipient;
   const canCover = active && !priceBlock;
   const defaults = defaultable.map((m) => {
     const needs = defaultRecovered(c, m, live.pool.discountBps);
@@ -222,12 +231,12 @@ export default function LiveCircle() {
       : priceBlock
         ? `Every seat is settled, but the pot waits. ${priceBlock}`
         : dv.paused
-          ? `Every seat is settled, but payouts are paused: the reserve is ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD} short of what the next payout needs, until a member tops up.`
+          ? `Every seat is settled. At the last coverage check (${c.lastCoverageAt ? `${formatDuration(wallClock - c.lastCoverageAt)} ago` : "not yet run"}) payouts were paused, ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD} short. Anyone can still try to release the pot to ${recipient?.name ?? "this round's seat"}: the program re-checks the reserve and refuses, with the numbers, if it is still short.`
           : `${covered.length ? `Every other seat has paid, and ${covered.map((m) => m.name).join(", ")} is covered by the default` : "Every seat has paid"}: anyone can release the pot to ${recipient?.name ?? "this round's seat"}.`;
   const defaultText = defaults
     .map(({ m, needs, poolShort }) =>
-      dv.stale
-        ? `${m.name} can be declared in default once the price is fresh.`
+      dv.stale || c.feed.wrapperPrice === 0
+        ? `${m.name} can be declared in default once the stock has a fresh price.`
         : poolShort
           ? `${m.name} can be declared in default, but the liquidation pool holds ${formatUsdc(live.pool.usdc)} ${USDC_WORD} and buying the stock needs ${formatUsdc(needs)}; it waits until the pool is refilled.`
           : `${m.name} took the pot and has not paid after the grace: anyone can declare the default.`,
@@ -259,7 +268,7 @@ export default function LiveCircle() {
             key={m.turn}
             type="button"
             className={s.pay}
-            disabled={!canSend || dv.stale || poolShort}
+            disabled={!canSend || dv.stale || c.feed.wrapperPrice === 0 || poolShort}
             onClick={() => void send(`Default on ${m.name}`, (me) => declareDefaultIx(me, keys, m.turn))}
           >
             Declare {m.name} in default

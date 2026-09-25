@@ -10,12 +10,13 @@ import { hrefFor } from '@/lib/nav';
 import { PALETTES, STORAGE_KEY, customToProfile, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
 /** Each nav item's tag colour (Circle.dc.html handoff). */
-const TIP: Record<string, string> = { Home: 'acid', Portfolio: 'sky', Stocks: 'teal', Circles: 'clay', 'How it works': 'cobalt' };
+const TIP: Record<string, string> = { Home: 'acid', Portfolio: 'sky', Assets: 'teal', Circles: 'clay', 'How it works': 'cobalt' };
 
 const NAV = [
   { label: 'Home', d: 'M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5' },
   { label: 'Portfolio', d: 'M4 8.5h16v11H4zM8.5 8.5V6a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 6v2.5M4 13h16' },
-  { label: 'Stocks', d: 'M4 19.5h16M7 16v-5M12 16V6.5M17 16v-8' },
+  // Joshua: the page is Assets. Icon from Circle.dc.html (a stack of coins).
+  { label: 'Assets', d: 'M12 3.5c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3ZM4 6.5v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5M4 11.5v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5' },
   { label: 'Circles', d: 'M12 2.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M18.5 9.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M12 16.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M5.5 9.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4M14 6.4l3 3.4M17 14.2l-3 3.4M10 17.6l-3-3.4M7 9.8l3-3.4' },
   { label: 'How it works', d: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4M12 16.6v.6' },
 ] as const;
