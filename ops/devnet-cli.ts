@@ -91,6 +91,7 @@ export function demoMembers(n: number): anchor.web3.Keypair[] {
       const k = anchor.web3.Keypair.generate();
       writeFileSync(path, JSON.stringify(Array.from(k.secretKey)), { mode: 0o600 });
     }
+    chmodSync(path, 0o600);
     return anchor.web3.Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
   });
 }

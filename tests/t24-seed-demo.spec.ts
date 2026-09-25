@@ -178,7 +178,7 @@ describe("T24 demo seed, on the devnet build", () => {
   it("schedules the split: the circle's H is still 132 once the multiplier is 10", async () => {
     await seedDemoCircle(chain, MINTS, members);
     const now = await chain.now();
-    await scheduleSplit(chain, MINTS, now + 120);
+    await scheduleSplit(chain, MINTS, members[0]!.publicKey, now + 120);
 
     // Repricing: joining now would be refused, which is why every member joined first.
     await h.setClock(now + 121);
@@ -188,6 +188,15 @@ describe("T24 demo seed, on the devnet build", () => {
 
   it("refuses to schedule a split in the past", async () => {
     await seedDemoCircle(chain, MINTS, members);
-    await assert.rejects(scheduleSplit(chain, MINTS, (await chain.now()) - 1), /must be in the future/);
+    await assert.rejects(scheduleSplit(chain, MINTS, members[0]!.publicKey, (await chain.now()) - 1), /must be in the future/);
+  });
+
+  // T24 adversary: a split before every member joined wedged the seed for good.
+  it("refuses to schedule the split before the circle is Active, and refuses a second split", async () => {
+    await assert.rejects(scheduleSplit(chain, MINTS, members[0]!.publicKey, (await chain.now()) + 120), /is not Active/);
+
+    await seedDemoCircle(chain, MINTS, members);
+    await scheduleSplit(chain, MINTS, members[0]!.publicKey, (await chain.now()) + 120);
+    await assert.rejects(scheduleSplit(chain, MINTS, members[0]!.publicKey, (await chain.now()) + 300), /already priced for the split/);
   });
 });

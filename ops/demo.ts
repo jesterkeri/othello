@@ -121,7 +121,7 @@ type Builder = { accounts(a: unknown): Builder; instruction(): Promise<Ix> };
 const methods = (program: anchor.Program<anchor.Idl>) =>
   program.methods as unknown as Record<string, (...a: unknown[]) => Builder>;
 
-type Feed = { wrapperPrice: { isZero(): boolean }; sharePrice: { isZero(): boolean }; pricedForMultiplier: { toString(): string } };
+type Feed = { wrapperPrice: { toString(): string }; sharePrice: { toString(): string }; pricedForMultiplier: { toString(): string } };
 type CircleAccount = { status: Record<string, unknown>; joinedBitmap?: number };
 
 /**
@@ -158,7 +158,11 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
   const circleBefore = await fetchOrNull<CircleAccount>(chain, "circle", a.circle);
   // Prices are set only before the circle exists: afterwards the demo owns
   // them (the split script, touch-prices), and a re-run must not undo that.
-  if (!circleBefore && (feed!.wrapperPrice.isZero() || feed!.sharePrice.isZero() || feed!.pricedForMultiplier.toString() !== DEMO.ONE_X.toString())) {
+  const demoPrices =
+    feed!.wrapperPrice.toString() === String(DEMO.wrapperPrice) &&
+    feed!.sharePrice.toString() === String(DEMO.sharePrice) &&
+    feed!.pricedForMultiplier.toString() === DEMO.ONE_X.toString();
+  if (!circleBefore && !demoPrices) {
     const ix = await m.setPrices!(new BN(DEMO.wrapperPrice), new BN(DEMO.sharePrice), { current: {} }, new BN(DEMO.ONE_X.toString()))
       .accounts({ authority: admin.publicKey, stockMint: mints.stock, feed: a.feed } )
       .instruction();
@@ -189,8 +193,11 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
     await chain.send([ix], [admin]);
     chain.log(`pool created: ${a.pool.toBase58()}`);
   }
+  // Seeded only before the circle exists (the pool is seeded before
+  // create_circle, so a circle means this step already ran). Once the demo is
+  // live, declare_default spends from the pool and a re-run must not refill it.
   const inPool = await tokenBalance(chain, poolVault);
-  if (inPool < POOL_SEED_USDC) {
+  if (!circleBefore && inPool < POOL_SEED_USDC) {
     const adminUsdc = ataAddress(mints.usdc, admin.publicKey, SPL_TOKEN);
     const ix = await m.seedPool!(new BN((POOL_SEED_USDC - inPool).toString()))
       .accounts({
@@ -311,12 +318,26 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
  * `effectiveAt`, and the feed is re-priced for it (share 150 -> 15, stamped
  * Scheduled). The circle is in Repricing from here until the effective time.
  */
-export async function scheduleSplit(chain: Chain, mints: Mints, effectiveAt: number): Promise<void> {
+export async function scheduleSplit(chain: Chain, mints: Mints, creator: PublicKeyT, effectiveAt: number): Promise<void> {
   const { program, admin } = chain;
   const now = await chain.now();
   if (effectiveAt <= now) throw new Error(`the split must be in the future: effective ${effectiveAt}, chain now ${now}`);
 
-  const feed = PublicKey.findProgramAddressSync([Buffer.from("price"), mints.stock.toBuffer()], program.programId)[0];
+  // T24 adversary: a split scheduled before the seed finished re-stamped the
+  // feed for 10x, and the seed's own set_prices(Current, 1x) could then never
+  // pass again. SPEC.md:137: every member joins BEFORE the split. activate
+  // needs every seat joined, so Active is that condition, read from the chain.
+  const a = addresses(program, mints, creator);
+  const circle = await fetchOrNull<CircleAccount>(chain, "circle", a.circle);
+  if (!circle || !("active" in circle.status)) {
+    throw new Error(`the demo circle ${a.circle.toBase58()} is not Active: finish the seed (every member joined, activated) before scheduling the split`);
+  }
+  const feedState = await fetchOrNull<Feed>(chain, "priceFeed", a.feed);
+  if (feedState && feedState.pricedForMultiplier.toString() !== DEMO.ONE_X.toString()) {
+    throw new Error("the feed is already priced for the split: it has been scheduled once already");
+  }
+
+  const feed = a.feed;
   const reprice = await methods(program)
     .setPrices!(new BN(DEMO.wrapperPrice), new BN(DEMO.splitSharePrice), { scheduled: {} }, new BN(DEMO.TEN_X.toString()))
     .accounts({ authority: admin.publicKey, stockMint: mints.stock, feed } )

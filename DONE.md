@@ -2081,3 +2081,24 @@ byte identity (`solana program dump`, first 694,064 bytes vs target/devnet/othel
   chain bedc5c8fbe99b360cbb9ce313162b20730b9b41a928e1d8c57dd4f215a3e7ec5
   the remaining 138,812 bytes of max-len headroom: 0 nonzero bytes
 admin balance after: 0.7593544 SOL
+
+## T24 Demo seed and split scripts (2026-09-25, built; devnet run pending)
+reviewed: pending, Codex, together with the T18/S2b frontend
+adversary: TWO defects, both fixed (tests/t24-adversary.spec.ts, integrated; one call updated for scheduleSplit's new creator argument). 9 other attacks failed.
+
+1. A split scheduled before the seed finished re-stamped the feed for 10x, after which the seed's
+   own set_prices(Current, 1x) failed MultiplierPriceMismatch on every re-run: the demo circle could
+   never be seeded on the one deployed mirror. scheduleSplit now refuses unless the demo circle is
+   Active (activate requires every seat joined, which is SPEC.md:137's "all join before the split"),
+   and refuses a second split. Mutation (guard removed): t24-seed-demo 5 passing 1 failing,
+   t24-adversary 2 passing 1 failing.
+2. After a demo default, re-running a finished seed refilled the pool (3 transactions). The pool and
+   the prices are now only seeded before the circle exists. Mutation: t24-adversary 1 failing.
+Suspicions also taken: the seed checks the exact demo prices (150/150 at 1.0), not just non-zero;
+existing member key files are chmodded 0600 on every run.
+
+verify: t24-seed-demo 6 passing (seed to Active, five joined in turn order, H = 132; idempotent
+re-run; resume after a dropped send; H = 132 after the 10x split; past split refused; split refused
+before Active and a second time); t24-adversary 3 passing (including every member paying all five
+rounds and releasing every pot on the seed's funding); measured seed cost 0.129576 SOL in 16
+transactions; tsc clean; check-secrets clean.

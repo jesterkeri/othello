@@ -8,8 +8,12 @@
  *
  * The split takes effect <seconds> after the chain's own clock reads now.
  */
+import { readFileSync } from "node:fs";
+
+import * as anchor from "@coral-xyz/anchor";
+
 import { scheduleSplit } from "./demo.ts";
-import { devnetChain, writeDemoRecord } from "./devnet-cli.ts";
+import { DEMO_RECORD, devnetChain, writeDemoRecord } from "./devnet-cli.ts";
 
 const args = process.argv.slice(2);
 const i = args.indexOf("--in");
@@ -21,5 +25,7 @@ if (!Number.isInteger(seconds) || seconds < 30) {
 
 const { chain, mints } = await devnetChain();
 const effectiveAt = (await chain.now()) + seconds;
-await scheduleSplit(chain, mints, effectiveAt);
+// The circle the seed recorded; scheduleSplit refuses unless it is Active.
+const { creator } = JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { creator: string };
+await scheduleSplit(chain, mints, new anchor.web3.PublicKey(creator), effectiveAt);
 writeDemoRecord({ splitEffectiveAt: effectiveAt, splitScheduledAt: new Date().toISOString() });
