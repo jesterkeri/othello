@@ -228,3 +228,8 @@ should start before the hackathon build is finished.
       during the hackathon, from ~21 Sep); keep that confirmation in writing. Rules silent on winning
       several tracks.
       Section 9: disclose open-source/third-party code. Section 17: no Colosseum marks without consent.
+      TRACKS (Joshua, 2026-09-25): keep Solana (primary, $100k/10, built), Robinhood Chain (best story:
+      tokenized stocks) and Arbitrum (same EVM contract). FIRST TASK AFTER TODAY'S SUBMISSION: research
+      Tempo ($100k/10; Stripe's payments chain; savings circles are a payments product): does it run EVM
+      contracts, is there a public testnet to deploy to, what does its track expect, and can the entry
+      form's chains be changed. If it fits, the same Solidity contract may cover it.
