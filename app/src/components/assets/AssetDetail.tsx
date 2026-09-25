@@ -52,6 +52,12 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
     <AssetShell back={{ href: "/assets", label: "All xStocks" }}>
       {error ? (
         <Unavailable error={error} />
+      ) : data && !m ? (
+        <Unavailable
+          error={`${symbol} could not be read from mainnet this time${
+            data.unavailable.find((u) => u.symbol === symbol) ? ` (${data.unavailable.find((u) => u.symbol === symbol)!.reason})` : ""
+          }.`}
+        />
       ) : !m ? (
         <div className={s.section}>
           <p className={s.panelNote}>Reading {symbol} from mainnet…</p>

@@ -37,7 +37,7 @@ export type LiveXStock = {
   /** Jupiter, per DISPLAYED token; null if Jupiter had no price for it in this read. */
   market: { usdPrice: number; liquidity: number | null; change24h: number | null } | null;
 };
-export type LiveXStocks = { readAt: number; slot: number; mints: LiveXStock[] };
+export type LiveXStocks = { readAt: number; slot: number; mints: LiveXStock[]; unavailable: { symbol: string; reason: string }[] };
 
 /**
  * Jupiter's current price per DISPLAYED token for every listed xStock, one request. A failure here
@@ -95,18 +95,23 @@ async function readMainnet(): Promise<LiveXStocks> {
   const readAt = Math.floor(Date.now() / 1000);
   const accepted = new Set<string>(REAL_XSTOCKS.map((x) => x.address));
   const market = await readJupiter();
-  const mints = TRADABLE_XSTOCKS.map((x, i) => {
+  // One unreadable mint must not blank the whole catalog: it is listed by name in `unavailable`
+  // (the page says so) and no figure is shown for it. Nothing is filled in.
+  const unavailable: { symbol: string; reason: string }[] = [];
+  const mints: LiveXStock[] = [];
+  TRADABLE_XSTOCKS.forEach((x, i) => {
     const acc = body.result!.value[i];
-    if (!acc) throw new Error(`${x.symbol} (${x.address}) not found on mainnet`);
-    if (acc.owner !== "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") throw new Error(`${x.symbol} is not a Token-2022 mint`);
+    const skip = (reason: string) => unavailable.push({ symbol: x.symbol, reason });
+    if (!acc) return skip("not found on mainnet");
+    if (acc.owner !== "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb") return skip("not a Token-2022 mint");
     let m: MintInfo;
     try {
       m = readMintInfo(Buffer.from(acc.data[0], "base64"));
     } catch {
-      throw new Error(`${x.symbol} is not a readable Token-2022 mint`);
+      return skip("not a readable Token-2022 mint");
     }
-    if (!m.scaledUi) throw new Error(`${x.symbol} carries no ScaledUiAmountConfig`);
-    return {
+    if (!m.scaledUi) return skip("carries no ScaledUiAmountConfig");
+    mints.push({
       symbol: x.symbol,
       name: x.name,
       address: x.address,
@@ -117,9 +122,10 @@ async function readMainnet(): Promise<LiveXStocks> {
       info: m,
       accepted: accepted.has(x.address),
       market: market[x.address] ?? null,
-    };
+    });
   });
-  return { readAt, slot: body.result.context.slot, mints };
+  if (mints.length === 0) throw new Error("no listed xStock could be read from mainnet");
+  return { readAt, slot: body.result.context.slot, mints, unavailable };
 }
 
 export async function GET() {

@@ -117,6 +117,9 @@ export default function AssetsIndex() {
       <div className={s.footer}>
         <p className={s.helper}>
           {data ? `Mainnet slot ${data.slot.toLocaleString("en-US")}. Prices from Jupiter, per token as wallets show it.` : ""}
+          {data && data.unavailable.length > 0
+            ? ` Could not be read this time: ${data.unavailable.map((u) => u.symbol).join(", ")}.`
+            : ""}
         </p>
       </div>
     </AssetShell>
