@@ -13,6 +13,7 @@ import { shortAddress } from "@/lib/circle";
 import { explorer } from "@/lib/devnet";
 import { multiplierAt } from "@/lib/scaledUi";
 
+import BuyPanel from "./BuyPanel";
 import PriceChart from "./PriceChart";
 import AssetShell, { Unavailable } from "./Shell";
 import { exactTokens } from "@/lib/format";
@@ -89,6 +90,7 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
               multiplierNow={multiplierAt(m, now)}
               change={m.effectiveAt && m.newMultiplier !== m.multiplier ? { from: m.multiplier, to: m.newMultiplier, at: m.effectiveAt } : null}
             />
+            <BuyPanel symbol={m.symbol} address={m.address} decimals={m.decimals} multiplier={multiplierAt(m, now)} accepted={m.accepted} />
           </div>
 
           <div className={s.cards}>
