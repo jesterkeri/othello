@@ -136,6 +136,7 @@
 .chartBox { border: 3px solid var(--line); border-radius: clamp(16px, 2vw, 22px); background: var(--paper); padding: clamp(10px, 1.4vw, 16px); display: flex; flex-direction: column; gap: 10px; }
 .buyScrim { position: fixed; inset: 0; z-index: 95; background: rgba(11, 11, 11, .62); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .buyDialog { width: min(460px, 92vw); display: flex; flex-direction: column; gap: 10px; border: 3px solid #0B0B0B; border-radius: 28px; background: var(--acid); color: var(--acidInk); padding: 22px; box-shadow: 8px 8px 0 #0B0B0B; animation: buyPop .45s cubic-bezier(.2, 1.5, .35, 1) both; font-size: 14px; font-weight: 600; line-height: 1.45; }
+.buyDialogFail { background: var(--clay); color: var(--clayInk); }
 .buyDialogKicker { align-self: flex-start; border: 2px solid currentColor; border-radius: 999px; padding: 3px 11px; font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .buyDialogBig { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(30px, 5vw, 44px); line-height: .9; text-transform: none; }
 .buyDialogLink { color: inherit; font-weight: 800; text-decoration: underline; }

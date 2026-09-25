@@ -18,6 +18,7 @@ import { RAW_DECIMALS, USDC_DECIMALS, formatRaw, formatUsdc, obligations, seatSe
 import { exactTokens, shownTokens } from '@/lib/format';
 import { slotFor } from '@/components/assets/slots';
 import { useWalletFunds } from '@/components/assets/useWalletFunds';
+import WalletFunds from '@/components/assets/WalletFunds';
 import type { LiveCircle } from '@/lib/live';
 import { useWalletUi } from '@/lib/wallet';
 
@@ -75,6 +76,11 @@ export default function Portfolio() {
       <header className={s.head}>
         <h1 className={s.title}>Portfolio</h1>
         {w.address && (
+          <div className={s.walletBox}>
+            <WalletFunds funds={funds} error={fundsError} />
+          </div>
+        )}
+        {w.address && (
           <span className={s.readLine}>
             <span className={s.read}><span style={{ background: anyDown ? 'var(--clay)' : 'var(--teal)' }} />{anyDown ? 'A read failed' : 'Live · devnet and mainnet'}</span>
             <span>Read only. Othello never holds your keys.</span>
@@ -97,11 +103,7 @@ export default function Portfolio() {
               <span aria-hidden className={s.dashes}><span /><span /><span /></span>
               <div className={s.pills}>
                 <span className={s.pillLine}>Your xStocks · mainnet</span>
-                {funds ? (
-                  <span className={s.pillCream}>Wallet {exactTokens(funds.usdcRaw, 6)} USDC · {exactTokens(funds.lamports, 9)} SOL</span>
-                ) : fundsError ? (
-                  <span className={s.pillCream}>Wallet balance unavailable</span>
-                ) : null}
+
                 {dayMove !== null && (
                   <span className={s.pillDay} style={{ background: dayMove >= 0 ? 'var(--teal)' : 'var(--clay)', color: dayMove >= 0 ? 'var(--tealInk)' : 'var(--clayInk)' }}>
                     {dayMove >= 0 ? '+' : '−'}{usd(Math.abs(dayMove))} · 24h

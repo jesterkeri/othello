@@ -18,6 +18,10 @@ import { exactTokens, shownTokens } from "@/lib/format";
 import { useWalletUi } from "@/lib/wallet";
 
 import { useWalletFunds } from "./useWalletFunds";
+import WalletFunds from "./WalletFunds";
+
+/** Enough SOL for the fee, priority fee and a new token account (~0.002 SOL rent) with margin. */
+const MIN_FEE_LAMPORTS = 5_000_000n;
 
 import type { Quote } from "@/app/api/quote/route";
 import s from "@/components/circle/Circle.module.css";
@@ -107,13 +111,24 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
       reloadFunds();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setBuy({ phase: "failed", reason: /reject|declin|denied|cancel/i.test(msg) ? "You declined in your wallet. Nothing was sent." : msg, sig });
+      const declined = /reject|declin|denied|cancel/i.test(msg);
+      setBuy({ phase: "failed", reason: declined ? "You declined in your wallet. Nothing was sent." : msg, sig });
+      // Joshua: a purchase attempt ends in a pop-up either way; a decline needs none.
+      if (!declined) setPopup(true);
     }
   };
+  // Refuse up front what the chain would refuse: a buyer with too little USDC or SOL never signs a
+  // transaction bound to fail (Joshua: judges may test with empty wallets).
+  const shortUsdc = !!funds && !!quote && BigInt(funds.usdcRaw) < BigInt(Math.round(quote.usdc * 1_000_000));
+  const shortSol = !!funds && BigInt(funds.lamports) < MIN_FEE_LAMPORTS;
   const label = !wallet.publicKey
     ? "Connect a wallet"
     : !quote
       ? "Enter an amount"
+      : buy.phase === "idle" && shortUsdc
+        ? "Not enough USDC"
+        : buy.phase === "idle" && shortSol
+          ? "Add SOL for fees"
       : buy.phase === "building"
         ? "Building the swap…"
         : buy.phase === "wallet"
@@ -165,20 +180,13 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
         </div>
       )}
       {wallet.publicKey && (
-        <p className={s.panelNote} data-funds>
-          {funds
-            ? `Your wallet on mainnet: ${exactTokens(funds.usdcRaw, 6)} USDC · ${exactTokens(funds.lamports, 9)} SOL for fees.`
-            : fundsError
-              ? `Could not read your wallet's mainnet balance: ${fundsError}.`
-              : "Reading your wallet's mainnet balance…"}
-          {funds && quote && BigInt(funds.usdcRaw) < BigInt(Math.round(quote.usdc * 1_000_000)) ? " Not enough USDC for this amount." : ""}
-        </p>
+        <WalletFunds funds={funds} error={fundsError} compact />
       )}
       <button
         type="button"
         className={s.pay}
         data-buy
-        disabled={busy || buy.phase === "done" || (!!wallet.publicKey && !quote)}
+        disabled={busy || buy.phase === "done" || (!!wallet.publicKey && (!quote || (buy.phase === "idle" && (shortUsdc || shortSol))))}
         onClick={() => (!wallet.publicKey ? connect?.() : void onBuy())}
       >
         {label}
@@ -200,6 +208,20 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
             <span className={s.buyDialogBtns}>
               <a className={s.buyDialogPrimary} href="/portfolio">See it in your portfolio →</a>
               {accepted && <a className={s.buyDialogGhost} href="/how-it-works">How a circle locks it →</a>}
+              <button type="button" className={s.buyDialogGhost} onClick={() => setPopup(false)}>Close</button>
+            </span>
+          </div>
+        </div>
+      )}
+      {popup && buy.phase === "failed" && (
+        <div className={s.buyScrim} onClick={() => setPopup(false)}>
+          <div role="dialog" aria-modal="true" aria-label="Purchase not completed" className={`${s.buyDialog} ${s.buyDialogFail}`} onClick={(e) => e.stopPropagation()}>
+            <span className={s.buyDialogKicker}>Not bought</span>
+            <b className={s.buyDialogBig}>{symbol} was not bought</b>
+            <span>{buy.reason}</span>
+            {buy.sig && <a className={s.buyDialogLink} href={txLink(buy.sig)} target="_blank" rel="noreferrer">View the transaction ↗</a>}
+            <span className={s.buyDialogBtns}>
+              <button type="button" className={s.buyDialogPrimary} onClick={() => { setPopup(false); setBuy({ phase: "idle" }); }}>Try again</button>
               <button type="button" className={s.buyDialogGhost} onClick={() => setPopup(false)}>Close</button>
             </span>
           </div>

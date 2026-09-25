@@ -1,0 +1,12 @@
+.wallet { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.kicker { font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; opacity: .85; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.token { display: inline-flex; align-items: center; gap: 8px; border: 3px solid #0B0B0B; border-radius: 999px; background: #FBF9F2; color: #0B0B0B; padding: 5px 14px 5px 5px; box-shadow: 3px 3px 0 #0B0B0B; font-variant-numeric: tabular-nums; }
+.token b { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 24px; line-height: 1; }
+.token small { font-size: 11px; font-weight: 800; letter-spacing: .04em; color: #55524A; }
+.badge { width: 30px; height: 30px; border: 2px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 900; }
+.usdc { background: #2775CA; color: #FFFFFF; }
+.sol { background: #0B0B0B; color: #14F195; }
+.note { font-size: 12.5px; font-weight: 700; }
+.compact .token b { font-size: 20px; }
+.compact .badge { width: 26px; height: 26px; font-size: 13px; }
