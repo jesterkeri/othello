@@ -117,7 +117,7 @@ export function preview(set: { brand: string; dark: string[] }, dark: boolean) {
 }
 
 export function loadTheme(): StoredTheme | null {
-  if (typeof window === 'undefined') return null;
+  if (!('window' in globalThis)) return null; // server render; same check as typeof window, without DOM types (root tsc)
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!s) return null;

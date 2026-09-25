@@ -67,6 +67,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
   // Which colours menu is open: the rail's (desktop) or the top bar's (phone). One state, two places.
   const [menu, setMenu] = useState<'rail' | 'top' | null>(null);
   useEffect(() => { document.body.style.background = String((t.vars as Record<string, string>)['--panel']); }, [t.vars]);
+  useEffect(() => { document.documentElement.style.colorScheme = t.mode; }, [t.mode]);
   useEffect(() => {
     if (!menu) return;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
@@ -100,7 +101,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
   );
 
   return (
-    <div className={s.root} style={t.vars} data-mode={t.mode}>
+    <div className={s.root} style={{ ...t.vars, colorScheme: t.mode }} data-mode={t.mode}>
       <aside className={s.rail}>
         <span className={s.logo} aria-label="Othello">O</span>
         <nav className={s.railNav} aria-label="Main">

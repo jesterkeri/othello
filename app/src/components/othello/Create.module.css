@@ -141,7 +141,8 @@
 }
 @media (max-width: 759px) {
   .headActions { display: none; }
-  .phoneBar { position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 50; display: flex; gap: 8px; border: 3px solid var(--line); border-radius: 999px; background: #FBF9F2; padding: 6px; }
+  .grid { padding-bottom: 76px; }
+  .phoneBar { position: fixed; left: 14px; right: 14px; bottom: 88px; z-index: 50; display: flex; gap: 8px; border: 3px solid var(--line); border-radius: 999px; background: #FBF9F2; padding: 6px; }
   .phoneBar .ghost { color: #0B0B0B; }
   .phoneBar .primary { flex: 1 1 auto; justify-content: center; }
 }

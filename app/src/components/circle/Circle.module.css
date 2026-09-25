@@ -114,15 +114,18 @@
 
 /* the state index, so every FLOWS section 7 state has a URL */
 .states { display: flex; gap: 5px; flex-wrap: wrap; border: 3px solid var(--line); border-radius: 999px; background: var(--paper); padding: 4px; }
-.stateLink { border-radius: 999px; padding: 9px 13px; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+.stateLink { background: transparent; color: inherit; border-radius: 999px; padding: 9px 13px; font-size: 10px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
 .stateLink:hover { background: var(--greyFill); }
-.stateOn, .stateOn:hover { background: var(--line); color: var(--paper); }
+.stateOn, .stateOn:hover { background: var(--line); color: #FBF9F2; }
 
 /* live mode (T18): the connected member's action, and the real xStocks panel */
 .action { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 0 clamp(12px, 2vw, 22px); border: 3px solid var(--line); border-radius: clamp(16px, 2vw, 22px); padding: clamp(13px, 1.6vw, 17px) clamp(14px, 1.8vw, 19px); background: var(--paper); box-shadow: 3px 3px 0 var(--line); }
 .actionText { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .pay { border: 3px solid var(--line); border-radius: 999px; background: var(--acid); color: var(--acidInk); padding: 13px 22px; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; box-shadow: 3px 3px 0 var(--line); }
 .pay:hover:not(:disabled) { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--line); }
+.action + .action { margin-top: 12px; }
+.actionButtons { display: flex; gap: 10px; flex-wrap: wrap; }
+.payQuiet { background: var(--paper); color: var(--ink); }
 .pay:disabled { background: var(--greyFill); color: var(--muted); cursor: default; box-shadow: none; }
 .link { text-decoration: underline; text-underline-offset: 3px; font-weight: 800; }
 .you { margin-left: 6px; }
@@ -133,7 +136,7 @@
 .chartBox { border: 3px solid var(--line); border-radius: clamp(16px, 2vw, 22px); background: var(--paper); padding: clamp(10px, 1.4vw, 16px); display: flex; flex-direction: column; gap: 10px; }
 .chartArea { width: 100%; height: clamp(220px, 32vw, 340px); }
 .ranges { display: flex; gap: 5px; }
-.rangeOn { background: var(--line); color: var(--paper); }
+.rangeOn { background: var(--line); color: #FBF9F2; }
 
 /* Phone: nothing may sit off-screen. Tables become labelled cards (each td carries data-label),
    the round timeline wraps, and long values wrap instead of pushing the page wide. */
