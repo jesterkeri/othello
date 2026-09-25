@@ -7,7 +7,7 @@
  * show it; a mint that could not be read says so and shows no number.
  */
 import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import type { LiveXStock } from "@/app/api/live/route";
 import { multiplierAt } from "@/lib/scaledUi";
@@ -28,6 +28,9 @@ const COVER_SLOT: Record<string, string> = { SPYx: "teal", NVDAx: "cobalt", AAPL
 const SLOTS = ["clay", "sky", "teal", "cobalt", "acid"] as const;
 const SORTS = ["Liquidity", "Price", "24h change"] as const;
 type Sort = (typeof SORTS)[number];
+const VIEWS = ["List", "Grid"] as const;
+type View = (typeof VIEWS)[number];
+const VIEW_KEY = "othello.assets.view";
 
 function Change({ c }: { c: number | null | undefined }) {
   if (c === null || c === undefined) return null;
@@ -87,6 +90,24 @@ export default function AssetsIndex() {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<Sort>("Liquidity");
   const [info, setInfo] = useState(false);
+  // Stocks.dc.html has two layouts for the rest: rows ("Market board") and tiles ("Grid"). The
+  // choice is a per-browser convenience; storage can be missing or blocked, so every access is guarded.
+  const [view, setView] = useState<View>("List");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(VIEW_KEY) === "Grid") setView("Grid");
+    } catch {
+      /* no storage: the default stands */
+    }
+  }, []);
+  const pickView = (v: View) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* no storage: the choice lasts this visit */
+    }
+  };
   const now = Date.now() / 1000;
 
   const [pinned, rest] = useMemo(() => {
@@ -107,6 +128,11 @@ export default function AssetsIndex() {
     ];
   }, [data, q, sort]);
   const count = data?.mints.length ?? 0;
+  // The grid's liquidity bar: log scale between the least and most liquid priced stock listed, so
+  // it compares stocks on this page and says so; the dollar figure beside it is the real number.
+  const liqs = (data?.mints ?? []).map((m) => m.market?.liquidity ?? 0).filter((x) => x > 0);
+  const [lo, hi] = [Math.min(...liqs), Math.max(...liqs)];
+  const liqPct = (x: number) => (hi > lo ? Math.max(10, Math.round(((Math.log(x) - Math.log(lo)) / (Math.log(hi) - Math.log(lo))) * 100)) : 100);
 
   return (
     <AssetShell back={{ href: "/", label: "Back" }}>
@@ -165,13 +191,64 @@ export default function AssetsIndex() {
             <section aria-label="More xStocks to buy and hold" className={s.section}>
               <div className={s.sectionHead}>
                 <span className={s.label}>More xStocks to buy and hold ({rest.length})</span>
+                <span className={s.controls}>
+                <div role="group" aria-label="View" className={s.sorts}>
+                  <span>View</span>
+                  {VIEWS.map((v) => (
+                    <button key={v} type="button" aria-pressed={view === v} className={view === v ? s.sortOn : ""} onClick={() => pickView(v)}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
                 <div role="group" aria-label="Sort" className={s.sorts}>
                   <span>Sort</span>
                   {SORTS.map((k) => (
                     <button key={k} type="button" aria-pressed={sort === k} className={sort === k ? s.sortOn : ""} onClick={() => setSort(k)}>{k}</button>
                   ))}
                 </div>
+                </span>
               </div>
+              {view === "Grid" ? (
+                <div className={s.tileGrid}>
+                  {rest.map((m, i) => {
+                    const slot = SLOTS[i % SLOTS.length]!;
+                    const liq = m.market?.liquidity ?? null;
+                    return (
+                      <Link key={m.address} href={`/assets/${m.symbol}`} className={s.tile} style={{ animationDelay: `${0.1 + (i % 6) * 0.05}s` }}>
+                        <span aria-hidden className={s.glint} />
+                        <span className={s.tileTop}>
+                          <span className={s.tileName}>
+                            <b>{m.symbol}</b>
+                            <span>{m.info.metadata?.name ?? m.name}</span>
+                          </span>
+                          {m.info.pausable?.paused && <span className={s.paused}>Paused</span>}
+                          <span className={s.multPill}>×{Number(multiplierAt(m, now).toFixed(4))}</span>
+                        </span>
+                        {m.market ? (
+                          <>
+                            <span className={s.tilePrice}>
+                              <b>{usd(m.market.usdPrice)}</b>
+                              <Change c={m.market.change24h} />
+                            </span>
+                            {liq !== null && liq > 0 ? (
+                              <span className={s.liq}>
+                                <span className={s.liqLine}><span>Liquidity</span>{usdShort(liq)}</span>
+                                <span role="img" aria-label={`Liquidity ${usdShort(liq)}, relative to the other stocks listed`} className={s.liqBar}>
+                                  <span style={{ width: `${liqPct(liq)}%`, background: `var(--${slot})`, animationDelay: `${0.1 + (i % 6) * 0.05}s` }} />
+                                </span>
+                              </span>
+                            ) : (
+                              <span className={s.noPrice}>No liquidity figure</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className={s.noPrice}>No price from Jupiter</span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : (
               <div className={s.rowGrid}>
                 {rest.map((m, i) => {
                   const slot = SLOTS[i % SLOTS.length]!;
@@ -202,6 +279,7 @@ export default function AssetsIndex() {
                   );
                 })}
               </div>
+              )}
             </section>
           )}
         </>
