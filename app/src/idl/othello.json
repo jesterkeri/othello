@@ -1,0 +1,4909 @@
+{
+  "address": "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT",
+  "metadata": {
+    "name": "othello",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Othello: xStock-backed mutual credit circle"
+  },
+  "instructions": [
+    {
+      "name": "activate",
+      "docs": [
+        "Creator only, once every seat has joined (T09)."
+      ],
+      "discriminator": [
+        194,
+        203,
+        35,
+        100,
+        151,
+        55,
+        170,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "add_stock",
+      "docs": [
+        "Locks more of the circle's stock behind the signer's seat (T16)."
+      ],
+      "discriminator": [
+        157,
+        235,
+        158,
+        122,
+        44,
+        47,
+        233,
+        4
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "signer": true,
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "circle",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          },
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "member",
+          "docs": [
+            "Existing only once the wallet has joined (join_and_lock creates it and",
+            "leave_forming closes it), so this is also the \"joined\" check."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "member_stock_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_stock_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "stock_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "raw",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "cancel_circle",
+      "docs": [
+        "Creator only, Forming only. Refunds go through `withdraw` (T09)."
+      ],
+      "discriminator": [
+        235,
+        90,
+        15,
+        94,
+        27,
+        245,
+        101,
+        23
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "contribute",
+      "docs": [
+        "A member pays their contribution for the current round (T10). No time",
+        "check: a late payment before a default is declared is a cure."
+      ],
+      "discriminator": [
+        82,
+        33,
+        68,
+        131,
+        32,
+        0,
+        205,
+        95
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "signer": true,
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          },
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "member",
+          "docs": [
+            "The seeds bind this to (circle, wallet), so the signer can only ever",
+            "contribute for their own seat."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "member_usdc_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_circle",
+      "docs": [
+        "Creates a circle in Forming (T08, SPEC §5)."
+      ],
+      "discriminator": [
+        186,
+        99,
+        49,
+        131,
+        31,
+        51,
+        13,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "params.circle_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "price_feed"
+          ]
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "The feed's seeds bind it to `stock_mint`, so \"feed matches\" is structural."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool",
+          "docs": [
+            "The pool's seeds carry BOTH mints, so \"pool matches\" is structural too."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "CircleParams"
+            }
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "vec": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "declare_default",
+      "docs": [
+        "Declares a missed contribution a default and settles the defaulter's",
+        "remaining rounds from their stock, then the reserve (T15, SPEC §6)."
+      ],
+      "discriminator": [
+        111,
+        69,
+        178,
+        74,
+        121,
+        205,
+        118,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "docs": [
+            "Anyone. Nothing is created, so the caller pays only the fee."
+          ],
+          "signer": true
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle",
+            "price_feed"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "price_feed",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          },
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          },
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "circle_stock_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "pool_stock_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "pool_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "stock_token_program"
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "turn",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "init_pool",
+      "docs": [
+        "Creates the liquidation pool for one USDC and stock mint pair (T14). Admin",
+        "only: the program's upgrade authority."
+      ],
+      "discriminator": [
+        116,
+        233,
+        199,
+        204,
+        115,
+        159,
+        171,
+        36
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "program",
+          "docs": [
+            "The admin check, identical to `init_price_feed`'s: `authority` must be the",
+            "program's upgrade authority. See the note on `InitPriceFeed`."
+          ],
+          "address": "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "usdc_mint",
+          "docs": [
+            "Plain SPL Token only, never Token-2022 (T09 adversary, OPEN-QUESTIONS).",
+            "Every circle bound to this pool takes its USDC mint from the pool's seeds,",
+            "so this is the one place that decides what \"USDC\" is. A Token-2022 mint",
+            "could carry TransferFeeConfig, and then `join_and_lock` would credit the",
+            "reserve with a guarantee the vault received less of, which breaks I3.",
+            "SPL Token has no extensions at all, so the whole class is closed rather",
+            "than one extension at a time. SPEC §4 already has the USDC vault as SPL."
+          ]
+        },
+        {
+          "name": "stock_mint"
+        },
+        {
+          "name": "pool",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "pool_usdc_vault",
+          "docs": [
+            "`init_if_needed`, not `init`: an associated token account can be created",
+            "by anyone for any owner, so with `init` a stranger could create this one",
+            "first and make `init_pool` fail for good. The address constraints below",
+            "still pin its mint, owner and token program."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "pool_stock_vault",
+          "docs": [
+            "Same reasoning. This is where seized stock lands."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "stock_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "discount_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "init_price_feed",
+      "docs": [
+        "Creates the price feed for one stock mint (T04, SPEC §5). Admin only",
+        "since T14: the program's upgrade authority."
+      ],
+      "discriminator": [
+        27,
+        209,
+        184,
+        5,
+        152,
+        116,
+        136,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "program",
+          "docs": [
+            "`authority` must be the admin: the program's upgrade authority. `init_pool`",
+            "uses the same two accounts for the same reason.",
+            "",
+            "This is the bootstrap root the oracle-takeover finding asked for (T04",
+            "adversary, Codex 2026-09-22). Before it, `init_price_feed` made whoever",
+            "called it first the authority of that mint's feed, permanently, and the",
+            "feed's prices are what every valuation reads. A first-caller-wins",
+            "initializer cannot be part of a deployed trust model.",
+            "",
+            "The upgrade authority is the key that deploys the program, so it needs no",
+            "new key, no config account and no setup transaction, and there is no window",
+            "between deploy and first use for anyone else to take. It is read from the",
+            "loader's own ProgramData account, which the program cannot be handed a fake",
+            "of: `program` must be this program, its ProgramData address is derived from",
+            "that, and the upgradeable loader owns it. A program deployed immutable has",
+            "no upgrade authority, and then nobody is the admin, which is refused."
+          ],
+          "address": "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT"
+        },
+        {
+          "name": "program_data"
+        },
+        {
+          "name": "stock_mint",
+          "docs": [
+            "refuses any mint outside the ADR-012 allowlist."
+          ]
+        },
+        {
+          "name": "feed",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "join_and_lock",
+      "docs": [
+        "A named member's consent: locks stock and deposits the guarantee in one",
+        "transaction (T09, SPEC §5). The seat is found by scanning the member",
+        "list, never passed in."
+      ],
+      "discriminator": [
+        181,
+        101,
+        32,
+        212,
+        122,
+        145,
+        138,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "docs": [
+            "The joining member. Pays for their own Member account and for their USDC",
+            "ATA if it does not exist yet, so `release_pot` never has to."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          }
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle",
+            "price_feed"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "Bound to `stock_mint` by its own seeds, so \"the right feed\" is structural."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          },
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "member_stock_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "member_usdc_ata",
+          "docs": [
+            "SPEC §5 creates this here if it is missing, with the member paying, \"so",
+            "release_pot never has to\". A pot that cannot be delivered because the",
+            "recipient has no USDC account would pause a circle for a reason that has",
+            "nothing to do with anyone's collateral."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_stock_vault",
+          "docs": [
+            "The circle's stock vault. Created on the first join and owned by the",
+            "circle PDA, so no human signature can move it."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "stock_token_program",
+          "docs": [
+            "The stock is Token-2022 and USDC is SPL Token, so the two are separate",
+            "accounts rather than one shared program."
+          ]
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "stock_raw",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "leave_forming",
+      "docs": [
+        "Any joined member unwinds their own join before activation (G2 repair).",
+        "Stock and guarantee back, seat cleared, Member account closed so the",
+        "same wallet can rejoin. The only exit from Forming that does not need",
+        "the creator to act."
+      ],
+      "discriminator": [
+        247,
+        15,
+        158,
+        149,
+        177,
+        109,
+        125,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          },
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "member",
+          "docs": [
+            "Closed to the wallet that opened it, so the rent goes back to whoever",
+            "paid it and `join_and_lock`'s `init` can create it again on a rejoin."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "member_stock_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "member_usdc_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_stock_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "stock_token_program"
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "quote_valuation",
+      "docs": [
+        "Read-only valuation quote: FUND, EXEC and the counted value H (T05)."
+      ],
+      "discriminator": [
+        188,
+        146,
+        162,
+        105,
+        245,
+        63,
+        218,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "stock_mint",
+          "relations": [
+            "feed"
+          ]
+        },
+        {
+          "name": "feed",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "raw",
+          "type": "u64"
+        },
+        {
+          "name": "haircut_bps",
+          "type": "u16"
+        },
+        {
+          "name": "max_price_age",
+          "type": "i64"
+        }
+      ],
+      "returns": {
+        "defined": {
+          "name": "Valuation"
+        }
+      }
+    },
+    {
+      "name": "release_pot",
+      "docs": [
+        "Anyone releases the pot once the round is funded and the gate passes",
+        "(T10). All n Member accounts come as writable remaining_accounts in",
+        "turn order."
+      ],
+      "discriminator": [
+        65,
+        230,
+        227,
+        244,
+        217,
+        117,
+        39,
+        138
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "docs": [
+            "Anyone. Pays rent if the recipient has no USDC account yet, which is",
+            "why `join_and_lock` creates one: so this almost never has to."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle",
+            "price_feed"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "price_feed",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          },
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "recipient",
+          "docs": [
+            "is only ever an ATA authority, never a signer and never written."
+          ]
+        },
+        {
+          "name": "recipient_usdc_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "recipient"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "seed_pool",
+      "docs": [
+        "Moves the pool authority's own USDC into the pool (T14)."
+      ],
+      "discriminator": [
+        111,
+        214,
+        148,
+        46,
+        108,
+        2,
+        217,
+        18
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "pool"
+          ]
+        },
+        {
+          "name": "pool",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "stock_mint",
+          "docs": [
+            "stock mint, so the seeds are the whole check."
+          ]
+        },
+        {
+          "name": "authority_usdc",
+          "writable": true
+        },
+        {
+          "name": "pool_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "pool"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_prices",
+      "docs": [
+        "Sets both prices and stamps the multiplier they were quoted for (D5)."
+      ],
+      "discriminator": [
+        155,
+        1,
+        215,
+        185,
+        100,
+        8,
+        177,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "feed"
+          ]
+        },
+        {
+          "name": "stock_mint",
+          "docs": [
+            "as a Token-2022 mint in the handler."
+          ],
+          "relations": [
+            "feed"
+          ]
+        },
+        {
+          "name": "feed",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "wrapper_price",
+          "type": "u64"
+        },
+        {
+          "name": "share_price",
+          "type": "u64"
+        },
+        {
+          "name": "stamp",
+          "type": {
+            "defined": {
+              "name": "PriceStamp"
+            }
+          }
+        },
+        {
+          "name": "expected_multiplier_fixed",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "top_up_reserve",
+      "docs": [
+        "Adds USDC to the circle: an escrow deficit first, then the reserve",
+        "(T16, SPEC §5). The cure for Paused."
+      ],
+      "discriminator": [
+        1,
+        66,
+        168,
+        229,
+        89,
+        119,
+        117,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "signer": true,
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          },
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "member",
+          "docs": [
+            "Seeds bind this to (circle, wallet): a top-up is always credited to the",
+            "signer's own seat, which is what withdraw pays it back against."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "member_usdc_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "touch_prices",
+      "docs": [
+        "Moves `updated_at` and nothing else (I17)."
+      ],
+      "discriminator": [
+        65,
+        19,
+        232,
+        143,
+        128,
+        91,
+        246,
+        224
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "feed"
+          ]
+        },
+        {
+          "name": "feed",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "feed.stock_mint",
+                "account": "PriceFeed"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_coverage",
+      "docs": [
+        "Anyone recomputes coverage and redistributes the reserve in turn order",
+        "(T11). Moves no money. All n Member accounts come as writable",
+        "remaining_accounts in turn order."
+      ],
+      "discriminator": [
+        14,
+        131,
+        35,
+        239,
+        61,
+        6,
+        196,
+        71
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "docs": [
+            "Anyone, including a keeper script. Nothing is paid and nothing is moved."
+          ],
+          "signer": true
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle",
+            "price_feed"
+          ]
+        },
+        {
+          "name": "price_feed",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ]
+          },
+          "relations": [
+            "circle"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "withdraw",
+      "docs": [
+        "After Completed or Cancelled: stock back, and the unused guarantee and",
+        "top-ups pro rata (T12, SPEC §7). Reads snapshots and decrements nothing,",
+        "so withdraw order cannot change anyone's share."
+      ],
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "wallet",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "circle",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  105,
+                  114,
+                  99,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle.creator",
+                "account": "Circle"
+              },
+              {
+                "kind": "account",
+                "path": "circle.circle_id",
+                "account": "Circle"
+              }
+            ]
+          },
+          "relations": [
+            "member"
+          ]
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  109,
+                  98,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stock_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "circle"
+          ]
+        },
+        {
+          "name": "member_stock_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "member_usdc_ata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "wallet"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_stock_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "stock_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "stock_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "circle_usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "circle"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_token_program"
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "stock_token_program"
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Circle",
+      "discriminator": [
+        27,
+        59,
+        8,
+        117,
+        62,
+        199,
+        222,
+        252
+      ]
+    },
+    {
+      "name": "LiquidationPool",
+      "discriminator": [
+        186,
+        109,
+        201,
+        30,
+        97,
+        204,
+        140,
+        231
+      ]
+    },
+    {
+      "name": "Member",
+      "discriminator": [
+        54,
+        19,
+        162,
+        21,
+        29,
+        166,
+        17,
+        198
+      ]
+    },
+    {
+      "name": "PriceFeed",
+      "discriminator": [
+        189,
+        103,
+        252,
+        23,
+        152,
+        35,
+        243,
+        156
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CircleActivated",
+      "discriminator": [
+        51,
+        154,
+        7,
+        151,
+        152,
+        15,
+        187,
+        79
+      ]
+    },
+    {
+      "name": "CircleCancelled",
+      "discriminator": [
+        157,
+        78,
+        233,
+        166,
+        164,
+        172,
+        132,
+        75
+      ]
+    },
+    {
+      "name": "CircleCreated",
+      "discriminator": [
+        210,
+        110,
+        215,
+        179,
+        247,
+        145,
+        243,
+        135
+      ]
+    },
+    {
+      "name": "Contributed",
+      "discriminator": [
+        196,
+        199,
+        157,
+        136,
+        180,
+        222,
+        100,
+        118
+      ]
+    },
+    {
+      "name": "CoverageUpdated",
+      "discriminator": [
+        155,
+        0,
+        162,
+        136,
+        115,
+        243,
+        75,
+        60
+      ]
+    },
+    {
+      "name": "DefaultDeclared",
+      "discriminator": [
+        199,
+        201,
+        228,
+        63,
+        226,
+        39,
+        62,
+        52
+      ]
+    },
+    {
+      "name": "MemberJoined",
+      "discriminator": [
+        156,
+        199,
+        149,
+        88,
+        193,
+        203,
+        191,
+        210
+      ]
+    },
+    {
+      "name": "MemberLeftForming",
+      "discriminator": [
+        26,
+        132,
+        89,
+        4,
+        138,
+        245,
+        71,
+        219
+      ]
+    },
+    {
+      "name": "PoolInitialized",
+      "discriminator": [
+        100,
+        118,
+        173,
+        87,
+        12,
+        198,
+        254,
+        229
+      ]
+    },
+    {
+      "name": "PoolSeeded",
+      "discriminator": [
+        1,
+        131,
+        28,
+        102,
+        173,
+        7,
+        248,
+        218
+      ]
+    },
+    {
+      "name": "PotRefused",
+      "discriminator": [
+        218,
+        153,
+        189,
+        166,
+        203,
+        178,
+        198,
+        245
+      ]
+    },
+    {
+      "name": "PotReleased",
+      "discriminator": [
+        42,
+        160,
+        49,
+        193,
+        244,
+        11,
+        75,
+        53
+      ]
+    },
+    {
+      "name": "PricesSet",
+      "discriminator": [
+        245,
+        27,
+        72,
+        221,
+        199,
+        127,
+        134,
+        160
+      ]
+    },
+    {
+      "name": "ReserveToppedUp",
+      "discriminator": [
+        224,
+        49,
+        141,
+        165,
+        38,
+        169,
+        219,
+        235
+      ]
+    },
+    {
+      "name": "RoundNotFunded",
+      "discriminator": [
+        49,
+        235,
+        239,
+        128,
+        110,
+        27,
+        244,
+        174
+      ]
+    },
+    {
+      "name": "StockAdded",
+      "discriminator": [
+        27,
+        14,
+        253,
+        35,
+        114,
+        241,
+        122,
+        85
+      ]
+    },
+    {
+      "name": "Withdrawn",
+      "discriminator": [
+        20,
+        89,
+        223,
+        198,
+        194,
+        124,
+        219,
+        13
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MultiplierInvalid",
+      "msg": "This stock's multiplier can't be read safely"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Only the feed authority can do that"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidParams",
+      "msg": "Those parameters are outside the allowed range"
+    },
+    {
+      "code": 6003,
+      "name": "MultiplierPriceMismatch",
+      "msg": "These prices were quoted for a different multiplier than the one in force"
+    },
+    {
+      "code": 6004,
+      "name": "PriceStale",
+      "msg": "This price is too old to value collateral with"
+    },
+    {
+      "code": 6005,
+      "name": "ValuationOverflow",
+      "msg": "That position is too large to value"
+    },
+    {
+      "code": 6006,
+      "name": "MintNotAllowed",
+      "msg": "That mint is not an accepted xStock"
+    },
+    {
+      "code": 6007,
+      "name": "GuaranteeBelowPeakNeed",
+      "msg": "The guarantee is too small for the worst round this circle can reach"
+    },
+    {
+      "code": 6008,
+      "name": "NotAMember",
+      "msg": "This invite is for a different wallet"
+    },
+    {
+      "code": 6009,
+      "name": "CircleNotForming",
+      "msg": "This circle already started"
+    },
+    {
+      "code": 6010,
+      "name": "CollateralBelowMinimum",
+      "msg": "That stock is worth less cover than this circle's minimum"
+    },
+    {
+      "code": 6011,
+      "name": "NotAllJoined",
+      "msg": "Not everyone has joined yet"
+    },
+    {
+      "code": 6012,
+      "name": "InsufficientBalance",
+      "msg": "That wallet does not hold enough to do this"
+    },
+    {
+      "code": 6013,
+      "name": "AlreadyContributed",
+      "msg": "You've paid this round"
+    },
+    {
+      "code": 6014,
+      "name": "CircleNotActive",
+      "msg": "This circle isn't running right now"
+    },
+    {
+      "code": 6015,
+      "name": "AlreadyDefaulted",
+      "msg": "This member's default is already settled"
+    },
+    {
+      "code": 6016,
+      "name": "RoundNotFunded",
+      "msg": "Some contributions are still missing"
+    },
+    {
+      "code": 6017,
+      "name": "CoverageTooLow",
+      "msg": "The recipient's locked stock is below the minimum and is the whole gap"
+    },
+    {
+      "code": 6018,
+      "name": "ReserveOvercommitted",
+      "msg": "Payouts are paused: the reserve cannot cover the next payout"
+    },
+    {
+      "code": 6019,
+      "name": "BadMemberAccounts",
+      "msg": "The member accounts passed do not match this circle's seats"
+    },
+    {
+      "code": 6020,
+      "name": "NotFinished",
+      "msg": "You can withdraw when the circle ends"
+    },
+    {
+      "code": 6021,
+      "name": "AlreadyWithdrawn",
+      "msg": "You've already withdrawn from this circle"
+    },
+    {
+      "code": 6022,
+      "name": "GraceNotElapsed",
+      "msg": "The grace period for this round has not ended yet"
+    },
+    {
+      "code": 6023,
+      "name": "SeatAlreadyPaid",
+      "msg": "That seat has paid this round"
+    },
+    {
+      "code": 6024,
+      "name": "PrePayoutDefaultUnsupported",
+      "msg": "A member can't be defaulted before their turn; they can still pay late"
+    },
+    {
+      "code": 6025,
+      "name": "PoolInsufficient",
+      "msg": "The liquidation pool needs refilling before this default can settle"
+    }
+  ],
+  "types": [
+    {
+      "name": "Circle",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "circle_id",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "stock_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "price_feed",
+            "type": "pubkey"
+          },
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "n",
+            "docs": [
+              "3..=8."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "members",
+            "docs": [
+              "Index is the turn, 0-based. Unused seats are `Pubkey::default()`."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                8
+              ]
+            }
+          },
+          {
+            "name": "contribution",
+            "docs": [
+              "USDC per member per round."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "round_secs",
+            "type": "i64"
+          },
+          {
+            "name": "grace_secs",
+            "type": "i64"
+          },
+          {
+            "name": "haircut_bps",
+            "docs": [
+              "e.g. 2000 = 20% off."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "coverage_bps",
+            "type": "u16"
+          },
+          {
+            "name": "warn_bps",
+            "type": "u16"
+          },
+          {
+            "name": "guarantee_per_member",
+            "type": "u64"
+          },
+          {
+            "name": "min_stock_cover",
+            "docs": [
+              "USDC, checked at join."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_price_age",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "CircleStatus"
+              }
+            }
+          },
+          {
+            "name": "round",
+            "docs": [
+              "0-based current round."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "round_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "paid_bitmap",
+            "docs": [
+              "Contributions received this round."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "joined_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "withdrawn_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "received_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "defaulted_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "reserve_total",
+            "type": "u64"
+          },
+          {
+            "name": "reserve_losses",
+            "type": "u64"
+          },
+          {
+            "name": "reserve_allocated",
+            "type": "u64"
+          },
+          {
+            "name": "escrow",
+            "docs": [
+              "Replacement escrow (USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "escrow_deficit",
+            "docs": [
+              "Obligations not fundable at default time."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn_usdc",
+            "docs": [
+              "Cumulative paid out by withdraw."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "deposits_total",
+            "docs": [
+              "Sum of guarantees and top-ups currently settled in the circle (SPEC.md:58,",
+              "r5). A Forming unwind (`leave_forming`) subtracts its own deposit, so this",
+              "is NOT everything ever deposited: after two joins and one unwind it is g,",
+              "not 2g. It is withdraw's pro-rata denominator, which is why it must only",
+              "count money still here."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "forfeited_total",
+            "docs": [
+              "Sum of `Member.forfeited`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "next_gate_short_by",
+            "docs": [
+              "Greater than zero means Paused (SPEC §5)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "held_contributions",
+            "docs": [
+              "This round's contributions, not yet released."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_coverage_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CircleActivated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "round_deadline",
+            "type": "i64"
+          },
+          {
+            "name": "reserve_total",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CircleCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "joined_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "reserve_total",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CircleCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "circle_id",
+            "type": "u64"
+          },
+          {
+            "name": "n",
+            "type": "u8"
+          },
+          {
+            "name": "stock_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "contribution",
+            "type": "u64"
+          },
+          {
+            "name": "guarantee_per_member",
+            "type": "u64"
+          },
+          {
+            "name": "peak_guarantee_need",
+            "docs": [
+              "The worst round this circle can reach, from the peak-guarantee check."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "CircleStatus"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CircleParams",
+      "docs": [
+        "Everything the creator fixes, per `design/FLOWS.md:154`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle_id",
+            "type": "u64"
+          },
+          {
+            "name": "contribution",
+            "type": "u64"
+          },
+          {
+            "name": "round_secs",
+            "type": "i64"
+          },
+          {
+            "name": "grace_secs",
+            "type": "i64"
+          },
+          {
+            "name": "haircut_bps",
+            "type": "u16"
+          },
+          {
+            "name": "coverage_bps",
+            "type": "u16"
+          },
+          {
+            "name": "warn_bps",
+            "type": "u16"
+          },
+          {
+            "name": "guarantee_per_member",
+            "type": "u64"
+          },
+          {
+            "name": "min_stock_cover",
+            "type": "u64"
+          },
+          {
+            "name": "max_price_age",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CircleStatus",
+      "docs": [
+        "SPEC §4. A circle's lifecycle."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Forming"
+          },
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Completed"
+          },
+          {
+            "name": "Cancelled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Contributed",
+      "docs": [
+        "T10."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "paid_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "held_contributions",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CoverageUpdated",
+      "docs": [
+        "T11."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "reserve_allocated",
+            "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "docs": [
+              "R - L at the moment of the recompute, so an indexer can see the ratio."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "next_gate_short_by",
+            "type": "u64"
+          },
+          {
+            "name": "last_coverage_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DefaultDeclared",
+      "docs": [
+        "T15, SPEC §6. Every figure the waterfall computed, so a client can show",
+        "what was sold, what the reserve absorbed and what is left to cure."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "obligations",
+            "type": "u64"
+          },
+          {
+            "name": "sell_raw",
+            "type": "u64"
+          },
+          {
+            "name": "recovered",
+            "type": "u64"
+          },
+          {
+            "name": "funded_from_stock",
+            "type": "u64"
+          },
+          {
+            "name": "shortfall",
+            "type": "u64"
+          },
+          {
+            "name": "loss",
+            "type": "u64"
+          },
+          {
+            "name": "deficit",
+            "docs": [
+              "Added to `escrow_deficit` by this default."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "forfeited",
+            "type": "u64"
+          },
+          {
+            "name": "recomputed",
+            "docs": [
+              "False when the capped branch ran (price repricing or unreadable)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "escrow",
+            "type": "u64"
+          },
+          {
+            "name": "escrow_deficit",
+            "type": "u64"
+          },
+          {
+            "name": "next_gate_short_by",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquidationPool",
+      "docs": [
+        "SPEC §4. The only buyer of seized stock (ADR-004).",
+        "",
+        "Declared here because `create_circle` must read `discount_bps` to enforce",
+        "`pool.discount_bps <= haircut_bps`. `init_pool` and `seed_pool` are T14."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "discount_bps",
+            "docs": [
+              "Conservative sale price = wrapper_price x (1 - discount)."
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Member",
+      "docs": [
+        "One member's stake in one circle (SPEC §4, seeds `[\"member\", circle, wallet]`).",
+        "",
+        "The seat number is `turn`, and it is the index the creator fixed in",
+        "`Circle.members`, never a value the joiner supplies. `join_and_lock` finds it",
+        "by scanning, so a member cannot choose when they get paid."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "docs": [
+              "Index into `Circle.members`, 0-based. This is the payout order."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "stock_raw",
+            "docs": [
+              "Stock base units locked in the circle's vault. I4: the vault's balance",
+              "is the sum of this across members."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "guarantee",
+            "docs": [
+              "The guarantee this member deposited at join, in usdc."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "top_ups",
+            "docs": [
+              "Voluntary reserve top-ups, in usdc."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "forfeited",
+            "docs": [
+              "Own guarantee and top-ups consumed by this member's own default (r2)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "rounds_paid",
+            "docs": [
+              "Rounds this member has paid, including any prepaid from escrow."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "allocated",
+            "docs": [
+              "G_i at the last recompute. Zero once defaulted."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_coverage_bps",
+            "docs": [
+              "Saturating. `u32::MAX` when O_i is 0 or the member defaulted, which the",
+              "UI renders as \"Nothing owed\" or \"Prepaid\" and never as a percentage."
+            ],
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MemberJoined",
+      "docs": [
+        "T09. ARCHITECTURE:85 requires an event per state change."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "stock_raw",
+            "type": "u64"
+          },
+          {
+            "name": "stock_cover",
+            "docs": [
+              "H at the moment of joining, so an indexer can see the join cleared the",
+              "minimum without re-deriving it from prices that have since moved."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "guarantee",
+            "type": "u64"
+          },
+          {
+            "name": "joined_bitmap",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MemberLeftForming",
+      "docs": [
+        "The G2 repair (2026-09-24). A member unwinding their own join before the",
+        "circle activates, which is the only way out of a Forming circle that does",
+        "not depend on the creator acting."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "stock",
+            "type": "u64"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          },
+          {
+            "name": "joined_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "reserve_total",
+            "type": "u64"
+          },
+          {
+            "name": "deposits_total",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolInitialized",
+      "docs": [
+        "T14. The pool that buys seized stock, and the discount it buys at."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "stock_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "discount_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PoolSeeded",
+      "docs": [
+        "T14. `pool_usdc` is the vault's balance after the seed, which is what",
+        "`declare_default` checks `recovered` against (`pool_insufficient`)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pool",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "pool_usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PotRefused",
+      "docs": [
+        "SPEC.md:204: \"Every refusal payload field named in section 5 is emitted as",
+        "an event before the error returns, so the UI can print the numbers.\"",
+        "",
+        "These two exist because a `msg!` line is not an event. Both reach the client",
+        "through the same transaction logs, but an event is typed, declared in the",
+        "IDL and decoded by the client library, while a log line is free text the",
+        "client has to parse by hand and that no schema protects. FLOWS §9 has every",
+        "transaction previewed by simulation, and a simulated failure returns its",
+        "logs, so a refusal event is readable without the transaction ever landing.",
+        "",
+        "This is why NFR-2 exists: a Paused screen that cannot name what it is short",
+        "by is a screen that tells someone to go and find out."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "needed",
+            "docs": [
+              "`S`, the uncapped sum of need_i."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "docs": [
+              "`R - L`, which SPEC.md:126 calls the gate's `remaining`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "short_by",
+            "type": "u64"
+          },
+          {
+            "name": "recipient_gap",
+            "type": "u64"
+          },
+          {
+            "name": "others_need",
+            "type": "u64"
+          },
+          {
+            "name": "recipient_cover",
+            "type": "u64"
+          },
+          {
+            "name": "escrow_deficit",
+            "type": "u64"
+          },
+          {
+            "name": "coverage_too_low",
+            "docs": [
+              "True when the recipient's own stock is the whole gap, which is the only",
+              "case where \"lock more stock\" is advice that would work."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PotReleased",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "recipient",
+            "type": "pubkey"
+          },
+          {
+            "name": "pot",
+            "type": "u64"
+          },
+          {
+            "name": "needed",
+            "docs": [
+              "The gate's own numbers, so an indexer can show why it passed."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "remaining",
+            "type": "u64"
+          },
+          {
+            "name": "reserve_allocated",
+            "type": "u64"
+          },
+          {
+            "name": "next_gate_short_by",
+            "type": "u64"
+          },
+          {
+            "name": "completed",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceFeed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "stock_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "wrapper_price",
+            "docs": [
+              "Price of one whole raw token, NOT scaled (SPEC §4)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "share_price",
+            "docs": [
+              "Price of one underlying share."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "priced_for_multiplier",
+            "docs": [
+              "The multiplier `share_price` was quoted against, fixed ×1e9 (D5)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceStamp",
+      "docs": [
+        "Which multiplier a price was quoted against (SPEC §5, ADR-010).",
+        "",
+        "The script says which one it means and the program verifies it, rather than",
+        "the program guessing. That is the whole of D5: a share price quoted for the",
+        "old multiplier must never be stamped as if it were quoted for the new one."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Current"
+          },
+          {
+            "name": "Scheduled"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PricesSet",
+      "docs": [
+        "`set_prices` (T04). Added at T08 with the rest of the event surface, so the",
+        "gate-1 review predates it; nothing about the refusals or the arithmetic",
+        "changed."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "feed",
+            "type": "pubkey"
+          },
+          {
+            "name": "stock_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "wrapper_price",
+            "type": "u64"
+          },
+          {
+            "name": "share_price",
+            "type": "u64"
+          },
+          {
+            "name": "priced_for_multiplier",
+            "type": "u64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ReserveToppedUp",
+      "docs": [
+        "T16. `fill` is the part that prepaid defaulted seats (escrow deficit); the",
+        "rest reached the reserve."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "fill",
+            "type": "u64"
+          },
+          {
+            "name": "escrow",
+            "type": "u64"
+          },
+          {
+            "name": "escrow_deficit",
+            "type": "u64"
+          },
+          {
+            "name": "reserve_total",
+            "type": "u64"
+          },
+          {
+            "name": "deposits_total",
+            "type": "u64"
+          },
+          {
+            "name": "next_gate_short_by",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RoundNotFunded",
+      "docs": [
+        "SPEC.md:106's payload:",
+        "`round_not_funded{missing_seats, escrow, escrow_needed, escrow_deficit, short_by}`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "round",
+            "type": "u8"
+          },
+          {
+            "name": "missing_seats",
+            "docs": [
+              "Bitmap of seats that have neither paid nor defaulted."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "escrow",
+            "type": "u64"
+          },
+          {
+            "name": "escrow_needed",
+            "docs": [
+              "`k x contribution`, what the escrow must hold to cover defaulted seats."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "escrow_deficit",
+            "type": "u64"
+          },
+          {
+            "name": "short_by",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "StockAdded",
+      "docs": [
+        "T16. `stock_raw` is the member's total locked after the addition."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "raw",
+            "type": "u64"
+          },
+          {
+            "name": "stock_raw",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Valuation",
+      "docs": [
+        "The two values of a stock position, and the counted value after the haircut.",
+        "",
+        "`FUND` is what the position is worth at the share price, through the",
+        "multiplier. `EXEC` is what it is worth at the wrapper price, which is the",
+        "price someone would actually pay for the raw token. They disagree while a",
+        "split is being priced, and SPEC §4 counts the lower of the two, which is why",
+        "a split cannot be used to inflate collateral."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mult_fixed",
+            "type": "u64"
+          },
+          {
+            "name": "fund",
+            "type": "u64"
+          },
+          {
+            "name": "exec",
+            "type": "u64"
+          },
+          {
+            "name": "h",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Withdrawn",
+      "docs": [
+        "T12."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "circle",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "turn",
+            "type": "u8"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          },
+          {
+            "name": "stock",
+            "type": "u64"
+          },
+          {
+            "name": "withdrawn_bitmap",
+            "type": "u8"
+          },
+          {
+            "name": "withdrawn_usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}
