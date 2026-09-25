@@ -123,6 +123,9 @@ export async function GET(req: NextRequest) {
     cache.set(symbol, { at: Date.now(), body });
     return NextResponse.json(body, { headers });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+    // Only this route's own words reach the browser; anything else (an engine TypeError on an odd
+    // upstream body) is summarised.
+    const said = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: /^(GeckoTerminal|Jupiter|no USDC pool|no price history)/.test(said) ? said : "price data unavailable" }, { status: 502 });
   }
 }

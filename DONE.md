@@ -2775,3 +2775,32 @@ worktree during the review.
 
 verify: root tsc clean; app tsc clean; t18-assets-adversary 1, app-mint-info 6, app-live 10
 passing; next build; git diff --check; check-secrets clean.
+
+## Judge path (T18c): How it works, one live circle, Portfolio, 22 buyable xStocks, charts, Buy (2026-09-25)
+reviewed: pending, Codex (brief reviews/t18c-brief.md)
+adversary: THREE findings on 16748e1, all fixed (tests/app-portfolio-adversary.spec.ts, tests/app-circle-status-adversary.spec.ts with tests/fixtures/holdings-nflxx-pool.json, integrated unchanged; both failed before and pass now). Two suspicions taken. One finding (the old asset test) was already fixed in be249da.
+
+Joshua: "you are building without thinking about the mentality of the judges ... our project [does not look] built end to end". Click-order audit in headless Chromium found: How it works a 404 in the nav; /circle/demo's seat pages showing a fixture circle with other members; the live circle reading OVERDUE/ELAPSED; Create refusing with a false reason ("not deployed"). Plan agreed with Joshua, built in order:
+1. /how-it-works: six steps with live figures from the demo circle, each linking into the app.
+2. One cast (DEMO_NAMES Ada..Nneka, the fixtures' own names) through the live reader; /circle/demo
+   seat pages read the live circle (LiveSeat), in test USDC.
+3. Live round status: "Paid this round n of 5 / Deadline passed: late still counts"; "Can be declared
+   in default: <names>" only when a received, unpaid seat is past deadline + grace (strictly).
+4. Create's refusal states its true reason and points to the demo circle.
+5. /portfolio: the wallet's seat (devnet), its xStocks (mainnet, valued at Jupiter), demo tokens.
+6. Buy: live Jupiter quote (/api/quote) and a hand-off to jup.ag?sell=USDC&buy=<mint> (the path form
+   redirects to buying SOL; checked in a browser).
+7. /assets: 22 buyable xStocks (registry lib/xstocks.ts with provenance: Backed's mint authority,
+   verified on mainnet, not paused, traded in 24 h with >= $1k liquidity, a live Jupiter route for 50
+   USDC); four collateral mints pinned; charts from GeckoTerminal (per raw token) with one retry.
+Adversary fixes: Portfolio no longer totals when any holding is unpriced (was "$0.00"); the default
+boundary is now > deadline + grace (was one second early); "the pot is released as soon as everyone
+has paid" (false: release is a separate transaction, KNOWN-LIMITS L10) is now "anyone can release the
+pot"; /api/chart and /api/quote pass only their own error words; a mint paused after the scan shows
+"Paused by issuer" and no Buy panel; an unreadable mint is named as unavailable rather than blanking
+the catalog.
+
+verify: 34 spec files each alone, 198 passing before the adversary tests (+4 now); Rust 57/56; clippy,
+fmt, root and app tsc, next build, git diff --check, check-secrets clean; all 11 pages at 1280 and
+390 px in headless Chromium: HTTP 200, no console errors, no overflow, no failure words. Holdings
+checked on real wallets (Tunde's seat: 0 mirror, 200 test USDC; four SPYx pool owners on mainnet).

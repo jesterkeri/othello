@@ -228,7 +228,11 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
               kind="neutral"
               mark={String(d.missing)}
               title={`${d.missing} contributions still missing`}
-              text={live ? "The pot is released as soon as everyone has paid. Paying late still counts." : "Wait, or remind them."}
+              text={
+                live
+                  ? `Once everyone has paid, anyone can release the pot${d.recipient ? ` to ${d.recipient.name}` : ""}. Paying late still counts.`
+                  : "Wait, or remind them."
+              }
             />
           )}
           {!isActive && c.status !== "Forming" && (
@@ -267,7 +271,8 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
                     {c.n - d.missing} of {c.n}
                   </span>
                 </span>
-                {defaultable.length > 0 && d.toGraceEnd <= 0 ? (
+                {/* SPEC §5 / I7: declare_default needs now > deadline + grace, strictly. */}
+                {defaultable.length > 0 && d.toGraceEnd < 0 ? (
                   <span className={`${s.clockBox} ${s.clockOver}`}>
                     <span className={s.clockLabel}>Can be declared in default</span>
                     <span className={`${s.display} ${s.clockValue}`}>{defaultable.map((m) => m.name).join(", ")}</span>

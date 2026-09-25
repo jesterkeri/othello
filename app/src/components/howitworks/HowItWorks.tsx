@@ -81,7 +81,7 @@ export default function HowItWorks() {
           <p className={s.body}>
             {c
               ? c.status === 'Active'
-                ? `Round ${c.round + 1} of ${c.n}: ${countSeats(c.paidBitmap, c.n)} of ${c.n} have paid. When all have, the pot goes to ${who?.name ?? 'this round’s seat'}. Paying late still counts.`
+                ? `Round ${c.round + 1} of ${c.n}: ${countSeats(c.paidBitmap, c.n)} of ${c.n} have paid. Once all have, anyone can release the pot to ${who?.name ?? 'this round’s seat'}. Paying late still counts.`
                 : `The circle is ${c.status}.`
               : pending}
           </p>

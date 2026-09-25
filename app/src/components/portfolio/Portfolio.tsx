@@ -44,7 +44,9 @@ export default function Portfolio() {
 
   const c = circle?.view;
   const me = c && w.address ? c.members.find((m) => m.address === w.address) : undefined;
-  const total = hold?.xstocks.reduce((t, h) => t + (h.usdValue ?? 0), 0) ?? 0;
+  // A total only when every holding is priced: a failed price read must never show as $0 (adversary).
+  const unpriced = hold?.xstocks.filter((h) => h.usdValue === null) ?? [];
+  const total = hold && unpriced.length === 0 ? hold.xstocks.reduce((t, h) => t + h.usdValue!, 0) : null;
 
   return (
     <Shell active="Portfolio" surface="gutter">
@@ -94,7 +96,7 @@ export default function Portfolio() {
             </section>
 
             <section className={`${s.card} ${s.wide} ${s.s1}`}>
-              <h2 className={s.title}>Your xStocks{hold && hold.xstocks.length ? `: ${usd(total)}` : ''}</h2>
+              <h2 className={s.title}>Your xStocks{hold && hold.xstocks.length && total !== null ? `: ${usd(total)}` : ''}</h2>
               {holdErr ? (
                 <p className={s.body}>Live data unavailable: {holdErr}</p>
               ) : !hold ? (
@@ -113,7 +115,10 @@ export default function Portfolio() {
                       </Link>
                     ))}
                   </div>
-                  <p className={s.note}>Amounts as your wallet shows them (raw times each stock&apos;s multiplier); values at Jupiter&apos;s price. Mainnet.</p>
+                  <p className={s.note}>
+                    Amounts as your wallet shows them (raw times each stock&apos;s multiplier); values at Jupiter&apos;s price. Mainnet.
+                    {unpriced.length > 0 ? ` Value unavailable right now for ${unpriced.map((h) => h.symbol).join(', ')}, so no total is shown.` : ''}
+                  </p>
                 </>
               )}
             </section>

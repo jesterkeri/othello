@@ -30,6 +30,7 @@ function Card({ m }: { m: LiveXStock }) {
       <span className={s.micro}>{m.info.metadata?.name ?? m.name}</span>
       <span className={`${s.display} ${s.cardBig}`}>{m.symbol}</span>
       {m.accepted && <span className={`${s.tag} ${s.tagYes}`}>Accepted as cover</span>}
+      {m.info.pausable?.paused && <span className={`${s.tag} ${s.tagDue}`}>Paused by issuer</span>}
       <div className={s.rows}>
         <span className={s.row}>
           <span className={s.rowLabel}>Price (per token shown)</span>

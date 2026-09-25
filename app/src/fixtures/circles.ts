@@ -25,7 +25,8 @@
  *   actually seeds.
  */
 
-import type { CircleView, MemberView } from "@/lib/circle";
+// Relative, not "@/": root tests load the fixtures directly (app-circle-status-adversary).
+import type { CircleView, MemberView } from "../lib/circle";
 
 const USDC = 1_000_000;
 const RAW = 100_000_000;

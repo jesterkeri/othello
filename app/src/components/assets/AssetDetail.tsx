@@ -96,7 +96,11 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
               multiplierNow={multiplierAt(m, now)}
               change={m.effectiveAt && m.newMultiplier !== m.multiplier ? { from: m.multiplier, to: m.newMultiplier, at: m.effectiveAt } : null}
             />
-            <BuyPanel symbol={m.symbol} address={m.address} decimals={m.decimals} multiplier={multiplierAt(m, now)} accepted={m.accepted} />
+            {m.info.pausable?.paused ? (
+              <Unavailable error={`${m.symbol} is paused by its issuer right now: nobody can transfer or buy it until they unpause it.`} />
+            ) : (
+              <BuyPanel symbol={m.symbol} address={m.address} decimals={m.decimals} multiplier={multiplierAt(m, now)} accepted={m.accepted} />
+            )}
           </div>
 
           <div className={s.cards}>
