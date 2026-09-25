@@ -142,14 +142,14 @@ const hold = (raw: string) => ({
 describe("Codex T18d r2: Portfolio's figures are exact and its copy conditional", () => {
   it("shows a u64 balance above 2^53 digit for digit, before and after the multiplier", async () => {
     const text = await render([null, "not read here", hold(BIG), null]);
-    assert.match(text, /90,071,992\.54740993 before ×/);
+    assert.match(text, /90,071,992\.54740993 before the multiplier/);
     assert.match(text, /= 90,071,992\.54740993/);
     assert.doesNotMatch(text, /54740992/, "a digit came from a rounded Number");
   });
 
   it("labels the pre-multiplier amount as tokens, not as raw base units", async () => {
     const text = await render([null, "not read here", hold("100000000"), null]);
-    assert.match(text, /1\.00000000 before ×/);
+    assert.match(text, /1\.00000000 before the multiplier/);
     assert.doesNotMatch(text, /1\.000000 raw/);
   });
 

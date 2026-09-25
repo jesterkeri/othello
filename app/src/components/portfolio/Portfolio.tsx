@@ -16,13 +16,13 @@ import { useLiveXStocks } from '@/components/assets/useLiveXStocks';
 import type { Holdings } from '@/app/api/holdings/route';
 import { RAW_DECIMALS, USDC_DECIMALS, formatRaw, formatUsdc, obligations, seatSet, stockCover } from '@/lib/circle';
 import { exactTokens, shownTokens } from '@/lib/format';
+import { slotFor } from '@/components/assets/slots';
 import type { LiveCircle } from '@/lib/live';
 import { useWalletUi } from '@/lib/wallet';
 
 import s from './Portfolio.module.css';
 
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-const SLOTS = ['clay', 'cobalt', 'sky', 'teal', 'acid'] as const;
 
 const Arrow = ({ d = 'M7 17 17 7M9 7h8v8' }: { d?: string }) => (
   <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -64,7 +64,7 @@ export default function Portfolio() {
   // The 24h move in dollars, from each holding's value now and Jupiter's 24h percentage.
   const moves = hold?.xstocks.map((h) => (h.usdValue !== null && change(h.address) !== null ? (h.usdValue * change(h.address)!) / (100 + change(h.address)!) : null)) ?? [];
   const dayMove = total !== null && moves.length > 0 && moves.every((m) => m !== null) ? moves.reduce((a, b) => a + b!, 0) : null;
-  const rows = (hold?.xstocks ?? []).map((h, i) => ({ ...h, slot: SLOTS[i % SLOTS.length]!, share: total ? (h.usdValue ?? 0) / total : null, chg: change(h.address) }));
+  const rows = (hold?.xstocks ?? []).map((h) => ({ ...h, slot: slotFor(h.symbol), share: total ? (h.usdValue ?? 0) / total : null, chg: change(h.address) }));
   const anyDown = !!(circleErr || holdErr);
 
   return (
@@ -215,7 +215,7 @@ export default function Portfolio() {
                   <span className={s.name}><b>{h.symbol}</b><span>{h.name}</span></span>
                   {/* Exact: the on-chain u64 as a decimal string, never through a JS number (Codex T18d r2). */}
                   <span className={s.math} title="Tokens before the multiplier, times the multiplier, is what your wallet shows">
-                    <span>{exactTokens(h.raw, h.decimals)} before ×</span>
+                    <span>{exactTokens(h.raw, h.decimals)} before the multiplier</span>
                     <span>× {Number(h.multiplier.toFixed(4))}</span>
                     <span className={s.mathEq}>= {shownTokens(h.raw, h.decimals, h.multiplier)}</span>
                   </span>

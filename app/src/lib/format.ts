@@ -2,6 +2,8 @@
  * Pure formatting shared by the pages and the root tests. No "@/" imports and no browser APIs: the
  * root typecheck and mocha load this file directly (a hook module here broke the root tsc).
  */
+import { toFixed1e9 } from "./scaledUi";
+
 /**
  * A raw u64 supply in whole tokens, EXACTLY: every digit of the on-chain integer, split at the
  * mint's decimals with string arithmetic, so nothing is rounded (Codex T18 r2: "Supply, raw" was
@@ -20,6 +22,8 @@ export function exactTokens(raw: string, decimals: number): string {
  * digit comes from a float (Codex T18d r2: Portfolio rounded u64 balances through Number).
  */
 export function shownTokens(raw: string, decimals: number, multiplier: number): string {
-  const fixed = BigInt(Math.round(multiplier * 1e9));
+  // SPEC I5: mult_fixed = floor(true value x 1e9), from the f64's bits (toFixed1e9 is the program's
+  // decode_multiplier_fixed, ported bit for bit). Math.round overstated holdings (adversary pass 4).
+  const fixed = BigInt(toFixed1e9(multiplier));
   return exactTokens(((BigInt(raw) * fixed) / 1_000_000_000n).toString(), decimals);
 }
