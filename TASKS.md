@@ -195,3 +195,38 @@ should start before the hackathon build is finished.
       programs/othello/src/devnet.rs to Circle's devnet USDC (confirm the address from Circle's
       own docs, and that it is classic SPL Token, before changing it), re-run the S2 specs and
       re-deploy. Pools already opened on test USDC stay on it; a new pool is needed per pair.
+
+## Next, in order (Joshua, 2026-09-25 evening): tonight after submission, or tomorrow after dinner
+
+- [ ] SUBMISSION FOLLOW-THROUGH. Codex's last two MAJORs on the in-app Buy (reviews/t18d-review.md):
+      (a) bind the listed mint to the swap's OUTPUT (Jupiter instruction's destination accounts,
+      buyer-owned output ATA), not mere presence; (b) derive the signature from the signed
+      transaction and require the RPC's result to equal it. Then Codex re-review to
+      implementation-ready, PR #17 (T18j -> staging) green and merged, then staging -> main. Every
+      merge to main comes from staging. Clean up worktrees othello-t18c..t18j after.
+- [ ] DEVNET_MIRROR, FIRST build task (Joshua: "no real tokens used until MVP"). Devnet mirrors of
+      the listed xStocks (Token-2022 + ScaledUiAmount, labelled like the NFLXx mirror) and a DEVNET
+      Buy that sells them for test USDC, so testers and judges use free devnet funds end to end.
+      Needs a program instruction (devnet redeploy, Joshua's) or a devnet AMM that supports
+      Token-2022 (SPL token-swap v1 does not); never a server holding a mint key. Real mainnet Buy
+      stays behind a clear switch until MVP. Rule from tonight: devnet-first for anything testers
+      touch, and any real-money path states its cost before it is built.
+- [ ] COIN_COLLATERAL (Joshua). Real coins as collateral as well as stocks (SOL, wrapped BTC/ETH).
+      Per-mint collateral config (coins have no Scaled UI multiplier), a price source per coin, a
+      SPEC change from the design session; devnet mirrors first.
+- [ ] BUY_IN_SOL. Pay for a buy in SOL: the wrap steps (System transfer to the buyer's own wSOL
+      account, SyncNative, CloseAccount) must be allowed only to the buyer's own account; re-review.
+- [ ] SUI (MULTI_CHAIN, Joshua 2026-09-25). ONE Othello; the connected wallet picks the chain and the
+      chain picks the assets: Phantom -> Solana xStocks; Slush -> Sui assets (not stock-only). A Move
+      program for the circle; DeepBook for liquidation; look at DeepBook Predict; frontend chain parts
+      become per-chain adapters (wallet, reads, actions, prices). RESEARCH FIRST: DeepBook depth for
+      liquidation, the Sui price source, Predict's fit, Sui's own headline for Othello, and funding vs
+      Colosseum. Order across chains: Solana -> EVM -> Sui.
+- [ ] EVM for Colosseum. Robinhood Chain is Arbitrum Orbit, so ONE Solidity contract covers Arbitrum
+      and Robinhood Chain; verify where Robinhood's stock tokens live and what its track expects, and
+      Robinhood Wallet's Solana Wallet Standard support.
+- [ ] TEMPO: research the Tempo track (Joshua: the first thing after submission, alongside the above).
+- [ ] COLOSSEUM (World's Fair): due 12 Oct 23:59 PT (13 Oct 07:59 Lagos); chains picked: Solana,
+      Robinhood Chain, Arbitrum; multiple wallets allowed; read every rule first.
+- [ ] Still owed from before: ROTATE_AUTHORITY (c), CIRCLE_USDC, SOLO, MATCHMAKING, CIRCLE CHAT ROOM,
+      PRE-PAYOUT DEPARTURE (entries above).
