@@ -101,7 +101,11 @@ pub struct Circle {
     pub escrow_deficit: u64,
     /// Cumulative paid out by withdraw.
     pub withdrawn_usdc: u64,
-    /// Sum of guarantees and top-ups ever deposited.
+    /// Sum of guarantees and top-ups currently settled in the circle (SPEC.md:58,
+    /// r5). A Forming unwind (`leave_forming`) subtracts its own deposit, so this
+    /// is NOT everything ever deposited: after two joins and one unwind it is g,
+    /// not 2g. It is withdraw's pro-rata denominator, which is why it must only
+    /// count money still here.
     pub deposits_total: u64,
     /// Sum of `Member.forfeited`.
     pub forfeited_total: u64,
@@ -113,6 +117,13 @@ pub struct Circle {
 }
 
 impl Circle {
+    /// SPEC's `remaining`, R - L: the reserve the circle still has after the
+    /// losses defaults have booked against it. The gate compares its uncapped
+    /// sum against this; every capped allocation distributes it.
+    pub fn reserve_remaining(&self) -> u64 {
+        self.reserve_total.saturating_sub(self.reserve_losses)
+    }
+
     pub const SEED: &'static [u8] = b"circle";
 }
 
@@ -131,4 +142,41 @@ pub struct LiquidationPool {
 
 impl LiquidationPool {
     pub const SEED: &'static [u8] = b"pool";
+}
+
+/// One member's stake in one circle (SPEC §4, seeds `["member", circle, wallet]`).
+///
+/// The seat number is `turn`, and it is the index the creator fixed in
+/// `Circle.members`, never a value the joiner supplies. `join_and_lock` finds it
+/// by scanning, so a member cannot choose when they get paid.
+#[account]
+#[derive(InitSpace)]
+pub struct Member {
+    pub circle: Pubkey,
+    pub wallet: Pubkey,
+    /// Index into `Circle.members`, 0-based. This is the payout order.
+    pub turn: u8,
+    pub bump: u8,
+
+    /// Stock base units locked in the circle's vault. I4: the vault's balance
+    /// is the sum of this across members.
+    pub stock_raw: u64,
+    /// The guarantee this member deposited at join, in usdc.
+    pub guarantee: u64,
+    /// Voluntary reserve top-ups, in usdc.
+    pub top_ups: u64,
+    /// Own guarantee and top-ups consumed by this member's own default (r2).
+    pub forfeited: u64,
+
+    /// Rounds this member has paid, including any prepaid from escrow.
+    pub rounds_paid: u8,
+    /// G_i at the last recompute. Zero once defaulted.
+    pub allocated: u64,
+    /// Saturating. `u32::MAX` when O_i is 0 or the member defaulted, which the
+    /// UI renders as "Nothing owed" or "Prepaid" and never as a percentage.
+    pub last_coverage_bps: u32,
+}
+
+impl Member {
+    pub const SEED: &'static [u8] = b"member";
 }

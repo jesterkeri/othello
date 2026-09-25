@@ -24,4 +24,44 @@ pub enum OthelloError {
     MintNotAllowed,
     #[msg("The guarantee is too small for the worst round this circle can reach")]
     GuaranteeBelowPeakNeed,
+    // T09.
+    #[msg("This invite is for a different wallet")]
+    NotAMember,
+    #[msg("This circle already started")]
+    CircleNotForming,
+    #[msg("That stock is worth less cover than this circle's minimum")]
+    CollateralBelowMinimum,
+    #[msg("Not everyone has joined yet")]
+    NotAllJoined,
+    #[msg("That wallet does not hold enough to do this")]
+    InsufficientBalance,
+    // T10.
+    #[msg("You've paid this round")]
+    AlreadyContributed,
+    #[msg("This circle isn't running right now")]
+    CircleNotActive,
+    #[msg("This member's default is already settled")]
+    AlreadyDefaulted,
+    #[msg("Some contributions are still missing")]
+    RoundNotFunded,
+    #[msg("The recipient's locked stock is below the minimum and is the whole gap")]
+    CoverageTooLow,
+    #[msg("Payouts are paused: the reserve cannot cover the next payout")]
+    ReserveOvercommitted,
+    #[msg("The member accounts passed do not match this circle's seats")]
+    BadMemberAccounts,
+    // T12.
+    #[msg("You can withdraw when the circle ends")]
+    NotFinished,
+    #[msg("You've already withdrawn from this circle")]
+    AlreadyWithdrawn,
+    // T15.
+    #[msg("The grace period for this round has not ended yet")]
+    GraceNotElapsed,
+    #[msg("That seat has paid this round")]
+    SeatAlreadyPaid,
+    #[msg("A member can't be defaulted before their turn; they can still pay late")]
+    PrePayoutDefaultUnsupported,
+    #[msg("The liquidation pool needs refilling before this default can settle")]
+    PoolInsufficient,
 }

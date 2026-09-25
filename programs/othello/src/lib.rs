@@ -6,8 +6,10 @@
 //! before the task that implements it.
 
 pub mod allowlist;
+pub mod devnet;
 pub mod errors;
 pub mod events;
+pub mod gate;
 pub mod instructions;
 pub mod state;
 pub mod valuation;
@@ -38,7 +40,91 @@ pub const HARNESS_BUILD_MARKER: &str = "OTHELLO-HARNESS-BUILD-DO-NOT-DEPLOY";
 pub mod othello {
     use super::*;
 
-    /// Creates the price feed for one stock mint (T04, SPEC §5).
+    /// A named member's consent: locks stock and deposits the guarantee in one
+    /// transaction (T09, SPEC §5). The seat is found by scanning the member
+    /// list, never passed in.
+    pub fn join_and_lock(ctx: Context<JoinAndLock>, stock_raw: u64) -> Result<()> {
+        instructions::join_and_lock::handle_join_and_lock(ctx, stock_raw)
+    }
+
+    /// A member pays their contribution for the current round (T10). No time
+    /// check: a late payment before a default is declared is a cure.
+    pub fn contribute(ctx: Context<Contribute>) -> Result<()> {
+        instructions::contribute::handle_contribute(ctx)
+    }
+
+    /// Anyone releases the pot once the round is funded and the gate passes
+    /// (T10). All n Member accounts come as writable remaining_accounts in
+    /// turn order.
+    pub fn release_pot<'info>(ctx: Context<'info, ReleasePot<'info>>) -> Result<()> {
+        instructions::release_pot::handle_release_pot(ctx)
+    }
+
+    /// Anyone recomputes coverage and redistributes the reserve in turn order
+    /// (T11). Moves no money. All n Member accounts come as writable
+    /// remaining_accounts in turn order.
+    pub fn update_coverage<'info>(ctx: Context<'info, UpdateCoverage<'info>>) -> Result<()> {
+        instructions::update_coverage::handle_update_coverage(ctx)
+    }
+
+    /// After Completed or Cancelled: stock back, and the unused guarantee and
+    /// top-ups pro rata (T12, SPEC §7). Reads snapshots and decrements nothing,
+    /// so withdraw order cannot change anyone's share.
+    pub fn withdraw(ctx: Context<Withdraw>) -> Result<()> {
+        instructions::withdraw::handle_withdraw(ctx)
+    }
+
+    /// Any joined member unwinds their own join before activation (G2 repair).
+    /// Stock and guarantee back, seat cleared, Member account closed so the
+    /// same wallet can rejoin. The only exit from Forming that does not need
+    /// the creator to act.
+    pub fn leave_forming(ctx: Context<LeaveForming>) -> Result<()> {
+        instructions::leave_forming::handle_leave_forming(ctx)
+    }
+
+    /// Creator only, Forming only. Refunds go through `withdraw` (T09).
+    pub fn cancel_circle(ctx: Context<CreatorOnly>) -> Result<()> {
+        instructions::lifecycle::handle_cancel_circle(ctx)
+    }
+
+    /// Creator only, once every seat has joined (T09).
+    pub fn activate(ctx: Context<CreatorOnly>) -> Result<()> {
+        instructions::lifecycle::handle_activate(ctx)
+    }
+
+    /// Adds USDC to the circle: an escrow deficit first, then the reserve
+    /// (T16, SPEC §5). The cure for Paused.
+    pub fn top_up_reserve(ctx: Context<TopUpReserve>, amount: u64) -> Result<()> {
+        instructions::top_up_reserve::handle_top_up_reserve(ctx, amount)
+    }
+
+    /// Locks more of the circle's stock behind the signer's seat (T16).
+    pub fn add_stock(ctx: Context<AddStock>, raw: u64) -> Result<()> {
+        instructions::add_stock::handle_add_stock(ctx, raw)
+    }
+
+    /// Declares a missed contribution a default and settles the defaulter's
+    /// remaining rounds from their stock, then the reserve (T15, SPEC §6).
+    pub fn declare_default<'info>(
+        ctx: Context<'info, DeclareDefault<'info>>,
+        turn: u8,
+    ) -> Result<()> {
+        instructions::declare_default::handle_declare_default(ctx, turn)
+    }
+
+    /// Creates the liquidation pool for one USDC and stock mint pair (T14). Admin
+    /// only: the program's upgrade authority.
+    pub fn init_pool(ctx: Context<InitPool>, discount_bps: u16) -> Result<()> {
+        instructions::pool::handle_init_pool(ctx, discount_bps)
+    }
+
+    /// Moves the pool authority's own USDC into the pool (T14).
+    pub fn seed_pool(ctx: Context<SeedPool>, amount: u64) -> Result<()> {
+        instructions::pool::handle_seed_pool(ctx, amount)
+    }
+
+    /// Creates the price feed for one stock mint (T04, SPEC §5). Admin only
+    /// since T14: the program's upgrade authority.
     pub fn init_price_feed(ctx: Context<InitPriceFeed>) -> Result<()> {
         instructions::price_feed::handle_init_price_feed(ctx)
     }

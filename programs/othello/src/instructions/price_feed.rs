@@ -17,6 +17,26 @@ use crate::valuation::{decode_multiplier_fixed, effective_multiplier_bits, scale
 pub struct InitPriceFeed<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+    /// `authority` must be the admin: the program's upgrade authority. `init_pool`
+    /// uses the same two accounts for the same reason.
+    ///
+    /// This is the bootstrap root the oracle-takeover finding asked for (T04
+    /// adversary, Codex 2026-09-22). Before it, `init_price_feed` made whoever
+    /// called it first the authority of that mint's feed, permanently, and the
+    /// feed's prices are what every valuation reads. A first-caller-wins
+    /// initializer cannot be part of a deployed trust model.
+    ///
+    /// The upgrade authority is the key that deploys the program, so it needs no
+    /// new key, no config account and no setup transaction, and there is no window
+    /// between deploy and first use for anyone else to take. It is read from the
+    /// loader's own ProgramData account, which the program cannot be handed a fake
+    /// of: `program` must be this program, its ProgramData address is derived from
+    /// that, and the upgradeable loader owns it. A program deployed immutable has
+    /// no upgrade authority, and then nobody is the admin, which is refused.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ OthelloError::Unauthorized)]
+    pub program: Program<'info, crate::program::Othello>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(authority.key()) @ OthelloError::Unauthorized)]
+    pub program_data: Account<'info, ProgramData>,
     /// CHECK: read only, and only to bind the feed's PDA to a mint. The handler
     /// refuses any mint outside the ADR-012 allowlist.
     pub stock_mint: UncheckedAccount<'info>,

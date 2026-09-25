@@ -190,6 +190,43 @@ describe("T08 create_circle", () => {
     }
   });
 
+  /**
+   * Both of these were created happily before the early T09 review, and both
+   * produced the same shape of failure: a circle that exists, takes the first
+   * member's stock and guarantee, and can then never reach Active. The money is
+   * only recoverable through a creator cancellation.
+   *
+   * So the assertion that matters is not that they fail. It is that they fail
+   * HERE, at creation, before anyone has deposited anything.
+   */
+  it("refuses parameters that make a circle unable to ever complete", async () => {
+    const TWO_POW_63 = "9223372036854775808";
+    const I64_MAX = "9223372036854775807";
+
+    assert.equal(
+      await h.refusal(create({ guaranteePerMember: TWO_POW_63 as unknown as number })),
+      "InvalidParams",
+      "n x guarantee must fit the u64 that reserve_total, deposits_total and the vault all are",
+    );
+
+    assert.equal(
+      await h.refusal(create({ roundSecs: I64_MAX as unknown as number })),
+      "InvalidParams",
+      "round_secs must leave room for now + round_secs + grace_secs",
+    );
+
+    assert.equal(
+      await h.refusal(create({ graceSecs: I64_MAX as unknown as number })),
+      "InvalidParams",
+      "grace_secs too: T15 forms deadline + grace_secs",
+    );
+
+    // The boundary itself is accepted, which pins the bound as <= and not <.
+    // 5 members, so the largest representable guarantee is u64::MAX / 5.
+    const MAX_G = (2n ** 64n - 1n) / 5n;
+    await create({ guaranteePerMember: MAX_G.toString() as unknown as number });
+  });
+
   it("refuses a member list that is the wrong size, or has a duplicate, or omits the creator", async () => {
     const stranger = () => anchor.web3.Keypair.generate().publicKey;
 

@@ -127,7 +127,17 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       and implements `quote_valuation(raw, haircut_bps, max_price_age)` with the accounts
       exactly as SPEC states. Not blocking, and no invariant depends on which way it is
       resolved; recorded so the design session can ratify or correct the reading.
-- [ ] BLOCKING before T23 (any deploy). **Unauthenticated oracle takeover:**
+- [x] RESOLVED in T14 (2026-09-24, build), pending the design owner's SPEC wording (r6).
+      The admin is now the program's UPGRADE AUTHORITY, read from the loader's own
+      ProgramData account: init_price_feed and init_pool require it to sign, and every other
+      admin instruction is gated by an authority those two recorded. No new account, no new
+      key, no setup transaction, so no window after deploy for anyone to take. Attacked in
+      tests/t14-pool.spec.ts: a stranger is refused, a stranger bringing a genuine
+      ProgramData account of THEIR OWN program is refused, and an immutable program
+      (authority None) has no admin at all. Mutation-tested: removing either constraint fails
+      the suite. Codex's required shape, "a fixed deploy-time authority", is what this is.
+      Original entry, kept for the record:
+      BLOCKING before T23 (any deploy). **Unauthenticated oracle takeover:**
       `init_price_feed` has no authority gate, and SPEC cannot currently give it one. SPEC:113 puts `init_price_feed` on the admin row
       and lists `unauthorized` among its refusals, but SPEC section 4 defines no admin or
       config account for the program to check a signer against: `PriceFeed.authority` is
@@ -257,3 +267,253 @@ Mark `BLOCKING` if the merge should not proceed without an answer.
       Joshua would rather not advertise how it was built.
       NOT THE BUILD'S CALL. Joshua approves the list before anything is deleted, and it
       lands as one commit so it can be reverted whole.
+
+- [ ] The real xStocks carry a TransferHook extension with its program id UNSET (T09, 2026-09-23)
+      Reading the committed fixtures shows all four mints carry, besides
+      ScaledUiAmountConfig and TokenMetadata: PermanentDelegate, Pausable,
+      DefaultAccountState, ConfidentialTransferMint and TransferHook.
+
+      Right now none of them blocks Othello. DefaultAccountState is 1, thawed, so a
+      new vault is not born frozen. Pausable's paused byte is 0. TransferHook's
+      program id is all zeroes, so `transfer_checked` runs without invoking a hook.
+      That is the only reason T09's plain transfer_checked works against real bytes.
+
+      Each of those is the issuer's to change at any time, with no warning and no
+      action from us. If the issuer ever sets a hook program, every Othello transfer
+      of that mint fails until the program resolves the hook's extra account metas
+      through `spl_transfer_hook_interface`. If they pause, or flip the default
+      account state, the same. This is KNOWN-LIMITS L7 ("issuer powers not handled")
+      with the specific mechanism now named rather than assumed.
+
+      Not blocking the hackathon: the demo runs on devnet against S2's mirror mints,
+      which carry only ScaledUiAmountConfig. It is a mainnet question, for the design
+      session, alongside L7's "revisit at mainnet".
+
+- [ ] bankrun's bundled Token-2022 cannot parse a real xStock (T09, 2026-09-23, RESOLVED IN THE HARNESS)
+      solana-bankrun 0.4.0 embeds a Token-2022 that predates ScaledUiAmountConfig
+      (extension 25) and Pausable (26). Its TLV walk errors on an unknown
+      discriminant, so the program's own GetAccountDataSize returns
+      InvalidAccountData against the real mint and no ATA can be created for it.
+
+      Proved rather than inferred: a probe created an ATA for a bare Token-2022 mint
+      and failed for NFLXx in the same harness run.
+
+      Resolved by loading the real program from tests/fixtures/spl_token_2022.so,
+      dumped from devnet with `solana program dump`, which is the same provenance
+      rule the mint fixtures follow. Recorded because it is a standing trap: any
+      future test that moves a Token-2022 token depends on that file being loaded,
+      and a harness that quietly fell back to the bundled program would fail in a way
+      that looks like a program defect rather than a toolchain one.
+
+- [ ] I4's wording is externally falsifiable now the vault is an ATA (T09 adversary, 2026-09-23)
+      INVARIANTS.md I4 reads "stock vault balance = sum of member.stock_raw", with no dust
+      clause, unlike I3 which carries "(+ dust)". The circle's stock vault is an Associated
+      Token Account, so anyone at all can transfer into it without touching Othello.
+
+      Measured by the adversary: after putting 12,345 raw units into the vault and then joining
+      with 110,000,000, the vault read 110,012,345 against a sum of member.stock_raw of
+      110,000,000. No money moved wrongly, nothing the program did was incorrect, and no design
+      can prevent an inbound transfer to an ATA.
+
+      So the equality cannot hold as an equality, and a reviewer reading I4 literally would call
+      T09 a violation. This is a wording fix in INVARIANTS.md, ">=" or "(+ dust)" as I3 already
+      has, and INVARIANTS.md is the design session's file, not the build's. Recorded here rather
+      than edited. The program is unchanged either way: it reasons from member.stock_raw, never
+      from the vault balance.
+
+- [x] RESOLVED in T14 (2026-09-24, build), pending SPEC wording (r6): init_pool refuses any
+      USDC mint not owned by classic SPL Token (`invalid_params`). Every circle takes its USDC
+      mint from the pool's seeds, so that is the single point that decides it, and SPL Token
+      has no extensions, so fee-on-transfer and every other Token-2022 extension are closed at
+      once. Tested and mutation-tested in tests/t14-pool.spec.ts. Original entry:
+      `create_circle` constrains `stock_mint` but not `usdc_mint` (T09 adversary, 2026-09-23, before T14)
+      The stock mint must be on the ADR-012 allowlist. The USDC mint has no such check: it is
+      pinned only by the pool PDA's seeds, which means whatever mint `init_pool` was pointed at.
+
+      If T14's `init_pool` is ever pointed at a Token-2022 "USDC" carrying TransferFeeConfig,
+      `join_and_lock` credits `reserve_total += guarantee` while the vault receives
+      `guarantee - fee`. The reserve would then be larger than the money behind it, which is I3,
+      and the peak-guarantee check at create time would be measuring a reserve that does not
+      exist. The same applies to every later instruction that moves USDC.
+
+      Not exploitable today: `init_pool` is admin-only and unwritten. It becomes real the moment
+      T14 lands, so the check belongs in T14, either an allowlist for the USDC mint or a refusal
+      of any mint carrying TransferFeeConfig. Raised as a suspicion, not a proven defect: no
+      allowlisted xStock carries TransferFeeConfig, confirmed by decoding all four fixtures.
+
+- [ ] SPEC §5's parameter ranges have floors but no ceilings (early T09 review, 2026-09-23)
+      SPEC.md:130 gives `guarantee_per_member > 0`, `round_secs >= 60` and
+      `grace_secs >= 30`, and no upper bound on any of the three. Each one admits a circle
+      that cannot function:
+
+      n x guarantee_per_member is compared against the peak in u128, but reserve_total,
+      deposits_total and the USDC vault's amount are all u64. A guarantee of 2^63 over
+      three seats satisfies the peak, takes the first member's deposit, and then refuses
+      every later join for ever.
+
+      round_secs = i64::MAX passes creation and accepts every join, then `activate` fails
+      on `now + round_secs` with everyone's stock already locked. grace_secs inherits the
+      same shape at T15, which forms `deadline + grace_secs`.
+
+      The build has added the REPRESENTABILITY bounds, because they follow from the field
+      widths and are not a policy choice: `guarantee_per_member <= u64::MAX / n`, and
+      `round_secs + grace_secs <= i64::MAX / 2` so that `now + round_secs + grace_secs`
+      holds for any timestamp in the lower half of the range.
+
+      What the build has NOT decided, because it is the design session's: whether there
+      should be a real maximum round length and grace, expressed in time rather than in
+      representability. i64::MAX / 2 is 146 billion years; a circle with a thousand-year
+      round is still absurd and still legal. If SPEC wants a human bound, it names it and
+      the build enforces that instead.
+
+
+- [ ] KNOWN-LIMITS L4 names two routes to a stuck Active circle; there is a third (T10-T12 adversary, 2026-09-23)
+      L4 says an Active circle that can never complete is "unreachable without a default or
+      price fall". A stale feed is neither.
+
+      If the price ages past max_price_age, or the mint's multiplier moves and nobody
+      re-prices, then release_pot and update_coverage both refuse for ever, while
+      contribute keeps accepting money: SPEC.md:105 deliberately gives contribute no price
+      check, because a late payment before a default is declared is a cure. So members can
+      go on funding a circle that cannot pay anyone.
+
+      It resolves the moment the admin sets a matching price, which is why this is L4's
+      justification being incomplete rather than wrong, and L1 already owns the
+      single-admin dependency. But on a real xStock the multiplier change is scheduled by
+      the ISSUER, not by Othello's admin, so the trigger sits outside every party in the
+      circle, and the window between the issuer's change and the admin noticing is not
+      bounded by anything.
+
+      Design-level, for the design session. Not a defect in T10 to T12, and the build has
+      not changed L4 or anything else it owns.
+
+- [x] RESOLVED 2026-09-24 by `leave_forming`. **A joined member cannot recover assets from a
+      Forming circle if the creator does nothing** (Codex gate 2 review, 2026-09-23)
+
+      SPEC.md:102-104 makes join move a member's stock AND guarantee into the circle,
+      requires every seat before activation, and grants cancellation to the creator alone.
+      The implementation follows that exactly: lifecycle.rs accepts only the creator for
+      cancel_circle, and withdraw.rs refuses unless Completed or Cancelled.
+
+      The sequence needs no bad actor. A creator names A, B and a third wallet. A and B
+      join; their stock and guarantees are in the circle's ATAs. The third seat never
+      joins, so activate can never pass. If the creator then does nothing, neither A nor B
+      can cancel and neither can withdraw. Their assets are locked indefinitely.
+
+      This is not a failed attempt to create a circle, it is a live circle holding money
+      with no exit, and an ordinary stalled formation reaches it. An on-curve check on the
+      member list would not fix it.
+
+      SPEC-LEVEL, NOT AN IMPLEMENTATION CHOICE. The design needs a recovery path that does
+      not depend on the creator: a recorded formation expiry after which anyone, or any
+      joined member, may cancel; or a Forming-state member unwind. Whichever is chosen,
+      its accounting and its refusals then need implementing and scenario-testing, and
+      KNOWN-LIMITS L4's statement about stuck circles needs revisiting with it.
+
+      DESIGN DECISION, 2026-09-24: add `leave_forming`, callable by any joined member at
+      any time before activation. No formation deadline and no override. Implemented and
+      tested; see DONE.md.
+
+      STILL OWED BY THE DESIGN PACK, and the reason gate 2 stays open: SPEC.md must gain
+      the `leave_forming` row in §5, and `deposits_total` must be reworded from "ever
+      deposited" to the current settlement-deposit total, because a Forming unwind
+      reverses it. The build has implemented that meaning and cannot edit SPEC.md.
+
+- [x] ADMIN ROTATION: DECIDED by Joshua, 2026-09-24: (a) for the hackathon, (c) before
+      Colosseum or mainnet, tracked in TASKS.md "ROTATE_AUTHORITY". (b) was rejected: tying
+      every admin call to the live upgrade authority means an immutable program (upgrade
+      authority removed, the normal end state for trust-minimised DeFi) could never set a price
+      again, so every circle would go stale and refuse payouts.
+      Original entry:
+      ADMIN ROTATION (T14 adversary, 2026-09-24). Decision for Joshua, before the Gate 3 review.
+      init_price_feed and init_pool record the signing upgrade authority as `feed.authority`
+      and `pool.authority`, and set_prices, touch_prices and seed_pool check THAT recorded key.
+      So if the upgrade authority is rotated later (for example after a suspected leak), the
+      OLD key still sets prices and seeds the pool. Proven by the adversary: rewrite the
+      ProgramData authority, and set_prices from the old key still succeeds.
+      Two readings of SPEC §5 "admin":
+        (a) the key that created the feed or pool (current behaviour). Simple; a rotation
+            needs a new feed, which the fixed PDA address does not allow.
+        (b) whoever the upgrade authority is NOW: every admin instruction checks ProgramData,
+            and the stored authority becomes informational. A rotation then takes effect
+            everywhere at once, which is the point of rotating.
+      (b) is the safer rule and costs two more accounts on set_prices, touch_prices and
+      seed_pool. On devnet for the hackathon the practical risk is low (ARCHITECTURE:
+      "Admin key | leaked on devnet | fake prices | devnet only, stated | Accepted").
+
+- [ ] CAPPED-BRANCH SURVIVORS' COVERAGE (T15 adversary, suspicion, 2026-09-24). When
+      declare_default takes the capped branch, a survivor whose `allocated` is capped down
+      keeps its previous, higher `last_coverage_bps`. SPEC.md:70 calls the field "as of last
+      recompute" and the capped branch deliberately values nobody, so this reads as allowed;
+      the next update_coverage corrects it. Recorded so the design owner can confirm or ask
+      for a recomputed-from-allocation figure. The DEFAULTER's own figure is set to u32::MAX
+      on both branches.
+
+- [ ] INTERMITTENT SUITE STALL: TRIGGER FOUND AND FIXED, NOT FULLY GONE (2026-09-25).
+      Runs stalled with no output inside bankrun's native code (once for over an hour at
+      ~650% CPU). Not load-related. TRIGGER: T14's harness loaded Othello twice per context,
+      via startAnchor and again as upgradeable-loader accounts that overrode it. Measured on
+      one test that builds 16 contexts (t10-adversary "every price on the way down"): 3 of 8
+      runs stalled with the double load; 0 of 8 on the gate 2 branch without it; 0 of 10 after
+      the fix (commit 948d5ee: bankrun start(), Othello placed only as the upgradeable deploy).
+      NOT FULLY GONE: of three full single-process anchor test runs after the fix, one still
+      stalled (the other two passed, 143 in 63 s and 65 s). Every spec file in its own process
+      is the reliable way to run the suite; the Gate 3 brief says so.
+
+- [x] RESOLVED by SPEC r8: I14 reworded to one top-up per Paused. Original entry:
+      I14 WORDING (T16, 2026-09-24). INVARIANTS I14: "default with shortfall > reserve, then a
+      top-up of next_gate_short_by (which already includes the deficit) lets the circle
+      complete". At unchanged prices a single default cannot make shortfall exceed the reserve
+      (the create-time peak check sizes the reserve for exactly that), so a deficit needs a price
+      fall or a second default, and then later gates need more reserve too. In
+      tests/t16-top-up.spec.ts the deficit case (g 30, wrapper 150 -> 50) needs TWO top-ups,
+      157 then 21, each exactly that round's next_gate_short_by, and then completes. The code
+      matches SPEC's formulas; the question is only the invariant's wording. Suggest: "each
+      Paused is cured by a top-up of exactly next_gate_short_by, and the first fills the
+      deficit". Design owner's call.
+
+- [x] RESOLVED by SPEC r8 (Joshua, decision (a), 2026-09-24): a deficit fill is a deposit, shared
+      pro rata at settlement. SPEC §9 copy changed; KNOWN-LIMITS L14 follows in r9. Original entry:
+      DEFICIT FILLS ARE PARTLY RETURNED, CONTRARY TO SPEC §9 (T16 adversary, 2026-09-24).
+      SPEC.md:228 (FLOWS, Round not funded: escrow short) tells the filler "the first {deficit}
+      prepays {name}'s contributions and is NOT RETURNED". But SPEC §5 adds the WHOLE top-up,
+      fill included, to Member.top_ups and deposits_total, and §7's withdraw weight is
+      guarantee + top_ups - forfeited. So at Completed the filler gets part of the fill back pro
+      rata, out of the other members' shares. The code implements §5 and §7 exactly; the pack
+      contradicts itself. Design owner's choice:
+        (a) keep the maths, change the §9 copy (the fill is shared like any other deposit); or
+        (b) keep the copy, and have the fill NOT enter top_ups/deposits_total (it becomes a
+            pure contribution to the defaulted seat), which changes §5, §7 and I15's reading.
+      (a) is copy only. (b) is a program change plus tests.
+
+- [x] RESOLVED by SPEC r8: I18 now states the Repricing exception. Original entry:
+      CAPPED-BRANCH short_by IS APPROXIMATE, SO I18 CAN MISS ONCE (T16 adversary, suspicion).
+      declare_default's capped branch (Repricing) adds only the new deficit to
+      next_gate_short_by, not the reserve the default just lost, so a top-up of exactly that
+      figure may not unpause the next gate until an update_coverage recomputes it. SPEC §5 labels
+      this branch "approximate until the next update_coverage", so this is the documented
+      behaviour, but I18 reads "a top-up of exactly short_by makes the next gate pass" without
+      that exception. Wording, or a note in the UI to recheck after repricing.
+
+
+- [ ] DEVNET DEPLOY COSTS MORE THAN AGENTS.md's "2.5 SOL budget" (S2, 2026-09-25). Measured, not
+      estimated: target/deploy/othello.so is 695,216 bytes; `solana rent -u devnet 695261` (ELF +
+      the 45-byte ProgramData header) = 3.53257612 SOL locked for the life of the program. Building
+      for size does not bring it under 2.5: opt-level "s" 597,232 bytes = 3.03 SOL, "z" 569,432
+      bytes = 2.89 SOL, and either would change compute costs and the tested binary. Devnet SOL is
+      free, so the fix is funding (at least 4 SOL), not a smaller program. AGENTS.md's figure is
+      Joshua's to update.
+- [ ] THE DEPLOY MUST USE ONE PARTICULAR PROGRAM KEYPAIR (S2, 2026-09-25). declare_id and
+      Anchor.toml say DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT. Of the othello-keypair.json
+      files on this machine, only ~/myvscode_linux/othello/target/deploy/ holds that one; every
+      worktree's `anchor build` made its own. target/ is gitignored, so that file has no backup.
+      Deploying from a worktree without copying it in would put the program at a different
+      address, and every instruction would fail DeclaredProgramIdMismatch.
+- [ ] THE DEFAULT (MAINNET) BUILD DOES NOT PIN USDC (S2 adversary, 2026-09-25). init_pool checks
+      the USDC mint is classic SPL Token and nothing more; only the devnet build pins a specific
+      mint (test USDC). init_pool is admin-only, so a stranger cannot open a pool on a fake USDC,
+      but nothing stops the admin doing it by mistake, including with Othello's own test USDC if it
+      were ever created on mainnet. Before any mainnet deploy: pin Circle's mainnet USDC the same
+      way (alongside CIRCLE_USDC and ROTATE_AUTHORITY in TASKS.md). create-devnet-mints.ts now
+      refuses any RPC whose genesis hash is not devnet, so the test USDC cannot be made on mainnet
+      by that script.
