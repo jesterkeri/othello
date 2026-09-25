@@ -18,12 +18,13 @@ export const NAV_HREF: Record<string, string> = {
   Home: "/",
   Circles: "/circle/demo",
   xStocks: "/assets",
+  Portfolio: "/portfolio",
   "Split lab": "/split-lab",
   "How it works": "/how-it-works",
 };
 
 /** The labels that lead somewhere real today. */
-export const BUILT = new Set(["Home", "Circles", "xStocks", "Split lab", "How it works"]);
+export const BUILT = new Set(["Home", "Circles", "xStocks", "Split lab", "How it works", "Portfolio"]);
 
 export function hrefFor(label: string): string {
   return NAV_HREF[label] ?? "/";
