@@ -7,7 +7,10 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import s from './Shell.module.css';
 import { WalletControl } from './WalletConnect';
 import { hrefFor } from '@/lib/nav';
-import { PALETTES, STORAGE_KEY, customToProfile, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
+import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
+
+/** The builder's hue choices, as on Landing. */
+const SWATCH_HUES = [8, 26, 44, 66, 96, 140, 168, 192, 212, 236, 268, 302];
 
 /** Each nav item's tag colour (Circle.dc.html handoff). */
 const TIP: Record<string, string> = { Home: 'acid', Portfolio: 'sky', Assets: 'teal', Circles: 'clay', 'How it works': 'cobalt' };
@@ -63,7 +66,7 @@ export function useTheme() {
   const mine = useMemo(() => custom.map(customToProfile), [custom]);
   const profile: Profile = choice.startsWith('c') ? (mine[Number(choice.slice(1))] ?? PALETTES[1]!) : (PALETTES[Number(choice.slice(1))] ?? PALETTES[1]!);
   const vars = useMemo(() => innerVars(profile, mode === 'dark'), [profile, mode]) as CSSProperties;
-  return { mode, setMode, choice, setChoice, mine, vars };
+  return { mode, setMode, choice, setChoice, mine, vars, custom, setCustom };
 }
 
 export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, children }: ShellProps) {
@@ -79,6 +82,26 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
     return () => document.removeEventListener('keydown', esc);
   }, [menu]);
 
+  // Joshua: a palette could only be made on the landing page, but the palette exists everywhere.
+  // The same builder as Landing (SLOT_LABELS roles, SWATCH_HUES, huesFromBase), in every page's menu.
+  const [builder, setBuilder] = useState(false);
+  const [draft, setDraft] = useState<string[]>(() => huesFromBase(210));
+  const [draftSlot, setDraftSlot] = useState(0);
+  const [draftName, setDraftName] = useState('');
+  const draftHues = huesFor({ dark: draft }, t.mode === 'dark');
+  const saveProfile = () => {
+    const next = [...t.custom, { name: draftName.trim() || `Profile ${t.custom.length + 1}`, hues: draft }];
+    t.setCustom(next);
+    t.setChoice(`c${next.length - 1}`);
+    setBuilder(false);
+    setDraftName('');
+  };
+  const removeProfile = (i: number) => {
+    t.setCustom(t.custom.filter((_, k) => k !== i));
+    if (t.choice === `c${i}`) t.setChoice('r1');
+    else if (t.choice.startsWith('c') && Number(t.choice.slice(1)) > i) t.setChoice(`c${Number(t.choice.slice(1)) - 1}`);
+  };
+
   const paletteIcon = (
     <svg viewBox="0 0 24 24" width={22} height={22} fill="none" aria-hidden><path d="M12 3.4c-4.8 0-8.7 3.8-8.7 8.5s3.9 8.5 8.7 8.5c1.4 0 2.1-.8 2.1-1.8 0-1.6 1.1-2.4 2.5-2.4h1.3c2 0 3.5-1.6 3.5-3.6 0-5.2-4.1-9.2-9.4-9.2Z" stroke="currentColor" strokeWidth={2.1} strokeLinejoin="round" /><circle cx={8.3} cy={9.4} r={1.35} fill="var(--acid)" /><circle cx={12} cy={7.6} r={1.35} fill="var(--sky)" /><circle cx={15.6} cy={9.8} r={1.35} fill="var(--clay)" /><circle cx={7.9} cy={13.6} r={1.35} fill="var(--teal)" /></svg>
   );
@@ -86,7 +109,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
   const colours = (where: 'rail' | 'top') => (
     <div className={`${s.menu} ${where === 'rail' ? s.menuRail : ''}`} role="dialog" aria-label="Colours and mode">
       <span className={s.menuLabel}>Recommended</span>
-      {[...PALETTES.map((p, i) => ({ p, key: `r${i}` })), ...t.mine.map((p, i) => ({ p, key: `c${i}` }))].map(({ p, key }) => (
+      {PALETTES.map((p, i) => ({ p, key: `r${i}` })).map(({ p, key }) => (
         <button key={key} type="button" className={`${s.profile} ${t.choice === key ? s.profileOn : ''}`} aria-pressed={t.choice === key} onClick={() => { t.setChoice(key); setMenu(null); }}>
           <span className={s.thumb} style={{ background: String(innerVars(p, t.mode === 'dark')['--panel']) }}>
             <span className={s.thumbRow}><span style={{ background: p.dark[0] }} /><span style={{ background: p.dark[1] }} /></span>
@@ -95,6 +118,52 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
           <span className={s.profileText}><b>{p.name}</b><small>{p.note}</small></span>
         </button>
       ))}
+      {t.mine.length > 0 && <span className={s.menuLabel}>Your profiles</span>}
+      {t.mine.map((p, i) => (
+        <div key={`c${i}`} className={s.mineRow}>
+          <button type="button" className={`${s.profile} ${t.choice === `c${i}` ? s.profileOn : ''}`} aria-pressed={t.choice === `c${i}`} onClick={() => { t.setChoice(`c${i}`); setMenu(null); }}>
+            <span className={s.thumb} style={{ background: String(innerVars(p, t.mode === 'dark')['--panel']) }}>
+              <span className={s.thumbRow}><span style={{ background: p.dark[0] }} /><span style={{ background: p.dark[1] }} /></span>
+              <span className={s.thumbBtn} style={{ background: p.dark[4] }} />
+            </span>
+            <span className={s.profileText}><b>{p.name}</b><small>{p.note}</small></span>
+          </button>
+          <button type="button" className={s.mineDelete} aria-label={`Delete ${p.name}`} onClick={() => removeProfile(i)}>&times;</button>
+        </div>
+      ))}
+      <button type="button" className={s.newProfile} aria-expanded={builder} onClick={() => setBuilder(!builder)}>{builder ? 'Close' : '+ New profile'}</button>
+      {builder && (
+        <div className={s.builder}>
+          <span className={s.menuLabel}>Which colour</span>
+          <div className={s.slotTabs}>
+            {SLOT_LABELS.map((label, i) => (
+              <button key={label} type="button" aria-pressed={draftSlot === i} className={`${s.slotTab} ${draftSlot === i ? s.slotTabOn : ''}`} onClick={() => setDraftSlot(i)}>
+                <span className={s.dot} style={{ background: draftHues[i] }} />{label}
+              </button>
+            ))}
+          </div>
+          <span className={s.menuLabel}>{draftSlot === 2 ? 'Deep fill, carries light text' : 'Pick a colour for this role'}</span>
+          <div className={s.swatches}>
+            {SWATCH_HUES.map((h) => {
+              const deep = draftSlot === 2;
+              const c = hsl(h, deep ? 0.8 : 0.72, deep ? 0.34 : 0.55);
+              return (
+                <button key={h} type="button" aria-label={`Hue ${h}`} aria-pressed={draft[draftSlot] === c} className={`${s.swatch} ${draft[draftSlot] === c ? s.swatchOn : ''}`} style={{ background: c }}
+                  onClick={() => setDraft(draft.map((d, k) => (k === draftSlot ? c : d)))} />
+              );
+            })}
+          </div>
+          <span className={s.draftPreview} style={{ background: String(innerVars({ brand: draft[2]!, dark: draft }, t.mode === 'dark')['--panel']) }}>
+            <span className={s.thumbRow}><span style={{ background: draftHues[0] }} /><span style={{ background: draftHues[1] }} /><span style={{ background: draftHues[2] }} /></span>
+            <span className={s.thumbBtn} style={{ background: draftHues[4] }} />
+          </span>
+          <input className={s.nameInput} value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Name this profile" aria-label="Profile name" />
+          <div className={s.builderRow}>
+            <button type="button" className={s.btnGhost} onClick={() => setDraft(huesFromBase(Math.round(Math.random() * 359)))}>Surprise me</button>
+            <button type="button" className={s.btnSolid} onClick={saveProfile}>Save profile</button>
+          </div>
+        </div>
+      )}
       <span className={s.menuLabel}>Mode</span>
       <div className={s.modes}>
         {(['light', 'dark'] as const).map((m) => (

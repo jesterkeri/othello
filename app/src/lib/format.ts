@@ -13,3 +13,13 @@ export function exactTokens(raw: string, decimals: number): string {
   const frac = decimals ? digits.slice(digits.length - decimals) : "";
   return frac ? `${whole}.${frac}` : whole;
 }
+
+/**
+ * What a wallet shows for a raw u64 balance: raw x multiplier, in whole tokens, computed on the
+ * integer with the multiplier at 9 decimals (the program's fixed point, SPEC §4) and floored, so no
+ * digit comes from a float (Codex T18d r2: Portfolio rounded u64 balances through Number).
+ */
+export function shownTokens(raw: string, decimals: number, multiplier: number): string {
+  const fixed = BigInt(Math.round(multiplier * 1e9));
+  return exactTokens(((BigInt(raw) * fixed) / 1_000_000_000n).toString(), decimals);
+}

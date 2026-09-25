@@ -214,7 +214,7 @@ export default function AssetsIndex() {
                     const slot = SLOTS[i % SLOTS.length]!;
                     const liq = m.market?.liquidity ?? null;
                     return (
-                      <Link key={m.address} href={`/assets/${m.symbol}`} className={s.tile} style={{ animationDelay: `${0.1 + (i % 6) * 0.05}s` }}>
+                      <Link key={m.address} href={`/assets/${m.symbol}`} className={s.tile} style={{ animationDelay: `${0.1 + (i % 6) * 0.05}s`, "--slot": `var(--${slot})` } as CSSProperties}>
                         <span aria-hidden className={s.glint} />
                         <span className={s.tileTop}>
                           <span className={s.tileName}>

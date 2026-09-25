@@ -58,6 +58,29 @@
 .modes .modeOn { background: #0B0B0B; color: #FBF9F2; }
 
 /* The rail's popover opens to the RIGHT of the rail. */
+.menu { max-height: calc(100vh - 36px); overflow-y: auto; }
+.mineRow { display: flex; align-items: center; gap: 6px; }
+.mineRow .profile { flex: 1 1 auto; min-width: 0; }
+.mineDelete { flex: 0 0 auto; width: 34px; height: 34px; border: 2px solid #0B0B0B; border-radius: 999px; background: transparent; color: #0B0B0B; font-size: 18px; font-weight: 800; line-height: 1; padding: 0; }
+.mineDelete:hover { background: var(--clay); color: var(--clayInk); }
+.newProfile { border: 3px dashed #0B0B0B; border-radius: 999px; background: transparent; color: #0B0B0B; min-height: 42px; font-size: 12px; font-weight: 800; letter-spacing: .04em; }
+.builder { display: flex; flex-direction: column; gap: 8px; border: 3px solid #0B0B0B; border-radius: 20px; padding: 12px; background: #EFE9DC; }
+.slotTabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.slotTab { display: flex; align-items: center; gap: 6px; border: 2px solid #D8D2C4; border-radius: 999px; background: transparent; color: #0B0B0B; padding: 4px 10px 4px 5px; font-size: 11px; font-weight: 800; }
+.slotTabOn { border-color: #0B0B0B; background: #FBF9F2; }
+.dot { width: 14px; height: 14px; border: 2px solid #0B0B0B; border-radius: 999px; }
+.swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.swatch { aspect-ratio: 1; border: 2px solid #0B0B0B; border-radius: 999px; padding: 0; }
+.swatchOn { outline: 3px solid #0B0B0B; outline-offset: 2px; }
+.draftPreview { display: flex; flex-direction: column; gap: 6px; border: 2px solid #0B0B0B; border-radius: 12px; padding: 9px; }
+.draftPreview .thumbRow span:nth-child(1) { flex: 1 1 0; }
+.draftPreview .thumbRow span:nth-child(2) { flex: 0 0 32px; }
+.draftPreview .thumbRow span:nth-child(3) { flex: 0 0 22px; }
+.nameInput { border: 3px solid #0B0B0B; border-radius: 999px; background: #FBF9F2; color: #0B0B0B; padding: 9px 14px; font: inherit; font-size: 13px; font-weight: 700; }
+.builderRow { display: flex; gap: 6px; }
+.btnGhost, .btnSolid { flex: 1 1 0; min-height: 40px; border: 3px solid #0B0B0B; border-radius: 999px; font-size: 12px; font-weight: 800; }
+.btnGhost { background: transparent; color: #0B0B0B; }
+.btnSolid { background: #0B0B0B; color: #FBF9F2; }
 .menuRail { top: auto; right: auto; left: calc(100% + 16px); bottom: -6px; }
 
 @keyframes rowIn { from { opacity: 0; transform: translateY(-8px) scale(.97); } to { opacity: 1; transform: none; } }

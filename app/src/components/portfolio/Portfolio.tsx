@@ -14,7 +14,8 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import Shell from '@/components/othello/Shell';
 import { useLiveXStocks } from '@/components/assets/useLiveXStocks';
 import type { Holdings } from '@/app/api/holdings/route';
-import { formatRaw, formatUsdc, obligations, seatSet, stockCover } from '@/lib/circle';
+import { RAW_DECIMALS, USDC_DECIMALS, formatRaw, formatUsdc, obligations, seatSet, stockCover } from '@/lib/circle';
+import { exactTokens, shownTokens } from '@/lib/format';
 import type { LiveCircle } from '@/lib/live';
 import { useWalletUi } from '@/lib/wallet';
 
@@ -182,7 +183,10 @@ export default function Portfolio() {
               ) : (
                 <div className={s.down}>
                   <b>Not in a circle yet</b>
-                  <span>The demo circle&apos;s five seats are taken. Watch it run, or move it on: anyone can release a pot.</span>
+                  <span>
+                    The demo circle&apos;s five seats are taken. Watch it run: once every seat has paid and the program&apos;s
+                    checks pass, anyone can release the pot, and the circle page shows what is possible right now.
+                  </span>
                   <Link href="/circle/demo" className={s.btnCream}>Open the demo circle<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
                 </div>
               )}
@@ -198,7 +202,7 @@ export default function Portfolio() {
                   <button type="button" className={s.info} aria-expanded={how} aria-label="How Othello counts your holdings" onClick={() => setHow(!how)}>i</button>
                   {how && (
                     <span role="dialog" aria-label="How Othello counts" className={s.how}>
-                      <b>Raw × multiplier = what you hold.</b>
+                      <b>Before × multiplier = what you hold.</b>
                       <span>Issuers change a token&apos;s multiplier for a split or a dividend. Othello reads it from the mint, so a split never looks like a loss.</span>
                     </span>
                   )}
@@ -209,10 +213,11 @@ export default function Portfolio() {
                 <Link key={h.address} href={`/assets/${h.symbol}`} className={s.row} style={{ '--slot': `var(--${h.slot})` } as CSSProperties}>
                   <span className={s.badge} style={{ background: `var(--${h.slot})`, color: `var(--${h.slot}Ink)` }} aria-hidden>{h.symbol.slice(0, 2)}</span>
                   <span className={s.name}><b>{h.symbol}</b><span>{h.name}</span></span>
-                  <span className={s.math}>
-                    <span>{(Number(h.raw) / 10 ** h.decimals).toFixed(6)} raw</span>
-                    <span>× {h.multiplier.toFixed(4)}</span>
-                    <span className={s.mathEq}>= {h.shown.toFixed(4)}</span>
+                  {/* Exact: the on-chain u64 as a decimal string, never through a JS number (Codex T18d r2). */}
+                  <span className={s.math} title="Tokens before the multiplier, times the multiplier, is what your wallet shows">
+                    <span>{exactTokens(h.raw, h.decimals)} before ×</span>
+                    <span>× {Number(h.multiplier.toFixed(4))}</span>
+                    <span className={s.mathEq}>= {shownTokens(h.raw, h.decimals, h.multiplier)}</span>
                   </span>
                   <span className={s.price}>
                     <span>{h.usdValue !== null && h.shown > 0 ? usd(h.usdValue / h.shown) : 'No price'}</span>
@@ -240,8 +245,8 @@ export default function Portfolio() {
               <span>Reading devnet…</span>
             ) : (
               <span className={s.demoPills}>
-                <span><b>{formatRaw(Number(hold.devnet.mirrorRaw), 2)}</b> NFLXx devnet mirror (not the real NFLXx)</span>
-                <span><b>{formatUsdc(Number(hold.devnet.testUsdc))}</b> Othello test USDC (not real USDC)</span>
+                <span><b>{exactTokens(hold.devnet.mirrorRaw, RAW_DECIMALS)}</b> NFLXx devnet mirror (not the real NFLXx)</span>
+                <span><b>{exactTokens(hold.devnet.testUsdc, USDC_DECIMALS)}</b> Othello test USDC (not real USDC)</span>
               </span>
             )}
           </section>
