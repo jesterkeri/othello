@@ -1,6 +1,6 @@
 # P0.2 Liveness: who keeps Othello's Pyth price fresh, and who pays
 
-**Status: DRAFT, decision is Joshua's.** Evidence below; recommendation at the end.
+**Status: DECIDED (C), 2026-09-26.** Evidence below; the decision is at the end.
 
 ## What is true today
 
@@ -42,6 +42,18 @@ Hermes key (trial for the Colosseum window; paid only if Othello continues past 
 ceiling stays 12 h while only shard-0 is used; when on-demand posting exists, the app posts a fresh
 update before each action, so the effective age at use is seconds, and the ceiling can be tightened.
 
-## Decision
+## Decision (Joshua, 2026-09-26)
 
-- [ ] Joshua: A / B / C, and if A or C: plan price seen on app.pyth.com/plans = ______, trial length = ______
+- **C**, with one correction: **until a Hermes key is active, C behaves exactly as B in production.**
+  The app says so plainly wherever a price is shown or an action is blocked: the price comes from a
+  third-party-updated Pyth account, a stale account pauses actions, and it is not a reliable update
+  service. No copy may imply Othello keeps prices fresh before on-demand posting ships.
+- Pyth plans (Joshua, from app.pyth.com/plans, 2026-09-26): **Starter $500/month plus tax**, API access to
+  all crypto symbols; **free trial 14 days**. `Crypto.*X/USD` feeds are crypto symbols, so Starter appears
+  to cover them (to confirm inside the trial by fetching one xStock update).
+- **Trial timing:** start it only once the cadence result is in and the on-demand path is built, around
+  Monday 2026-09-28, so the 14 days cover the Colosseum deadline (2026-10-12). Starting it today would
+  expire before then.
+- **Money:** $0 until the trial; **$500/month** only if live updates are needed beyond the trial.
+  Joshua decides that when the trial ends.
+- The key is created by Joshua and set only in Vercel env (server-only); never in chat, repo or logs.

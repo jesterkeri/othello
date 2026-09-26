@@ -20,7 +20,7 @@ Units are settled (units.md): Pyth's `Crypto.*X/USD` prices **one share = one di
 7. `publish_time > now` → `price_from_future`.
 8. `now − publish_time > circle.max_price_age` → `price_stale` (existing code).
 9. `conf × 10000 > max_conf_bps × price` (u128, no division) → `price_uncertain`.
-10. repricing guard (below) → `multiplier_price_mismatch` (existing code), except in `declare_default`.
+10. repricing guard (below) → `multiplier_price_mismatch` (existing code), in every valuation action including `declare_default`.
 
 Steps 2, 3 and 8 are what the SDK's `get_price_no_older_than` checks together. If the SDK is used,
 it is called first and the remaining checks follow.
@@ -49,19 +49,32 @@ The formula multiplies by the multiplier **now** and a price **published earlier
 between values the position at `new_mult × old_price` (10× for NFLXx's split). xStocks' docs advise
 pausing about 15 minutes before and after an activation (docs.xstocks.fi/developers/multipliers).
 
-- Rule A: if the mint's `new_multiplier_effective_timestamp ≤ now` and it is later than
-  `publish_time − 900`, refuse.
-- **Gap in rule A (for P1 to close):** the mint keeps only the latest scheduled change. If a change
-  activates at T1 and another is scheduled for a future T2 before anyone reads the circle, T1 is no
-  longer visible. Proposed Rule B: the circle stores `mult_seen` and `mult_changed_at`; whenever the
-  effective multiplier differs from `mult_seen`, record `mult_changed_at = now` (observation time, ≥ the
-  real activation, so conservative) and refuse until `publish_time ≥ mult_changed_at + 900`. Cost: after
-  an unobserved change the circle waits for the next Pyth update, which with shard-0 alone can take hours.
-- `declare_default` stays usable under the guard, as today (SPEC §6: liquidation proceeds during
-  Repricing). **Open for P1:** today it uses the non-scaled wrapper price, which the admin set; with Pyth
-  the wrapper price is derived from the per-share feed × the multiplier now, so it is exposed to the same
-  window. Options for ADR-013: refuse `declare_default` during the window too (a default waits ≤ one Pyth
-  update), or price it with the lower of the old and new multiplier. To be decided in P1, with Codex.
+The mint alone cannot close this: it keeps only the latest scheduled change, so an activation at T1
+followed by a change scheduled for a future T2 hides T1. And a valuation instruction cannot both record a
+change and refuse: **an error rolls back every write the instruction made** (Joshua's review,
+2026-09-26), so "record `mult_changed_at` and refuse" in one instruction records nothing.
+
+**Design for P1 (replaces the earlier Rule A / Rule B):**
+
+- Per circle, stored: `epoch_multiplier: u64` (fixed 1e9) and `epoch_observed_at: i64`. Set at
+  `create_circle` to the mint's effective multiplier and `now`.
+- New instruction **`observe_oracle_epoch`**: permissionless, moves no money, **succeeds**. It reads the
+  mint's effective multiplier at `now`; if it differs from `epoch_multiplier`, writes
+  `epoch_multiplier = effective`, `epoch_observed_at = now` and emits an event; otherwise changes nothing.
+  `epoch_observed_at` is the observation time, never earlier than the real activation, so the guard
+  below is conservative.
+- **Every valuation action** (join_and_lock, release_pot, update_coverage, quote_valuation, and
+  **declare_default**) refuses with `multiplier_price_mismatch` while either holds:
+  1. the mint's effective multiplier now ≠ `epoch_multiplier` (a change nobody has observed yet); or
+  2. `publish_time < epoch_observed_at + 900` (the supplied Pyth price was published less than 15 min
+     after the observed epoch).
+- The app bundles `observe_oracle_epoch` ahead of an action when it sees condition 1, so the user's
+  action then waits only on condition 2 (a Pyth price at least 15 minutes newer than the observation).
+- **`declare_default` refuses during the window too** (Joshua's decision). "Use the lower multiplier"
+  can underprice the stock and seize too much; waiting fails safe. SPEC §6's "liquidation proceeds during
+  Repricing" is superseded for v2; ADR-013 records it.
+- Cost: after a change, actions wait for a Pyth update published at least 15 minutes after someone
+  observes it. With shard-0 alone that can take hours; with on-demand posting, 15 minutes.
 
 ## Parameters
 
