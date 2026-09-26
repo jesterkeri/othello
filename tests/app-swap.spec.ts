@@ -75,7 +75,7 @@ function routeData(o: { inAmount?: bigint; quotedOut?: bigint; slippageBps?: num
 }
 
 /** A minimal, signed-or-unsigned shape of the documented Jupiter V6 `route` instruction. */
-function approvedTx(payer: PublicKey, sign?: Keypair, extras: InstanceType<typeof TransactionInstruction>[] = []): string {
+function approvedTx(payer: PublicKey, sign?: Keypair, extras: InstanceType<typeof TransactionInstruction>[] = [], amounts: Parameters<typeof routeData>[0] = {}): string {
   const out = ata(payer, new PublicKey(NVDAX), TOKEN_2022);
   const input = ata(payer, USDC, OTHER);
   const route = new TransactionInstruction({
@@ -92,7 +92,7 @@ function approvedTx(payer: PublicKey, sign?: Keypair, extras: InstanceType<typeo
     // Anchor's `global:route` discriminator (Jupiter's published V6 IDL), then the IDL's arguments:
     // an empty route plan and the fixed tail in_amount, quoted_out_amount, slippage_bps, platform_fee_bps,
     // shaped like the real fixture (1 USDC in, slippage 100, no platform fee).
-    data: routeData(),
+    data: routeData(amounts),
   });
   const msg = MessageV0.compile({ payerKey: payer, recentBlockhash: Keypair.generate().publicKey.toBase58(), instructions: [...extras, route] });
   const t = new VersionedTransaction(msg);
@@ -311,6 +311,8 @@ async function withFetch<T>(answers: (url: string, init?: RequestInit) => Answer
   }
 }
 const post = (body: unknown) => ({ json: async () => body }) as never;
+/** A request for 50 USDC: the transaction Jupiter returns spends exactly that and promises QUOTE.outAmount. */
+const FIFTY = { inAmount: 50_000_000n, quotedOut: 220_000_000n };
 const QUOTE = { outputMint: NVDAX, outAmount: "220000000", otherAmountThreshold: "217800000", priceImpactPct: "0.001", routePlan: [] };
 
 describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed mint", () => {
@@ -326,7 +328,8 @@ describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed
   };
 
   it("returns Jupiter's transaction, and asks Jupiter for the registry's mint, not the browser's", async () => {
-    const { out, asked } = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey));
+    // B1 (fresh review r2): the transaction spends exactly the requested 50 USDC and promises the quoted output.
+    const { out, asked } = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey, undefined, [], FIFTY), { ...QUOTE, inAmount: "50000000" });
     assert.equal(out.status, 200);
     assert.equal(out.body.outRaw, "220000000");
     assert.equal(out.body.minOutRaw, "217800000");
@@ -339,6 +342,28 @@ describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed
     assert.equal(verifySeal(out.body.seal, { message, buyer: buyer.publicKey.toBase58(), symbol: "TSLAx" }, now), false);
     assert.equal(verifySeal(out.body.seal, { message, buyer: buyer.publicKey.toBase58(), symbol: "NVDAx" }, now + 121), false);
   });
+  it("refuses a transaction or quote that is not the requested purchase (B1 fresh review r2 MAJOR)", async () => {
+    const body = { symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() };
+    const quote50 = { ...QUOTE, inAmount: "50000000" };
+    // The exact mismatch the review found: 50 USDC requested, a transaction spending 1 USDC.
+    const oneUsdc = await build(body, approvedTx(buyer.publicKey, undefined, [], { inAmount: 1_000_000n, quotedOut: 220_000_000n }), quote50);
+    assert.equal(oneUsdc.out.status, 502);
+    assert.match(String(oneUsdc.out.body.error), /does not match the quote/);
+    assert.equal(oneUsdc.out.body.seal, undefined, "no seal for a mismatched transaction");
+    // A transaction spending more than requested (a buyer's whole balance) for a dust output.
+    const drain = await build(body, approvedTx(buyer.publicKey, undefined, [], { inAmount: 99_000_000_000n, quotedOut: 1n }), quote50);
+    assert.match(String(drain.out.body.error), /does not match the quote/);
+    // The quoted output differs from the transaction's promised output.
+    const lessOut = await build(body, approvedTx(buyer.publicKey, undefined, [], { inAmount: 50_000_000n, quotedOut: 219_999_999n }), quote50);
+    assert.match(String(lessOut.out.body.error), /does not match the quote/);
+    // Slippage other than the 100 bps requested.
+    const slip = await build(body, approvedTx(buyer.publicKey, undefined, [], { ...FIFTY, slippageBps: 50 }), quote50);
+    assert.match(String(slip.out.body.error), /does not match the quote/);
+    // Jupiter quoting a different input amount than requested.
+    const other = await build(body, approvedTx(buyer.publicKey, undefined, [], FIFTY), { ...QUOTE, inAmount: "5000000" });
+    assert.match(String(other.out.body.error), /different amount/);
+  });
+
   it("refuses an unlisted symbol and a bad wallet before asking Jupiter", async () => {
     const a = await build({ symbol: "FAKEx", usdc: "50", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey));
     assert.equal(a.out.status, 404);
@@ -347,14 +372,14 @@ describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed
     assert.equal(b.out.status, 400);
   });
   it("refuses Jupiter's transaction if someone else pays it or it is not a Jupiter swap", async () => {
-    const a = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(Keypair.generate().publicKey, JUP));
+    const a = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(Keypair.generate().publicKey, JUP), { ...QUOTE, inAmount: "50000000" });
     assert.equal(a.out.status, 502);
     assert.match(String(a.out.body.error), /not paid for by this wallet/);
-    const b = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, OTHER));
+    const b = await build({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }, tx(buyer.publicKey, OTHER), { ...QUOTE, inAmount: "50000000" });
     assert.match(String(b.out.body.error), /not a Jupiter swap/);
   });
   it("accepts 0.10 USDC, the minimum, and refuses 0.099999 (Joshua: a real buy for pocket change)", async () => {
-    const ok = await build({ symbol: "NVDAx", usdc: "0.10", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey));
+    const ok = await build({ symbol: "NVDAx", usdc: "0.10", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey, undefined, [], { inAmount: 100_000n, quotedOut: 220_000_000n }), { ...QUOTE, inAmount: "100000" });
     assert.equal(ok.out.status, 200);
     assert.ok(ok.asked[0]!.includes("amount=100000&"));
     const low = await build({ symbol: "NVDAx", usdc: "0.099999", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey));

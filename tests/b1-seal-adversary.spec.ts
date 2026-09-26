@@ -330,10 +330,12 @@ describe("B1 seal adversary: signature slots", () => {
     const identity = new PublicKey(Buffer.concat([Buffer.from([1]), Buffer.alloc(31)]));
     // /api/swap itself issues the seal for this wallet (Jupiter stubbed with the documented route shape).
     const buildRoute = await import(pathToFileURL(resolve(SRC, "app/api/swap/route.ts")).href);
-    const quote = { outputMint: NVDAX, outAmount: "220000000", otherAmountThreshold: "217800000", priceImpactPct: "0.001", routePlan: [] };
+    // Request, quote and route agree (1 USDC in, 133,885 out, as the route's tail says): since the fresh review
+    // r2 fix, /api/swap refuses to seal a transaction that is not the requested, quoted purchase.
+    const quote = { inAmount: "1000000", outputMint: NVDAX, outAmount: "133885", otherAmountThreshold: "132546", priceImpactPct: "0.001", routePlan: [] };
     const built = await withFetch(
       (_m, url) => (url.includes("/quote?") ? { body: quote } : { body: { swapTransaction: b64(new VersionedTransaction(v0(identity)).serialize()), lastValidBlockHeight: 123 } }),
-      async () => (await buildRoute.POST(post({ symbol: "NVDAx", usdc: "50", user: identity.toBase58() }))).json() as Promise<{ tx: string; seal: string }>,
+      async () => (await buildRoute.POST(post({ symbol: "NVDAx", usdc: "1", user: identity.toBase58() }))).json() as Promise<{ tx: string; seal: string }>,
     );
     assert.equal(typeof built.out.seal, "string", "the build route sealed a swap for this wallet");
     const t = VersionedTransaction.deserialize(Buffer.from(built.out.tx, "base64"));

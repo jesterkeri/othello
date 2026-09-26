@@ -3,6 +3,10 @@
  * it to confirm. It relays nothing else: the bytes must decode, fit a packet, be paid for and signed
  * by the stated wallet, and invoke only Jupiter and its housekeeping programs (lib/swap.ts). Neither the
  * RPC URL nor any provider text reaches the browser: errors are this route's own fixed words.
+ *
+ * It relays only a transaction /api/swap sealed (lib/swapSeal.ts) and signed Solana-strictly by the fee payer.
+ * Security boundary: the buyer's wallet signature is the authorisation; this relay is a convenience and does
+ * not defend against a compromised browser or wallet (see lib/swapSeal.ts).
  */
 import { NextResponse, type NextRequest } from "next/server";
 

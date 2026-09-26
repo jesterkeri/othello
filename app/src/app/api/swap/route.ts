@@ -7,7 +7,7 @@
 import { PublicKey } from "@solana/web3.js";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys } from "@/lib/swap";
+import { checkSwapAccounts, checkSwapTx, fetchLookupTables, jupiterRouteTail, resolveKeys } from "@/lib/swap";
 import { sealConfigured, sealSwap } from "@/lib/swapSeal";
 import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
@@ -49,9 +49,11 @@ export async function POST(req: NextRequest) {
   try {
     const q = await fetch(`${JUP}/quote?inputMint=${USDC}&outputMint=${x.address}&amount=${amount}&slippageBps=100&restrictIntermediateTokens=true`, { cache: "no-store" }).catch(() => null);
     if (!q) throw new Error("Jupiter unreachable");
-    const quote = (await q.json().catch(() => null)) as { outAmount?: unknown; otherAmountThreshold?: unknown; priceImpactPct?: unknown; outputMint?: unknown } | null;
+    const quote = (await q.json().catch(() => null)) as { inAmount?: unknown; outAmount?: unknown; otherAmountThreshold?: unknown; priceImpactPct?: unknown; outputMint?: unknown } | null;
     if (!q.ok || !quote) throw new Error("Jupiter found no route");
     if (quote.outputMint !== x.address) throw new Error("Jupiter quoted a different token");
+    // B1 (fresh review r2, MAJOR): the quote must be for exactly the amount requested.
+    if (quote.inAmount !== amount) throw new Error("Jupiter quoted a different amount");
     const out = typeof quote.outAmount === "string" && /^[0-9]+$/.test(quote.outAmount) ? quote.outAmount : null;
     const min = typeof quote.otherAmountThreshold === "string" && /^[0-9]+$/.test(quote.otherAmountThreshold) ? quote.otherAmountThreshold : null;
     const impact = Number(quote.priceImpactPct);
@@ -75,6 +77,11 @@ export async function POST(req: NextRequest) {
     if (!keys) throw new Error("Jupiter's transaction could not be checked (lookup table unreadable)");
     const wrong = checkSwapAccounts(check.tx, keys, user, x.address);
     if (wrong) throw new Error(`Jupiter's transaction was refused: ${wrong}`);
+    // B1 (fresh review r2, MAJOR): the transaction must spend exactly the requested amount and promise
+    // exactly the quoted output, with the slippage asked for; otherwise the seal would fix a purchase the
+    // buyer did not request. (Its route plan steps are not decoded: a stated limit.)
+    const tail = jupiterRouteTail(check.tx, keys);
+    if (!tail || tail.inAmount !== micro || tail.quotedOut !== BigInt(out) || tail.slippageBps !== 100) throw new Error("Jupiter's transaction does not match the quote");
 
     // B1: seal the exact message approved above; the relay recomputes it from the signed bytes.
     const seal = sealSwap({ message: check.tx.message.serialize(), buyer: user, symbol: x.symbol }, Math.floor(Date.now() / 1000));

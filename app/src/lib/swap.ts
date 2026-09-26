@@ -191,6 +191,25 @@ export const MAX_CU_PRICE = 1_000_000n;
 export const MAX_SLIPPAGE_BPS = 100;
 const ROUTE_TAIL_BYTES = 8 + 8 + 2 + 1;
 
+export type RouteTail = { inAmount: bigint; quotedOut: bigint; slippageBps: number; platformFeeBps: number };
+
+/**
+ * The route's arguments end with fixed-size fields after the variable-length route plan:
+ * in_amount u64, quoted_out_amount u64, slippage_bps u16, platform_fee_bps u8 (IDL order, little-endian).
+ * The route plan itself (a vector of steps over 100+ swap variants) is not decoded: a stated limit.
+ */
+export function routeTail(data: Uint8Array): RouteTail | null {
+  if (!isDiscriminator(data, JUPITER_ROUTE_DISCRIMINATOR) || data.length < JUPITER_ROUTE_DISCRIMINATOR.length + 4 + ROUTE_TAIL_BYTES) return null;
+  const tail = new DataView(data.buffer, data.byteOffset + data.length - ROUTE_TAIL_BYTES, ROUTE_TAIL_BYTES);
+  return { inAmount: tail.getBigUint64(0, true), quotedOut: tail.getBigUint64(8, true), slippageBps: tail.getUint16(16, true), platformFeeBps: tail.getUint8(18) };
+}
+
+/** The single Jupiter route instruction's arguments, or null (checkSwapAccounts has already refused anything else). */
+export function jupiterRouteTail(tx: VersionedTransaction, keys: string[]): RouteTail | null {
+  const routes = tx.message.compiledInstructions.filter((ix) => keys[ix.programIdIndex] === JUPITER_PROGRAM);
+  return routes.length === 1 ? routeTail(routes[0]!.data) : null;
+}
+
 /**
  * With the account list resolved: every compute-budget instruction only sets a bounded unit limit or
  * price; each supported Jupiter instruction sends the quoted asset from the buyer's USDC ATA to the
@@ -226,16 +245,9 @@ export function checkSwapAccounts(tx: VersionedTransaction, keys: string[], paye
     || routeAccount("destinationMint") !== mint
   ) return "the transaction does not send the listed stock to the buyer's token account";
 
-  // Route arguments end with fixed-size fields after the variable-length route plan:
-  // in_amount u64, quoted_out_amount u64, slippage_bps u16, platform_fee_bps u8 (IDL order, little-endian).
-  // Othello charges no platform fee, and /api/swap asks Jupiter for slippageBps=100.
-  const args = route.data;
-  if (args.length < JUPITER_ROUTE_DISCRIMINATOR.length + 4 + ROUTE_TAIL_BYTES) return "the transaction's Jupiter route is malformed";
-  const tail = new DataView(args.buffer, args.byteOffset + args.length - ROUTE_TAIL_BYTES, ROUTE_TAIL_BYTES);
-  const inAmount = tail.getBigUint64(0, true);
-  const quotedOut = tail.getBigUint64(8, true);
-  const slippageBps = tail.getUint16(16, true);
-  const platformFeeBps = tail.getUint8(18);
+  const tail = routeTail(route.data);
+  if (!tail) return "the transaction's Jupiter route is malformed";
+  const { inAmount, quotedOut, slippageBps, platformFeeBps } = tail;
   if (routeAccount("platformFeeAccount") !== JUPITER_PROGRAM || platformFeeBps !== 0) return "the transaction charges a platform fee";
   if (inAmount === 0n || quotedOut === 0n || slippageBps > MAX_SLIPPAGE_BPS) return "the transaction's Jupiter route has unsafe amounts";
 

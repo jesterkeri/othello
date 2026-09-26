@@ -6,6 +6,14 @@
  * expired. Stateless: a keyed HMAC, no store. Replay is bounded by the chain itself (one signature lands
  * once) and by the seal's expiry.
  *
+ * Threat-model boundary (Joshua, 2026-09-26, answering the fresh review r2): the seal proves "this server
+ * built and approved this exact message for this buyer and symbol, just now". It is not user authorisation.
+ * /api/swap is a public endpoint that anyone can ask to build a swap for any wallet address, so a compromised
+ * browser could obtain a seal for a purchase the buyer did not intend; it could equally skip Othello and relay
+ * through any public node. The buyer's authorisation is their wallet's signature, given after the wallet
+ * shows the transaction. The relay is a convenience, never a security boundary against the buyer's own
+ * compromised client. /api/swap only seals the requested, quoted purchase (amount and output checked).
+ *
  * Server-only. The key is SWAP_BINDING_SECRET (set by Joshua in the deployment environment; never in the
  * repo, the browser or a log). Without it, Buy refuses to build or relay: no unsealed fallback.
  */
