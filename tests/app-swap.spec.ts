@@ -61,6 +61,16 @@ function ata(owner: PublicKey, mint: PublicKey, tokenProgram: PublicKey): Public
   return PublicKey.findProgramAddressSync([owner.toBuffer(), tokenProgram.toBuffer(), mint.toBuffer()], ATA)[0];
 }
 
+/** Route arguments shaped like a real Jupiter V6 `route`: discriminator, empty plan, fixed tail. */
+function routeData(o: { inAmount?: bigint; quotedOut?: bigint; slippageBps?: number; platformFeeBps?: number } = {}): Buffer {
+  const tail = Buffer.alloc(19);
+  tail.writeBigUInt64LE(o.inAmount ?? 1_000_000n, 0);
+  tail.writeBigUInt64LE(o.quotedOut ?? 133_885n, 8);
+  tail.writeUInt16LE(o.slippageBps ?? 100, 16);
+  tail.writeUInt8(o.platformFeeBps ?? 0, 18);
+  return Buffer.concat([Buffer.from([229, 23, 203, 151, 122, 227, 173, 42]), Buffer.alloc(4), tail]);
+}
+
 /** A minimal, signed-or-unsigned shape of the documented Jupiter V6 `route` instruction. */
 function approvedTx(payer: PublicKey, sign?: Keypair, extras: InstanceType<typeof TransactionInstruction>[] = []): string {
   const out = ata(payer, new PublicKey(NVDAX), TOKEN_2022);
@@ -74,9 +84,12 @@ function approvedTx(payer: PublicKey, sign?: Keypair, extras: InstanceType<typeo
       { pubkey: out, isSigner: false, isWritable: true },
       { pubkey: JUP, isSigner: false, isWritable: false },
       { pubkey: new PublicKey(NVDAX), isSigner: false, isWritable: false },
+      { pubkey: JUP, isSigner: false, isWritable: false }, // platformFeeAccount: not provided
     ],
-    // Anchor's `global:route` discriminator, from Jupiter's published V6 IDL.
-    data: Buffer.from([229, 23, 203, 151, 122, 227, 173, 42]),
+    // Anchor's `global:route` discriminator (Jupiter's published V6 IDL), then the IDL's arguments:
+    // an empty route plan and the fixed tail in_amount, quoted_out_amount, slippage_bps, platform_fee_bps,
+    // shaped like the real fixture (1 USDC in, slippage 100, no platform fee).
+    data: routeData(),
   });
   const msg = MessageV0.compile({ payerKey: payer, recentBlockhash: Keypair.generate().publicKey.toBase58(), instructions: [...extras, route] });
   const t = new VersionedTransaction(msg);
@@ -145,6 +158,55 @@ describe("T18g: checkSwapTx against a REAL Jupiter transaction (Codex T18d r4)",
     wrongMint[route.accountKeyIndexes[11]!] = fxl.outputMint;
     assert.ok(wrongMint.includes(fxl.outputMint));
     assert.match(String(checkSwapAccounts(t, wrongMint, fxl.user, fxl.outputMint)), /does not send the listed stock/);
+  });
+
+  it("binds the optional destinationTokenAccount, refuses a platform fee and unsafe route amounts (B1 adversary)", async () => {
+    const { resolveKeys, checkSwapAccounts } = await lib();
+    const fxl = JSON.parse(readFileSync(resolve(REPO, "tests/fixtures/jup-swap-qqqx.json"), "utf8")) as { user: string; outputMint: string; swapTransaction: string; lookupTables: Record<string, string> };
+    const tables = Object.fromEntries(Object.entries(fxl.lookupTables).map(([k, v]) => [k, Uint8Array.from(Buffer.from(v, "base64"))]));
+    const fresh = () => VersionedTransaction.deserialize(Buffer.from(fxl.swapTransaction, "base64"));
+    const t = fresh();
+    const keys = resolveKeys(t, tables)!;
+    const routeOf = (v: InstanceType<typeof VersionedTransaction>) => v.message.compiledInstructions.find((ix) => keys[ix.programIdIndex] === JUP.toBase58())!;
+    const route = routeOf(t);
+    const buyerOutput = ata(new PublicKey(fxl.user), new PublicKey(fxl.outputMint), TOKEN_2022).toBase58();
+    const stranger = ata(Keypair.generate().publicKey, new PublicKey(fxl.outputMint), TOKEN_2022).toBase58();
+
+    // Slots 4 and 6 hold the Jupiter program id ("not provided") in the real fixture, the same account entry
+    // as the program itself, so each case repoints only that instruction slot at another existing account.
+    // Slot 4 (destinationTokenAccount) receives the output when provided: only "not provided" or the buyer's ATA.
+    const toBuyer = fresh();
+    routeOf(toBuyer).accountKeyIndexes[4] = route.accountKeyIndexes[3]!; // the buyer's output ATA
+    assert.equal(keys[route.accountKeyIndexes[3]!], buyerOutput);
+    assert.equal(checkSwapAccounts(toBuyer, keys, fxl.user, fxl.outputMint), null);
+    const elsewhere = fresh();
+    routeOf(elsewhere).accountKeyIndexes[4] = route.accountKeyIndexes[2]!; // any account that is not the buyer's output ATA
+    assert.match(String(checkSwapAccounts(elsewhere, keys, fxl.user, fxl.outputMint)), /does not send the listed stock/);
+    // (a true stranger's ATA at slot 4, recompiled through the lookup table, is tests/b1-adversary.spec.ts)
+    assert.ok(stranger);
+
+    // Slot 6 (platformFeeAccount) must be "not provided", and platform_fee_bps (last byte) must be 0.
+    const feeAccount = fresh();
+    routeOf(feeAccount).accountKeyIndexes[6] = route.accountKeyIndexes[3]!;
+    assert.match(String(checkSwapAccounts(feeAccount, keys, fxl.user, fxl.outputMint)), /platform fee/);
+    const feeBps = fresh();
+    const fr = routeOf(feeBps);
+    fr.data[fr.data.length - 1] = 1;
+    assert.match(String(checkSwapAccounts(feeBps, keys, fxl.user, fxl.outputMint)), /platform fee/);
+
+    // slippage_bps (u16 at length-3): 100, as /api/swap requests, passes; 101 does not.
+    const slip = fresh();
+    const sr = routeOf(slip);
+    new DataView(sr.data.buffer, sr.data.byteOffset).setUint16(sr.data.length - 3, 101, true);
+    assert.match(String(checkSwapAccounts(slip, keys, fxl.user, fxl.outputMint)), /unsafe amounts/);
+
+    // quoted_out_amount (u64 at length-11) and in_amount (u64 at length-19) must be positive.
+    for (const at of [11, 19]) {
+      const zero = fresh();
+      const zr = routeOf(zero);
+      new DataView(zr.data.buffer, zr.data.byteOffset).setBigUint64(zr.data.length - at, 0n, true);
+      assert.match(String(checkSwapAccounts(zero, keys, fxl.user, fxl.outputMint)), /unsafe amounts/);
+    }
   });
 
   it("refuses an unmapped Jupiter discriminator and an ATA create that is not the bound output ATA (B1)", async () => {

@@ -164,6 +164,10 @@ export async function fetchLookupTables(rpcUrl: string, tx: VersionedTransaction
 export const MAX_CU = 1_400_000;
 export const MAX_CU_PRICE = 1_000_000n;
 
+/** The slippage /api/swap requests from Jupiter; a route allowing more was not built by Othello. */
+export const MAX_SLIPPAGE_BPS = 100;
+const ROUTE_TAIL_BYTES = 8 + 8 + 2 + 1;
+
 /**
  * With the account list resolved: every compute-budget instruction only sets a bounded unit limit or
  * price; each supported Jupiter instruction sends the quoted asset from the buyer's USDC ATA to the
@@ -186,13 +190,31 @@ export function checkSwapAccounts(tx: VersionedTransaction, keys: string[], paye
   const routeAccounts = route.accountKeyIndexes.map((i) => keys[i]);
   const routeAccount = (name: (typeof JUPITER_ROUTE_ACCOUNTS)[number]) => routeAccounts[JUPITER_ROUTE_ACCOUNTS.indexOf(name)];
   if (routeAccounts.length < JUPITER_ROUTE_ACCOUNTS.length - 1) return "the transaction's Jupiter route is missing required accounts";
+  // `destinationTokenAccount` is optional in the IDL and, when provided, is the account that receives the
+  // output (Jupiter Swap API: "token account that will be used to receive the token out of the swap").
+  // Anchor encodes "not provided" as the program id itself, which is what the real fixture carries.
+  const destination = routeAccount("destinationTokenAccount");
   if (
     routeAccount("tokenProgram") !== TOKEN_2022_PROGRAM
     || routeAccount("userTransferAuthority") !== payer
     || routeAccount("userSourceTokenAccount") !== inputAta
     || routeAccount("userDestinationTokenAccount") !== outputAta
+    || (destination !== JUPITER_PROGRAM && destination !== outputAta)
     || routeAccount("destinationMint") !== mint
   ) return "the transaction does not send the listed stock to the buyer's token account";
+
+  // Route arguments end with fixed-size fields after the variable-length route plan:
+  // in_amount u64, quoted_out_amount u64, slippage_bps u16, platform_fee_bps u8 (IDL order, little-endian).
+  // Othello charges no platform fee, and /api/swap asks Jupiter for slippageBps=100.
+  const args = route.data;
+  if (args.length < JUPITER_ROUTE_DISCRIMINATOR.length + 4 + ROUTE_TAIL_BYTES) return "the transaction's Jupiter route is malformed";
+  const tail = new DataView(args.buffer, args.byteOffset + args.length - ROUTE_TAIL_BYTES, ROUTE_TAIL_BYTES);
+  const inAmount = tail.getBigUint64(0, true);
+  const quotedOut = tail.getBigUint64(8, true);
+  const slippageBps = tail.getUint16(16, true);
+  const platformFeeBps = tail.getUint8(18);
+  if (routeAccount("platformFeeAccount") !== JUPITER_PROGRAM || platformFeeBps !== 0) return "the transaction charges a platform fee";
+  if (inAmount === 0n || quotedOut === 0n || slippageBps > MAX_SLIPPAGE_BPS) return "the transaction's Jupiter route has unsafe amounts";
 
   for (const ix of tx.message.compiledInstructions) {
     const program = keys[ix.programIdIndex];
