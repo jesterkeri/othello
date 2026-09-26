@@ -13,6 +13,8 @@ pub mod gate;
 pub mod instructions;
 pub mod state;
 pub mod valuation;
+pub mod pyth_spike;
+pub use pyth_spike::*;
 
 pub use instructions::*;
 pub use state::*;
@@ -187,6 +189,10 @@ pub mod othello {
         let now = Clock::get()?.unix_timestamp;
         msg!("clock.unix_timestamp={}", now);
         Ok(now)
+    }
+
+    pub fn pyth_spike(ctx: Context<PythSpike>, feed_id: [u8; 32], max_age: u64) -> Result<i64> {
+        pyth_spike::handle_pyth_spike(ctx, feed_id, max_age)
     }
 }
 

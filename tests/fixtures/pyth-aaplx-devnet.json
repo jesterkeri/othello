@@ -1,0 +1,10 @@
+{
+  "source": "Solana devnet getAccountInfo, shard-0 PriceUpdateV2 for Crypto.AAPLX/USD",
+  "address": "Gs4DVtiGSJ9LJvXaQFjYp6vhLNK2QsH4qWox2ck1kuMp",
+  "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+  "lamports": 1330960,
+  "fetchedAtSlot": 504323212,
+  "fetchedAt": "2026-09-26T07:04:28.235Z",
+  "feedId": "978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675",
+  "dataBase64": "IvEjY51+9M3rsfrodUz6frA0OLVJX/DoUxcPiMWUy+n9CW2qzsZi3wGXjmzGihGc4GaqgwAXMYVjqe0E7DoKZDkBD8ESlqWGdZBMs/IHAAAA8xK0AAAAAAD4////HsW2agAAAAAdxbZqAAAAAHCyCPAHAAAAhpG6AAAAAADHaQweAAAAAAA="
+}
