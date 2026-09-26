@@ -7,6 +7,8 @@
  *
  * No "@/" imports: tests/app-swap.spec.ts loads this file directly.
  */
+import { createPublicKey, verify } from "node:crypto";
+
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 
 /**
@@ -58,7 +60,9 @@ export function checkSwapTx(base64: string, payer: string, signed: boolean): TxC
     (ix) => keys[ix.programIdIndex]?.toBase58() === ASSOCIATED_TOKEN && !(ix.data.length === 0 || (ix.data.length === 1 && ix.data[0]! <= 1)),
   );
   if (atokenOther) return { ok: false, reason: "the transaction does more than a Jupiter swap" };
-  if (signed && !(tx.signatures[0] ?? new Uint8Array(64)).some((b) => b !== 0)) return { ok: false, reason: "the transaction is not signed by this wallet" };
+  // B1 (Codex fresh review, MINOR): "signed" means a valid Ed25519 signature by the fee payer over this
+  // exact message, not merely nonzero bytes.
+  if (signed && !feePayerSignatureValid(tx)) return { ok: false, reason: "the transaction is not signed by this wallet" };
   return { ok: true, tx };
 }
 
@@ -117,6 +121,22 @@ function base58(bytes: Uint8Array): string {
   let zeroes = 0;
   while (zeroes < bytes.length && bytes[zeroes] === 0) zeroes++;
   return "1".repeat(zeroes) + encoded;
+}
+
+/** DER prefix of an Ed25519 SubjectPublicKeyInfo (RFC 8410); the 32-byte key follows it. */
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+
+/** Signature zero must be a valid Ed25519 signature by static account key zero (the fee payer) over the message. */
+export function feePayerSignatureValid(tx: VersionedTransaction): boolean {
+  const signature = tx.signatures[0];
+  const payer = tx.message.staticAccountKeys[0];
+  if (!signature || signature.length !== 64 || !payer) return false;
+  try {
+    const key = createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, payer.toBuffer()]), format: "der", type: "spki" });
+    return verify(null, Buffer.from(tx.message.serialize()), key, Buffer.from(signature));
+  } catch {
+    return false;
+  }
 }
 
 /** The first signature belongs to message account key zero, the fee payer. */

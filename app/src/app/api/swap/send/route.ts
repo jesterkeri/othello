@@ -7,6 +7,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys, signedTransactionSignature } from "@/lib/swap";
+import { sealConfigured, verifySeal } from "@/lib/swapSeal";
 import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,8 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as { tx?: unknown; user?: unknown; lastValidBlockHeight?: unknown; symbol?: unknown } | null;
+  if (!sealConfigured()) return fail("relay unavailable", 503);
+  const body = (await req.json().catch(() => null)) as { tx?: unknown; seal?: unknown; user?: unknown; lastValidBlockHeight?: unknown; symbol?: unknown } | null;
   // Codex T18d final: the relay checks the listed stock's mint too, from the registry, never the request.
   const listed = TRADABLE_XSTOCKS.find((t) => t.symbol === body?.symbol);
   if (!listed) return fail("not a listed xStock", 400);
@@ -42,6 +44,11 @@ export async function POST(req: NextRequest) {
     return fail("not a wallet address", 400);
   }
   if (!check.ok) return fail(`refused: ${check.reason}`, 400);
+  // B1 (Codex fresh review, MAJOR): relay only the exact message /api/swap built and sealed for this
+  // buyer and symbol, unexpired. Signing never changes the message, so the signed bytes must match it.
+  if (!verifySeal(body?.seal, { message: check.tx.message.serialize(), buyer: String(body?.user), symbol: listed.symbol }, Math.floor(Date.now() / 1000))) {
+    return fail("refused: this is not the swap Othello built for you, or it expired; start the buy again", 400);
+  }
 
   const url = process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
   const tables = await fetchLookupTables(url, check.tx);

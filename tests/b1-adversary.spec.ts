@@ -35,6 +35,9 @@ type AddressLookupTableAccount = anchor.web3.AddressLookupTableAccount;
 
 import { REPO } from "./artifacts.ts";
 
+// B1: the Buy routes refuse to run without a binding key; this fixed value exists only in tests.
+process.env.SWAP_BINDING_SECRET = "test-only-binding-key-never-used-outside-tests-0000";
+
 const SRC = resolve(REPO, "app/src");
 registerHooks({
   resolve(specifier, context, next) {
@@ -342,7 +345,11 @@ describe("B1 adversary: /api/swap/send signature handling", () => {
   const send = async (t: VersionedTransaction, rpc: (method: string) => Answer) => {
     const route = await import(pathToFileURL(resolve(SRC, "app/api/swap/send/route.ts")).href);
     return withFetch(rpc, async () => {
-      const res = await route.POST(post({ tx: Buffer.from(t.serialize()).toString("base64"), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }));
+      // B1: the relay now also requires /api/swap's seal over this exact message; these attacks are about
+      // what happens after that check, so each transaction carries a valid seal.
+      const { sealSwap } = (await import(pathToFileURL(resolve(SRC, "lib/swapSeal.ts")).href)) as typeof import("../app/src/lib/swapSeal.ts");
+      const seal = sealSwap({ message: t.message.serialize(), buyer: buyer.publicKey.toBase58(), symbol: "NVDAx" }, Math.floor(Date.now() / 1000));
+      const res = await route.POST(post({ tx: Buffer.from(t.serialize()).toString("base64"), seal, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }));
       return { status: res.status as number, body: (await res.json()) as Record<string, unknown> };
     });
   };

@@ -8,6 +8,7 @@ import { PublicKey } from "@solana/web3.js";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys } from "@/lib/swap";
+import { sealConfigured, sealSwap } from "@/lib/swapSeal";
 import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +16,16 @@ export const dynamic = "force-dynamic";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const JUP = "https://lite-api.jup.ag/swap/v1";
 
-export type SwapBuild = { tx: string; lastValidBlockHeight: number; outRaw: string; minOutRaw: string; priceImpactPct: number; usdc: number };
+/** `seal` binds this exact transaction to the buyer and symbol; /api/swap/send relays nothing without it. */
+export type SwapBuild = { tx: string; seal: string; lastValidBlockHeight: number; outRaw: string; minOutRaw: string; priceImpactPct: number; usdc: number };
 
 function fail(error: string, status = 502) {
   return NextResponse.json({ error }, { status, headers: { "cache-control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
+  // B1: without the binding key the relay could not recognise this swap, so none is built.
+  if (!sealConfigured()) return fail("swap unavailable", 503);
   const body = (await req.json().catch(() => null)) as { symbol?: unknown; usdc?: unknown; user?: unknown } | null;
   const x = TRADABLE_XSTOCKS.find((t) => t.symbol === body?.symbol);
   if (!x) return fail("not a listed xStock", 404);
@@ -72,7 +76,10 @@ export async function POST(req: NextRequest) {
     const wrong = checkSwapAccounts(check.tx, keys, user, x.address);
     if (wrong) throw new Error(`Jupiter's transaction was refused: ${wrong}`);
 
-    const built: SwapBuild = { tx: swap.swapTransaction, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: Number(micro) / 1_000_000 };
+    // B1: seal the exact message approved above; the relay recomputes it from the signed bytes.
+    const seal = sealSwap({ message: check.tx.message.serialize(), buyer: user, symbol: x.symbol }, Math.floor(Date.now() / 1000));
+    if (!seal) return fail("swap unavailable", 503);
+    const built: SwapBuild = { tx: swap.swapTransaction, seal, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: Number(micro) / 1_000_000 };
     return NextResponse.json(built, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const said = e instanceof Error ? e.message : String(e);

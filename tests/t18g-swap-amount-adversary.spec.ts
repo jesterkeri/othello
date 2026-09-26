@@ -20,6 +20,9 @@ type Keypair = anchor.web3.Keypair;
 
 import { REPO } from "./artifacts.ts";
 
+// B1: the Buy routes refuse to run without a binding key; this fixed value exists only in tests.
+process.env.SWAP_BINDING_SECRET = "test-only-binding-key-never-used-outside-tests-0000";
+
 const SRC = resolve(REPO, "app/src");
 registerHooks({
   resolve(specifier, context, next) {

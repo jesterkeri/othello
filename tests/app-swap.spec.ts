@@ -19,6 +19,9 @@ type Keypair = anchor.web3.Keypair;
 
 import { REPO } from "./artifacts.ts";
 
+// B1: the Buy routes refuse to run without a binding key; this fixed value exists only in tests.
+process.env.SWAP_BINDING_SECRET = "test-only-binding-key-never-used-outside-tests-0000";
+
 const SRC = resolve(REPO, "app/src");
 registerHooks({
   resolve(specifier, context, next) {
@@ -328,6 +331,13 @@ describe("T18g: /api/swap builds only the buyer's own Jupiter swap, for a listed
     assert.equal(out.body.outRaw, "220000000");
     assert.equal(out.body.minOutRaw, "217800000");
     assert.ok(asked[0]!.includes(`outputMint=${NVDAX}`) && asked[0]!.includes("amount=50000000"));
+    // B1: the build carries a seal over exactly this transaction, for this buyer and symbol only.
+    const { verifySeal } = (await import(pathToFileURL(resolve(SRC, "lib/swapSeal.ts")).href)) as typeof import("../app/src/lib/swapSeal.ts");
+    const message = VersionedTransaction.deserialize(Buffer.from(String(out.body.tx), "base64")).message.serialize();
+    const now = Math.floor(Date.now() / 1000);
+    assert.equal(verifySeal(out.body.seal, { message, buyer: buyer.publicKey.toBase58(), symbol: "NVDAx" }, now), true);
+    assert.equal(verifySeal(out.body.seal, { message, buyer: buyer.publicKey.toBase58(), symbol: "TSLAx" }, now), false);
+    assert.equal(verifySeal(out.body.seal, { message, buyer: buyer.publicKey.toBase58(), symbol: "NVDAx" }, now + 121), false);
   });
   it("refuses an unlisted symbol and a bad wallet before asking Jupiter", async () => {
     const a = await build({ symbol: "FAKEx", usdc: "50", user: buyer.publicKey.toBase58() }, approvedTx(buyer.publicKey));
@@ -374,6 +384,12 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
       },
     );
   };
+  /** The seal /api/swap would have issued for this exact transaction (B1). */
+  const sealOf = async (encoded: string, who = buyer.publicKey.toBase58(), symbol = "NVDAx", now = Math.floor(Date.now() / 1000)) => {
+    const { sealSwap } = (await import(pathToFileURL(resolve(SRC, "lib/swapSeal.ts")).href)) as typeof import("../app/src/lib/swapSeal.ts");
+    const message = VersionedTransaction.deserialize(Buffer.from(encoded, "base64")).message.serialize();
+    return sealSwap({ message, buyer: who, symbol }, now)!;
+  };
   const signed = async () => {
     const encoded = approvedTx(buyer.publicKey, buyer);
     const { signedTransactionSignature } = await lib();
@@ -388,7 +404,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
 
   it("derives the signature from the signed transaction, requires the RPC to match it, and returns only that value", async () => {
     const { encoded, signature } = await signed();
-    const { out, asked } = await send({ tx: encoded, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, (m) =>
+    const { out, asked } = await send({ tx: encoded, seal: await sealOf(encoded), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, (m) =>
       m === "sendTransaction" ? { body: { result: signature } } : m === "getSignatureStatuses" ? { body: { result: { value: [{ err: null, confirmationStatus: "confirmed" }] } } } : { body: { result: 1 } },
     );
     assert.deepEqual(out.body, { signature, status: "confirmed" });
@@ -398,11 +414,92 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const { encoded, signature } = await signed();
     const rpcOnly = "5VERNGQ8o5hQx8Yp8b3kLbbYx4wP2XWbPqKkq7w7nRwYJk3x6CjvL6CwFqS4fFq3nq3YdK8VqXQy1u8YzZ7eTnF";
     assert.notEqual(rpcOnly, signature);
-    const { out } = await send({ tx: encoded, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { result: rpcOnly } }));
+    const { out } = await send({ tx: encoded, seal: await sealOf(encoded), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { result: rpcOnly } }));
     assert.equal(out.status, 502);
     assert.deepEqual(out.body, { error: "sendTransaction: the network returned a different signature" });
     assert.doesNotMatch(JSON.stringify(out.body), new RegExp(rpcOnly));
   });
+  describe("B1: the relay sends only the exact transaction /api/swap sealed (Codex fresh review MAJOR)", () => {
+    const refusedUnbuilt = /not the swap Othello built for you, or it expired/;
+    const ok = (sig: string) => (m: string): Answer =>
+      m === "sendTransaction" ? { body: { result: sig } } : m === "getSignatureStatuses" ? { body: { result: { value: [{ err: null, confirmationStatus: "confirmed" }] } } } : { body: { result: 1 } };
+    const relay = (body: Record<string, unknown>, sig = "unused") => send({ user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx", ...body }, ok(sig));
+
+    it("refuses a missing, tampered, expired or over-long seal before anything reaches the RPC", async () => {
+      const { encoded } = await signed();
+      const good = await sealOf(encoded);
+      const now = Math.floor(Date.now() / 1000);
+      const [v, exp, mac] = good.split(".");
+      const flipped = `${v}.${exp}.${mac!.startsWith("A") ? "B" : "A"}${mac!.slice(1)}`;
+      for (const seal of [undefined, "", "junk", flipped, await sealOf(encoded, undefined, undefined, now - 200), `${v}.${Number(exp) + 600}.${mac}`]) {
+        const { out, asked } = await relay({ tx: encoded, seal });
+        assert.equal(out.status, 400, `accepted seal ${String(seal)}`);
+        assert.match(String(out.body.error), refusedUnbuilt);
+        assert.equal(asked.length, 0, "nothing reached the RPC");
+      }
+    });
+
+    it("refuses a seal for another buyer, another symbol, or another transaction", async () => {
+      const { encoded } = await signed();
+      const other = approvedTx(buyer.publicKey, buyer); // a different valid, signed Jupiter swap (new blockhash)
+      for (const seal of [await sealOf(encoded, Keypair.generate().publicKey.toBase58()), await sealOf(encoded, undefined, "TSLAx"), await sealOf(other)]) {
+        const { out, asked } = await relay({ tx: encoded, seal });
+        assert.equal(out.status, 400);
+        assert.match(String(out.body.error), refusedUnbuilt);
+        assert.equal(asked.length, 0);
+      }
+    });
+
+    it("refuses the built transaction re-signed after its route bytes were changed (higher amount)", async () => {
+      const unsignedBuilt = approvedTx(buyer.publicKey);
+      const seal = await sealOf(unsignedBuilt);
+      const altered = VersionedTransaction.deserialize(Buffer.from(unsignedBuilt, "base64"));
+      const r = altered.message.compiledInstructions.find((ix) => altered.message.staticAccountKeys[ix.programIdIndex]!.equals(JUP))!;
+      new DataView(r.data.buffer, r.data.byteOffset).setBigUint64(r.data.length - 19, 99_000_000_000n, true); // in_amount
+      altered.sign([buyer]);
+      const { out, asked } = await relay({ tx: Buffer.from(altered.serialize()).toString("base64"), seal });
+      assert.equal(out.status, 400);
+      assert.match(String(out.body.error), refusedUnbuilt);
+      assert.equal(asked.length, 0);
+    });
+
+    it("relays the sealed transaction once the buyer has signed it (signing does not change the message)", async () => {
+      const unsignedBuilt = approvedTx(buyer.publicKey);
+      const seal = await sealOf(unsignedBuilt);
+      const t = VersionedTransaction.deserialize(Buffer.from(unsignedBuilt, "base64"));
+      t.sign([buyer]);
+      const sig = anchor.utils.bytes.bs58.encode(t.signatures[0]!);
+      const { out } = await relay({ tx: Buffer.from(t.serialize()).toString("base64"), seal }, sig);
+      assert.deepEqual(out.body, { signature: sig, status: "confirmed" });
+    });
+
+    it("refuses random nonzero bytes in the fee-payer signature slot (Codex fresh review MINOR)", async () => {
+      const { encoded } = await signed();
+      const forged = VersionedTransaction.deserialize(Buffer.from(encoded, "base64"));
+      forged.signatures[0] = Uint8Array.from(Array.from({ length: 64 }, (_, i) => (i * 37 + 11) % 251 || 1));
+      const { out, asked } = await relay({ tx: Buffer.from(forged.serialize()).toString("base64"), seal: await sealOf(encoded) });
+      assert.equal(out.status, 400);
+      assert.match(String(out.body.error), /not signed by this wallet/);
+      assert.equal(asked.length, 0);
+    });
+
+    it("builds and relays nothing without the binding key (no unsealed fallback)", async () => {
+      const saved = process.env.SWAP_BINDING_SECRET;
+      delete process.env.SWAP_BINDING_SECRET;
+      try {
+        const { encoded } = await signed();
+        const s = await relay({ tx: encoded, seal: "v1.1.x" });
+        assert.equal(s.out.status, 503);
+        assert.equal(s.asked.length, 0);
+        const route = await import(pathToFileURL(resolve(SRC, "app/api/swap/route.ts")).href);
+        const res = await route.POST(post({ symbol: "NVDAx", usdc: "50", user: buyer.publicKey.toBase58() }));
+        assert.equal(res.status, 503);
+      } finally {
+        process.env.SWAP_BINDING_SECRET = saved;
+      }
+    });
+  });
+
   it("relays nothing unsigned, not a Jupiter swap, or paid by someone else", async () => {
     for (const bad of [approvedTx(buyer.publicKey), tx(buyer.publicKey, OTHER, buyer)]) {
       const { out, asked } = await send({ tx: bad, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { result: "ignored" } }));
@@ -412,7 +509,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
   });
   it("reports a swap that failed on chain as failed, with the signature", async () => {
     const { encoded, signature } = await signed();
-    const { out } = await send({ tx: encoded, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, (m) =>
+    const { out } = await send({ tx: encoded, seal: await sealOf(encoded), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, (m) =>
       m === "sendTransaction" ? { body: { result: signature } } : { body: { result: { value: [{ err: { InstructionError: [0, { Custom: 6001 }] } }] } } },
     );
     assert.equal(out.body.status, "failed");
@@ -425,7 +522,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const prev = process.env.MAINNET_RPC_URL;
     process.env.MAINNET_RPC_URL = "https://rpc.example/?api-key=SECRET";
     try {
-      const { out } = await send({ tx: encoded, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "blocked at https://rpc.example/?api-key=SECRET" } } }));
+      const { out } = await send({ tx: encoded, seal: await sealOf(encoded), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "blocked at https://rpc.example/?api-key=SECRET" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /SECRET/);
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
@@ -437,7 +534,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const prev = process.env.MAINNET_RPC_URL;
     process.env.MAINNET_RPC_URL = "https://rpc.example/v2/abcdef0123456789SECRETKEY";
     try {
-      const { out } = await send({ tx: encoded, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "invalid api key abcdef0123456789SECRETKEY" } } }));
+      const { out } = await send({ tx: encoded, seal: await sealOf(encoded), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "invalid api key abcdef0123456789SECRETKEY" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /SECRETKEY/);
     } finally {
       if (prev === undefined) delete process.env.MAINNET_RPC_URL;
@@ -449,7 +546,7 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
     const prev = process.env.MAINNET_RPC_URL;
     process.env.MAINNET_RPC_URL = "https://rpc.example/?k=ab12";
     try {
-      const { out } = await send({ tx: encoded, user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "Transaction simulation failed: key ab12 rejected" } } }));
+      const { out } = await send({ tx: encoded, seal: await sealOf(encoded), user: buyer.publicKey.toBase58(), lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { error: { message: "Transaction simulation failed: key ab12 rejected" } } }));
       assert.doesNotMatch(JSON.stringify(out.body), /ab12|rejected/);
       assert.match(String(out.body.error), /^sendTransaction: the network's simulation of the swap failed$/);
     } finally {
