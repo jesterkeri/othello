@@ -1,0 +1,35 @@
+{
+  "sampledAt": "2026-09-26T06:57:30.049Z",
+  "pyth": {
+    "account": "FUqSvECa7qTFsn8QncA5MHpohUfz227295LFvVj5AWFh",
+    "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
+    "verification": "Full",
+    "feedId": "02a67e6184e6c9dd65e14745a2a80df8b2b3d2ca91b4b191404936003d9929ae",
+    "price": 77.98365991,
+    "conf": 0.53866,
+    "exponent": -8,
+    "publishTime": "2026-09-12T12:18:29.000Z"
+  },
+  "mint": {
+    "address": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
+    "multiplierNow": 10
+  },
+  "jupiterNow": {
+    "perDisplayedUnit": 71.27178332165374,
+    "perRawToken_sell_1e8_raw": 696.039889
+  },
+  "geckoTerminalSameDay": {
+    "day": "2026-09-12",
+    "pool": "7RQXW5KEBgHCcy1eSNs1Kh7BWaEL46q8jb9t18S151bL",
+    "perRawOpen": 773.3777985173658,
+    "perRawClose": 760.3359813228496,
+    "perShareOpen": 77.33777985173658,
+    "perShareClose": 76.03359813228496
+  },
+  "ratios": {
+    "pythOverJupiterPerUi": 1.0941729850936261,
+    "pythOverJupiterPerRaw": 0.11203906721788469,
+    "pythOverSameDayPerRawClose": 0.10256473693948072,
+    "pythOverSameDayPerShareClose": 1.0256473693948072
+  }
+}
