@@ -6,7 +6,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys } from "@/lib/swap";
+import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys, signedTransactionSignature } from "@/lib/swap";
 import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
@@ -49,13 +49,16 @@ export async function POST(req: NextRequest) {
   if (!keys) return fail("refused: the transaction could not be checked (lookup table unreadable)", 400);
   const wrong = checkSwapAccounts(check.tx, keys, String(body!.user), listed.address);
   if (wrong) return fail(`refused: ${wrong}`, 400);
+  const signature = signedTransactionSignature(check.tx);
+  if (!signature) return fail("refused: the transaction is not signed by this wallet", 400);
   try {
-    const signature = await rpc(url, "sendTransaction", [body!.tx, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }]);
-    // Codex T18d final: the signature is echoed to the browser, so it must be a signature.
-    if (typeof signature !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) return fail("sendTransaction: the network refused it");
+    const rpcSignature = await rpc(url, "sendTransaction", [body!.tx, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }]);
+    // The network may only confirm the bytes we decoded. Its reply is checked but never becomes the
+    // browser-visible identifier, so arbitrary provider text cannot be substituted for this signature.
+    if (rpcSignature !== signature) return fail("sendTransaction: the network returned a different signature");
     const deadline = Date.now() + 50_000;
     while (Date.now() < deadline) {
-      const st = (await rpc(url, "getSignatureStatuses", [[signature as string]])) as { value: ({ err: unknown; confirmationStatus?: string } | null)[] };
+      const st = (await rpc(url, "getSignatureStatuses", [[signature]])) as { value: ({ err: unknown; confirmationStatus?: string } | null)[] };
       const s = st.value[0];
       // Codex T18d r5: no provider text, even the chain's error object: fixed words and a number.
       if (s?.err) {
