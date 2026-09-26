@@ -7,8 +7,7 @@
  *
  * No "@/" imports: tests/app-swap.spec.ts loads this file directly.
  */
-import { createPublicKey, verify } from "node:crypto";
-
+import { ed25519 } from "@noble/curves/ed25519";
 import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 
 /**
@@ -123,17 +122,21 @@ function base58(bytes: Uint8Array): string {
   return "1".repeat(zeroes) + encoded;
 }
 
-/** DER prefix of an Ed25519 SubjectPublicKeyInfo (RFC 8410); the 32-byte key follows it. */
-const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
-
-/** Signature zero must be a valid Ed25519 signature by static account key zero (the fee payer) over the message. */
+/**
+ * Signature zero must be a valid Ed25519 signature by static account key zero (the fee payer) over the
+ * message, checked as strictly as Solana does (verify_strict): RFC 8032 rules without ZIP-215's leniency
+ * (canonical S and point encodings), and neither the public key nor the signature's R is a small-order
+ * point. OpenSSL's lenient verify accepted a keyless "signature" for the identity key (B1 seal adversary).
+ */
 export function feePayerSignatureValid(tx: VersionedTransaction): boolean {
   const signature = tx.signatures[0];
   const payer = tx.message.staticAccountKeys[0];
   if (!signature || signature.length !== 64 || !payer) return false;
   try {
-    const key = createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, payer.toBuffer()]), format: "der", type: "spki" });
-    return verify(null, Buffer.from(tx.message.serialize()), key, Buffer.from(signature));
+    const key = payer.toBytes();
+    const point = ed25519.ExtendedPoint;
+    if (point.fromHex(key).isSmallOrder() || point.fromHex(signature.subarray(0, 32)).isSmallOrder()) return false;
+    return ed25519.verify(signature, tx.message.serialize(), key, { zip215: false });
   } catch {
     return false;
   }

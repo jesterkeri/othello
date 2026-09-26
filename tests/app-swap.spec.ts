@@ -483,6 +483,22 @@ describe("T18g: /api/swap/send relays only a signed Jupiter swap and reports the
       assert.equal(asked.length, 0);
     });
 
+    it("relays the checked transaction re-serialized, never the request's raw bytes (B1 seal adversary)", async () => {
+      const { encoded, signature } = await signed();
+      const withJunk = Buffer.concat([Buffer.from(encoded, "base64"), Buffer.from([7, 7, 7])]).toString("base64");
+      const { out, asked } = await relay({ tx: withJunk, seal: await sealOf(encoded) }, signature);
+      assert.deepEqual(out.body, { signature, status: "confirmed" });
+      const sent = JSON.parse(asked.find((a) => a.includes('"sendTransaction"'))!.slice(asked.find((a) => a.includes('"sendTransaction"'))!.indexOf("{"))) as { params: [string] };
+      assert.equal(sent.params[0], encoded, "the RPC received the canonical bytes");
+    });
+
+    it("refuses a buyer that is not a plain string (an array would otherwise be coerced)", async () => {
+      const { encoded } = await signed();
+      const { out, asked } = await send({ tx: encoded, seal: await sealOf(encoded), user: [buyer.publicKey.toBase58()], lastValidBlockHeight: 999, symbol: "NVDAx" }, () => ({ body: { result: "x" } }));
+      assert.equal(out.status, 400);
+      assert.equal(asked.length, 0);
+    });
+
     it("builds and relays nothing without the binding key (no unsealed fallback)", async () => {
       const saved = process.env.SWAP_BINDING_SECRET;
       delete process.env.SWAP_BINDING_SECRET;

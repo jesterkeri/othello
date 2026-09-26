@@ -20,7 +20,8 @@ export type SealFacts = { message: Uint8Array; buyer: string; symbol: string };
 
 function secret(): string | null {
   const s = process.env.SWAP_BINDING_SECRET;
-  return typeof s === "string" && s.length >= MIN_SECRET_LENGTH ? s : null;
+  // Characters (code points), not UTF-16 units: an emoji must not count twice (B1 seal adversary).
+  return typeof s === "string" && [...s].length >= MIN_SECRET_LENGTH ? s : null;
 }
 
 /** True when the binding key is configured; the Buy routes refuse to run without it. */
@@ -45,8 +46,11 @@ export function sealSwap(facts: SealFacts, nowSeconds: number): string | null {
 export function verifySeal(seal: unknown, facts: SealFacts, nowSeconds: number): boolean {
   const key = secret();
   if (!key || typeof seal !== "string") return false;
-  const parts = seal.split(".");
-  if (parts.length !== 3 || parts[0] !== VERSION || !/^\d{1,12}$/.test(parts[1]!)) return false;
+  // One exact spelling: v1.<expiry, no leading zero>.<43-char unpadded base64url HMAC-SHA256>. Anything
+  // else (padding, "+/", whitespace, leading zeros) is refused rather than normalised.
+  const m = /^v1\.([1-9]\d{0,11})\.([A-Za-z0-9_-]{43})$/.exec(seal);
+  if (!m) return false;
+  const parts = [VERSION, m[1]!, m[2]!];
   const expiresAt = Number(parts[1]);
   // Refuse expired seals, and seals claiming more lifetime than this server ever grants.
   if (nowSeconds > expiresAt || expiresAt > nowSeconds + SEAL_TTL_SECONDS) return false;

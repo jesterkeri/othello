@@ -37,9 +37,11 @@ export async function POST(req: NextRequest) {
   if (!listed) return fail("not a listed xStock", 400);
   const lvbh = Number(body?.lastValidBlockHeight);
   if (!Number.isSafeInteger(lvbh) || lvbh <= 0) return fail("missing lastValidBlockHeight", 400);
+  // B1 seal adversary: the buyer must be a plain string, never coerced from an array or object.
+  if (typeof body?.user !== "string") return fail("not a wallet address", 400);
   let check;
   try {
-    check = checkSwapTx(String(body?.tx ?? ""), String(body?.user ?? ""), true);
+    check = checkSwapTx(String(body?.tx ?? ""), body.user, true);
   } catch {
     return fail("not a wallet address", 400);
   }
@@ -59,7 +61,10 @@ export async function POST(req: NextRequest) {
   const signature = signedTransactionSignature(check.tx);
   if (!signature) return fail("refused: the transaction is not signed by this wallet", 400);
   try {
-    const rpcSignature = await rpc(url, "sendTransaction", [body!.tx, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }]);
+    // Relay the checked transaction re-serialized, never the raw request bytes: what is sent is exactly
+    // what the seal, signature and account checks covered.
+    const checkedBytes = Buffer.from(check.tx.serialize()).toString("base64");
+    const rpcSignature = await rpc(url, "sendTransaction", [checkedBytes, { encoding: "base64", skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 3 }]);
     // The network may only confirm the bytes we decoded. Its reply is checked but never becomes the
     // browser-visible identifier, so arbitrary provider text cannot be substituted for this signature.
     if (rpcSignature !== signature) return fail("sendTransaction: the network returned a different signature");

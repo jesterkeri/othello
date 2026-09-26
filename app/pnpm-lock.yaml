@@ -11,6 +11,9 @@ importers:
       '@coral-xyz/anchor':
         specifier: 0.32.1
         version: 0.32.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@noble/curves':
+        specifier: 1.9.7
+        version: 1.9.7
       '@solana/wallet-adapter-base':
         specifier: ^0.9.28
         version: 0.9.28(@solana/web3.js@1.99.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
