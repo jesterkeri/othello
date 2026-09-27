@@ -1,85 +1,69 @@
-VERDICT: changes required
+VERDICT: implementation-ready
 
-Target reviewed: `276953a683c4d9d2590c25ca85608c2ef70175a` (`72114c0..276953a`). I confirmed `git -C /home/hr/myvscode_linux/othello-b1 rev-parse --short HEAD` returned `276953a` before review.
+Target reviewed: `2ea2aa1` (`72114c0..2ea2aa1`), confirmed with `git -C /home/hr/myvscode_linux/othello-b1 rev-parse --short HEAD` before review.
 
-## Status of prior findings
+Prior MAJOR status
 
-* Original MAJOR 1, listed-mint/output binding: **RESOLVED.** `checkSwapAccounts` accepts one `route` instruction only, derives the buyer's USDC and Token-2022 output ATAs, and binds route accounts 0--6 including both optional-account sentinels. The published V6 IDL actually lists `route` in that order and gives the four fixed tail arguments: [Jupiter V6 IDL](https://github.com/jup-ag/instruction-parser/blob/main/src/idl/jupiter.ts#L5-L70). The checked real fixture has one route-plan step and the expected tail (`inAmount=1000000`, `quotedOutAmount=133885`, `slippageBps=100`, fee zero).
-* Original MAJOR 2, returned relay signature: **RESOLVED.** The relay derives the base58 value from signature slot zero of the decoded transaction, checks the RPC answer for exact equality, polls that derived value, and does not return provider text.
-* Fresh-review MAJOR, relay must be bound to the server-built transaction: **PARTLY RESOLVED.** A post-build message mutation, lookup-table substitution, and raw-byte suffix are stopped: the HMAC covers the decoded message and the relay sends its reserialization. But the public build endpoint is a sealing oracle for any amount and the server does not verify that the provider's transaction matches the quote/request (new MAJORs below). Thus it is not bound to the buyer's intended server-side purchase.
-* Fresh-review MINOR, “signed” meant nonzero bytes: **RESOLVED.** `@noble/curves` verifies signature zero over the serialized message with `zip215: false` and rejects small-order fee-payer and R points before RPC use.
+- Seal oracle — RESOLVED within the explicitly chosen boundary. `app/src/lib/swapSeal.ts:9-18` says accurately that `/api/swap` is public and is not user authorisation; `app/src/app/api/swap/send/route.ts:53-56` requires a valid, unexpired seal for the exact signed message. README.md:42 makes the same boundary clear: wallet signature authorises; the server is not a defence against a compromised browser or wallet. I found no code path that contradicts that account. The public build endpoint can still produce a valid seal for any supplied wallet and requested amount, by design; the wallet signature and its pre-signing display remain the authorisation point.
+- Requested/quoted amount binding — RESOLVED. `app/src/app/api/swap/route.ts:55-56` requires Jupiter's `inAmount` to equal the exact typed micro-USDC amount. After account validation, lines 83-84 require the V6 route tail's `inAmount`, `quotedOutAmount`, and slippage to equal the requested input, quote output, and 100 bps respectively before sealing. The seal covers the serialized message, and the relay recomputes that message from the signed transaction before accepting it.
 
-## Adversary-derived checks
+Adversary-derived checks — RESOLVED
 
-The requested instruction-level checks are **RESOLVED**: slot 4 is the Jupiter optional sentinel or the buyer's output ATA; platform-fee account is the sentinel with zero fee; slippage is at most 100; and route `in_amount`/`quoted_out_amount` are nonzero. The lookup-table ordering test covers multiple tables. The new seal parser, missing-key refusal, strict signature check, derived-signature comparison, and checked-byte reserialization are also covered and pass.
+- `checkSwapAccounts` accepts exactly one `route` discriminator and binds the route's source, destination mint, `userDestinationTokenAccount`, optional `destinationTokenAccount`, and Token-2022 program to the buyer's expected ATAs (`app/src/lib/swap.ts:228-252`). It refuses a provided destination other than that ATA, a fee account or nonzero fee bps, slippage above 100, and zero in/quoted-out amounts. ATA creates are restricted to the two expected ATAs (`254-269`).
+- The mapping is consistent with [Jupiter's published V6 IDL](https://raw.githubusercontent.com/jup-ag/instruction-parser/master/src/idl/jupiter.ts): `route` lists the seven accounts in the code's order and has `routePlan: vec<RoutePlanStep>`, followed by `inAmount: u64`, `quotedOutAmount: u64`, `slippageBps: u16`, and `platformFeeBps: u8` (IDL lines 5-70). The checked real fixture uses the Jupiter program id for optional slots 4 and 6, so the code's "not provided" encoding is evidence-backed. Parsing the fixed 19-byte suffix is correct for every valid route-plan length because the IDL puts no fields after it.
+- The relay verifies slot-zero's fee-payer Ed25519 signature strictly with noble's `zip215: false` check and explicit small-order public-key/R rejection (`app/src/lib/swap.ts:125-149`). It derives the base58 signature from those checked signed bytes, reserializes the checked transaction, and requires the RPC answer to be byte-for-byte that derived value before polling (`app/src/app/api/swap/send/route.ts:65-77`). Provider text is not returned.
+- The HMAC is versioned and covers the message hash, canonical buyer, listed symbol, and expiry. It has a 120-second lifetime, rejects malformed/noncanonical spellings and absent/short keys, and works across instances configured with the same server-only secret. Replays cannot execute the same Solana signature twice; expiry bounds the relay acceptance window.
 
-Those facts do not establish that the positive amounts, route plan, remaining accounts, or displayed quote are the purchase the buyer asked the server to build. The IDL makes `routePlan` a variable vector before the fixed tail; it is a topologically sorted trade DAG, not padding ([IDL](https://github.com/jup-ag/instruction-parser/blob/main/src/idl/jupiter.ts#L5-L70), [RoutePlanStep definition](https://github.com/jup-ag/instruction-parser/blob/main/src/idl/jupiter.ts#L786-L810)).
+New findings
 
-## New findings
+- MINOR — INSIDE — `tests/app-swap.spec.ts:67-100` and `tests/b1-seal-adversary.spec.ts:69-92`: the new API-success helpers serialize a zero-length `routePlan` (`Buffer.alloc(4)`). That is IDL-shaped but not a faithful executable Jupiter swap: the recorded production fixture has a non-empty route plan. Consequently, successful `/api/swap` sealing and relay tests can pass with a transaction Jupiter would reject on chain, and do not exercise `jupiterRouteTail` on a real variable-length plan through the build route. Use the existing recorded fixture (or a valid non-empty route plan) in a build-route success test, with matching quoted values. This does not undermine the reviewed controls: the account parser already runs against the real fixture and the tail's end-relative layout is correct.
 
-### MAJOR — a public build endpoint turns the seal into an authorization oracle
+U5: apart from the minor above, the changed security paths have direct tests: real-fixture account mutations, all rejected Jupiter variants, ATA variants, multi-table ordering, malformed seal forms, strict-signature edge cases, RPC odd answers, sealing mismatched messages, and checked-byte relay behavior. I found no weakened assertion when comparing the test diff with `72114c0`; the old coarse swap fixtures were replaced because they no longer satisfied the intentionally stricter account validation.
 
-**INSIDE — `app/src/app/api/swap/route.ts:29-83`; `app/src/lib/swapSeal.ts:29-57`.** The only asserted identity at build time is a public key supplied in unauthenticated JSON. Anyone who knows a wallet address can ask `/api/swap` to build any listed-symbol amount from 0.10 through 100,000 USDC for that address and receive a valid, 120-second seal. The seal binds that attacker-selected message to the public address, not to an authenticated buyer intent, a UI quote, a session, or the amount the buyer entered.
+U7: findings: INSIDE 1, OUTSIDE 0. This is indicative only, not a rigorous cold-review measure: this was a single-prompt review, so U1's required two-stage blind finding/message process was not available.
 
-Concrete failure: after a buyer has obtained a 0.10-USDC quote, a compromised browser posts `{ user: victim, symbol: "NVDAx", usdc: "100000" }` directly to the same public route. It receives a server HMAC for the resulting high-value message, presents that transaction to the wallet, and relays it with the valid seal after the wallet signs. `/api/swap/send` correctly recognizes it as “the swap Othello built,” but it was built on behalf of an attacker-controlled request. This is precisely the client-substitution boundary the seal was meant to close; an HMAC is authenticity of the server response, not authorization of the public request.
+U8 — not checked
 
-Require a wallet-authenticated, canonical build intent that commits to buyer, symbol, normalized amount, expiry, and a server nonce before creating a swap/seal; verify that intent at build and bind its digest into the relay authorization. A browser-held or merely HttpOnly session is not an equivalent protection against the compromised-client threat. The stateless HMAC can remain for cross-instance verification only if every instance shares the same secret, but it cannot supply this missing user authorization.
+- I did not send a transaction or contact Jupiter/RPC with a live swap. The checked transaction fixture and all route/RPC calls in tests are local/read-only fixtures or stubs.
+- I did not inspect deployment environment variables, credentials, or secret-manager configuration. In particular, I could not verify that every production/serverless instance receives the same high-entropy `SWAP_BINDING_SECRET`.
+- I did not independently audit Jupiter's on-chain program or decode individual route-plan steps; that is the documented threat-model boundary. I did verify the V6 IDL/account and tail definitions cited above and the repository's recorded real transaction.
+- Per instruction, I did not run `anchor build`.
 
-### MAJOR — `/api/swap` seals a transaction that need not be the quote or amount it requested
-
-**INSIDE — `app/src/app/api/swap/route.ts:50-83`; `app/src/lib/swap.ts:229-240`; `tests/app-swap.spec.ts:67-100,328-340`.** The route sends `amount=micro` to `/quote`, but it neither parses `quote.inAmount` nor compares the quote to the Jupiter instruction. `checkSwapAccounts` only requires positive `inAmount` and `quotedOutAmount`; it does not Borsh-decode/consume the route plan or require `inAmount === micro`, `quotedOutAmount === quote.outAmount`, and the expected minimum-output relationship. It also leaves the route-plan steps and remaining accounts completely unchecked.
-
-The positive test proves the mismatch rather than detecting it: `approvedTx` hard-codes an empty route plan and `inAmount=1_000_000` (1 USDC), while the test calls `/api/swap` with `usdc: "50"` and asserts HTTP 200. The recorded real Jupiter message instead has a one-step plan. Thus the synthetic success case is not faithful to the real route and actively blesses a transaction/quote disagreement.
-
-Concrete failure: a compromised/misbehaving swap provider, or a future integration defect between quote and swap responses, returns a route with the buyer's USDC ATA, buyer output ATA, listed mint, no platform fee, and an `inAmount` up to the buyer's full balance but a tiny positive quoted output. It passes every current account/amount check, is sealed by the server, and can be signed and relayed. The UI displays the separate quote values, not the transaction it authorizes. The HMAC makes this discrepancy immutable; it does not make it safe.
-
-Parse the V6 `route` Borsh arguments completely (including a route-plan length that consumes exactly to the fixed tail), reject unsupported step/remaining-account shapes unless their safety is established, and bind the normalized request plus quote facts to the on-chain arguments before sealing. At minimum reject if the returned quote's input differs from `micro` or if the route tail differs from the verified quote/request; add a regression using this existing 50-versus-1 mismatch and a real nonempty-plan transaction.
-
-## U7
-
-Findings: **2 INSIDE, 0 OUTSIDE**. This is indicative, not a blind-review measurement: the one-prompt brief explicitly named seal design, route-plan steps, remaining accounts, and test fidelity. The all-INSIDE count is therefore a framing warning, not evidence that the review was neutral.
-
-## U8 — not checked
-
-No transaction was sent; no ops script, `.env*`, keystore, or credential was read. I did not live-sign with a wallet, ask Jupiter or a public RPC to construct a transaction, or execute a malicious route on chain. I inspected the current published V6 IDL but did not independently audit the deployed Jupiter program, its complete route-plan/remaining-account ABI, wallet confirmation UX, deployment secret distribution, or third-party `@noble/curves` implementation. The supplier-mismatch finding follows from the code and its local synthetic test, not from a live-provider compromise.
-
-I compared the test changes with `72114c0`; I found no skipped/deleted existing test or explicit assertion relaxation. The new synthetic positive route is nevertheless not execution-faithful and masks the quote/transaction mismatch described above.
-
-## Verification
-
-Commands ran from `/home/hr/myvscode_linux/othello-b1`:
+Verification
 
 ```text
-git -C /home/hr/myvscode_linux/othello-b1 rev-parse --short HEAD
-276953a
+$ git -C /home/hr/myvscode_linux/othello-b1 rev-parse --short HEAD
+2ea2aa1
 
-corepack pnpm@10.32.1 install --frozen-lockfile && (cd app && corepack pnpm@10.32.1 install --frozen-lockfile)
+$ corepack pnpm@10.32.1 install --frozen-lockfile && (cd app && corepack pnpm@10.32.1 install --frozen-lockfile)
 Lockfile is up to date, resolution step is skipped
 Already up to date
-Done in 356ms using pnpm v10.32.1
+Done in 705ms using pnpm v10.32.1
 Lockfile is up to date, resolution step is skipped
 Already up to date
-Done in 652ms using pnpm v10.32.1
+Done in 1s using pnpm v10.32.1
 
-for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 600000 "$f" || echo "FAILED $f"; done
-exit=0; no FAILED line
-Relevant B1 output:
-  app-swap: 33 passing (348ms)
-  b1-adversary: 43 passing (340ms)
-  b1-seal-adversary: 19 passing (300ms)
-
-pnpm exec tsc --noEmit -p tsconfig.json
-(cd app && corepack pnpm@10.32.1 exec tsc --noEmit && corepack pnpm@10.32.1 build)
+$ for f in tests/*.spec.ts; do npx mocha --import=tsx --timeout 600000 "$f" || echo "FAILED $f"; done
 exit=0
-✓ Compiled successfully in 5.0s
+No `FAILED tests/...` line was printed. Relevant changed-suite totals:
+  app-swap: 34 passing (631ms)
+  b1-adversary: 43 passing (676ms)
+  b1-seal-adversary: 19 passing (615ms)
+  t18g-swap-amount-adversary: 4 passing (300ms)
+The complete loop also completed the remaining repository specs with exit=0.
+
+$ pnpm exec tsc --noEmit -p tsconfig.json && (cd app && corepack pnpm@10.32.1 exec tsc --noEmit)
+exit=0
+
+$ (cd app && corepack pnpm@10.32.1 build)
+✓ Compiled successfully in 8.4s
 ✓ Generating static pages (109/109)
-
-git diff --check 72114c0..276953a
 exit=0
 
-./scripts/check-secrets.sh
-no credential-shaped strings in client output
+$ git diff --check 72114c0..2ea2aa1
+exit=0
 
-Read-only fixture inspection:
-{"routeDataBytes":35,"routePlanLength":1,"prefix":"e517cb977ae3ad2a010000002864000140420f0000000000","tail":"40420f0000000000fd0a020000000000640000","inAmount":"1000000","quotedOut":"133885","slippageBps":100,"platformFeeBps":0}
+$ ./scripts/check-secrets.sh
+no credential-shaped strings in client output
+exit=0
 ```
