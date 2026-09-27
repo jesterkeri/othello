@@ -1,6 +1,8 @@
 # P0.4 Fixed-point and checks, written exactly (input to ADR-013)
 
-Units are settled (units.md): Pyth's `Crypto.*X/USD` prices **one share = one displayed unit**.
+Units (units.md): proven **per share for NFLXx only**; every other feed is `Unproven` until a written statement.
+The per-share formula below applies only to a `PerShare` feed; an `Unproven` feed values collateral only while its
+mint's effective multiplier is exactly 1e9 (review r2 MAJOR 2).
 
 ## Inputs (one PriceUpdateV2, any address)
 
@@ -20,7 +22,8 @@ Units are settled (units.md): Pyth's `Crypto.*X/USD` prices **one share = one di
 7. `publish_time > now` → `price_from_future`.
 8. `now − publish_time > circle.max_price_age` → `price_stale` (existing code).
 9. `conf × 10000 > max_conf_bps × price` (u128, no division) → `price_uncertain`.
-10. repricing guard (below) → `multiplier_price_mismatch` (existing code), in every valuation action including `declare_default`.
+10. `unit == Unproven` and effective multiplier ≠ 1e9 → `price_unit_unproven`.
+11. repricing guard (below) → `multiplier_price_mismatch` (existing code), in every valuation action including `declare_default`.
 
 Steps 2, 3 and 8 are what the SDK's `get_price_no_older_than` checks together. If the SDK is used,
 it is called first and the remaining checks follow.
@@ -80,7 +83,26 @@ followed by a change scheduled for a future T2 hides T1. And a valuation instruc
 change and refuse: **an error rolls back every write the instruction made** (Joshua's review,
 2026-09-26), so "record `mult_changed_at` and refuse" in one instruction records nothing.
 
-**Design for P1 (replaces the earlier Rule A / Rule B):**
+**Design for P1 (review r2 BLOCKER: a change and its reversal between two observations must not slip through):**
+
+Two mint-record rules, checked in every valuation, plus the observed epoch as a second layer:
+
+- **Rule P (pending change): refuse while `new_multiplier_effective_timestamp > now`.** The mint remembers only
+  its latest update, so while a change is scheduled any earlier activation may be hidden. Refusing for the whole
+  pending window closes that gap. For TSLAx and AMZNx (no dividends) a pending change means a corporate action,
+  so the cost is rare, announced pauses; `Unproven` feeds at multiplier ≠ 1e9 are refused anyway.
+- **Rule L (latest change): if `new_multiplier_effective_timestamp ≤ now`, refuse unless
+  `publish_time ≥ new_multiplier_effective_timestamp + 900`.** A reversal A→B→A is itself the latest change, so a
+  B-era price, published before the reversal, is refused. Any earlier change precedes the latest one, so a price
+  published 15 minutes after the latest change postdates all of them.
+- **Why the pair is complete:** at any moment either a change is pending (Rule P refuses) or the latest change is
+  in the past and bounds every earlier one (Rule L). Codex's case: A stored; A→B; Pyth publishes a B price; B→A
+  before the next valuation. The B→A update sets the record's timestamp to its activation, later than the B
+  price's `publish_time`, so Rule L refuses; had the reversal been scheduled for later, Rule P refuses until then.
+- **Trust boundary:** both rules rely on the issuer not backdating `new_multiplier_effective_timestamp`. An issuer
+  able to do that can already freeze or seize collateral (issuer powers, shown per stock), so Othello trusts the
+  issuer here, stated in ADR-013 and the stock page, rather than claiming to defend against it.
+- The observed epoch below stays as defence in depth (it also records the change for the app and events).
 
 - Per circle, stored: `epoch_multiplier: u64` (fixed 1e9) and `epoch_observed_at: i64`. Set at
   `create_circle` to the mint's effective multiplier and `now`.
@@ -104,6 +126,29 @@ change and refuse: **an error rolls back every write the instruction made** (Jos
 
 ## Parameters
 
-`max_price_age` 43,200 s (12 h) while only shard-0 is read; `max_conf_bps` proposed 200 (MSFTx showed 83
-bps on 2026-09-25, the others ≤ 5 bps: `cadence.jsonl` will give the real distribution before this is
-fixed).
+`max_price_age` 43,200 s (12 h) while only shard-0 is read, fail closed, with the user-visible pause state kept
+until the Hermes trial measures otherwise. `max_conf_bps` **provisionally** 200 (review r2 MINOR): the logged
+distribution is one stale timestamp (MSFTx 83 bps, others ≤ 5 bps), too thin to set a cap; the value is chosen
+only from measured fresh updates, including weekend and on-demand observations, before any user pilot.
+
+## The obligation `O` (review r2 MAJOR 3)
+
+`O` is the amount a default must cover, in **USDC base units (u64, checked u128 arithmetic)**, formed only from
+named ledger fields, never through a price:
+- `O = unpaid_principal + unpaid_premium`
+- `unpaid_principal = contribution × (n − rounds_paid_d)`: an exact integer product (SPEC §6 today), checked.
+- `unpaid_premium = Σ scheduled premium instalments not yet collected` for that seat (saver-reward circles only;
+  0 in mutual-aid circles, which is all the Colosseum pilot uses), each instalment an exact integer fixed at
+  creation.
+- No term is ever derived by division or prorating; if a future term needs prorating, it is rounded **up**
+  (obligations up, collateral down).
+- Bounds: `O ≤ n × contribution + Σ premiums ≤ u64::MAX`, checked at `create_circle`.
+- Liquidation then uses `sell_raw = min(stock_raw_d, ceil(O × 1e8 / conservative))` with the zero-divisor rule.
+- Adversarial tests for P2: a one-base-unit increase in `O` that raises `sell_raw` by one raw unit; `O` with an
+  unpaid premium vs without; `O` at its bound.
+
+## Hand-off note for P1
+
+`PRODUCT-DESIGN.md` §6.1 (lines ~140 and ~391, reviewed at r11) still states per-share valuation for Solana
+xStocks without the per-feed `Unproven` rule; the P1 SPEC delta must amend it with this document's rule before
+anything is implemented.
