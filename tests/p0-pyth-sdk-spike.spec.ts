@@ -21,6 +21,9 @@ const PRICE_TOO_OLD = /custom program error 16000\b/;
 const MISMATCHED_FEED_ID = /custom program error 16002\b/;
 const INSUFFICIENT_VERIFICATION = /custom program error 16003\b/;
 const OWNED_BY_WRONG_PROGRAM = /custom program error 3007\b/;
+// anchor-lang-error-1.1.2/src/lib.rs:233-239: AccountDiscriminatorMismatch = 3002, AccountDidNotDeserialize = 3003.
+const DISCRIMINATOR_MISMATCH = /custom program error 3002\b/;
+const DID_NOT_DESERIALIZE = /custom program error 3003\b/;
 const PUBLISH = Number(data.readBigInt64LE(8 + 32 + 1 + 32 + 8 + 8 + 4));
 
 async function spike(h: Harness, at: anchor.web3.PublicKey, feed = FEED, maxAge = 60) {
@@ -81,5 +84,31 @@ describe("P0.3 Pyth SDK spike: real devnet AAPLx PriceUpdateV2", () => {
     h.putAccount(at, partial, RECEIVER);
     await h.nextSlot();
     assert.match(await h.refusal(spike(h, at)), INSUFFICIENT_VERIFICATION);
+  });
+
+  // P0 review r1 (MINOR): exercise Account<PriceUpdateV2>'s own validation, not only the SDK's price checks.
+  it("refuses a wrong discriminator on a receiver-owned account", async () => {
+    const at = anchor.web3.Keypair.generate().publicKey;
+    const wrong = Buffer.from(data);
+    wrong[0] = wrong[0]! ^ 0xff;
+    h.putAccount(at, wrong, RECEIVER);
+    await h.nextSlot();
+    assert.match(await h.refusal(spike(h, at)), DISCRIMINATOR_MISMATCH);
+  });
+
+  it("refuses a truncated receiver-owned account", async () => {
+    const at = anchor.web3.Keypair.generate().publicKey;
+    h.putAccount(at, data.subarray(0, 100), RECEIVER);
+    await h.nextSlot();
+    assert.match(await h.refusal(spike(h, at)), DID_NOT_DESERIALIZE);
+  });
+
+  it("records what trailing bytes after a valid PriceUpdateV2 do (only the receiver can create such an account)", async () => {
+    const at = anchor.web3.Keypair.generate().publicKey;
+    h.putAccount(at, Buffer.concat([data, Buffer.alloc(10)]), RECEIVER);
+    await h.nextSlot();
+    const meta = await spike(h, at);
+    // Anchor deserializes the struct and ignores the rest: accepted, same price. Stated, not assumed.
+    assert.equal(Buffer.from(meta.returnData!.data).readBigInt64LE(0), PRICE);
   });
 });
