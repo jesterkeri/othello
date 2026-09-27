@@ -14,13 +14,19 @@ const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 /** Token-2022 ScaledUiAmountConfig (extension type 25, 56 bytes: authority, multiplier f64, timestamp i64, new f64). */
 function scaledUiConfig(d: Buffer): { multiplier: number; effectiveAt: number; newMultiplier: number } | null {
+  // P0 review r3 (MINOR): refuse malformed TLV (an entry running past the account) and duplicate extensions.
+  let found: { multiplier: number; effectiveAt: number; newMultiplier: number } | null = null;
   for (let o = 166; o + 4 <= d.length; ) {
     const type = d.readUInt16LE(o), len = d.readUInt16LE(o + 2);
-    if (type === 25 && len === 56) return { multiplier: d.readDoubleLE(o + 4 + 32), effectiveAt: Number(d.readBigInt64LE(o + 4 + 40)), newMultiplier: d.readDoubleLE(o + 4 + 48) };
     if (type === 0 && len === 0) break;
+    if (o + 4 + len > d.length) return null;
+    if (type === 25) {
+      if (found || len !== 56) return null;
+      found = { multiplier: d.readDoubleLE(o + 4 + 32), effectiveAt: Number(d.readBigInt64LE(o + 4 + 40)), newMultiplier: d.readDoubleLE(o + 4 + 48) };
+    }
     o += 4 + len;
   }
-  return null;
+  return found;
 }
 
 async function main() {
@@ -47,7 +53,10 @@ async function main() {
     const f = JSON.parse(readFileSync(path, "utf8")) as { dataBase64: string; slot?: number; fetchedAtSlot?: number; fetchedAt: string };
     return { path, slot: f.slot ?? f.fetchedAtSlot, fetchedAt: f.fetchedAt, config: scaledUiConfig(Buffer.from(f.dataBase64, "base64")) };
   });
-  const consistent = snapshots.every((x) => x.config && x.config.effectiveAt < candleDayStart && Date.parse(x.fetchedAt) / 1000 > candleDayStart);
+  // P0 review r3 (MINOR): the snapshots must agree field by field, not merely each predate the candle.
+  const first = snapshots[0]?.config;
+  const agree = !!first && snapshots.every((x) => x.config && x.config.multiplier === first.multiplier && x.config.effectiveAt === first.effectiveAt && x.config.newMultiplier === first.newMultiplier);
+  const consistent = agree && snapshots.every((x) => x.config!.effectiveAt < candleDayStart && Date.parse(x.fetchedAt) / 1000 > candleDayStart);
   const multiplierInForceOnCandleDay = consistent ? snapshots[0]!.config!.newMultiplier : null;
   const perUi = ((await (await fetch(`https://lite-api.jup.ag/price/v3?ids=${NFLXX}`, { headers: { "user-agent": "othello-p0" } })).json()) as Record<string, { usdPrice: number }>)[NFLXX].usdPrice;
   const q = (await (await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${NFLXX}&outputMint=${USDC}&amount=100000000&slippageBps=50`)).json()) as { outAmount: string };

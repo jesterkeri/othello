@@ -5,6 +5,8 @@
 // Run (background, >= 48 h): npx tsx ops/p0/cadence-logger.ts reviews/p0-evidence/cadence.jsonl
 // v2 (P0 review r1): a heartbeat row every 15 minutes proves the logger was still polling when nothing
 // changed, and each heartbeat keeps the raw account bytes (base64) so any age claim can be re-derived.
+// v3 (P0 review r3): every network call is bounded (15 s), and the heartbeat depends only on the devnet
+// account read, never on the optional pricing calls, so a hung request cannot silence it.
 import { appendFileSync } from "node:fs";
 
 import * as anchor from "@coral-xyz/anchor";
@@ -13,14 +15,16 @@ import { decodePriceUpdateV2, feedId, SEVEN, shard0, toNum } from "./pyth";
 
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const out = process.argv[2] ?? "reviews/p0-evidence/cadence.jsonl";
-const devnet = new anchor.web3.Connection("https://api.devnet.solana.com", "confirmed");
+const TIMEOUT_MS = 15_000;
+const bounded: typeof fetch = (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+const devnet = new anchor.web3.Connection("https://api.devnet.solana.com", { commitment: "confirmed", fetch: bounded });
 
 type Live = { mints: { symbol: string; address: string; multiplierNow: number }[] };
 
 async function jupiter(mint: string) {
   try {
-    const p = (await (await fetch(`https://lite-api.jup.ag/price/v3?ids=${mint}`, { headers: { "user-agent": "othello-p0" } })).json()) as Record<string, { usdPrice: number }>;
-    const q = (await (await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${mint}&outputMint=${USDC}&amount=100000000&slippageBps=50`)).json()) as { outAmount?: string };
+    const p = (await (await bounded(`https://lite-api.jup.ag/price/v3?ids=${mint}`, { headers: { "user-agent": "othello-p0" } })).json()) as Record<string, { usdPrice: number }>;
+    const q = (await (await bounded(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${mint}&outputMint=${USDC}&amount=100000000&slippageBps=50`)).json()) as { outAmount?: string };
     return { perDisplayedUnit: p[mint]?.usdPrice ?? null, perRawToken: q.outAmount ? Number(q.outAmount) / 1e6 : null };
   } catch (e) { return { error: String(e) }; }
 }
@@ -41,14 +45,14 @@ async function main() {
       });
       if (Date.now() - lastBeat >= 15 * 60_000) {
         lastBeat = Date.now();
-        const slot = await devnet.getSlot();
+        const slot = await devnet.getSlot().catch(() => null);
         appendFileSync(out, JSON.stringify({
           observedAt: new Date().toISOString(), heartbeat: true, slot,
           accounts: SEVEN.map((s, i) => ({ symbol: s, account: keys[i].toBase58(), owner: infos[i]?.owner.toBase58() ?? null, dataBase64: infos[i] ? Buffer.from(infos[i]!.data).toString("base64") : null })),
         }) + "\n");
       }
       if (changed.length) {
-        const live = (await (await fetch("https://othello-circle.vercel.app/api/live")).json()) as Live;
+        const live = ((await (await bounded("https://othello-circle.vercel.app/api/live")).json().catch(() => null)) ?? { mints: [] }) as Live;
         for (const s of changed) {
           const i = SEVEN.indexOf(s);
           const info = infos[i]!;

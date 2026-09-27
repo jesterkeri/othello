@@ -63,7 +63,9 @@ floored price.
 ## What P1 (ADR-013) must also settle and test (P0 review r1)
 
 - Checked conversion of a positive `i64` price and `u64` conf to `u128`; negative or zero price refused first.
-- Checked `now − publish_time` (future `publish_time` refused) and checked `epoch_observed_at + 900`.
+- Checked `now − publish_time` (future `publish_time` refused), checked `epoch_observed_at + 900`, and **checked
+  `new_multiplier_effective_timestamp + 900` for Rule L** (review r3 MINOR: the issuer chooses that timestamp and
+  Token-2022 accepts any i64; overflow returns `multiplier_price_mismatch`, fail closed).
 - Parameter bounds: `max_price_age`, `max_conf_bps`, `haircut_bps`, `pool.discount_bps` (each < 10,000 where a
   bps, and `discount_bps ≤ haircut_bps` as today).
 - **One shared valuation helper** used by all five price-gated actions (join_and_lock, release_pot,
