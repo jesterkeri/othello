@@ -39,6 +39,7 @@ Run locally: `pnpm -C app install --frozen-lockfile && pnpm -C app dev`.
 - The circle runs on devnet with test USDC and a labelled mirror of NFLXx. Creating your own circle is not in this demo yet: new members would need mirror stock, and a devnet faucet comes next.
 - A member who stops paying before their turn can stall the circle. The stock's issuer can freeze, pause or move its tokens (each stock page shows those powers).
 - Nothing runs by itself: every step happens when someone sends the transaction.
+- Buy's security boundary: the buyer's wallet is the authorisation. The wallet shows the transaction (and its balance changes) before signing, and nothing moves without that signature. Othello's server builds only the requested, quoted purchase, checks every account and amount it can see, seals it, and relays only that sealed transaction. It does not defend against a compromised browser or wallet, which could bypass Othello entirely; and it does not decode Jupiter's individual route steps, only the route's accounts, amounts, slippage and fee.
 - Othello pays no APR. Members get the pot interest-free, and their stock keeps its own returns. The planned business model, not in this version, is a 0.5% fee on each pot.
 
 ## Built with (open source)
