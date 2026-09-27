@@ -22,9 +22,15 @@ async function main() {
   const day = new Date(u.publishTime * 1000).toISOString().slice(0, 10);
 
   const live = (await (await fetch("https://othello-circle.vercel.app/api/live")).json()) as {
-    mints: { address: string; multiplierNow: number }[];
+    mints: { address: string; multiplierNow: number; multiplier: number; newMultiplier: number; effectiveAt: number }[];
   };
-  const mult = live.mints.find((m) => m.address === NFLXX)?.multiplierNow;
+  const m = live.mints.find((x) => x.address === NFLXX);
+  const mult = m?.multiplierNow;
+  // P0 review r1 (MINOR): the multiplier must be the one in force on the candle's day, not only today's.
+  // A Token-2022 mint keeps only its latest scheduled change, so if that change took effect before the candle
+  // day and is the current value, it was in force that day (a later change would carry a later timestamp).
+  const candleDayStart = Date.parse(`${day}T00:00:00Z`) / 1000;
+  const multiplierInForceOnCandleDay = m && m.effectiveAt < candleDayStart && m.newMultiplier === m.multiplierNow ? m.multiplierNow : null;
   const perUi = ((await (await fetch(`https://lite-api.jup.ag/price/v3?ids=${NFLXX}`, { headers: { "user-agent": "othello-p0" } })).json()) as Record<string, { usdPrice: number }>)[NFLXX].usdPrice;
   const q = (await (await fetch(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${NFLXX}&outputMint=${USDC}&amount=100000000&slippageBps=50`)).json()) as { outAmount: string };
   const perRaw = Number(q.outAmount) / 1e6;
@@ -39,15 +45,15 @@ async function main() {
     sampledAt: new Date().toISOString(),
     pyth: { account: acct.toBase58(), owner: u.owner, verification: u.verification, feedId: u.feedId,
       price: pyth, conf: toNum(u.conf, u.exponent), exponent: u.exponent, publishTime: new Date(u.publishTime * 1000).toISOString() },
-    mint: { address: NFLXX, multiplierNow: mult },
+    mint: { address: NFLXX, multiplierNow: mult, lastChange: m ? { from: m.multiplier, to: m.newMultiplier, effectiveAt: new Date(m.effectiveAt * 1000).toISOString() } : null, multiplierInForceOnCandleDay },
     jupiterNow: { perDisplayedUnit: perUi, perRawToken_sell_1e8_raw: perRaw },
     geckoTerminalSameDay: candle ? { day, pool: chart.pool.address, perRawOpen: candle.o, perRawClose: candle.c,
-      perShareOpen: candle.o / (mult ?? NaN), perShareClose: candle.c / (mult ?? NaN) } : null,
+      perShareOpen: candle.o / (multiplierInForceOnCandleDay ?? NaN), perShareClose: candle.c / (multiplierInForceOnCandleDay ?? NaN) } : null,
     ratios: {
       pythOverJupiterPerUi: pyth / perUi,
       pythOverJupiterPerRaw: pyth / perRaw,
       pythOverSameDayPerRawClose: candle ? pyth / candle.c : null,
-      pythOverSameDayPerShareClose: candle && mult ? pyth / (candle.c / mult) : null,
+      pythOverSameDayPerShareClose: candle && multiplierInForceOnCandleDay ? pyth / (candle.c / multiplierInForceOnCandleDay) : null,
     },
   }, null, 2));
 }

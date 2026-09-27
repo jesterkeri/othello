@@ -1,7 +1,12 @@
 # P0.2 Cadence: how fresh the free devnet xStock prices really are
 
-**Result: the free shard-0 accounts are NOT usable on their own for a user pilot.** They are updated on
-weekdays around US market hours only; a circle reading them pauses every weekend and most nights.
+**Result (narrowed after P0 review r1):** over the observed interval the free shard-0 xStock accounts were
+**not updated for 41.4 h across a weekend** and had overnight gaps up to 7.5 h. That is one weekend, not a proven
+"weekdays only" rule. What is established: these accounts are an **unmanaged third-party service** with no
+promised cadence, so they cannot be Othello's availability guarantee. Continuing measurement: logger v2
+(`cadence-v2.jsonl`, from 2026-09-27T12:39:11.597Z) writes a **heartbeat with the raw account bytes every 15 minutes**,
+so gaps can be re-derived and a stopped logger is visible; at least two more full weekends (2026-10-03/04 and
+2026-10-10/11) are recorded before any "weekdays only" claim.
 
 ## Evidence
 
@@ -28,8 +33,12 @@ Logger: `ops/p0/cadence-logger.ts` (read-only, polls the seven accounts every 60
 - With the 12 h ceiling, a circle priced only from these accounts would refuse join, release, coverage and
   default from roughly Friday evening to Monday, and on most nights. Contributions stay possible (§6.2 of the
   product design), but nothing can be released.
-- **Liveness option C must include on-demand posting before a user pilot**: the user's transaction posts a fresh
-  Hermes update (paid key; Pyth Starter $500/month, trial length unconfirmed publicly).
+- **Conditional, not yet settled:** a pilot that promises weekend or overnight availability needs on-demand
+  posting (the user's transaction posts a fresh Hermes update; paid key, Pyth Starter $500/month). Whether that
+  path works is **unmeasured**: P0 has not yet shown that Hermes serves valid `Crypto.*X/USD` updates over a
+  weekend, nor measured posting latency, transaction count and compute, update-account rent recovery, or
+  failure behaviour. Option C is **not pilot-ready** until that trial is measured and recorded here.
+- Raw evidence for the 2026-09-27 re-check is kept in `cadence-v2.jsonl` heartbeats (account bytes + slot).
 - Open question for the trial: whether Hermes publishes `Crypto.*X/USD` updates on weekends (the schedule says
   24/7; publisher behaviour is unverified until a key exists).
 - Confidence cap: a 200 bps `max_conf_bps` would have accepted every logged sample (max 83.3).

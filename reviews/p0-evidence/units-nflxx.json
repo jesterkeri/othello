@@ -1,5 +1,5 @@
 {
-  "sampledAt": "2026-09-26T06:57:30.049Z",
+  "sampledAt": "2026-09-27T12:40:37.706Z",
   "pyth": {
     "account": "FUqSvECa7qTFsn8QncA5MHpohUfz227295LFvVj5AWFh",
     "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
@@ -12,11 +12,17 @@
   },
   "mint": {
     "address": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
-    "multiplierNow": 10
+    "multiplierNow": 10,
+    "lastChange": {
+      "from": 1,
+      "to": 10,
+      "effectiveAt": "2025-11-16T23:55:00.000Z"
+    },
+    "multiplierInForceOnCandleDay": 10
   },
   "jupiterNow": {
-    "perDisplayedUnit": 71.27178332165374,
-    "perRawToken_sell_1e8_raw": 696.039889
+    "perDisplayedUnit": 72.11036298134555,
+    "perRawToken_sell_1e8_raw": 697.128498
   },
   "geckoTerminalSameDay": {
     "day": "2026-09-12",
@@ -27,8 +33,8 @@
     "perShareClose": 76.03359813228496
   },
   "ratios": {
-    "pythOverJupiterPerUi": 1.0941729850936261,
-    "pythOverJupiterPerRaw": 0.11203906721788469,
+    "pythOverJupiterPerUi": 1.0814487222893863,
+    "pythOverJupiterPerRaw": 0.11186411132772253,
     "pythOverSameDayPerRawClose": 0.10256473693948072,
     "pythOverSameDayPerShareClose": 1.0256473693948072
   }

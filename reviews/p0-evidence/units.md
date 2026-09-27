@@ -1,54 +1,55 @@
-# P0.1 Units: is Pyth's `Crypto.*X/USD` per displayed unit or per raw token?
+# P0.1 Units: is Pyth's `Crypto.*X/USD` priced per displayed unit (share) or per raw token?
 
-**Result: PASS, per displayed (scaled UI) unit, i.e. per share.**
+**Result (narrowed after P0 review r1):**
+- **Proven for one feed:** `Crypto.NFLXX/USD` is priced **per displayed unit (per share)**.
+- **Not proven for the seven devnet feeds** (AAPLX, AMZNX, GOOGLX, METAX, MSFTX, NVDAX, TSLAX): they are
+  separate Pyth products. One NFLXx sample does not establish their convention.
+- **Safe rule adopted for P1** (below): a feed whose unit is unproven may value collateral **only while its
+  mint's effective multiplier is exactly 1**, where per-share and per-raw prices are identical. Today that
+  admits **TSLAx and AMZNx** (multiplier exactly 1); the other five wait for per-feed evidence.
 
-## Method
+## NFLXx: the proof
 
-The seven candidate xStocks have multipliers within 0.6% of 1 (AAPLx 1.00327, MSFTx 1.00590, ...), too
-close to separate the two hypotheses against market noise and Pyth's publish lag. NFLXx has a real
-multiplier of **10** (its 10-for-1 split, effective 2025-11-16T23:55Z), so its per-share and per-raw prices
-differ tenfold: a natural experiment with no statistics needed.
+NFLXx's Token-2022 multiplier is 10 since its 10-for-1 split, so its per-share and per-raw prices differ
+tenfold: a natural experiment needing no statistics.
 
-`ops/p0/units-nflxx.ts` (read-only) reads Pyth's mainnet shard-0 `Crypto.NFLXX/USD` PriceUpdateV2 and
-compares it with Jupiter now (per displayed unit; and a sale of exactly 100,000,000 raw base units =
-1 whole raw token) and with GeckoTerminal's per-raw daily candle for the day Pyth last published.
-Output: `units-nflxx.json` (sampled 2026-09-26T06:57:30Z).
+- `ops/p0/units-nflxx.ts` (read-only) → `units-nflxx.json` (re-run 2026-09-27T12:40:37Z).
+- Pyth `Crypto.NFLXX/USD` (mainnet shard-0 `FUqSvECa7qTFsn8QncA5MHpohUfz227295LFvVj5AWFh`, owner receiver,
+  Full, feed id matches, exp −8): **77.98365991**, published 2026-09-12T12:18:29Z.
+- GeckoTerminal NFLXx/USDC (Raydium CLMM) daily candle 2026-09-12, **per raw token**: open 773.38, close 760.34.
+- **Multiplier in force on 2026-09-12 = 10, time-bound (review r1 MINOR):** the mint's ScaledUiAmountConfig
+  (Token-2022 extension type 25, bytes saved in `units-nflxx-mint.json`, mainnet slot 450,999,501) records its
+  latest change as **1 → 10, effective 2025-11-16T23:55:00Z**. A mint keeps only its latest scheduled change,
+  so any change after that date would carry a later timestamp; the multiplier on 2026-09-12 was therefore 10.
+  The probe now computes `multiplierInForceOnCandleDay` from that record and refuses to compare otherwise.
+- Ratios: Pyth / same-day per-share close = **1.026**; Pyth / same-day per-raw close = **0.103**. The per-raw
+  reading is off by ~10×; the per-share reading is within 2.6% on the same day (that day's range 55.00 to 86.39
+  per share). For NFLXx: per share.
 
-## Evidence
+## Why this does not extend to the seven feeds
 
-| Source | Unit | Value |
-|---|---|---|
-| Pyth `Crypto.NFLXX/USD` (acct `FUqSvECa…AWFh`, owner receiver, Full, feed id matches, exp −8) | ? | **77.9837** ± 0.5387, published 2026-09-12T12:18:29Z |
-| GeckoTerminal NFLXx/USDC Raydium CLMM, 2026-09-12 | per raw token | open 773.38, close 760.34 |
-| same ÷ multiplier 10 | per share | open 77.34, close 76.03 |
-| Jupiter now (2026-09-26) | per displayed unit | 71.27 |
-| Jupiter now, sell 1e8 raw | per raw token | 696.04 |
+Each `Crypto.*X/USD` is its own product with its own publishers. The seven's multipliers are within 0.6% of 1
+(AAPLx 1.0033, MSFTx 1.0059, GOOGLx 1.0024, METAx 1.0029, NVDAx 1.0017; **TSLAx and AMZNx exactly 1**), so a
+wrong unit convention would be hidden inside ordinary market noise.
 
-Ratios: Pyth / same-day per-share close = **1.026**; Pyth / same-day per-raw close = **0.103**.
-Against today's Jupiter: 1.094 (per unit) vs 0.112 (per raw); the 9% gap is two weeks of market
-movement (Pyth's mainnet account is stale since 12 Sep).
+## The rule for P1 (ADR-013)
 
-The per-raw hypothesis is off by a factor of ~10; the per-unit hypothesis is within ~2.6% on the same
-day (intraday range that day: 55.00 to 86.39 per share). Decided.
+The allowlist entry for each mint carries `unit: PerShare | Unproven`:
+- `PerShare`: value = raw × effective multiplier × price (per share).
+- `Unproven`: value only while the mint's effective multiplier is **exactly 1e9 (fixed)**; otherwise the
+  valuation refuses (`price_unit_unproven`), the same as a stale price (contributions still allowed).
+- A feed moves to `PerShare` only with evidence recorded in this folder: per-feed sampling (below), or Pyth's
+  or the issuer's written statement for that feed.
 
-## Consequence for the formula (P0.4 / ADR-013)
+This is safe regardless of the true convention: at multiplier exactly 1 both conventions give the same value.
 
-The feed prices one **share** (one displayed unit). A position's value needs the mint's effective
-multiplier:
+## Per-feed evidence plan (for the five with multiplier ≠ 1)
 
-`value_usdc = floor(raw × mult_fixed × p_low_usdc / (1e9 × 1e8))`
-
-where `p_low_usdc` is the per-share low price in USDC 6-dp. This is today's FUND shape
-(`valuation.rs:249`) with Pyth's per-share price in place of `share_price`. Because the formula multiplies
-by the multiplier **now** and Pyth's price was **published earlier**, a multiplier activation between the
-two would value the position at `new_mult × old_price`. That is exactly the window the repricing
-guard (refuse while the latest activation is later than `publish_time − 15 min`) must close; for
-NFLXx's split it would be a 10× over-valuation.
-
-## Secondary check (running)
-
-`ops/p0/cadence-logger.ts` records, on each devnet update of the seven, Pyth's price beside Jupiter's
-per-unit and per-raw prices (`cadence.jsonl`). With multipliers ≤ 1.006 it cannot decide units on its
-own; it is kept as a consistency check. No multiplier activation for the seven is scheduled in the
-window (all `effectiveAt` are in the past), so an observed activation is not expected; the NFLXx ×10
-result stands on its own.
+- `ops/p0/cadence-logger.ts` (v2, `cadence-v2.jsonl`) records, on every devnet update, Pyth's price beside
+  Jupiter's per-displayed-unit and per-raw prices for the real mint, plus the multiplier.
+- Decision rule, fixed before looking: per feed, over at least 30 update samples taken within 60 s of a Pyth
+  publish, compute the median of `pyth / jupiter_per_unit − 1` and of `pyth / jupiter_per_raw − 1`. Mark
+  `PerShare` only if the per-unit median is within ±0.10% **and** the per-raw median is off by at least half the
+  multiplier gap in the expected direction. MSFTx (gap 0.59%) and AAPLx (0.33%) are the most decidable; NVDAx
+  (0.17%) may stay `Unproven`.
+- Or: Joshua asks Pyth (Discord) for the unit convention of each `Crypto.*X/USD` feed and saves the answer here.

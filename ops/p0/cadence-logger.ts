@@ -3,6 +3,8 @@
 // the full decode, and Jupiter's per-displayed-unit price and per-raw price (a sale of exactly
 // 100,000,000 raw base units) for the real mainnet mint, plus its multiplier at that second.
 // Run (background, >= 48 h): npx tsx ops/p0/cadence-logger.ts reviews/p0-evidence/cadence.jsonl
+// v2 (P0 review r1): a heartbeat row every 15 minutes proves the logger was still polling when nothing
+// changed, and each heartbeat keeps the raw account bytes (base64) so any age claim can be re-derived.
 import { appendFileSync } from "node:fs";
 
 import * as anchor from "@coral-xyz/anchor";
@@ -26,6 +28,7 @@ async function jupiter(mint: string) {
 async function main() {
   const ids = Object.fromEntries(await Promise.all(SEVEN.map(async (s) => [s, await feedId(s)] as const)));
   const last: Record<string, number> = {};
+  let lastBeat = 0;
   for (;;) {
     try {
       const keys = SEVEN.map((s) => shard0(ids[s]));
@@ -36,6 +39,14 @@ async function main() {
         const u = decodePriceUpdateV2(info.owner.toBase58(), info.data as Buffer);
         return u.publishTime !== last[s];
       });
+      if (Date.now() - lastBeat >= 15 * 60_000) {
+        lastBeat = Date.now();
+        const slot = await devnet.getSlot();
+        appendFileSync(out, JSON.stringify({
+          observedAt: new Date().toISOString(), heartbeat: true, slot,
+          accounts: SEVEN.map((s, i) => ({ symbol: s, account: keys[i].toBase58(), owner: infos[i]?.owner.toBase58() ?? null, dataBase64: infos[i] ? Buffer.from(infos[i]!.data).toString("base64") : null })),
+        }) + "\n");
+      }
       if (changed.length) {
         const live = (await (await fetch("https://othello-circle.vercel.app/api/live")).json()) as Live;
         for (const s of changed) {

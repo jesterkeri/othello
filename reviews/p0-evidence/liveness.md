@@ -54,6 +54,10 @@ update before each action, so the effective age at use is seconds, and the ceili
 - **Trial timing:** start it only once the cadence result is in and the on-demand path is built, around
   Monday 2026-09-28, so the 14 days cover the Colosseum deadline (2026-10-12). Starting it today would
   expire before then.
+- **Pilot readiness (P0 review r1):** C is not pilot-ready until the trial measures, and this folder records:
+  weekend `Crypto.*X/USD` updates from Hermes, posting latency, transaction count and compute, rent recovery of
+  the update account, and failure behaviour. Until then the pilot states "prices may pause outside US market
+  hours".
 - **Money:** $0 until the trial; **$500/month** only if live updates are needed beyond the trial.
   Joshua decides that when the trial ends.
 - The key is created by Joshua and set only in Vercel env (server-only); never in chat, repo or logs.

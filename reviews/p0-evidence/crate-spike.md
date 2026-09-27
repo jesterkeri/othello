@@ -49,6 +49,12 @@ $ npx mocha --import=tsx --timeout 600000 tests/p0-pyth-sdk-spike.spec.ts
   6 passing (439ms)
 ```
 
+**Added after P0 review r1 (spike commit 6f8efb6), 9 passing:** a wrong discriminator on a receiver-owned
+account is refused with 3002 (`AccountDiscriminatorMismatch`), a truncated account with 3003
+(`AccountDidNotDeserialize`), codes from anchor-lang-error-1.1.2/src/lib.rs:233-239. A valid account with
+10 trailing bytes is **accepted** (Anchor deserializes the struct and ignores the rest); recorded, not assumed.
+Only the receiver program can create a receiver-owned account, so this is not an injection path.
+
 Refusal codes are pinned, not guessed: `PriceTooOld` 16000, `MismatchedFeedId` 16002,
 `InsufficientVerificationLevel` 16003 (pyth-solana-receiver-sdk-2.0.0 `src/error.rs`: `PriceTooOld =
 10000` then +1 each, plus Anchor's 6000 offset for `#[error_code]`), and `AccountOwnedByWrongProgram` 3007

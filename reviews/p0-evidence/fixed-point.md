@@ -40,8 +40,34 @@ recovered = floor(sell_raw × conservative / 1e8)
 `1e2` converts 1e-8 USD to USDC's 1e-6. `p_low` is taken before any rounding (Pyth's "collateral at μ−σ").
 Flooring `wrapper_low` lowers the sale price, so the pool is never overpaid; I9 (seized value at the
 conservative price ≤ O + one raw unit) keeps holding because `sell_raw` is computed from the same
-floored price. Magnitudes: raw ≤ 1e14, mult_fixed ≤ 1e11, p_low ≤ 1e12 → product ≤ 1e37 < u128 max 3.4e38.
-Larger inputs return `math_overflow`.
+floored price.
+
+**Zero-divisor rule (P0 review r1, MAJOR).** A positive, accepted `p_low` can still floor to
+`wrapper_low == 0` (e.g. `p_low = 1`, `mult_fixed = 1e9`), and then `conservative == 0`, making
+`ceil(O × 1e8 / conservative)` a division by zero. So, before any division:
+- `wrapper_low == 0` or `conservative == 0` → **refuse with `price_too_low`** (a no-sale outcome: nothing is
+  seized or paid; `declare_default` waits exactly as for a stale price, and the stress test reports it).
+- The same guard applies to every divisor in the valuation helper; there is no path that divides by a price- or
+  multiplier-derived zero.
+- Tests: `p_low = 1` at `mult_fixed = 1e9` (wrapper floors to 0) and a discount that floors a tiny positive
+  wrapper to 0, both refused with no transfer.
+
+**Magnitude bounds, enforced (not illustrative).** P1 fixes and the program checks, refusing with
+`math_overflow` / `invalid_params` beyond them: `raw ≤ 1e14` (1e6 whole tokens at 8 decimals),
+`mult_fixed ≤ 1e11` (multiplier ≤ 100), `price ≤ 1e12` (≤ $10,000 per share at exponent −8). Product
+≤ 1e37 < u128 max 3.4e38.
+
+## What P1 (ADR-013) must also settle and test (P0 review r1)
+
+- Checked conversion of a positive `i64` price and `u64` conf to `u128`; negative or zero price refused first.
+- Checked `now − publish_time` (future `publish_time` refused) and checked `epoch_observed_at + 900`.
+- Parameter bounds: `max_price_age`, `max_conf_bps`, `haircut_bps`, `pool.discount_bps` (each < 10,000 where a
+  bps, and `discount_bps ≤ haircut_bps` as today).
+- **One shared valuation helper** used by all five price-gated actions (join_and_lock, release_pot,
+  update_coverage, quote_valuation, declare_default); no duplicated arithmetic.
+- The per-feed unit rule (units.md): `Unproven` feeds value only at multiplier exactly 1e9.
+- Exact behaviour when a multiplier change is observed between two transactions (`observe_oracle_epoch`), and
+  `declare_default` refusing during the epoch window (fail closed), not the old SPEC repricing branch.
 
 ## Repricing guard (replaces ADR-005's `priced_for_multiplier` stamp)
 
