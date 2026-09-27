@@ -7,7 +7,8 @@
 import { PublicKey } from "@solana/web3.js";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { checkSwapAccounts, checkSwapTx, fetchLookupTables, resolveKeys } from "@/lib/swap";
+import { checkSwapAccounts, checkSwapTx, fetchLookupTables, jupiterRouteTail, resolveKeys } from "@/lib/swap";
+import { sealConfigured, sealSwap } from "@/lib/swapSeal";
 import { TRADABLE_XSTOCKS } from "@/lib/xstocks";
 
 export const dynamic = "force-dynamic";
@@ -15,13 +16,16 @@ export const dynamic = "force-dynamic";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const JUP = "https://lite-api.jup.ag/swap/v1";
 
-export type SwapBuild = { tx: string; lastValidBlockHeight: number; outRaw: string; minOutRaw: string; priceImpactPct: number; usdc: number };
+/** `seal` binds this exact transaction to the buyer and symbol; /api/swap/send relays nothing without it. */
+export type SwapBuild = { tx: string; seal: string; lastValidBlockHeight: number; outRaw: string; minOutRaw: string; priceImpactPct: number; usdc: number };
 
 function fail(error: string, status = 502) {
   return NextResponse.json({ error }, { status, headers: { "cache-control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
+  // B1: without the binding key the relay could not recognise this swap, so none is built.
+  if (!sealConfigured()) return fail("swap unavailable", 503);
   const body = (await req.json().catch(() => null)) as { symbol?: unknown; usdc?: unknown; user?: unknown } | null;
   const x = TRADABLE_XSTOCKS.find((t) => t.symbol === body?.symbol);
   if (!x) return fail("not a listed xStock", 404);
@@ -45,9 +49,11 @@ export async function POST(req: NextRequest) {
   try {
     const q = await fetch(`${JUP}/quote?inputMint=${USDC}&outputMint=${x.address}&amount=${amount}&slippageBps=100&restrictIntermediateTokens=true`, { cache: "no-store" }).catch(() => null);
     if (!q) throw new Error("Jupiter unreachable");
-    const quote = (await q.json().catch(() => null)) as { outAmount?: unknown; otherAmountThreshold?: unknown; priceImpactPct?: unknown; outputMint?: unknown } | null;
+    const quote = (await q.json().catch(() => null)) as { inAmount?: unknown; outAmount?: unknown; otherAmountThreshold?: unknown; priceImpactPct?: unknown; outputMint?: unknown } | null;
     if (!q.ok || !quote) throw new Error("Jupiter found no route");
     if (quote.outputMint !== x.address) throw new Error("Jupiter quoted a different token");
+    // B1 (fresh review r2, MAJOR): the quote must be for exactly the amount requested.
+    if (quote.inAmount !== amount) throw new Error("Jupiter quoted a different amount");
     const out = typeof quote.outAmount === "string" && /^[0-9]+$/.test(quote.outAmount) ? quote.outAmount : null;
     const min = typeof quote.otherAmountThreshold === "string" && /^[0-9]+$/.test(quote.otherAmountThreshold) ? quote.otherAmountThreshold : null;
     const impact = Number(quote.priceImpactPct);
@@ -71,8 +77,16 @@ export async function POST(req: NextRequest) {
     if (!keys) throw new Error("Jupiter's transaction could not be checked (lookup table unreadable)");
     const wrong = checkSwapAccounts(check.tx, keys, user, x.address);
     if (wrong) throw new Error(`Jupiter's transaction was refused: ${wrong}`);
+    // B1 (fresh review r2, MAJOR): the transaction must spend exactly the requested amount and promise
+    // exactly the quoted output, with the slippage asked for; otherwise the seal would fix a purchase the
+    // buyer did not request. (Its route plan steps are not decoded: a stated limit.)
+    const tail = jupiterRouteTail(check.tx, keys);
+    if (!tail || tail.inAmount !== micro || tail.quotedOut !== BigInt(out) || tail.slippageBps !== 100) throw new Error("Jupiter's transaction does not match the quote");
 
-    const built: SwapBuild = { tx: swap.swapTransaction, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: Number(micro) / 1_000_000 };
+    // B1: seal the exact message approved above; the relay recomputes it from the signed bytes.
+    const seal = sealSwap({ message: check.tx.message.serialize(), buyer: user, symbol: x.symbol }, Math.floor(Date.now() / 1000));
+    if (!seal) return fail("swap unavailable", 503);
+    const built: SwapBuild = { tx: swap.swapTransaction, seal, lastValidBlockHeight: swap.lastValidBlockHeight, outRaw: out, minOutRaw: min, priceImpactPct: impact * 100, usdc: Number(micro) / 1_000_000 };
     return NextResponse.json(built, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     const said = e instanceof Error ? e.message : String(e);

@@ -101,7 +101,7 @@ export default function BuyPanel({ symbol, address, decimals, multiplier, accept
       setBuy({ phase: "wallet" });
       const signed = await wallet.signTransaction(VersionedTransaction.deserialize(fromB64(b.tx)));
       setBuy({ phase: "sending" });
-      const r = (await fetch("/api/swap/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx: toB64(signed.serialize()), user, lastValidBlockHeight: b.lastValidBlockHeight, symbol }) }).then((x) => x.json())) as SwapSent | { error: string };
+      const r = (await fetch("/api/swap/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tx: toB64(signed.serialize()), seal: b.seal, user, lastValidBlockHeight: b.lastValidBlockHeight, symbol }) }).then((x) => x.json())) as SwapSent | { error: string };
       if ("error" in r && !("signature" in r)) throw new Error(r.error);
       const sent = r as SwapSent;
       sig = sent.signature;
