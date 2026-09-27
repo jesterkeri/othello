@@ -1,225 +1,193 @@
 VERDICT: changes required
 
-Scope: evidence only at `edb58cd`; no production-code judgement and no source changes.
-The target head was checked before review and was `edb58cd`. The separate spike
-worktree was checked read-only at `889df82`. This was necessarily not a blind U1
-round: the prompt supplied the claimed answers and attack ideas before the review.
+Scope: committed evidence at `6ea0c6c` only, plus read-only inspection of the
+spike at `6f8efb6`. The target head was checked first and matched. The working
+tree has three uncommitted logger rows in `reviews/p0-evidence/cadence-v2.jsonl`;
+they were not treated as r2 evidence and were not changed. This is not a blind
+U1 review: the prompt supplied both conclusions and attack themes before review.
 
-## 1. Units — PARTLY
+## Round-1 finding disposition
 
-The NFLXx observation supports a narrow conclusion: on 2026-09-12,
-`Crypto.NFLXX/USD` was consistent with a price per displayed/share unit, and was
-inconsistent by about 10x with a price per raw token. The live re-run reproduced
-the same Pyth account, feed ID, Full verification, `77.98365991` price and
-`multiplierNow: 10`.
+| r1 finding | Status | r2 answer |
+|---|---|---|
+| MAJOR: one NFLXx sample was presented as all-seven unit evidence | RESOLVED | `units.md:3-9,29-44` explicitly confines proof to NFLXx, makes the seven feeds `Unproven`, and makes non-1e9 multipliers fail closed. |
+| MAJOR: “weekdays only” came from one interval without durable polling evidence | RESOLVED | `cadence.md:3-9` now says exactly one observed weekend, not a general weekday rule; `ops/p0/cadence-logger.ts:41-49` emits 15-minute raw-byte heartbeats. It correctly leaves two further weekends as future measurement. |
+| MAJOR: accepted positive price could produce a zero liquidation divisor | RESOLVED | `fixed-point.md:45-53` specifies `wrapper_low == 0 || conservative == 0` refusal before division, no transfer, and two boundary tests. |
+| MINOR: discriminator/truncation behaviour was asserted, not bankrun-tested | RESOLVED | spike `tests/p0-pyth-sdk-spike.spec.ts:89-113` tests both receiver-owned malformed cases and records trailing-byte acceptance; `crate-spike.md:52-56` reports the result. |
+| MINOR: the candle used today’s multiplier without time binding | PARTLY | r2 preserves current mint bytes (`units-nflxx-mint.json`) and `units-nflxx.ts:29-33` rejects an effective date after the candle. But the probe still gets the parsed fields from the mutable Vercel `/api/live` response rather than decoding the saved mint bytes, and a current mint record is not historical evidence of every intervening multiplier update. |
 
-It does not establish the universal claim in `units.md:7-10,31-32` that all seven
-`Crypto.*X/USD` feeds use that unit. `ops/p0/units-nflxx.ts:8,21-48` samples only
-NFLXx. The seven feeds have separate Pyth IDs (`ops/p0/pyth.ts:13,52-59`), and
-the other six multipliers near one make the secondary check expressly unable to
-distinguish the hypotheses (`units.md:48-54`). P1 needs either feed-by-feed
-evidence from Pyth/Backed or a deliberately restricted initial allowlist; it may
-not promote one NFLXx sample to a property of seven independent oracle products.
+## 1. Units — PARTLY SUPPORTED
 
-The probe also applies `multiplierNow` fetched at the sampling time to the
-historical 2026-09-12 candle (`ops/p0/units-nflxx.ts:29,40-41`). NFLXx was 10 in
-the evidence and is likely unchanged, but the probe has not established that it
-was 10 on the candle date. A later multiplier change would make the historical
-per-share comparison wrong. Record the mint bytes/effective multiplier alongside
-the candle date, or use an independently time-bound price source.
+The same-day NFLXx comparison supports a narrow, plausible inference: if the
+multiplier was 10 on 2026-09-12, Pyth 77.98 is compatible with the per-share
+close 76.03 and incompatible with the per-raw close 760.34. The public Hermes
+metadata spot check still maps the recorded feed ID to `Crypto.NFLXX/USD`, and
+the public RPC spot check confirms the recorded Pyth account is receiver-owned
+and 134 bytes.
 
-## 2. Crate — PARTLY
+The evidence does not yet make the multiplier-at-candle fact independently
+reproducible. `units.md:20-24` interprets a current extension snapshot as a
+history, but the saved raw bytes are not decoded by the probe; `units-nflxx.ts:24-33`
+instead trusts an application endpoint. Obtain and retain the mint-update
+transaction/history (or a dated mint-account snapshot), decode the saved bytes
+locally, and state the Token-2022 update semantics relied on. Until then, NFLXx
+should remain a strong inference rather than an irrevocable `PerShare` entry.
 
-The compatibility result is good evidence: the spike pins SDK 2.0.0 with the
-same Anchor 1.1.2 instance (`crate-spike.md:63-86`), and its bankrun test uses
-real devnet bytes. The test actually demonstrates fresh read, non-canonical
-address acceptance, stale rejection, wrong-feed rejection, wrong-owner rejection,
-and Partial rejection (`crate-spike.md:88-115`; spike
-`tests/p0-pyth-sdk-spike.spec.ts:38-83`). Accepting a valid account at any address
-is compatible with option C; it is not a missing PDA check.
+The fail-closed `Unproven`/exact-1e9 rule at `units.md:35-44` is safe. However,
+the proposed 30-sample Jupiter test at `units.md:48-54` is not, by itself, a
+proof of unit convention: a Pyth publisher/reference price and an executable
+Jupiter sell quote can have a persistent venue or methodology basis. That basis
+can make the wrong unit appear closer over every sample. A Pyth/issuer statement
+or a pre-specified independent reference whose unit is established is required
+before promotion to `PerShare`.
 
-But the spike does not execute a wrong-discriminator case. Thus it proves the
-owner refusal, and that a genuine discriminator deserializes, but not the claimed
-runtime refusal for a bad discriminator/length. `Account<PriceUpdateV2>` should
-provide that through Anchor and the SDK source was inspected, but P0's bankrun
-evidence has not exercised it. Add malformed-discriminator and truncated/trailing
-account cases before treating the account-validation assertion as tested rather
-than sourced.
+## 2. Crate — SUPPORTED
 
-## 3. Liveness — PARTLY
+The spike pins `pyth-solana-receiver-sdk =2.0.0` alongside Anchor 1.1.2 and the
+committed source calls `Account<PriceUpdateV2>::get_price_no_older_than`
+(`programs/othello/src/pyth_spike.rs:7-16` on `6f8efb6`). Its nine bankrun cases
+use real devnet bytes and cover valid noncanonical addresses, age, feed ID,
+owner, Full verification, discriminator, truncation, and trailing bytes
+(`tests/p0-pyth-sdk-spike.spec.ts:41-113`). That supports SDK selection and the
+claim that owner/discriminator validation is exercised; it does not claim that
+the still-unwritten valuation path has been tested.
 
-The measured fact is supported. The one-shot independent devnet recheck found
-all seven derived accounts receiver-owned, 134 bytes, `22f123639d7ef4cd`, Full,
-and feed-matching, all still published at `2026-09-25T19:01:50Z`. That corroborates
-the reported 41.4-hour age at the stated 2026-09-27 observation time. Hermes
-metadata independently returned all seven expected IDs and the `O,O,O,O,O,O,O`
-schedule.
+## 3. Liveness — PARTLY SUPPORTED
 
-The broader statement that free accounts “update only on weekdays” and therefore
-will do so generally is not established by one 41.4-hour weekend interval.
-`cadence.md:3-4,188-204` has one initial row per feed and one transient failure;
-the logger records only changes/errors, no heartbeat (`ops/p0/cadence-logger.ts:31-61`),
-so its JSONL cannot distinguish “continued polling and no update” from a process
-that stopped after its last record. The asserted direct re-check is not preserved
-as raw account data in the evidence. The conclusion that unmanaged shard-0 is not
-an owned availability service is nevertheless well founded, and C's acceptance of
-any valid account is the right program shape.
+The evidence supports one 41.4-hour weekend stale interval and supports the
+operational conclusion that an unknown third-party updater is not Othello’s
+availability guarantee (`cadence.md:3-9,13-29`). The decision to accept any
+valid, allowlisted, fresh `PriceUpdateV2` is compatible with the SDK spike and
+does not require a canonical PDA.
 
-“On-demand posting is required before a user pilot” is conditional, not yet a
-settled operational fact. It is required for a pilot that promises weekend/regular
-availability, but P0 has not shown that a paid Hermes key supplies valid
-`Crypto.*X/USD` updates over a weekend, nor measured posting latency, transaction
-count/compute, update-account rent recovery, or failure behaviour. The document
-correctly labels the key question open (`cadence.md:211-214`); do not label C
-pilot-ready until that trial is measured.
+It does not support pilot readiness or an on-demand availability promise.
+`liveness.md:47-60` correctly says C behaves as B without a key and leaves paid
+Hermes weekend publishing, latency, transaction/compute count, rent closure and
+failure handling unmeasured. The only committed v2 heartbeat is an initial
+heartbeat plus the initial observations (`cadence-v2.jsonl:1-8`); it proves the
+format, not continuous operation. P1 must retain the 12-hour fail-closed ceiling
+and the user-visible pause state until the trial supplies those measurements.
 
-## 4. Fixed point — PARTLY
+## 4. Fixed-point — NOT SUPPORTED
 
-The dimensional arithmetic in `fixed-point.md:243-258` is sound for a -8 Pyth
-price, 8-decimal raw amount, 1e9 fixed multiplier, and USDC's 6 decimals. It
-uses the lower price and end-of-expression floors for collateral, and ceiling for
-the debt-driven seizure amount. The confidence inequality is correctly expressed
-without division (`fixed-point.md:226-241`). Requiring exponent -8 avoids silent
-rescaling. The existing code also already constrains haircut and pool discount to
-less than 10,000 bps, but ADR-013 must retain those bounds.
+The lower-confidence-price calculation, end-of-expression collateral floor,
+cross-multiplied confidence test, -8 exponent refusal, and r2 zero-divisor
+rule are directionally correct (`fixed-point.md:11-58`). They are not yet an
+exact safe P1 specification because the multiplier epoch mechanism can combine
+a price from one multiplier epoch with another epoch’s multiplier, and because
+the document never defines how the obligation `O` is formed and rounded up.
 
-It is not yet an exact safe specification. A positive accepted `p_low` can produce
-`wrapper_low == 0`, and therefore `conservative == 0`; `ceil(O * 1e8 /
-conservative)` then divides by zero (`fixed-point.md:246-252`). For example,
-`p_low = 1` and `mult_fixed = 1_000_000_000` passes the listed price/confidence
-checks but floors to zero at `wrapper_low`. This contradicts the stated
-“overflow → math_overflow, never a panic” rule. Require `wrapper_low > 0` and
-`conservative > 0` before the division, with a specified safe refusal (or an
-explicit no-sale/paused outcome), and test both paths.
-
-P1 / ADR-013 must also settle and test: checked conversion of positive `i64`
-price to `u128`; checked `now - publish_time` and `epoch_observed_at + 900`;
-parameter bounds for max confidence/age and all bps; the maximum supported raw,
-multiplier and price magnitudes (the illustrative `1e14/1e11/1e12` bounds at
-`fixed-point.md:258` are not enforced); a single shared valuation helper for all
-five listed actions; and the exact behaviour when a current multiplier change is
-observed between transactions. It must preserve the stated fail-closed
-`declare_default` policy rather than the old SPEC repricing branch.
+P1 / ADR-013 and the SPEC delta must therefore decide and test: the source and
+rounding of every component of `O` (sum in USDC base units, with any conversion
+or prorating rounded up); integer type/checked bounds for it and for every
+intermediate; parameter bounds before subtraction; the exact `Unproven` feed
+gate; and a multiplier-history or trusted-observer scheme that cannot miss an
+activation/reversal. It must also reconcile the older blanket per-share claims
+in `PRODUCT-DESIGN.md:140,391` with P0’s per-feed `Unproven` status before that
+design is handed into implementation.
 
 ## Findings
 
-1. **MAJOR — INSIDE.** The all-seven per-share decision overreaches one NFLXx
-   sample. Files: `reviews/p0-evidence/units.md:7-10,31-32`,
-   `ops/p0/units-nflxx.ts:8,21-48`. It could be wrong if another `Crypto.*X/USD`
-   feed has a different unit convention; its near-1 multiplier would conceal it.
-   Fix: bind each allowed mint/feed to evidence of its unit, or initially permit
-   only feeds so evidenced.
+1. **BLOCKER — INSIDE.** The proposed epoch guard misses a multiplier change and
+   reversal between valuation calls. `fixed-point.md:85-98` changes state only
+   when the multiplier at `observe_oracle_epoch` differs from the stored value.
+   Concrete failure: epoch multiplier A is stored; the issuer changes A→B,
+   Pyth publishes price B, then the issuer changes B→A before the next valuation.
+   The current multiplier equals stored A, so condition 1 is false and no epoch
+   timestamp is written; the still-fresh B-era price can be multiplied by A.
+   The document itself recognises that the mint does not retain enough history
+   at `fixed-point.md:78-81`, but the proposed solution does not cover the
+   missed-observation case. P1 needs an authoritative change history/event
+   source, an always-available observer whose updates are required before
+   valuation, or a collateral policy that refuses mutable multipliers; merely
+   asking the app to observe a visible difference is insufficient.
 
-2. **MAJOR — INSIDE.** “Weekdays only” is generalized from one partial weekend
-   with no durable poll heartbeat. Files: `reviews/p0-evidence/cadence.md:3-4,188-204`,
-   `reviews/p0-evidence/cadence.jsonl:1-8`,
-   `ops/p0/cadence-logger.ts:31-61`. It could be wrong if the logger stopped or
-   if the updater posts on a later weekend. Fix: emit heartbeats, retain raw RPC
-   rechecks, and observe several full weekends; separately run the paid-key
-   weekend test before pilot readiness.
+2. **MAJOR — INSIDE.** The fixed-point document reintroduces the all-feeds
+   unit assertion that r2 otherwise withdrew. `fixed-point.md:3` says
+   `Crypto.*X/USD` prices one displayed share and its formula at `:30-37` is
+   unconditional, while `units.md:3-9,35-44` says all seven target feeds are
+   unproven and only an exact 1e9 multiplier is safe. It could be wrong if P1
+   implements the former for AAPLx/NVDAx/etc. before unit proof. Make the
+   formula explicitly conditional on `PerShare`, put `price_unit_unproven`
+   in the ordered refusal list, and synchronize the PRODUCT-DESIGN/SPEC delta.
 
-3. **MAJOR — INSIDE.** The liquidation formula permits a zero divisor despite
-   claiming checked, non-panicking arithmetic. File:
-   `reviews/p0-evidence/fixed-point.md:226-258`. It could be wrong for any very
-   small but positive Pyth price/confidence combination. Fix: add explicit
-   nonzero checks and refusal semantics before division, plus boundary tests.
+3. **MAJOR — INSIDE.** `O`, the amount the liquidation must cover, has no
+   definition or rounding contract. `fixed-point.md:36-37` uses it as an
+   already-safe integer, although the stated system has unpaid principal and
+   premiums and the required policy is obligations rounded up. It could be
+   wrong if an implementation derives `O` through a floor or omits a scheduled
+   premium, resulting in under-seizure while every displayed formula passes.
+   Define `O` from named ledger fields in USDC base units, specify each rounding
+   direction and cap, and add adversarial cases where a one-base-unit upward
+   obligation changes `sell_raw`.
 
-4. **MINOR — INSIDE.** SDK bankrun coverage does not mutate the discriminator or
-   test a truncated account. Files: `reviews/p0-evidence/crate-spike.md:111-115`,
-   spike `tests/p0-pyth-sdk-spike.spec.ts:38-83`. It could be wrong if an Anchor
-   integration/version behaviour differs from the assumed Account validation.
-   Fix: add those two bankrun refusals and pin their errors.
+4. **MAJOR — INSIDE.** NFLXx’s historical multiplier claim remains dependent on
+   an unverified current application response. `units.md:20-24` calls the claim
+   time-bound, but `ops/p0/units-nflxx.ts:24-33` does not parse
+   `units-nflxx-mint.json` and preserves no historical account/transaction
+   proof. It could be wrong if the extension was updated after the candle (or
+   if the route decoded it incorrectly), in which case the apparent 10x result
+   does not identify the Pyth unit. Decode the committed bytes in the probe and
+   retain a dated account history or mint-update transaction evidence that
+   establishes the effective multiplier on the candle date.
 
-5. **MINOR — INSIDE.** The historical comparison uses a current multiplier.
-   File: `ops/p0/units-nflxx.ts:29,40-41`. It could be wrong after a multiplier
-   event between candle and sampling time. Fix: preserve/verify the multiplier
-   effective on the candle date.
+5. **MINOR — INSIDE.** The 200-bps confidence proposal is based on a very thin
+   distribution. `fixed-point.md:107-109` cites `cadence.jsonl`, but the
+   committed file has seven initial feed rows from one published timestamp and
+   one error, while `cadence-v2.jsonl` repeats that same stale timestamp. It
+   could be wrong under normal active-market volatility. Keep 200 explicitly
+   provisional and select the cap only from a measured fresh-update distribution,
+   including weekend/on-demand observations.
 
 ## U7
 
-Findings: **5 INSIDE, 0 OUTSIDE**. This is a warning, not reassurance: this
-prompt named the central unit, decoder, liveness and arithmetic risks in advance.
-Per U1, the count is indicative only, not a blind-review measurement.
+Findings: **5 INSIDE, 0 OUTSIDE**. This is indicative, not rigorous, under U1:
+the supplied prompt concentrated attention on all four evidence questions.
+The all-inside count is a warning about framing, not evidence of a complete
+review.
 
 ## U8 / U9
 
-Not checked: no `anchor build`, deploy, transaction, or spike test was run; the
-spike's recorded build/test output and fixture provenance were taken as evidence.
-I did not access `.env*`, credentials, keystores, a Hermes key, or a Pyth plan
-account; consequently I could not test signed-update retrieval/posting, weekend
-publisher behaviour, update latency, costs, or rent closure. I did not directly
-query GeckoTerminal; the repository chart route was inspected and its live public
-response identifies `candles` as the selected array. I did not conduct an
-unscoped audit of the current program/SPEC beyond consumers needed to evaluate
-the proposed formulas. That is outside this evidence-review scope and there has
-not been an unscoped sweep in this review.
+Not checked: no `anchor build`, deploy, transaction, Hermes authenticated
+request, credential, `.env*`, keystore, or production code path was run. The
+spike’s committed build and bankrun output were inspected rather than rerun, as
+required. I did not verify paid-plan terms, signed-update retrieval, weekend
+Hermes publishing, posting compute/rent recovery, or the claimed source of the
+historical candle beyond the route/source inspection. Public RPC/Hermes/Jupiter
+reads were spot-checked; they do not reconstruct historic state. I did not do
+an unscoped audit of the program or design repository. The uncommitted logger
+rows noted at the top were deliberately excluded from this frozen-commit review.
 
 ## Verification run (real output)
 
 ```
 $ git -C /home/hr/myvscode_linux/othello-pyth rev-parse --short HEAD
-edb58cd
+6ea0c6c
 $ git -C /home/hr/myvscode_linux/othello-pyth-spike rev-parse --short HEAD
-889df82
+6f8efb6
 ```
 
 ```
-$ npx tsx ops/p0/units-nflxx.ts
+$ git diff --check 554173b..6ea0c6c
+(no output; exit 0)
+```
+
+```
+$ node <read-only mainnet RPC, Hermes metadata, and Jupiter checks>
 {
-  "sampledAt": "2026-09-27T12:28:30.392Z",
-  "pyth": {
-    "account": "FUqSvECa7qTFsn8QncA5MHpohUfz227295LFvVj5AWFh",
-    "owner": "rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ",
-    "verification": "Full",
-    "feedId": "02a67e6184e6c9dd65e14745a2a80df8b2b3d2ca91b4b191404936003d9929ae",
-    "price": 77.98365991,
-    "conf": 0.53866,
-    "exponent": -8,
-    "publishTime": "2026-09-12T12:18:29.000Z"
-  },
-  "mint": {
-    "address": "XsEH7wWfJJu2ZT3UCFeVfALnVA6CP5ur7Ee11KmzVpL",
-    "multiplierNow": 10
-  },
-  "jupiterNow": {
-    "perDisplayedUnit": 71.45869609643309,
-    "perRawToken_sell_1e8_raw": 697.128498
-  },
-  "geckoTerminalSameDay": {
-    "day": "2026-09-12",
-    "pool": "7RQXW5KEBgHCcy1eSNs1Kh7BWaEL46q8jb9t18S151bL",
-    "perRawOpen": 773.3777985173658,
-    "perRawClose": 760.3359813228496,
-    "perShareOpen": 77.33777985173658,
-    "perShareClose": 76.03359813228496
-  },
-  "ratios": {
-    "pythOverJupiterPerUi": 1.0913109834072752,
-    "pythOverJupiterPerRaw": 0.11186411132772253,
-    "pythOverSameDayPerRawClose": 0.10256473693948072,
-    "pythOverSameDayPerShareClose": 1.0256473693948072
-  }
+  "http": 200,
+  "slot": 451006066,
+  "accounts": [
+    {"owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","lamports":1659246,"dataLength":134},
+    {"owner":"TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb","lamports":5623680,"dataLength":680}
+  ]
 }
-```
-
-```
-$ node --input-type=module -e '<seven-feed Hermes spot check>'
-{"symbol":"AAPL","status":200,"id":"978e6cc68a119ce066aa830017318563a9ed04ec3a0a6439010fc11296a58675","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"APPLE XSTOCK / US DOLLAR"}
-{"symbol":"AMZN","status":200,"id":"7148fbe6e493ff2580305c92a8d7f8628c9943b11b9b253aebc24863fec290e8","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"AMAZON XSTOCK / US DOLLAR"}
-{"symbol":"GOOGL","status":200,"id":"b911b0329028cd0283e4259c33809d62942bd2716a58084e5f31d64c00b5424e","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"ALPHABET XSTOCK / US DOLLAR"}
-{"symbol":"META","status":200,"id":"bf3e5871be3f80ab7a4d1f1fd039145179fb58569e159aee1ccd472868ea5900","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"META XSTOCK / US DOLLAR"}
-{"symbol":"MSFT","status":200,"id":"bb723a70af731ab56b9a650eb7e8ac22b7bc07ea77f8670bd1fa9a37bf6df3f5","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"MICROSOFT XSTOCK / US DOLLAR"}
-{"symbol":"NVDA","status":200,"id":"4244d07890e4610f46bbde67de8f43a4bf8b569eebe904f136b469f148503b7f","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"NVIDIA XSTOCK / US DOLLAR"}
-{"symbol":"TSLA","status":200,"id":"47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362","schedule":"America/New_York;O,O,O,O,O,O,O;","description":"TESLA XSTOCK / US DOLLAR"}
-```
-
-```
-$ npx tsx -e '<one-shot devnet decode>'
-{"symbol":"AAPLx","account":"Gs4DVtiGSJ9LJvXaQFjYp6vhLNK2QsH4qWox2ck1kuMp","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":341.36607888000003,"conf":0.11801331,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504129991"}
-{"symbol":"AMZNx","account":"HVWLZ3JEY6nV1zKtAmdsNsUm99SrYs4b5MGVCJkeAZ66","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":249.5414507,"conf":0.06854930000000001,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504130004"}
-{"symbol":"GOOGLx","account":"HeLrriTGigH3g9qgzZTpkWWkYe1yXKgE6nA7YdBjsvva","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":345.10050574,"conf":0.0953692,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504130020"}
-{"symbol":"METAx","account":"HmqkFx31Jk1STgqVfxYAz6pKtwgn9mXZdNZfWnu6sqWS","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":754.56838757,"conf":0.18904338,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504130020"}
-{"symbol":"MSFTx","account":"9KiECPa4BdbLHM61iur7u7svmRKA2MUJ76RLGfsVihvC","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":513.80182,"conf":4.2791310000000005,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504129991"}
-{"symbol":"NVDAx","account":"6TPsjFigUaMFanRCsxQ4WbmG215xhRBXsb5y5Cn5L6eE","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":224.4762186,"conf":0.12121854,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504130004"}
-{"symbol":"TSLAx","account":"GpoWLTd6GoisYxYgHz7mTcZvgnfJu4SN7T6PxWjgUTFY","owner":"rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ","length":134,"disc":"22f123639d7ef4cd","verification":"Full","feedMatches":true,"price":372.09677081,"conf":0.07785415,"exponent":-8,"publish":"2026-09-25T19:01:50.000Z","postedSlot":"504130033"}
+{
+  "http": 200,
+  "matches": [{
+    "id":"02a67e6184e6c9dd65e14745a2a80df8b2b3d2ca91b4b191404936003d9929ae",
+    "attributes":{"description":"NETFLIX INC XSTOCK / US DOLLAR","schedule":"America/New_York;O,O,O,O,O,O,O;","symbol":"Crypto.NFLXX/USD"}
+  }]
+}
+{"price":70.76509522873218,"outAmount":"697002267","routePlanLength":1}
 ```
