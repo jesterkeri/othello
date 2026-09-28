@@ -27,7 +27,7 @@ import { mnemonicToAccount } from "viem/accounts";
 
 import { toCommon, type SolanaAdapter } from "../app/src/lib/core/adapter.ts";
 import { ACTION_ARGS, InvalidArguments, checked } from "../app/src/lib/core/profiles.ts";
-import { checkTrusted, createRobinhoodAdapter, readCircle, topUpFill } from "../app/src/lib/robinhood/adapter.ts";
+import { checkTrustedAgainst, createRobinhoodAdapterWith, readCircle, topUpFill } from "../app/src/lib/robinhood/adapter-core.ts";
 import { othelloCircleAbi, othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
 
 const PORT = 8591;
@@ -119,8 +119,8 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
       const ha = keccak256((await pub.getCode({ address: circleA }))!);
       const hb = keccak256((await pub.getCode({ address: circleB }))!);
       assert.notEqual(ha, hb, "immutables make each circle's bytecode differ");
-      assert.deepEqual(await checkTrusted(pub, circleA, pinned()), { ok: true });
-      assert.deepEqual(await checkTrusted(pub, circleB, pinned()), { ok: true });
+      assert.deepEqual(await checkTrustedAgainst(pub, circleA, pinned()), { ok: true });
+      assert.deepEqual(await checkTrustedAgainst(pub, circleB, pinned()), { ok: true });
     });
 
     it("refuses a circle from a foreign factory with the same bytecode", async () => {
@@ -128,28 +128,28 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
       const foreign = (await write(wallets[2]!, other, othelloFactoryAbi as Abi, "createCircle", [
         params(), [accounts[2]!.address, accounts[0]!.address, accounts[1]!.address],
       ])) as Address;
-      assert.deepEqual(await checkTrusted(pub, foreign, pinned()), { ok: false, reason: "not-registered" });
+      assert.deepEqual(await checkTrustedAgainst(pub, foreign, pinned()), { ok: false, reason: "not-registered" });
     });
 
     it("refuses a lookalike that names the official factory but is not registered", async () => {
       const fake = await deploy(wallets[2]!, artifact("FakeCircle.sol", "FakeCircle"), [factory]);
-      assert.deepEqual(await checkTrusted(pub, fake, pinned()), { ok: false, reason: "not-registered" });
+      assert.deepEqual(await checkTrustedAgainst(pub, fake, pinned()), { ok: false, reason: "not-registered" });
     });
 
     it("refuses when the factory's code hash differs from the pinned one", async () => {
       const wrong = { address: factory, codeHash: keccak256("0x00") };
-      assert.deepEqual(await checkTrusted(pub, circleA, wrong), { ok: false, reason: "factory-code" });
+      assert.deepEqual(await checkTrustedAgainst(pub, circleA, wrong), { ok: false, reason: "factory-code" });
     });
 
     it("refuses an address with no code, and everything before deployment", async () => {
-      assert.deepEqual(await checkTrusted(pub, accounts[2]!.address, pinned()), { ok: false, reason: "no-code" });
-      assert.deepEqual(await checkTrusted(pub, circleA, null), { ok: false, reason: "not-deployed" });
+      assert.deepEqual(await checkTrustedAgainst(pub, accounts[2]!.address, pinned()), { ok: false, reason: "no-code" });
+      assert.deepEqual(await checkTrustedAgainst(pub, circleA, null), { ok: false, reason: "not-deployed" });
     });
 
     it("an untrusted circle gets no approval and no write", async () => {
       const fake = await deploy(wallets[2]!, artifact("FakeCircle.sol", "FakeCircle"), [factory]);
       const nonce = await pub.getTransactionCount({ address: accounts[1]!.address });
-      const ad = createRobinhoodAdapter({
+      const ad = createRobinhoodAdapterWith({
         publicClient: pub, walletClient: wallets[1]!, account: accounts[1]!.address, circle: fake, factory: pinned(), usdg,
       });
       const r = await ad.joinAndLock({ amount: 20n * U });
@@ -161,7 +161,7 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
 
   describe("adapter split", () => {
     const evm = () =>
-      createRobinhoodAdapter({
+      createRobinhoodAdapterWith({
         publicClient: pub, walletClient: wallets[0]!, account: accounts[0]!.address, circle: circleA, factory: pinned(), usdg,
       });
 
@@ -200,7 +200,7 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
   describe("end to end through the adapter", () => {
     it("runs circle A: exact approvals, refusals decoded, completes, everyone withdraws", async () => {
       const ads = accounts.map((a, i) =>
-        createRobinhoodAdapter({
+        createRobinhoodAdapterWith({
           publicClient: pub, walletClient: wallets[i]!, account: a.address, circle: circleA, factory: pinned(), usdg,
         }),
       );

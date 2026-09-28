@@ -32,7 +32,7 @@ import {
 import { mnemonicToAccount } from "viem/accounts";
 
 import { othelloCircleAbi, othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
-import { createRobinhoodAdapter } from "../app/src/lib/robinhood/adapter.ts";
+import { createRobinhoodAdapterWith } from "../app/src/lib/robinhood/adapter-core.ts";
 
 const PORT = 8592;
 const RPC = `http://127.0.0.1:${PORT}`;
@@ -119,7 +119,7 @@ describe("A1 adversary: Robinhood adapter approvals (anvil, chain 46630)", funct
       },
     } as unknown as PublicClient;
 
-    const ad = createRobinhoodAdapter({
+    const ad = createRobinhoodAdapterWith({
       publicClient: racing, walletClient: wallets[1]!, account: accounts[1]!.address, circle,
       factory: { address: factory, codeHash: factoryHash }, usdg,
     });

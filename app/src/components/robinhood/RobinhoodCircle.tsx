@@ -15,12 +15,12 @@ import {
   createRobinhoodAdapter,
   readCircle,
   topUpFill,
+  trustedFactory,
   type RhCircleView,
   type RhSeat,
   type TrustResult,
 } from "@/lib/robinhood/adapter";
 import { explorerAddress, explorerTx } from "@/lib/robinhood/chain";
-import { TRUSTED_FACTORY } from "@/lib/robinhood/config";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
@@ -104,7 +104,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     inFlight.current = true;
     const mine = ++latest.current;
     try {
-      const t = await checkTrusted(robinhoodPublicClient, circle, TRUSTED_FACTORY);
+      const t = await checkTrusted(robinhoodPublicClient, circle);
       if (mine !== latest.current) return;
       setTrust(t);
       if (!t.ok) return;
@@ -137,7 +137,6 @@ export default function RobinhoodCircle({ address }: { address: string }) {
             walletClient: w.walletClient,
             account: w.address,
             circle,
-            factory: TRUSTED_FACTORY,
           })
         : null,
     [w.walletClient, w.address, circle],
@@ -454,10 +453,10 @@ export default function RobinhoodCircle({ address }: { address: string }) {
           <p>
             Testnet only. Test USDG has no value. Not financial advice. Circle contract{" "}
             <a href={explorerAddress(v.address)} target="_blank" rel="noreferrer">{short(v.address)}</a>
-            {TRUSTED_FACTORY && (
+            {trustedFactory && (
               <>
                 {" "}from factory{" "}
-                <a href={explorerAddress(TRUSTED_FACTORY.address)} target="_blank" rel="noreferrer">{short(TRUSTED_FACTORY.address)}</a>
+                <a href={explorerAddress(trustedFactory.address)} target="_blank" rel="noreferrer">{short(trustedFactory.address)}</a>
               </>
             )}
             .

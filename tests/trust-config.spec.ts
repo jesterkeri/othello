@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  USDG, checkConfigValue, expectedCreationInput, expectedRuntime, loadConfig, singleSourceOfTrust, sourceUnchanged, verify,
+  USDG, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig, verify,
   type Inputs,
 } from "../ops/trust-config.ts";
 
@@ -53,7 +53,7 @@ describe("trust-config (ops/trust-config.ts)", function () {
     artifact,
     chainCode: code,
     chainId: 46630,
-    sourceUnchangedSinceReceipt: true,
+    changedSinceReceipt: [],
     chainDeployTx: { input: deployInput, to: null },
     chainDeployReceipt: { status: "0x1", contractAddress: factory },
     trustSources: [],
@@ -125,8 +125,13 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.match(verify({ ...good(), receipt: receipt(factory, [other]) }).join(), /constructor argument/);
   });
 
-  it("fails when the source changed since the receipt's commit", () => {
-    assert.match(verify({ ...good(), sourceUnchangedSinceReceipt: false }).join(), /not an ancestor of HEAD/);
+  it("fails unless the deployed commit is an ancestor and only config, receipt and notes changed since", () => {
+    assert.match(verify({ ...good(), changedSinceReceipt: null }).join(), /not an ancestor of HEAD/);
+    for (const p of ["app/src/components/robinhood/trust.ts", "app/next.config.mjs", "app/tsconfig.json", "evm/src/OthelloCircle.sol", "app/package.json"]) {
+      assert.match(verify({ ...good(), changedSinceReceipt: [p] }).join(), /files other than the config/, p);
+    }
+    assert.deepEqual(verify({ ...good(), changedSinceReceipt: [
+      "app/src/lib/robinhood/config.ts", "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json", "DONE.md"] }), []);
   });
 
   it("fails when the config hash is not the live code's hash", () => {
@@ -152,12 +157,34 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.match(verify({ ...good(), chainId: 1 }).join(), /RPC chain id is 1/);
   });
 
-  it("provenance: HEAD counts as unchanged; an unknown or malformed commit does not", () => {
+  it("provenance: HEAD changed nothing since itself; an unknown or malformed commit is not an ancestor", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-    assert.equal(sourceUnchanged(head), true);
-    assert.equal(sourceUnchanged("0000000000000000000000000000000000000000"), false);
-    assert.equal(sourceUnchanged("HEAD; rm -rf /"), false);
-    assert.equal(sourceUnchanged(undefined), false);
+    assert.deepEqual(changedSince(head), []);
+    assert.equal(changedSince("0000000000000000000000000000000000000000"), null);
+    assert.equal(changedSince("HEAD; rm -rf /"), null);
+    assert.equal(changedSince(undefined), null);
+  });
+
+  it("config.ts must have its fixed shape: null or Object.freeze of two string literals, nothing computed", () => {
+    const head = 'import type { Address, Hex } from "viem";\nexport type TrustedFactory = { address: Address; codeHash: Hex };\n';
+    const decl = (v: string) => `${head}export const TRUSTED_FACTORY: TrustedFactory | null = ${v};\n`;
+    const h = keccak256(code);
+    assert.deepEqual(configFromSource(decl("null")), { state: "null" });
+    assert.equal(configFromSource(decl(`Object.freeze({ address: "${factory}", codeHash: "${h}" })`)).state, "set");
+    for (const bad of [
+      decl(`{ address: "${factory}", codeHash: "${h}" }`),
+      decl(`typeof window === "undefined" ? null : Object.freeze({ address: "${factory}", codeHash: "${h}" })`),
+      decl(`Object.freeze({ address: "${factory}", codeHash: \`${h}\` })`),
+      decl(`Object.freeze({ address: "${factory}", codeHash: "${h}", extra: "1" })`),
+      decl(`Object.freeze({ address: A, codeHash: "${h}" })`),
+      decl("null") + "export const OTHER = 1;\n",
+      decl("null") + decl("null").slice(head.length),
+      `${head}export let TRUSTED_FACTORY: TrustedFactory | null = null;\n`,
+      `${head}export const TRUSTED_FACTORY = null;\n`,
+      `${head}const TRUSTED_FACTORY: TrustedFactory | null = null;\nexport { TRUSTED_FACTORY };\n`,
+    ]) {
+      assert.equal(configFromSource(bad).state, "unreadable", bad);
+    }
   });
 
   it("the chain must confirm the deployment: exact reviewed init code with USDG, a creation, success, that address", async () => {
@@ -172,23 +199,33 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.match(verify({ ...good(), chainDeployTx: { input: otherInput, to: null } }).join(), /creation code is not the reviewed/);
   });
 
-  it("every trust check in app/src reads TRUSTED_FACTORY from config.ts; another source fails", () => {
-    assert.deepEqual(singleSourceOfTrust(), [], "the real app passes");
+  it("import boundary: only lib/robinhood/adapter.ts may import the config or the injectable core", () => {
+    assert.deepEqual(importBoundary(), [], "the real app passes");
     const dir = mkdtempSync(join(tmpdir(), "trust-src-"));
     mkdirSync(join(dir, "lib/robinhood"), { recursive: true });
     mkdirSync(join(dir, "components"), { recursive: true });
     writeFileSync(join(dir, "lib/robinhood/config.ts"), "export const TRUSTED_FACTORY = null;");
-    writeFileSync(join(dir, "components/A.tsx"), 'import { TRUSTED_FACTORY } from "@/lib/robinhood/config";\nconst OTHER = {};\ncheckTrusted(c, x, OTHER);');
-    writeFileSync(join(dir, "components/B.tsx"), 'const TRUSTED_FACTORY = { address: "0x1", codeHash: "0x2" };\ncreateRobinhoodAdapter({ factory: TRUSTED_FACTORY });');
-    const f = singleSourceOfTrust(dir).join("\n");
-    assert.match(f, /A\.tsx: checkTrusted is not given TRUSTED_FACTORY/);
-    assert.match(f, /B\.tsx declares its own TRUSTED_FACTORY/);
-    assert.match(f, /B\.tsx trusts a factory without importing TRUSTED_FACTORY/);
-    assert.match(verify({ ...good(), trustSources: ["x"] }).join(), /x/, "a trust-source failure fails the gate");
+    writeFileSync(join(dir, "lib/robinhood/adapter.ts"), 'import { TRUSTED_FACTORY } from "./config";\nimport * as c from "./adapter-core";');
+    writeFileSync(join(dir, "lib/robinhood/adapter-core.ts"), 'import type { TrustedFactory } from "./config";');
+    const cases: Record<string, string> = {
+      "A.tsx": 'import { checkTrustedAgainst as ok } from "@/lib/robinhood/adapter-core";',
+      "B.ts": 'export { TRUSTED_FACTORY } from "../lib/robinhood/config";',
+      "C.js": 'const c = require("@/lib/robinhood/config.ts");',
+      "D.tsx": 'const m = await import("@/lib/robinhood/adapter-core");',
+      "E.ts": 'const p = "@/lib/robinhood/" + "config"; const m = await import(p);',
+      "F.mjs": 'import * as x from "../lib/robinhood/adapter-core/index";',
+    };
+    for (const [n, src] of Object.entries(cases)) writeFileSync(join(dir, "components", n), src);
+    writeFileSync(join(dir, "components/G.ts"), 'import type { TrustedFactory } from "@/lib/robinhood/config";');
+    const f = importBoundary(dir).join("\n");
+    for (const n of Object.keys(cases)) assert.ok(f.includes(`components/${n}`), `${n} not flagged:\n${f}`);
+    assert.ok(!f.includes("components/G.ts"), "type-only imports carry no value and are allowed");
+    assert.ok(!f.split("\n").some((l) => l.startsWith("lib/robinhood/")), `adapter.ts may import; core's type import is allowed:\n${f}`);
+    assert.match(verify({ ...good(), trustSources: ["x"] }).join(), /x/, "a boundary failure fails the gate");
   });
 
   it("the CLI passes on the committed (null) config", () => {
     const out = execFileSync("npx", ["tsx", "ops/trust-config.ts", "--rpc", RPC], { encoding: "utf8" });
-    assert.match(out, /TRUSTED_FACTORY is null and every trust check reads it/);
+    assert.match(out, /TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it/);
   });
 });

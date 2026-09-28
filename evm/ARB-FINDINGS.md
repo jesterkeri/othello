@@ -92,3 +92,22 @@ checks the exported value's exact shape; it requires every `checkTrusted` / `cre
 asks the chain for the receipt's deployment transaction, requiring a contract creation whose input is exactly the
 reviewed init code plus USDG, successful, that created the config address (a same-runtime contract with other init
 code, e.g. one that pre-registers a circle in storage, fails). CI now re-runs it on any change under `app/src`.
+
+## F-10. Trust is structural, not scanned (third trust-config adversary pass)
+
+The second gate still matched call text, so a renamed import (`checkTrusted as x`) with a hard-coded factory got
+past it, and a config computed at run time (`typeof window === "undefined" ? A : B`) showed Node one factory and the
+browser another (`tests/trust-config-trust-sources.spec.ts`). Changes:
+- **No factory parameter in the app's API.** `lib/robinhood/adapter.ts` binds `TRUSTED_FACTORY` itself;
+  `checkTrusted(client, circle)` and `createRobinhoodAdapter(deps)` take no factory. The injectable implementation is
+  `adapter-core.ts` (tests use it). CI's import boundary (TypeScript AST, resolving `@/` and relative paths; static,
+  dynamic, `require`, re-export; `.ts/.tsx/.js/.jsx/.mjs/.cjs`) allows only `adapter.ts` to import `config` or
+  `adapter-core`; a computed dynamic import anywhere in `app/src` fails. Type-only imports are allowed.
+- **config.ts has a fixed shape** (AST): `null` or `Object.freeze({ address: "…", codeHash: "…" })` with two string
+  literals; the imported value must equal it and be frozen. Nothing computed can pass.
+- **After the reviewed deploy only the config, the receipt and Markdown notes may change** (git diff from the
+  receipt's commit). Any code, build-config or dependency change after review 2's SHIP fails the gate.
+- **Limit, stated plainly:** a static gate cannot prove that code written to deceive it is harmless (for example
+  `eval`). While the config is null, the boundary scan is the check and the page offers no action; once it is set,
+  nothing but the config and receipt may differ from the commit Codex approved at review 2.
+CI re-runs the gate on any change under `app/`.

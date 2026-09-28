@@ -2976,3 +2976,16 @@ deployment transaction (creation, exact reviewed init code + USDG, success, that
 Fix: config.ts loaded as a module and shape-checked; single source of trust in app/src; on-chain deployment check
 (ARB-FINDINGS F-9). verify: mocha 36 passing (20 trust-config incl. the 4 adversary cases); tsc root/app;
 trust-config CLI on the committed null config passes; workflows clean.
+
+## A1 trust-config, third adversary pass + structural fix (2026-09-28)
+adversary on f34eb46..4d0d5fd: DEFECTS: (1) a renamed import `checkTrusted as x` with a hard-coded factory passed the
+text scan while the config was null; (2) a config computed at run time showed Node and the browser different
+factories. Kept as tests/trust-config-trust-sources.spec.ts (re-aimed at the only function that still takes a
+factory, adapter-core's checkTrustedAgainst) plus a test that the app's checkTrusted ignores a passed factory.
+Fix (ARB-FINDINGS F-10): adapter.ts binds TRUSTED_FACTORY (no factory parameter in the app API); adapter-core.ts is
+the injectable implementation; AST import boundary; config.ts fixed shape (null or Object.freeze of two string
+literals, imported value equal and frozen); after the deployed commit only config, receipt and *.md may change;
+CI paths app/**.
+verify: mocha 41 passing (25 trust-config); mutation: boundary off -> 3 failing, changed-files rule off -> 1
+failing; tsc root/app; next build compiled; export_abi --check; trust-config CLI passes on the null config;
+browser click-through (local anvil) full circle, all "done", untrusted address refused.

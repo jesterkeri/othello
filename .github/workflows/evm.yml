@@ -3,10 +3,10 @@ name: evm
 
 on:
   pull_request:
-    paths: ["evm/**", "core/**", "app/src/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", ".github/workflows/evm.yml"]
   push:
     branches: ["task/A1-*", "staging", "main"]
-    paths: ["evm/**", "core/**", "app/src/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", ".github/workflows/evm.yml"]
 
 permissions:
   contents: read
@@ -69,7 +69,7 @@ jobs:
       - name: Type checks (root includes the adapter type-level tests)
         run: npx tsc --noEmit && npx --yes pnpm@10.32.1 -C app typecheck
       - name: Adapter, trust check and profile tests
-        run: npx mocha --import=tsx --timeout 120000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/trust-config.spec.ts tests/trust-config-hostile-config.spec.ts
+        run: npx mocha --import=tsx --timeout 120000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/trust-config.spec.ts tests/trust-config-hostile-config.spec.ts tests/trust-config-trust-sources.spec.ts
 
   fork:
     name: real USDG on a Robinhood testnet fork (read-only)
