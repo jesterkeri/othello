@@ -208,6 +208,10 @@ export function decodeFailure(e: unknown): Extract<ActionResult, { ok: false }> 
       const args = revert.data?.args ?? [];
       return { ok: false, error: name, args, message: explainRefusal(name, args) };
     }
+    if (err.walk((x) => (x as Error)?.name === "WaitForTransactionReceiptTimeoutError") ||
+        /Timed out while waiting for transaction/.test(err.message)) {
+      return { ok: false, error: "Timeout", args: [], message: "Robinhood Chain did not confirm in time. The transaction may still go through: check the explorer before trying again, so you don't pay twice." };
+    }
     return { ok: false, error: "Failed", args: [], message: err.shortMessage ?? err.message };
   }
   return { ok: false, error: "Failed", args: [], message: e instanceof Error ? e.message : String(e) };
@@ -239,7 +243,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     return null;
   }
 
-  async function setAllowance(amount: bigint): Promise<void> {
+  async function setAllowance(amount: bigint, memo?: { pending: boolean }): Promise<void> {
     const { request } = await d.publicClient.simulateContract({
       address: usdg, abi: erc20Abi, functionName: "approve", args: [d.circle, amount], account: d.account,
     });
@@ -247,30 +251,40 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
       address: usdg, abi: erc20Abi, functionName: "approve", args: [d.circle, amount], account: d.account,
     }));
     const hash = await d.walletClient.writeContract({ ...request, gas, chain: d.walletClient.chain ?? null });
+    if (memo) memo.pending = true; // sent: from here its outcome is unknown until the receipt says otherwise
     const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
+    if (memo) memo.pending = false;
+    // A wallet "cancel" or "speed up" replaces the transaction; viem then returns the replacement's receipt.
+    if (receipt.transactionHash !== hash) throw new Error("The approval was replaced or cancelled in your wallet.");
     if (receipt.status !== "success") throw new Error("The approval transaction failed.");
   }
 
+  const readAllowance = () =>
+    d.publicClient.readContract({ address: usdg, abi: erc20Abi, functionName: "allowance", args: [d.account, d.circle] });
+
   /**
    * Sets the circle's allowance to exactly `amount` (never unlimited) unless it already is exactly that.
-   * Returns the allowance it replaced, or null when nothing changed, so a failed action can put it back.
+   * `memo.previous` is recorded BEFORE the approval is sent, so a failure at any later point (a timeout while it
+   * confirms, a replaced transaction) can still put the allowance back.
    */
-  async function approveExact(amount: bigint): Promise<bigint | null> {
-    const current = await d.publicClient.readContract({
-      address: usdg, abi: erc20Abi, functionName: "allowance", args: [d.account, d.circle],
-    });
-    if (current === amount) return null;
-    await setAllowance(amount);
-    return current;
+  async function approveExact(amount: bigint, memo: { previous: bigint | null; pending: boolean }): Promise<void> {
+    const current = await readAllowance();
+    if (current === amount) return;
+    memo.previous = current;
+    await setAllowance(amount, memo);
   }
 
   /** After a failed action, put the allowance back so no approval is left for USDG that never moved. */
   async function restore(
     failure: Extract<ActionResult, { ok: false }>,
-    previous: bigint | null,
+    memo: { previous: bigint | null; pending: boolean },
   ): Promise<Extract<ActionResult, { ok: false }>> {
+    const previous = memo.previous;
     if (previous === null) return failure;
     try {
+      // Nothing to put back if the approval never took effect. But an approval that was SENT and not yet
+      // confirmed may still land: then the reset is sent anyway, and the account's nonce order puts it after.
+      if (!memo.pending && (await readAllowance()) === previous) return failure;
       await setAllowance(previous);
       return { ...failure, message: `${failure.message} Your USDG approval was set back, so nothing is left approved.` };
     } catch {
@@ -287,7 +301,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     args: readonly unknown[],
     pullOf?: () => Promise<bigint> | bigint,
   ): Promise<ActionResult> {
-    let previous: bigint | null = null;
+    const memo: { previous: bigint | null; pending: boolean } = { previous: null, pending: false };
     try {
       const refused = await guard();
       if (refused) return refused;
@@ -300,7 +314,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
         } as never).catch((e: unknown) => {
           if (decodeFailure(e).error !== "InsufficientAllowance") throw e;
         });
-        previous = await approveExact(pull);
+        await approveExact(pull, memo);
       }
       const { request } = await d.publicClient.simulateContract({
         address: d.circle, abi: othelloCircleAbi, functionName, args, account: d.account,
@@ -310,12 +324,17 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
       } as never));
       const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
       const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.transactionHash !== hash) {
+        // Cancelled or replaced in the wallet: the action did not run, whatever the replacement's status.
+        return restore({ ok: false, error: "Replaced", args: [hash, receipt.transactionHash],
+          message: "The transaction was cancelled or replaced in your wallet, so it did not run." }, memo);
+      }
       if (receipt.status !== "success") {
-        return restore({ ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." }, previous);
+        return restore({ ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." }, memo);
       }
       return { ok: true, txHash: hash };
     } catch (e) {
-      return restore(decodeFailure(e), previous);
+      return restore(decodeFailure(e), memo);
     }
   }
 

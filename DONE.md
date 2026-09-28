@@ -3020,3 +3020,14 @@ Suspicion acted on: Vercel builds with its own env -> env reads banned in trust/
 left as a review-3 decision. Spec kept: tests/trust-config-bundle-scan-misses.spec.ts.
 Fix (ARB-FINDINGS F-13). verify: trust specs 42 passing; mutations: padded detection off -> 3 failing, public scan
 off -> 2 failing; real build scan passes with no false alarms.
+
+## A1 seventh adversary pass (on frozen fdcfdfe, while Codex review 2 runs) + fix on task/A1-r2-fixes (2026-09-28)
+adversary: DEFECTS (adapter): (1) a join cancelled in the wallet (same-nonce 0-value replacement) was reported
+"done" and left the approval open, because viem returns the replacement's receipt and send() did not compare hashes;
+(2) an approval whose receipt wait timed out and then mined was left open with no warning (previous allowance was
+only recorded after the wait). Spec kept: tests/robinhood-adapter-cancelled-action.spec.ts.
+Fix: a receipt counts only if its hash is the one sent (else "cancelled or replaced", reset); the prior allowance is
+recorded before the approval is sent; a sent-but-unconfirmed approval is always reset (nonce order puts the reset
+after it); a confirmed-state check skips needless resets; timeouts say the transaction may still go through.
+verify: adapter specs 14 passing, 5/5 repeat runs green; mutations: hash check off -> case 1 fails; pending-reset off
+-> case 2 fails; tsc root/app.
