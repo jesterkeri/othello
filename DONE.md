@@ -2880,3 +2880,27 @@ secret checks; the branch stayed task/T18c-charts at 5bcdea7). One MINOR: a labe
 characters (U+0000) passed the "visible" check. The check is now positive: a label must contain a
 letter, number, punctuation mark or symbol (\p{L}\p{N}\p{P}\p{S}). tests/app-quote.spec.ts 18
 passing; with r3's check restored the new case fails (17 passing, 1 failing).
+
+## A1 slice 1: Robinhood USDG circles, model + contracts + tests (2026-09-28)
+design: othello-design/arb/ARB-DESIGN.md r9 (sha256 ca3b3c8c…8284), Codex SHIP (reviews/arb-design-review-r8.md)
+reviewed: pending (adversary, then Codex code review 1) | branch: task/A1-evm-usdg
+
+Built: core/reference.py (CommonModel, EvmUsdgModel, SolanaPythModel), core/actions.py (per-profile action
+lists), core/gen.py (vectors: common-v1 77, evm-usdg-v1 82, 5,174 steps), evm/src (OthelloFactory,
+OthelloCircle, CircleMath; OpenZeppelin v5.5.0, forge-std v1.16.2, solc 0.8.30), evm/test (vector replay,
+unit, invariant, schema/profile refusals, demonstrator), evm/mutation (37 mutations), evm/script/Demo.s.sol,
+.github/workflows/evm.yml. Findings for the reviewer: evm/ARB-FINDINGS.md (F-1 escrow deficit unreachable
+with USDG collateral; 20,000 random circles, 2,843 pauses, 0 deficits).
+
+verify (real output):
+  python3 -W error::ResourceWarning -m unittest core/test_core.py   -> Ran 17 tests ... OK
+  sha256sum -c MANIFEST.sha256 (both profiles)                        -> manifest ok x2
+  forge build --sizes  -> OthelloCircle 14,575 B runtime, OthelloFactory 18,112 B (limit 24,576)
+  forge test           -> Ran 5 test suites: 34 tests passed, 0 failed, 0 skipped
+                          (replay: every step's outcome, error args, 21 circle + 64 seat fields, balances,
+                          allowances equal the model's; INV-C1/C2 each step; invariants 256 runs x 200 calls;
+                          worst-case gas at n = 8: 217,651 <= 1,500,000)
+  python3 evm/mutation/run.py -> first run 37: 30 killed, 6 test gaps (M11 M24 M27 M29 M34 M35), M37 expected
+                          survivor (unreachable branch, F-2); gaps closed by new tests; re-run of those 6
+                          plus spot checks M01 M17: 8 mutations, 8 killed, 0 bad. M01 hand-checked: killed by
+                          vector create-members-length-n3-2.

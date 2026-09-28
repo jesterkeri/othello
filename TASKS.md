@@ -225,6 +225,11 @@ should start before the hackathon build is finished.
 - [ ] EVM for Colosseum. Robinhood Chain is Arbitrum Orbit, so ONE Solidity contract covers Arbitrum
       and Robinhood Chain; verify where Robinhood's stock tokens live and what its track expects, and
       Robinhood Wallet's Solana Wallet Standard support.
+- [ ] A1 ROBINHOOD USDG CIRCLES (Arbitrum Open House; ARB-DESIGN r9, Codex SHIP 2026-09-28).
+      Branch task/A1-evm-usdg. Reference model + trace vectors (core/), OthelloFactory + OthelloCircle
+      (evm/), unit, vector replay, invariant fuzz, mutation run, demonstrator script. Then adversary,
+      Codex code review (1: Tue 22:00, 2: Wed 12:00, final 3: Wed 18:00), hard stop Wed 22:00; Joshua
+      deploys the reviewed commit's Demo.s.sol. Findings for the reviewer: evm/ARB-FINDINGS.md.
 - [ ] TEMPO: research the Tempo track (Joshua: the first thing after submission, alongside the above).
 - [ ] COLOSSEUM (World's Fair): due 12 Oct 23:59 PT (13 Oct 07:59 Lagos); chains picked: Solana,
       Robinhood Chain, Arbitrum; multiple wallets allowed; read every rule first.

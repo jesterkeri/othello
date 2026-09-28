@@ -1,0 +1,49 @@
+# Robinhood Chain (EVM) contracts and the shared reference model (ARB-DESIGN r9 section 7).
+name: evm
+
+on:
+  pull_request:
+    paths: ["evm/**", "core/**", ".github/workflows/evm.yml"]
+  push:
+    branches: ["task/A1-*", "staging", "main"]
+    paths: ["evm/**", "core/**", ".github/workflows/evm.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: reference model and vectors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Model, profile split and generator tests (also fail if vectors are stale)
+        run: python3 -W error::ResourceWarning -m unittest core/test_core.py -v
+      - name: Vector manifests
+        run: |
+          set -e
+          for d in core/vectors/v1/*/; do (cd "$d" && sha256sum -c --quiet MANIFEST.sha256); done
+          echo "manifests ok"
+
+  foundry:
+    name: contracts (unit, vector replay, invariants)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evm
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with: { version: v1.8.1 }
+      - name: Build (sizes under 24 KB)
+        run: forge build --sizes
+      - name: Tests
+        run: forge test -vv

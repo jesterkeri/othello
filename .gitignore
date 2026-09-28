@@ -26,3 +26,8 @@ app/node_modules/
 app/next-env.d.ts
 
 app/tsconfig.tsbuildinfo
+
+# foundry (evm/)
+evm/cache/
+evm/broadcast/*/31337/
+__pycache__/
