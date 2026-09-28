@@ -182,6 +182,11 @@ class Vectors(unittest.TestCase):
                 h, name = line.split("  ")
                 self.assertEqual(hashlib.sha256(_read(os.path.join(d, name), "rb")).hexdigest(), h)
 
+    def test_action_lists_match_committed_files(self):
+        d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "actions")
+        for name, data in G.action_lists(write=False).items():
+            self.assertEqual(_read(os.path.join(d, name), "rb"), data, f"core/actions/{name} is stale")
+
     def test_every_vector_carries_its_ruleset_and_only_listed_actions(self):
         for profile in ("common-v1", "evm-usdg-v1"):
             d = os.path.join(G.OUT, profile)

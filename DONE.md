@@ -2904,3 +2904,36 @@ verify (real output):
                           survivor (unreachable branch, F-2); gaps closed by new tests; re-run of those 6
                           plus spot checks M01 M17: 8 mutations, 8 killed, 0 bad. M01 hand-checked: killed by
                           vector create-members-length-n3-2.
+
+## A1 slice 1 adversary (2026-09-28)
+adversary: NO DEFECT FOUND on staging..0d09dc3. 14 attack families (double claim, releasePot conservation,
+escrow left at Completed, underflow/panic, zero share denominator, deficit reachability, pause without
+default, queue order I23, grace boundary, check order per function, authority, hostile token/reentrancy,
+Python/Solidity shared mistakes, Demo.s.sol) plus its own 3,000-seed model explorer (about 2,450 completed
+circles, up to 7 defaults each): no violation. Independently confirmed ARB-FINDINGS F-1 (escrow deficit
+unreachable) without reading it; notes the consent path is exercised only on forced states (disclosed in F-1).
+
+## A1 slice 2: Robinhood page and adapter (viem, Joshua approved 2026-09-28)
+viem 2.56.8 exact (app, and root devDependency for the tests; 2.56.9 skipped as 4 days old).
+Built: app/src/lib/core/{profiles,adapter}.ts (ChainAdapter with no top-up; EvmUsdgAdapter {amount,
+expectedFill}; SolanaAdapter {amount}; exact-key argument check before any wallet call),
+app/src/lib/robinhood/{chain,config,copy,adapter,wallet}.ts (trust check: circle code, pinned factory code
+hash, factory.isCircle, circle.factory(); exact approvals; refusals decoded to plain words; TRUSTED_FACTORY
+null until the reviewed deploy), components/robinhood/RobinhoodCircle.tsx at /circle/rh:{address}, Shell
+`wallet` slot (the top bar shows the EVM wallet on Robinhood pages), evm/script/export_abi.py, CI job
+`adapter`.
+
+verify (real output):
+  npx tsc --noEmit (root, includes the @ts-expect-error adapter-split file) -> ok; app typecheck -> ok
+  mocha tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts (anvil, chain 46630, real contracts)
+    -> 15 passing (two legitimate circles with different runtime hashes accepted; foreign factory, lookalike,
+    wrong factory hash, no code and not-deployed refused; untrusted circle sends nothing; common surface has
+    no top-up; wrong-shape top-ups throw before any wallet call; full circle through the adapter, every
+    member ends where they started, allowances 0)
+  type-test mutation: adding topUpReserve to ChainAdapter -> tsc "Unused '@ts-expect-error' directive"
+  browser (local anvil + stand-in EIP-1193 wallet, headless Chromium): 3 joins, leave + rejoin, start,
+    3 rounds paid and released, 3 withdrawals, all "done"; untrusted address shows "This isn't an Othello
+    circle"; 0 console or page errors after the hydration fix. Bugs found and fixed on the way: reads before
+    the trust check (a lookalike threw), viem error class identity across copies, hydration mismatch, the
+    Solana top-bar wallet button on a Robinhood page.
+  next build -> Compiled successfully; forge test -> 34 passed; export_abi --check -> matches.

@@ -40,6 +40,8 @@ export type ShellProps = {
   surface?: 'panel' | 'gutter';
   /** The top bar's chip and note. Default: the devnet demo. Mainnet read-only pages pass their own. */
   network?: { chip: string; note: string };
+  /** Replaces the top bar's (Solana) wallet control, e.g. with an EVM wallet on Robinhood Chain pages. */
+  wallet?: ReactNode;
   children: ReactNode;
 };
 
@@ -70,7 +72,7 @@ export function useTheme() {
   return { mode, setMode, choice, setChoice, mine, vars, custom, setCustom };
 }
 
-export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, children }: ShellProps) {
+export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, children }: ShellProps) {
   const t = useTheme();
   // Which colours menu is open: the rail's (desktop) or the top bar's (phone). One state, two places.
   const [menu, setMenu] = useState<'rail' | 'top' | null>(null);
@@ -215,7 +217,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
               {paletteIcon}
             </button>
             {menu === 'top' && colours('top')}
-            <WalletControl />
+            {wallet ?? <WalletControl />}
           </span>
         </div>
         {children}

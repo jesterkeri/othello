@@ -567,7 +567,25 @@ def build(profile: str, cls, write=True):
     return cases, all_files
 
 
+def action_lists(write=True):
+    """core/actions/<profile>.json for every profile, released or not: the app's adapters are checked
+    against these (app/src/lib/core/profiles.ts)."""
+    out = {}
+    for profile, spec in A.PROFILES.items():
+        out[f"{profile}.json"] = canonical({"profile": profile, "model": spec["model"],
+                                            "actions": {k: [a[0] for a in v["args"]]
+                                                        for k, v in spec["actions"].items()}})
+    if write:
+        d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "actions")
+        os.makedirs(d, exist_ok=True)
+        for k, v in out.items():
+            with open(os.path.join(d, k), "wb") as f:
+                f.write(v)
+    return out
+
+
 def main():
+    action_lists()
     for profile in ("common-v1", "evm-usdg-v1"):
         cases, files = build(profile, getattr(R, A.PROFILES[profile]["model"]))
         steps = sum(len(s.steps) for s in cases)
