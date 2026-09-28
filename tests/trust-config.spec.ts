@@ -11,7 +11,14 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createPublicClient, createWalletClient, defineChain, http, keccak256, type Abi, type Address, type Hex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { PATHS, USDG, expectedRuntime, parseConfig, sourceUnchanged, verify, type Inputs } from "../ops/trust-config.ts";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  USDG, checkConfigValue, expectedCreationInput, expectedRuntime, loadConfig, singleSourceOfTrust, sourceUnchanged, verify,
+  type Inputs,
+} from "../ops/trust-config.ts";
 
 const PORT = 8593;
 const RPC = `http://127.0.0.1:${PORT}`;
@@ -19,13 +26,15 @@ const chain = defineChain({ id: 46630, name: "local", nativeCurrency: { name: "E
 const account = mnemonicToAccount("test test test test test test test test test test test junk", { addressIndex: 0 });
 const art = (f: string, n: string) => JSON.parse(readFileSync(new URL(`../evm/out/${f}/${n}.json`, import.meta.url), "utf8"));
 
-const configSrc = (addr: string, hash: string) =>
-  `export const TRUSTED_FACTORY: TrustedFactory | null = { address: "${addr}", codeHash: "${hash}" };`;
+const cfg = (address: string, codeHash: string) => checkConfigValue({ address, codeHash });
 
 describe("trust-config (ops/trust-config.ts)", function () {
   this.timeout(60_000);
   let anvil: ChildProcess;
   let factory: Address;
+  let deployTx: Hex;
+  let deployTxOther: Hex;
+  let pub: ReturnType<typeof createPublicClient>;
   let other: Address;
   let code: Hex;
   let otherCode: Hex;
@@ -34,21 +43,25 @@ describe("trust-config (ops/trust-config.ts)", function () {
   const receipt = (address: Address, args: string[] = [USDG], chainId = 46630) => ({
     chain: chainId,
     commit: "abc1234",
-    transactions: [{ transactionType: "CREATE", contractName: "OthelloFactory", contractAddress: address, arguments: args }],
+    transactions: [{ hash: address === factory ? deployTx : deployTxOther, transactionType: "CREATE", contractName: "OthelloFactory", contractAddress: address, arguments: args }],
     receipts: [{ contractAddress: address, status: "0x1" }],
   });
+  let deployInput: Hex;
   const good = (): Inputs => ({
-    config: parseConfig(configSrc(factory, keccak256(code))),
+    config: cfg(factory, keccak256(code)),
     receipt: receipt(factory),
     artifact,
     chainCode: code,
     chainId: 46630,
     sourceUnchangedSinceReceipt: true,
+    chainDeployTx: { input: deployInput, to: null },
+    chainDeployReceipt: { status: "0x1", contractAddress: factory },
+    trustSources: [],
   });
 
   before(async () => {
     anvil = spawn("anvil", ["--port", String(PORT), "--chain-id", "46630", "--silent"], { stdio: "ignore" });
-    const pub = createPublicClient({ chain, transport: http(RPC) });
+    pub = createPublicClient({ chain, transport: http(RPC) });
     for (let i = 0; i < 50; i++) {
       try { await pub.getChainId(); break; } catch { await sleep(100); }
     }
@@ -57,12 +70,17 @@ describe("trust-config (ops/trust-config.ts)", function () {
     await pub.request({ method: "anvil_setCode" as never, params: [USDG, mock.deployedBytecode.object] as never });
     const deploy = async (token: Address) => {
       const h = await w.deployContract({ abi: artifact.abi as Abi, bytecode: artifact.bytecode.object as Hex, args: [token] });
-      return (await pub.waitForTransactionReceipt({ hash: h })).contractAddress!;
+      return { hash: h, address: (await pub.waitForTransactionReceipt({ hash: h })).contractAddress! };
     };
-    factory = await deploy(USDG);
+    const d1 = await deploy(USDG);
+    factory = d1.address;
+    deployTx = d1.hash;
+    deployInput = (await pub.getTransaction({ hash: deployTx })).input;
     const h2 = await w.deployContract({ abi: mock.abi as Abi, bytecode: mock.bytecode.object as Hex });
     const otherToken = (await pub.waitForTransactionReceipt({ hash: h2 })).contractAddress!;
-    other = await deploy(otherToken);
+    const d2 = await deploy(otherToken);
+    other = d2.address;
+    deployTxOther = d2.hash;
     code = (await pub.getCode({ address: factory }))!;
     otherCode = (await pub.getCode({ address: other }))!;
   });
@@ -77,14 +95,16 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.deepEqual(verify(good()), []);
   });
 
-  it("passes while TRUSTED_FACTORY is null (page read-only), and the committed config is null", () => {
-    assert.deepEqual(verify({ ...good(), config: parseConfig("export const TRUSTED_FACTORY: TrustedFactory | null = null;") }), []);
-    assert.equal(parseConfig(readFileSync(PATHS.config, "utf8")).state, "null");
+  it("passes while TRUSTED_FACTORY is null (page read-only), and the committed config is null", async () => {
+    assert.deepEqual(verify({ ...good(), config: checkConfigValue(null) }), []);
+    assert.equal((await loadConfig()).state, "null");
   });
 
   it("fails on a config it cannot read", () => {
-    const f = verify({ ...good(), config: parseConfig('export const TRUSTED_FACTORY = JSON.parse(x);') });
-    assert.match(f.join(), /neither null nor/);
+    for (const v of [undefined, "0x", [], { address: factory }, { address: factory, codeHash: keccak256(code), extra: 1 },
+      { address: "not an address", codeHash: keccak256(code) }, { address: factory, codeHash: "0x1234" }]) {
+      assert.match(verify({ ...good(), config: checkConfigValue(v) }).join(), /neither null nor/, JSON.stringify(v));
+    }
   });
 
   it("fails when the receipt is missing", () => {
@@ -111,7 +131,7 @@ describe("trust-config (ops/trust-config.ts)", function () {
 
   it("fails when the config hash is not the live code's hash", () => {
     const i = good();
-    i.config = parseConfig(configSrc(factory, keccak256("0x00")));
+    i.config = cfg(factory, keccak256("0x00"));
     const f = verify(i).join();
     assert.match(f, /live code hash .* differs/);
     assert.match(f, /reviewed source compiles to/);
@@ -120,7 +140,7 @@ describe("trust-config (ops/trust-config.ts)", function () {
   it("fails when the live code is a factory built with another token (source check catches it)", () => {
     const i: Inputs = {
       ...good(),
-      config: parseConfig(configSrc(other, keccak256(otherCode))),
+      config: cfg(other, keccak256(otherCode)),
       receipt: receipt(other, [USDG]),
       chainCode: otherCode,
     };
@@ -140,8 +160,35 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.equal(sourceUnchanged(undefined), false);
   });
 
+  it("the chain must confirm the deployment: exact reviewed init code with USDG, a creation, success, that address", async () => {
+    assert.equal(deployInput.toLowerCase(), expectedCreationInput(artifact, USDG), "the real deployment input is the expected one");
+    assert.match(verify({ ...good(), chainDeployTx: null }).join(), /no deployment transaction/);
+    // same runtime, other init code (e.g. a constructor that pre-registers a circle): input differs
+    assert.match(verify({ ...good(), chainDeployTx: { input: `${deployInput}00`, to: null } }).join(), /creation code is not the reviewed/);
+    assert.match(verify({ ...good(), chainDeployTx: { input: deployInput, to: factory } }).join(), /not a contract creation/);
+    assert.match(verify({ ...good(), chainDeployReceipt: { status: "0x0", contractAddress: factory } }).join(), /no successful deployment receipt/);
+    assert.match(verify({ ...good(), chainDeployReceipt: { status: "0x1", contractAddress: other } }).join(), /created .* not/);
+    const otherInput = (await pub.getTransaction({ hash: deployTxOther })).input;
+    assert.match(verify({ ...good(), chainDeployTx: { input: otherInput, to: null } }).join(), /creation code is not the reviewed/);
+  });
+
+  it("every trust check in app/src reads TRUSTED_FACTORY from config.ts; another source fails", () => {
+    assert.deepEqual(singleSourceOfTrust(), [], "the real app passes");
+    const dir = mkdtempSync(join(tmpdir(), "trust-src-"));
+    mkdirSync(join(dir, "lib/robinhood"), { recursive: true });
+    mkdirSync(join(dir, "components"), { recursive: true });
+    writeFileSync(join(dir, "lib/robinhood/config.ts"), "export const TRUSTED_FACTORY = null;");
+    writeFileSync(join(dir, "components/A.tsx"), 'import { TRUSTED_FACTORY } from "@/lib/robinhood/config";\nconst OTHER = {};\ncheckTrusted(c, x, OTHER);');
+    writeFileSync(join(dir, "components/B.tsx"), 'const TRUSTED_FACTORY = { address: "0x1", codeHash: "0x2" };\ncreateRobinhoodAdapter({ factory: TRUSTED_FACTORY });');
+    const f = singleSourceOfTrust(dir).join("\n");
+    assert.match(f, /A\.tsx: checkTrusted is not given TRUSTED_FACTORY/);
+    assert.match(f, /B\.tsx declares its own TRUSTED_FACTORY/);
+    assert.match(f, /B\.tsx trusts a factory without importing TRUSTED_FACTORY/);
+    assert.match(verify({ ...good(), trustSources: ["x"] }).join(), /x/, "a trust-source failure fails the gate");
+  });
+
   it("the CLI passes on the committed (null) config", () => {
     const out = execFileSync("npx", ["tsx", "ops/trust-config.ts", "--rpc", RPC], { encoding: "utf8" });
-    assert.match(out, /TRUSTED_FACTORY is null/);
+    assert.match(out, /TRUSTED_FACTORY is null and every trust check reads it/);
   });
 });

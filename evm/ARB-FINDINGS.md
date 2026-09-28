@@ -82,3 +82,13 @@ The Join list no longer says a restart top-up "covers others and may not come ba
 top-up's fill is always 0. It now says a top-up joins the shared reserve and comes back through the end-of-circle
 split, which later losses can reduce. The exact-subsidy sentence remains only on the top-up form, shown when a
 fill is actually non-zero (a future collateral profile).
+
+## F-9. trust-config hardened after its adversary pass
+
+The first gate parsed `config.ts` as text, so a commented-out null line made a set config read as null and pass
+(adversary test `tests/trust-config-hostile-config.spec.ts`). The gate now imports `config.ts` as a module and
+checks the exported value's exact shape; it requires every `checkTrusted` / `createRobinhoodAdapter` call in
+`app/src` to pass `TRUSTED_FACTORY` imported from the config module, and no other file to declare one; and it
+asks the chain for the receipt's deployment transaction, requiring a contract creation whose input is exactly the
+reviewed init code plus USDG, successful, that created the config address (a same-runtime contract with other init
+code, e.g. one that pre-registers a circle in storage, fails). CI now re-runs it on any change under `app/src`.

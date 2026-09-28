@@ -2965,3 +2965,14 @@ Codex found no contract, money, access or adapter defect; 36/36 required mutatio
 3. MINOR Join copy stated the unreachable subsidy -> reworded (F-8).
 verify: unittest OK; export_abi --check matches; forge 36 passed (+ fork 3 passed); root/app tsc; next build
 compiled; mocha 30 passing; trust-config CLI on null config passes; workflows clean; diff clean.
+
+## A1 trust-config adversary + fix (2026-09-28)
+adversary on 2a907ab..f34eb46: DEFECT (gate fails open): parseConfig read config.ts as text, so a commented
+null line made a set TRUSTED_FACTORY read as null and the CLI printed "Nothing to verify" (exit 0); a commented
+reviewed address could be verified while the page trusted another. Kept as tests/trust-config-hostile-config.spec.ts
+(failed "Expected 'actual' to be strictly unequal to: 'null'" and "gate passed").
+Also acted on its two suspicions: CI paths now cover all of app/src; the chain must confirm the receipt's
+deployment transaction (creation, exact reviewed init code + USDG, success, that address).
+Fix: config.ts loaded as a module and shape-checked; single source of trust in app/src; on-chain deployment check
+(ARB-FINDINGS F-9). verify: mocha 36 passing (20 trust-config incl. the 4 adversary cases); tsc root/app;
+trust-config CLI on the committed null config passes; workflows clean.
