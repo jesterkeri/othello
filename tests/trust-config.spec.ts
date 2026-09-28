@@ -11,12 +11,14 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createPublicClient, createWalletClient, defineChain, http, keccak256, type Abi, type Address, type Hex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createRobinhoodAdapter } from "../app/src/lib/robinhood/adapter.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  USDG, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig, verify,
+  USDG, buildFilePins, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
+  moduleShadows, verify,
   type Inputs,
 } from "../ops/trust-config.ts";
 
@@ -222,6 +224,64 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.ok(!f.includes("components/G.ts"), "type-only imports carry no value and are allowed");
     assert.ok(!f.split("\n").some((l) => l.startsWith("lib/robinhood/")), `adapter.ts may import; core's type import is allowed:\n${f}`);
     assert.match(verify({ ...good(), trustSources: ["x"] }).join(), /x/, "a boundary failure fails the gate");
+  });
+
+  it("what the bundler loads is what is checked: no JS modules and no same-stem files in app/src", () => {
+    assert.deepEqual(moduleShadows(), [], "the real app passes");
+    const shadows: [string, string][] = [["lib/robinhood/config.js", "export const TRUSTED_FACTORY = null;"],
+                                         ["lib/robinhood/config.tsx", "export const TRUSTED_FACTORY = null;"],
+                                         ["lib/robinhood/adapter.mjs", "export const x = 1;"],
+                                         ["components/helper.cjs", "module.exports = {};"]];
+    for (const [name, body] of shadows) {
+      const dir = mkdtempSync(join(tmpdir(), "trust-shadow-"));
+      cpSync(new URL("../app/src", import.meta.url), dir, { recursive: true });
+      writeFileSync(join(dir, name), body);
+      assert.notDeepEqual(moduleShadows(dir), [], name);
+    }
+  });
+
+  it("next.config.mjs and tsconfig.json are pinned; a change or an extra next.config fails", () => {
+    assert.deepEqual(buildFilePins(), [], "the committed build files match their pins");
+    const root = mkdtempSync(join(tmpdir(), "trust-pins-"));
+    mkdirSync(join(root, "app"));
+    cpSync(new URL("../app/next.config.mjs", import.meta.url), join(root, "app/next.config.mjs"));
+    cpSync(new URL("../app/tsconfig.json", import.meta.url), join(root, "app/tsconfig.json"));
+    assert.deepEqual(buildFilePins(root), []);
+    writeFileSync(join(root, "app/next.config.js"), "module.exports = {};");
+    assert.match(buildFilePins(root).join(), /next\.config\.js exists/);
+    writeFileSync(join(root, "app/tsconfig.json"), '{"compilerOptions":{"paths":{"@/*":["./evil/*"]}}}');
+    assert.match(buildFilePins(root).join(), /tsconfig\.json changed/);
+  });
+
+  it("a mixed-case address with a bad checksum is unreadable; all-lowercase and valid checksums are read", () => {
+    const h = keccak256(code);
+    const lower = factory.toLowerCase();
+    const bad = `0x${lower.slice(2).replace(/[a-f]/, (c) => c.toUpperCase())}`;
+    assert.equal(checkConfigValue({ address: lower, codeHash: h }).state, "set");
+    assert.equal(checkConfigValue({ address: factory, codeHash: h }).state, "set");
+    if (bad !== factory) assert.equal(checkConfigValue({ address: bad, codeHash: h }).state, "unreadable");
+  });
+
+  it("the app's createRobinhoodAdapter ignores a smuggled factory or USDG", async () => {
+    const reads: { address: string; functionName: string }[] = [];
+    const client = {
+      getCode: async () => "0x6000",
+      readContract: async ({ address, functionName }: { address: string; functionName: string }) => {
+        reads.push({ address, functionName });
+        if (["factory", "creator", "members"].includes(functionName)) return factory;
+        if (functionName === "seat") return { collateral: 0n, g: 0n, topUps: 0n, forfeited: 0n, allocated: 0n, lastCoverageBps: 0, delinquentMarks: 0, roundsPaid: 0 };
+        if (["status", "round", "paidBitmap", "joinedBitmap", "withdrawnBitmap", "receivedBitmap", "defaultedBitmap", "delinquentBitmap"].includes(functionName)) return 0;
+        if (functionName === "n") return 3n;
+        return 0n;
+      },
+    };
+    const evil = "0x000000000000000000000000000000000000dEaD";
+    const deps = { publicClient: client, walletClient: {}, account: evil, circle: factory, factory: { address: evil, codeHash: keccak256("0x00") }, usdg: evil };
+    const ad = createRobinhoodAdapter(deps as never);
+    assert.deepEqual(await ad.trust(), { ok: false, reason: "not-deployed" }, "the trusted factory (null) is used, not the smuggled one");
+    await ad.readCircle("");
+    const bal = reads.find((r) => r.functionName === "balanceOf");
+    assert.equal(bal?.address.toLowerCase(), USDG.toLowerCase(), "the real USDG is read, not the smuggled token");
   });
 
   it("the CLI passes on the committed (null) config", () => {

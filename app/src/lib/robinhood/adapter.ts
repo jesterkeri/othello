@@ -37,5 +37,13 @@ export function checkTrusted(client: Pick<PublicClient, "getCode" | "readContrac
 
 /** An evm-usdg-v1 adapter bound to the one trusted factory and the real USDG. */
 export function createRobinhoodAdapter(d: Omit<RobinhoodDeps, "factory" | "usdg">): RobinhoodAdapter {
-  return createRobinhoodAdapterWith({ ...d, factory: TRUSTED_FACTORY });
+  // Fields picked one by one: an object with extra `factory` or `usdg` properties (allowed by TypeScript when it
+  // is not a literal) cannot override the trusted factory or the real USDG.
+  return createRobinhoodAdapterWith({
+    publicClient: d.publicClient,
+    walletClient: d.walletClient,
+    account: d.account,
+    circle: d.circle,
+    factory: TRUSTED_FACTORY,
+  });
 }

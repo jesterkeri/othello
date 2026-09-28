@@ -2989,3 +2989,16 @@ CI paths app/**.
 verify: mocha 41 passing (25 trust-config); mutation: boundary off -> 3 failing, changed-files rule off -> 1
 failing; tsc root/app; next build compiled; export_abi --check; trust-config CLI passes on the null config;
 browser click-through (local anvil) full circle, all "done", untrusted address refused.
+
+## A1 trust-config, fourth adversary pass + fix (2026-09-28)
+adversary on 4d0d5fd..33a8911: DEFECTS: (1) a config.js beside config.ts is what Next bundles (.js before .ts), so the
+gate checked a file the page did not load (proved with a real next build); (2) git's rename detection let
+`git mv X X.md` hide X's deletion. Suspicions acted on: extra usdg/factory fields passed through
+createRobinhoodAdapter at run time; checksum-invalid addresses accepted. Both adversary specs kept
+(tests/trust-config-shadow-module.spec.ts, now also requiring the gate to name config.js as the reason;
+tests/trust-config-rename-hides-delete.spec.ts).
+Fix (ARB-FINDINGS F-11): no JS modules / same-stem files in app/src; next.config.mjs + tsconfig.json pinned; trust
+source failures reported first; --no-renames; field-by-field adapter deps; strict addresses. Stated limit: the
+receipt's commit = review-2 SHIP commit is checked by review 3, not CI.
+verify: mocha 47 passing; mutations: shadow rule off -> shadow spec fails; spread restored -> smuggle test fails;
+tsc root/app; next build compiled; export_abi --check; CLI passes on the null config; workflows clean.

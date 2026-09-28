@@ -111,3 +111,20 @@ browser another (`tests/trust-config-trust-sources.spec.ts`). Changes:
   `eval`). While the config is null, the boundary scan is the check and the page offers no action; once it is set,
   nothing but the config and receipt may differ from the commit Codex approved at review 2.
 CI re-runs the gate on any change under `app/`.
+
+## F-11. What the bundler loads, renames, and the receipt's commit (fourth trust-config adversary pass)
+
+- **Shadow modules.** Next resolves `./config` trying `.js` before `.ts`, so a `config.js` beside `config.ts` was what
+  the page loaded while the gate checked `config.ts` (proved with a real `next build`,
+  `tests/trust-config-shadow-module.spec.ts`). Now `app/src` may hold no JavaScript module file and no two files
+  differing only by module extension; `app/next.config.mjs` and `app/tsconfig.json` (path aliases, resolve rules)
+  are pinned by sha256 in the gate, and any other `next.config.*` or `jsconfig.json` fails. The gate reports these
+  before reading anything else.
+- **Renames.** `git diff --name-only` folds a rename into its new name, so `git mv X X.md` hid X's deletion
+  (`tests/trust-config-rename-hides-delete.spec.ts`). The diff now uses `--no-renames`.
+- **Smuggled fields.** The app's `createRobinhoodAdapter` now picks its four fields one by one, so an object with
+  extra `factory` or `usdg` properties cannot override the trusted factory or the real USDG.
+- **Strict addresses.** A config address must be all-lowercase or carry a valid EIP-55 checksum.
+- **Limit (not closable in CI):** the receipt's `commit` is written by whoever makes the config commit, so nothing
+  in the repo proves it is the review-2 SHIP commit. Review 3 checks that equality by hand; the gate then proves
+  nothing else changed since that commit.

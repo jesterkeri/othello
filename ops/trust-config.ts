@@ -13,7 +13,8 @@
  *      which ties the live code to this exact compiler, source and constructor argument;
  *   5. the chain itself confirms the receipt's deployment transaction: a contract creation whose input is exactly
  *      the reviewed init code plus USDG, successful, creating that address (so no lookalike with other init code).
- * Always: config.ts has a fixed shape (TypeScript AST: `null` or `Object.freeze({address, codeHash})` of two
+ * Always: app/src holds no JavaScript module and no two files differing only by extension (so the bundler loads
+ * the file checked here), next.config.mjs and tsconfig.json match pinned hashes, config.ts has a fixed shape (TypeScript AST: `null` or `Object.freeze({address, codeHash})` of two
  * string literals, nothing computed), its imported value equals that literal, and in app/src only
  * lib/robinhood/adapter.ts may import ./config or ./adapter-core (the only modules that take or hold a factory).
  * Limit: a static gate cannot prove that code written to deceive it is harmless; that is the reviews' job. It
@@ -21,6 +22,7 @@
  *
  *   npx tsx ops/trust-config.ts [--rpc https://rpc.testnet.chain.robinhood.com]
  */
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -50,7 +52,8 @@ export function checkConfigValue(v: unknown): TrustedConfig {
   const keys = Object.keys(v).sort();
   if (keys.length !== 2 || keys[0] !== "address" || keys[1] !== "codeHash") return { state: "unreadable" };
   const { address, codeHash } = v as { address: unknown; codeHash: unknown };
-  if (typeof address !== "string" || !isAddress(address, { strict: false })) return { state: "unreadable" };
+  // strict: all-lowercase, or mixed case with a valid EIP-55 checksum (the page's viem calls are strict too)
+  if (typeof address !== "string" || !isAddress(address)) return { state: "unreadable" };
   if (typeof codeHash !== "string" || !isHex(codeHash) || codeHash.length !== 66) return { state: "unreadable" };
   return { state: "set", address: getAddress(address.toLowerCase()), codeHash: codeHash.toLowerCase() as Hex };
 }
@@ -176,12 +179,63 @@ export function importBoundary(appSrc: string = `${ROOT}app/src`): string[] {
   return f;
 }
 
+/** Module extensions Next's resolver may try for an import; a JS file would be tried before the .ts one. */
+const MODULE_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json)$/;
+
+/**
+ * What the bundler loads must be the file the gate checks: app/src may contain no JavaScript module files, and
+ * no two files that differ only by module extension (so `config.js` or `config.tsx` cannot shadow `config.ts`).
+ */
+export function moduleShadows(appSrc: string = `${ROOT}app/src`): string[] {
+  const f: string[] = [];
+  const stems = new Map<string, string[]>();
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (MODULE_EXT.test(n)) {
+        const rel = p.slice(appSrc.length + 1);
+        if (/\.(js|jsx|mjs|cjs)$/.test(n)) f.push(`${rel}: JavaScript module files are not allowed in app/src`);
+        const stem = rel.replace(MODULE_EXT, "");
+        stems.set(stem, [...(stems.get(stem) ?? []), rel]);
+      }
+    }
+  };
+  walk(appSrc);
+  for (const [stem, files] of stems) if (files.length > 1) f.push(`${stem} resolves to more than one file: ${files.join(", ")}`);
+  return f;
+}
+
+/**
+ * Build files that can redirect an import (path aliases, webpack/turbopack resolve rules), pinned by sha256.
+ * Changing either one means editing this list, which a review sees.
+ */
+export const PINNED_BUILD_FILES: Record<string, string> = {
+  "app/next.config.mjs": "67c04765514b646bda06605f69bb6d7113d4c8f8871408cf2606ab478d39bb9e",
+  "app/tsconfig.json": "8ca1ad27ebaba629ce060411aef2a0bc2e317becd7e66978aece1d2d0d4b6bde",
+};
+
+export function buildFilePins(root: string = ROOT): string[] {
+  const f: string[] = [];
+  for (const [rel, want] of Object.entries(PINNED_BUILD_FILES)) {
+    const p = join(root, rel);
+    if (!existsSync(p)) { f.push(`${rel} is missing`); continue; }
+    const got = createHash("sha256").update(readFileSync(p)).digest("hex");
+    if (got !== want) f.push(`${rel} changed (sha256 ${got}); resolve rules must be reviewed and re-pinned in ops/trust-config.ts`);
+  }
+  for (const other of ["next.config.js", "next.config.ts", "next.config.cjs", "jsconfig.json"]) {
+    if (existsSync(join(root, "app", other))) f.push(`app/${other} exists beside the pinned build files`);
+  }
+  return f;
+}
+
 /** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */
 export function changedSince(commit: string | undefined): string[] | null {
   if (!commit || !/^[0-9a-f]{7,40}$/.test(commit)) return null;
   try {
     execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", commit, "HEAD"]);
-    const out = execFileSync("git", ["-C", ROOT, "diff", "--name-only", commit, "HEAD"], { encoding: "utf8" });
+    // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
+    const out = execFileSync("git", ["-C", ROOT, "diff", "--no-renames", "--name-only", commit, "HEAD"], { encoding: "utf8" });
     return out.split("\n").filter(Boolean);
   } catch {
     return null;
@@ -301,8 +355,13 @@ async function main() {
   const url = at > 0 ? process.argv[at + 1] : "https://rpc.testnet.chain.robinhood.com";
   if (!url) throw new Error("--rpc needs a URL");
   const config = await loadConfig();
-  const trustSources = importBoundary();
-  if (config.state === "null" && !trustSources.length) {
+  const trustSources = [...importBoundary(), ...moduleShadows(), ...buildFilePins()];
+  if (trustSources.length) {
+    // Where the page's factory comes from is wrong: say so before anything else is read.
+    console.error("trust-config FAILED:\n- " + trustSources.join("\n- "));
+    process.exit(1);
+  }
+  if (config.state === "null") {
     console.log("trust-config: TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it; the Robinhood page offers no action.");
     return;
   }
