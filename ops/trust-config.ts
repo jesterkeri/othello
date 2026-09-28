@@ -13,7 +13,11 @@
  *      which ties the live code to this exact compiler, source and constructor argument;
  *   5. the chain itself confirms the receipt's deployment transaction: a contract creation whose input is exactly
  *      the reviewed init code plus USDG, successful, creating that address (so no lookalike with other init code).
- * Always: app/src holds no JavaScript module and no two files differing only by extension (so the bundler loads
+ * With --build <.next dir> (CI always passes it after `next build`): every 20-byte address in the build output is
+ * USDG, the zero address, viem's native placeholder or the trusted factory, and a set factory must appear in it.
+ * Always: app/ has no alias fields in package.json and no module files outside src (except next.config.mjs and
+ * next-env.d.ts), no extensionless files, chain.ts's USDG equals the pinned USDG,
+ * app/src holds no JavaScript module and no two files differing only by extension (so the bundler loads
  * the file checked here), next.config.mjs and tsconfig.json match pinned hashes, config.ts has a fixed shape (TypeScript AST: `null` or `Object.freeze({address, codeHash})` of two
  * string literals, nothing computed), its imported value equals that literal, and in app/src only
  * lib/robinhood/adapter.ts may import ./config or ./adapter-core (the only modules that take or hold a factory).
@@ -172,6 +176,7 @@ export function importBoundary(appSrc: string = `${ROOT}app/src`): string[] {
     };
     visit(sf);
     for (const spec of hits) {
+      if (spec.startsWith("#")) { f.push(`${rel} uses a package.json subpath import (${spec}); not allowed in app/src`); continue; }
       const target = resolveSpec(file, spec);
       if (target && GUARDED.includes(target) && file !== allowed) f.push(`${rel} imports ${spec}; only lib/robinhood/adapter.ts may`);
     }
@@ -193,6 +198,7 @@ export function moduleShadows(appSrc: string = `${ROOT}app/src`): string[] {
     for (const n of readdirSync(d)) {
       const p = join(d, n);
       if (statSync(p).isDirectory()) walk(p);
+      else if (!n.includes(".")) f.push(`${p.slice(appSrc.length + 1)}: files without an extension are not allowed in app/src (the bundler tries the bare name first)`);
       else if (MODULE_EXT.test(n)) {
         const rel = p.slice(appSrc.length + 1);
         if (/\.(js|jsx|mjs|cjs)$/.test(n)) f.push(`${rel}: JavaScript module files are not allowed in app/src`);
@@ -227,6 +233,82 @@ export function buildFilePins(root: string = ROOT): string[] {
     if (existsSync(join(root, "app", other))) f.push(`app/${other} exists beside the pinned build files`);
   }
   return f;
+}
+
+/**
+ * The rest of app/ (outside src, node_modules, .next, public): no alias fields in app/package.json (imports,
+ * exports, browser), no module file except next.config.mjs and next-env.d.ts, no extensionless file. So nothing
+ * outside app/src can stand in for, re-export or re-route a guarded module.
+ */
+export function appTreeRules(appDir: string = `${ROOT}app`): string[] {
+  const f: string[] = [];
+  const pkg = join(appDir, "package.json");
+  if (existsSync(pkg)) {
+    const j = JSON.parse(readFileSync(pkg, "utf8")) as Record<string, unknown>;
+    for (const k of ["imports", "exports", "browser"]) if (k in j) f.push(`app/package.json has an "${k}" field, which can re-route imports`);
+  }
+  const skip = new Set(["node_modules", ".next", "public", "src"]);
+  const allowedModules = new Set(["next.config.mjs", "next-env.d.ts"]);
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const rel = p.slice(appDir.length + 1);
+      if (statSync(p).isDirectory()) {
+        if (!(d === appDir && skip.has(n))) walk(p);
+        continue;
+      }
+      if (!n.includes(".")) f.push(`app/${rel}: files without an extension are not allowed in app/`);
+      else if (MODULE_EXT.test(n) && !/\.json$/.test(n) && !(d === appDir && allowedModules.has(n))) {
+        f.push(`app/${rel}: module files outside app/src are not allowed`);
+      }
+    }
+  };
+  walk(appDir);
+  return f;
+}
+
+/** Contract addresses that may appear in the built app (besides the trusted factory once it is set). */
+export const BUNDLE_ADDRESS_ALLOWLIST = new Set([
+  "0x0000000000000000000000000000000000000000", // zero address
+  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", // viem's native-token placeholder
+  USDG.toLowerCase(),
+]);
+
+/**
+ * Scans the real build output (.next/static and .next/server) for 20-byte hex addresses. Every one must be on the
+ * allowlist or be the trusted factory; once the factory is set it must appear. However an import is routed, a
+ * hard-coded factory has to be in the bytes the browser receives.
+ */
+export function bundleAddresses(nextDir: string, trusted: Address | null): string[] {
+  const f: string[] = [];
+  const found = new Set<string>();
+  const roots = ["static", "server"].map((r) => join(nextDir, r)).filter((r) => existsSync(r));
+  if (roots.length !== 2) return [`no complete Next build at ${nextDir} (run next build first)`];
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(js|mjs|cjs|html|rsc|json|txt|map)$/.test(n)) {
+        for (const m of readFileSync(p, "utf8").matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)) found.add(m[0].toLowerCase());
+      }
+    }
+  };
+  roots.forEach(walk);
+  const want = trusted?.toLowerCase();
+  for (const a of found) if (!BUNDLE_ADDRESS_ALLOWLIST.has(a) && a !== want) f.push(`the build contains address ${a}, which is not USDG or the trusted factory`);
+  if (want && !found.has(want)) f.push(`the build does not contain the trusted factory ${trusted}`);
+  if (!found.has(USDG.toLowerCase())) f.push("the build does not contain USDG");
+  return f;
+}
+
+/** The USDG the adapter approves (app/src/lib/robinhood/chain.ts) must be the USDG this gate pins. */
+export async function usdgMatches(): Promise<string[]> {
+  try {
+    const mod = (await import(`${pathToFileURL(`${ROOT}app/src/lib/robinhood/chain.ts`).href}?t=${Date.now()}`)) as { USDG?: string };
+    return mod.USDG?.toLowerCase() === USDG.toLowerCase() ? [] : [`chain.ts USDG is ${mod.USDG}, not ${USDG}`];
+  } catch (e) {
+    return [`chain.ts could not be loaded: ${e instanceof Error ? e.message : e}`];
+  }
 }
 
 /** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */
@@ -355,11 +437,21 @@ async function main() {
   const url = at > 0 ? process.argv[at + 1] : "https://rpc.testnet.chain.robinhood.com";
   if (!url) throw new Error("--rpc needs a URL");
   const config = await loadConfig();
-  const trustSources = [...importBoundary(), ...moduleShadows(), ...buildFilePins()];
+  const trustSources = [...importBoundary(), ...moduleShadows(), ...appTreeRules(), ...buildFilePins(), ...(await usdgMatches())];
   if (trustSources.length) {
     // Where the page's factory comes from is wrong: say so before anything else is read.
     console.error("trust-config FAILED:\n- " + trustSources.join("\n- "));
     process.exit(1);
+  }
+  const b = process.argv.indexOf("--build");
+  if (b > 0) {
+    const nextDir = process.argv[b + 1];
+    const bf = nextDir ? bundleAddresses(nextDir, config.state === "set" ? config.address : null) : ["--build needs a directory"];
+    if (bf.length) {
+      console.error("trust-config FAILED:\n- " + bf.join("\n- "));
+      process.exit(1);
+    }
+    console.log(`trust-config: the build at ${nextDir} contains only allowed addresses.`);
   }
   if (config.state === "null") {
     console.log("trust-config: TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it; the Robinhood page offers no action.");

@@ -3002,3 +3002,13 @@ source failures reported first; --no-renames; field-by-field adapter deps; stric
 receipt's commit = review-2 SHIP commit is checked by review 3, not CI.
 verify: mocha 47 passing; mutations: shadow rule off -> shadow spec fails; spread restored -> smuggle test fails;
 tsc root/app; next build compiled; export_abi --check; CLI passes on the null config; workflows clean.
+
+## A1 trust-config, fifth adversary pass + build scan (2026-09-28)
+adversary on 33a8911..9ceaaae: DEFECTS proved with real next builds: (1) an extensionless `config` file beside
+config.ts is what the page loads; (2) a package.json "imports" alias lets a page reach adapter-core. Read, not built:
+(3) a module outside app/src re-exporting the core. Suspicion acted on: chain.ts USDG not compared with the pinned one.
+Specs kept: tests/trust-config-extensionless-shadow.spec.ts (plus an added assertion that the bundle scan alone flags
+it), tests/trust-config-subpath-imports.spec.ts.
+Fix (ARB-FINDINGS F-12): rules for each, and a build-output scan (CI: next build, then --build app/.next): only USDG,
+zero, viem's placeholder and the trusted factory may appear. Today's build holds exactly USDG, zero and the placeholder.
+verify: trust specs 37 passing; mutation: bundle scan disabled -> 2 failing; CLI with --build app/.next passes.

@@ -128,3 +128,19 @@ CI re-runs the gate on any change under `app/`.
 - **Limit (not closable in CI):** the receipt's `commit` is written by whoever makes the config commit, so nothing
   in the repo proves it is the review-2 SHIP commit. Review 3 checks that equality by hand; the gate then proves
   nothing else changed since that commit.
+
+## F-12. A resolution-independent check: scan the build (fifth trust-config adversary pass)
+
+The fifth pass found two more ways the bundler could load something other than the checked `config.ts` (an
+extensionless `config` file; a `package.json` `"imports"` alias reaching `adapter-core`), both proved with a real
+`next build`, and one by reading (a module outside `app/src` re-exporting the core). Each is closed by a rule
+(extensionless files refused in app/; `imports`/`exports`/`browser` fields refused in `app/package.json`; `#`
+specifiers refused; no module files in app/ outside `src` except `next.config.mjs` and `next-env.d.ts`), and the
+USDG in `chain.ts` must equal the gate's pinned USDG.
+
+Because each pass found another resolution route, the gate now also checks the **output**: CI runs `next build` and
+`trust-config --build app/.next`, which reads every file the build emits (`.next/static`, `.next/server`) and requires
+every 20-byte hex address in it to be USDG, the zero address, viem's native placeholder or the trusted factory, and a
+set factory to be present. However an import is routed, a hard-coded factory must appear in those bytes, so this
+check does not depend on knowing the resolver's rules. The adversary's extensionless-file build is flagged by the
+scan alone. Remaining limit: an address assembled at run time from pieces (obfuscation) is out of scope, as before.

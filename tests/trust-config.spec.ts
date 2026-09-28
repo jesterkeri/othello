@@ -17,8 +17,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  USDG, buildFilePins, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
-  moduleShadows, verify,
+  USDG, appTreeRules, buildFilePins, bundleAddresses, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
+  moduleShadows, usdgMatches, verify,
   type Inputs,
 } from "../ops/trust-config.ts";
 
@@ -282,6 +282,65 @@ describe("trust-config (ops/trust-config.ts)", function () {
     await ad.readCircle("");
     const bal = reads.find((r) => r.functionName === "balanceOf");
     assert.equal(bal?.address.toLowerCase(), USDG.toLowerCase(), "the real USDG is read, not the smuggled token");
+  });
+
+  it("app/ outside src: no alias fields, no module files, no extensionless files", () => {
+    assert.deepEqual(appTreeRules(), [], "the real app passes");
+    const mk = () => {
+      const d = mkdtempSync(join(tmpdir(), "trust-app-"));
+      writeFileSync(join(d, "package.json"), '{"name":"x"}');
+      writeFileSync(join(d, "next.config.mjs"), "export default {};");
+      writeFileSync(join(d, "next-env.d.ts"), "");
+      mkdirSync(join(d, "src"));
+      return d;
+    };
+    assert.deepEqual(appTreeRules(mk()), []);
+    for (const [field] of [["imports"], ["exports"], ["browser"]]) {
+      const d = mk();
+      writeFileSync(join(d, "package.json"), JSON.stringify({ name: "x", [field!]: { "#a": "./a.ts" } }));
+      assert.match(appTreeRules(d).join(), new RegExp(`"${field}" field`));
+    }
+    const d = mk();
+    mkdirSync(join(d, "rhdev"));
+    writeFileSync(join(d, "rhdev/x.ts"), 'export * from "../src/lib/robinhood/adapter-core";');
+    writeFileSync(join(d, "config"), "export const X = 1;");
+    const f = appTreeRules(d).join("\n");
+    assert.match(f, /rhdev\/x\.ts: module files outside app\/src/);
+    assert.match(f, /app\/config: files without an extension/);
+  });
+
+  it("an extensionless file in app/src is refused (the bundler tries the bare name first)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "trust-noext-"));
+    cpSync(new URL("../app/src", import.meta.url), dir, { recursive: true });
+    writeFileSync(join(dir, "lib/robinhood/config"), "export const TRUSTED_FACTORY = null;");
+    assert.match(moduleShadows(dir).join(), /lib\/robinhood\/config: files without an extension/);
+  });
+
+  it("the bundle scan allows only USDG, the zero address, viem's placeholder and the trusted factory", () => {
+    const next = () => {
+      const d = mkdtempSync(join(tmpdir(), "trust-next-"));
+      mkdirSync(join(d, "static/chunks"), { recursive: true });
+      mkdirSync(join(d, "server/app"), { recursive: true });
+      writeFileSync(join(d, "static/chunks/a.js"), `const u="${USDG}";const z="0x0000000000000000000000000000000000000000";`);
+      writeFileSync(join(d, "server/app/page.js"), 'const e="0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";');
+      return d;
+    };
+    assert.deepEqual(bundleAddresses(next(), null), []);
+    const withRogue = next();
+    writeFileSync(join(withRogue, "static/chunks/b.js"), `x("${other}")`);
+    assert.match(bundleAddresses(withRogue, null).join(), new RegExp(`${other.toLowerCase()}.*not USDG or the trusted factory`));
+    const withFactory = next();
+    writeFileSync(join(withFactory, "server/app/x.html"), `<a>${factory}</a>`);
+    assert.deepEqual(bundleAddresses(withFactory, factory), [], "a set factory present in the build passes");
+    assert.match(bundleAddresses(next(), factory).join(), /does not contain the trusted factory/);
+    assert.match(bundleAddresses(join(tmpdir(), "no-such-next-dir"), null).join(), /no complete Next build/);
+    const noUsdg = next();
+    writeFileSync(join(noUsdg, "static/chunks/a.js"), "");
+    assert.match(bundleAddresses(noUsdg, null).join(), /does not contain USDG/);
+  });
+
+  it("the USDG the adapter approves is the USDG the gate pins", async () => {
+    assert.deepEqual(await usdgMatches(), []);
   });
 
   it("the CLI passes on the committed (null) config", () => {
