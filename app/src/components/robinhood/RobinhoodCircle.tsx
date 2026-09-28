@@ -6,7 +6,7 @@
  * Every action goes through the evm-usdg-v1 adapter: exact approvals, refusals decoded into plain words.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isAddress, parseUnits, type Address } from "viem";
+import { getAddress, isAddress, parseUnits, type Address } from "viem";
 
 import Shell from "@/components/othello/Shell";
 import type { ActionResult } from "@/lib/core/adapter";
@@ -80,8 +80,10 @@ function EvmWalletPill({ w }: { w: ReturnType<typeof useEvmWallet> }) {
 }
 
 export default function RobinhoodCircle({ address }: { address: string }) {
-  const valid = isAddress(address);
-  const circle = (valid ? address : "0x0000000000000000000000000000000000000000") as Address;
+  // Any casing is accepted (an all-caps or all-lowercase link is still this address); a mixed-case one must
+  // carry a valid checksum.
+  const valid = isAddress(address, { strict: false });
+  const circle = (valid ? getAddress(address.toLowerCase()) : "0x0000000000000000000000000000000000000000") as Address;
   const w = useEvmWallet();
   const [trust, setTrust] = useState<TrustResult | null>(null);
   const [view, setView] = useState<RhCircleView | null>(null);
@@ -93,9 +95,13 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const [topAmt, setTopAmt] = useState("");
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const latest = useRef(0);
+  const inFlight = useRef(false);
 
-  const refresh = useCallback(async () => {
-    if (!valid) return;
+  // The timer skips a tick while a read is still running, so a slow RPC cannot keep cancelling every read.
+  // After an action, `force` starts a fresh read that supersedes any older one.
+  const refresh = useCallback(async (force = false) => {
+    if (!valid || (inFlight.current && !force)) return;
+    inFlight.current = true;
     const mine = ++latest.current;
     try {
       const t = await checkTrusted(robinhoodPublicClient, circle, TRUSTED_FACTORY);
@@ -108,12 +114,14 @@ export default function RobinhoodCircle({ address }: { address: string }) {
       setReadError(null);
     } catch (e) {
       if (mine === latest.current) setReadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (mine === latest.current) inFlight.current = false;
     }
   }, [valid, circle]);
 
   useEffect(() => {
     void refresh();
-    const id = window.setInterval(refresh, REFRESH_MS);
+    const id = window.setInterval(() => void refresh(), REFRESH_MS);
     const tick = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1_000);
     return () => {
       window.clearInterval(id);
@@ -144,7 +152,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         setLast({ what, result });
       } finally {
         setBusy(null);
-        void refresh();
+        void refresh(true);
       }
     },
     [refresh],
@@ -174,7 +182,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         <main className={s.page}>
           <p className={s.muted} role="status">{readError ? `Couldn't read the circle: ${readError}` : "Checking the circle on Robinhood Chain…"}</p>
           {readError && (
-            <button type="button" className={s.btn} onClick={() => void refresh()}>Try again</button>
+            <button type="button" className={s.btn} onClick={() => void refresh(true)}>Try again</button>
           )}
         </main>
       </Shell>
@@ -439,6 +447,10 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         </section>
 
         <footer className={s.footer}>
+          <p>
+            USDG is issued by Paxos, which can freeze or change it. If that happens, nothing in this circle can move
+            until they lift it.
+          </p>
           <p>
             Testnet only. Test USDG has no value. Not financial advice. Circle contract{" "}
             <a href={explorerAddress(v.address)} target="_blank" rel="noreferrer">{short(v.address)}</a>

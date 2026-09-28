@@ -47,6 +47,11 @@ function artifact(file: string, name: string): { abi: Abi; bytecode: Hex } {
 }
 
 const U = 1_000_000n;
+
+/** Asserts success and, if not, says which action failed and why (so a failure names itself). */
+function ok(r: { ok: boolean; error?: string; message?: string }, what: string) {
+  assert.equal(r.ok, true, r.ok ? what : `${what}: ${r.error}: ${r.message}`);
+}
 const params = (over: Partial<Record<string, bigint>> = {}) => ({
   n: 3n, c: 10n * U, g: 5n * U, minStockCover: 12n * U, haircutBps: 2000n, coverageBps: 13000n, warnBps: 11000n,
   roundSecs: 60n, graceSecs: 30n, ...over,
@@ -207,12 +212,12 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
       assert.equal(!tooSmall.ok && tooSmall.error, "CollateralBelowMinimum");
       assert.match(!tooSmall.ok ? tooSmall.message : "", /counts for 0\.8 USDG of cover/);
 
-      for (const ad of ads) assert.equal((await ad.joinAndLock({ amount: 20n * U })).ok, true);
+      for (const ad of ads) ok(await ad.joinAndLock({ amount: 20n * U }), "joinAndLock");
       assert.equal((await ads[1]!.activate({})).ok, false, "only the creator activates");
-      assert.equal((await ads[0]!.activate({})).ok, true);
+      ok(await ads[0]!.activate({}), "activate");
 
       for (let r = 0; r < 3; r++) {
-        for (const ad of ads) assert.equal((await ad.contribute({})).ok, true);
+        for (const ad of ads) ok(await ad.contribute({}), "contribute");
         if (r === 0) {
           const twice = await ads[0]!.contribute({});
           assert.equal(!twice.ok && twice.error, "AlreadyContributed");
@@ -221,11 +226,11 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
           assert.equal(!stale.ok && stale.error, "TopUpFillChanged");
           assert.equal(topUpFill(v.escrowDeficit, 1n * U), 0n);
         }
-        assert.equal((await ads[r]!.releasePot({})).ok, true);
+        ok(await ads[r]!.releasePot({}), `releasePot round ${r}`);
       }
       const v = await readCircle(pub, circleA, usdg);
       assert.equal(v.status, "Completed");
-      for (const ad of ads) assert.equal((await ad.withdraw({})).ok, true);
+      for (const ad of ads) ok(await ad.withdraw({}), "withdraw");
       for (let i = 0; i < 3; i++) {
         const bal = (await pub.readContract({
           address: usdg, abi: artifact("MockUSDG.sol", "MockUSDG").abi, functionName: "balanceOf", args: [accounts[i]!.address],

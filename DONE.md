@@ -2937,3 +2937,17 @@ verify (real output):
     the trust check (a lookalike threw), viem error class identity across copies, hydration mismatch, the
     Solana top-bar wallet button on a Robinhood page.
   next build -> Compiled successfully; forge test -> 34 passed; export_abi --check -> matches.
+
+## A1 slice 2 adversary + fixes (2026-09-28)
+adversary on 0d09dc3..edb1fba: ONE DEFECT (low): an action refused after its approval confirmed (circle
+cancelled in between, or the user rejects the second prompt) left the approval on chain, 0 USDG moved.
+Proved by tests/robinhood-adapter-leftover-approval.spec.ts (kept as the regression test: "25000000n !== 0n").
+All other attacks failed (trust before approval, approval size, wrong chain, disclosure = signed fill, common
+surface, money copy, URL parsing, hydration, refresh races, stale adapter).
+Fixed: the adapter sets the allowance back after any failed action and says so (or says how to clear it);
+the freeze/upgrade disclosure now shows on every circle (AL2); any-casing addresses accepted; the timer no
+longer supersedes a read still running (slow RPC could loop "Checking…").
+Flake found while verifying: the full-circle test failed 1 run in 6, releasePot out of gas at exactly the
+estimated limit (gasUsed 148081 = gasLimit). Fixed with 20% + 10,000 gas headroom on every write.
+verify: mutation (restore disabled) -> regression test fails "1 !== 2"; with fix: 20 consecutive runs of the
+three adapter specs, 0 failed, 16 passing each; root and app tsc ok; next build compiled.

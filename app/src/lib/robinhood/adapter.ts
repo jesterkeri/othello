@@ -176,6 +176,13 @@ export async function readCircle(
   };
 }
 
+/**
+ * Gas limit with headroom over the node's estimate. Estimates can come in just under what a call needs
+ * (seen as an out-of-gas releasePot, 1 run in 6, on anvil), and Arbitrum-based chains add L1 costs; an
+ * unused limit costs nothing. 20% plus 10,000.
+ */
+export const withHeadroom = (estimate: bigint) => (estimate * 12n) / 10n + 10_000n;
+
 /** min(escrowDeficit, amount): the part of a top-up that pays other members' missed payments (EVM-I24). */
 export const topUpFill = (escrowDeficit: bigint, amount: bigint) => (escrowDeficit < amount ? escrowDeficit : amount);
 
@@ -229,18 +236,46 @@ export function createRobinhoodAdapter(d: RobinhoodDeps): RobinhoodAdapter {
     return null;
   }
 
-  /** Sets the circle's allowance to exactly `amount` (never unlimited) unless it already is exactly that. */
-  async function approveExact(amount: bigint): Promise<void> {
-    const current = await d.publicClient.readContract({
-      address: usdg, abi: erc20Abi, functionName: "allowance", args: [d.account, d.circle],
-    });
-    if (current === amount) return;
+  async function setAllowance(amount: bigint): Promise<void> {
     const { request } = await d.publicClient.simulateContract({
       address: usdg, abi: erc20Abi, functionName: "approve", args: [d.circle, amount], account: d.account,
     });
-    const hash = await d.walletClient.writeContract({ ...request, chain: d.walletClient.chain ?? null });
+    const gas = withHeadroom(await d.publicClient.estimateContractGas({
+      address: usdg, abi: erc20Abi, functionName: "approve", args: [d.circle, amount], account: d.account,
+    }));
+    const hash = await d.walletClient.writeContract({ ...request, gas, chain: d.walletClient.chain ?? null });
     const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
     if (receipt.status !== "success") throw new Error("The approval transaction failed.");
+  }
+
+  /**
+   * Sets the circle's allowance to exactly `amount` (never unlimited) unless it already is exactly that.
+   * Returns the allowance it replaced, or null when nothing changed, so a failed action can put it back.
+   */
+  async function approveExact(amount: bigint): Promise<bigint | null> {
+    const current = await d.publicClient.readContract({
+      address: usdg, abi: erc20Abi, functionName: "allowance", args: [d.account, d.circle],
+    });
+    if (current === amount) return null;
+    await setAllowance(amount);
+    return current;
+  }
+
+  /** After a failed action, put the allowance back so no approval is left for USDG that never moved. */
+  async function restore(
+    failure: Extract<ActionResult, { ok: false }>,
+    previous: bigint | null,
+  ): Promise<Extract<ActionResult, { ok: false }>> {
+    if (previous === null) return failure;
+    try {
+      await setAllowance(previous);
+      return { ...failure, message: `${failure.message} Your USDG approval was set back, so nothing is left approved.` };
+    } catch {
+      return {
+        ...failure,
+        message: `${failure.message} An approval for this circle is still open in your wallet; approving 0 USDG for it clears it.`,
+      };
+    }
   }
 
   /** `pull` is how much USDG the action takes; it is read only after the trust check passes. */
@@ -249,11 +284,11 @@ export function createRobinhoodAdapter(d: RobinhoodDeps): RobinhoodAdapter {
     args: readonly unknown[],
     pullOf?: () => Promise<bigint> | bigint,
   ): Promise<ActionResult> {
+    let previous: bigint | null = null;
     try {
       const refused = await guard();
       if (refused) return refused;
       const pull = pullOf ? await pullOf() : undefined;
-      // Simulate first: a refusal comes back with the contract's numbers before any approval is asked for.
       if (pull !== undefined) {
         // The contract checks the allowance last, so InsufficientAllowance here means every other check
         // passed; any other refusal stops before the wallet is asked to approve anything.
@@ -262,17 +297,22 @@ export function createRobinhoodAdapter(d: RobinhoodDeps): RobinhoodAdapter {
         } as never).catch((e: unknown) => {
           if (decodeFailure(e).error !== "InsufficientAllowance") throw e;
         });
-        await approveExact(pull);
+        previous = await approveExact(pull);
       }
       const { request } = await d.publicClient.simulateContract({
         address: d.circle, abi: othelloCircleAbi, functionName, args, account: d.account,
       } as never);
-      const hash = await d.walletClient.writeContract({ ...(request as object), chain: d.walletClient.chain ?? null } as never);
+      const gas = withHeadroom(await d.publicClient.estimateContractGas({
+        address: d.circle, abi: othelloCircleAbi, functionName, args, account: d.account,
+      } as never));
+      const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
       const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") return { ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." };
+      if (receipt.status !== "success") {
+        return restore({ ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." }, previous);
+      }
       return { ok: true, txHash: hash };
     } catch (e) {
-      return decodeFailure(e);
+      return restore(decodeFailure(e), previous);
     }
   }
 
