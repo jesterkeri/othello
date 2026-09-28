@@ -3,10 +3,10 @@ name: evm
 
 on:
   pull_request:
-    paths: ["evm/**", "core/**", "app/src/lib/core/**", "app/src/lib/robinhood/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/src/lib/core/**", "app/src/lib/robinhood/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config.spec.ts", "ops/trust-config.ts", ".github/workflows/evm.yml"]
   push:
     branches: ["task/A1-*", "staging", "main"]
-    paths: ["evm/**", "core/**", "app/src/lib/core/**", "app/src/lib/robinhood/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/src/lib/core/**", "app/src/lib/robinhood/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config.spec.ts", "ops/trust-config.ts", ".github/workflows/evm.yml"]
 
 permissions:
   contents: read
@@ -45,8 +45,8 @@ jobs:
         with: { version: v1.8.1 }
       - name: Build (sizes under 24 KB)
         run: forge build --sizes
-      - name: Tests
-        run: forge test -vv
+      - name: Tests (the Robinhood fork suite runs in its own job)
+        run: forge test -vv --no-match-contract ForkRobinhood
       - name: App ABIs match the build
         run: python3 script/export_abi.py --check
 
@@ -69,4 +69,33 @@ jobs:
       - name: Type checks (root includes the adapter type-level tests)
         run: npx tsc --noEmit && npx --yes pnpm@10.32.1 -C app typecheck
       - name: Adapter, trust check and profile tests
-        run: npx mocha --import=tsx --timeout 120000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts
+        run: npx mocha --import=tsx --timeout 120000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/trust-config.spec.ts
+
+  fork:
+    name: real USDG on a Robinhood testnet fork (read-only)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evm
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, submodules: recursive }
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with: { version: v1.8.1 }
+      - name: Fork tests against https://rpc.testnet.chain.robinhood.com (nothing is broadcast)
+        run: forge test -vv --match-contract ForkRobinhood
+
+  trust-config:
+    name: trust-config (the page's factory address and hash vs receipt, chain and reviewed source)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false, submodules: recursive, fetch-depth: 0 }
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with: { version: v1.8.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: cd evm && forge build
+      - run: npx --yes pnpm@10.32.1 install --frozen-lockfile --ignore-scripts
+      - name: Verify (fails closed once TRUSTED_FACTORY is set)
+        run: npx tsx ops/trust-config.ts --rpc https://rpc.testnet.chain.robinhood.com

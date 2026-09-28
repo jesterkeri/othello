@@ -2951,3 +2951,17 @@ Flake found while verifying: the full-circle test failed 1 run in 6, releasePot 
 estimated limit (gasUsed 148081 = gasLimit). Fixed with 20% + 10,000 gas headroom on every write.
 verify: mutation (restore disabled) -> regression test fails "1 !== 2"; with fix: 20 consecutive runs of the
 three adapter specs, 0 failed, 16 passing each; root and app tsc ok; next build compiled.
+
+## A1 code review r1 (Codex): REVISE, fixed (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE | commit: 2a907ab
+Codex found no contract, money, access or adapter defect; 36/36 required mutations killed (M37 expected).
+1. MAJOR trust-config control missing -> ops/trust-config.ts + CI job `trust-config` (fails closed once
+   TRUSTED_FACTORY is set: receipt chain/CREATE/address/USDG arg/success, receipt commit ancestor of HEAD with
+   evm/src + deploy script unchanged, live code hash = config, reviewed source's runtime with USDG filled = config;
+   ARB-FINDINGS F-7), script/DeployFactory.s.sol (factory only) + test, tests/trust-config.spec.ts (14: one pass
+   and one fail per check, real factory on anvil).
+2. MINOR no real-USDG coverage -> evm/test/ForkRobinhood.t.sol (real USDG on a testnet fork: decimals, symbol,
+   recorded implementation, not paused, exact transfer, the whole Demo circle on real USDG) + CI job `fork`.
+3. MINOR Join copy stated the unreachable subsidy -> reworded (F-8).
+verify: unittest OK; export_abi --check matches; forge 36 passed (+ fork 3 passed); root/app tsc; next build
+compiled; mocha 30 passing; trust-config CLI on null config passes; workflows clean; diff clean.

@@ -65,3 +65,20 @@ non-member calling `addStock` while Forming gets `CircleNotActive` (not joined),
 
 Replay and unit tests confirm unsolicited USDG is never counted, paid or swept (AL9). The page must say so
 before anyone sends (design §3.3 copy).
+
+## F-7. `trust-config` ties live code to the reviewed source without an explorer (code review r1)
+
+ARB §7.1 names `forge verify-bytecode` for the source check. `ops/trust-config.ts` does the same comparison
+locally: it takes the reviewed commit's compiled runtime (`evm/out`, same solc 0.8.30 and settings, metadata hash
+included), fills the factory's one immutable (USDG) at its recorded offsets, and requires its keccak to equal both
+the config hash and the live `eth_getCode` hash. This needs no Blockscout API and cannot pass on a different
+compiler, source or constructor argument. It also checks the receipt (chain, single CREATE, address, USDG
+argument, success) and that the receipt's commit is an ancestor of HEAD with `evm/src` and the deploy script
+unchanged. `script/DeployFactory.s.sol` deploys the factory alone for the page path.
+
+## F-8. Join copy follows F-1 (code review r1)
+
+The Join list no longer says a restart top-up "covers others and may not come back": with USDG collateral a
+top-up's fill is always 0. It now says a top-up joins the shared reserve and comes back through the end-of-circle
+split, which later losses can reduce. The exact-subsidy sentence remains only on the top-up form, shown when a
+fill is actually non-zero (a future collateral profile).

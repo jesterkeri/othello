@@ -341,7 +341,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
                   <ul className={s.disclose}>
                     <li>No identity check yet: only join circles with people you know.</li>
                     <li>A member who hasn&apos;t received the pot yet can&apos;t be defaulted. If they stop paying, the circle waits and everyone&apos;s money stays locked until they pay.</li>
-                    <li>If someone&apos;s missed payment can&apos;t be covered, the circle pauses. Any member can pay to restart it, but that money covers others and may not come back to them.</li>
+                    <li>If a default uses up reserve the next payout needs, the circle pauses until any member tops up. A top-up joins the shared reserve and comes back through the end-of-circle split, which later losses can reduce.</li>
                     <li>USDG is issued by Paxos, which can freeze or change it. If that happens, nothing in this circle can move until they lift it.</li>
                   </ul>
                   <label className={s.field}>
