@@ -17,8 +17,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  USDG, appTreeRules, buildFilePins, bundleAddresses, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
-  moduleShadows, usdgMatches, verify,
+  USDG, addressesIn, appTreeRules, buildFilePins, bundleAddresses, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
+  moduleShadows, noEnvInTrustCode, usdgMatches, verify,
   type Inputs,
 } from "../ops/trust-config.ts";
 
@@ -337,6 +337,39 @@ describe("trust-config (ops/trust-config.ts)", function () {
     const noUsdg = next();
     writeFileSync(join(noUsdg, "static/chunks/a.js"), "");
     assert.match(bundleAddresses(noUsdg, null).join(), /does not contain USDG/);
+  });
+
+  it("addresses inside hex data are found: approve/transfer calldata and padded words, with or without 0x", () => {
+    const a = other.toLowerCase().slice(2);
+    const word = `${"0".repeat(24)}${a}`;
+    assert.deepEqual(addressesIn(`x="0x095ea7b3${word}${"f".repeat(64)}"`), [`0x${a}`], "approve(spender, max)");
+    assert.deepEqual(addressesIn(`x="a9059cbb${word}${"0".repeat(63)}1"`), [`0x${a}`], "transfer without 0x");
+    assert.deepEqual(addressesIn(`topic="0x${word}"`), [`0x${a}`], "a log topic");
+    assert.ok(addressesIn(`x="0x12345670${word}"`).length > 0, "a selector ending in 0 still yields a (shifted) candidate");
+    assert.deepEqual(addressesIn(`n="${"0".repeat(57)}6000526"`), [], "small padded numbers are not addresses");
+    assert.deepEqual(addressesIn(`u="${USDG}"`), [USDG.toLowerCase()]);
+  });
+
+  it("the bundle scan reads app/public and hex data", () => {
+    const d = mkdtempSync(join(tmpdir(), "trust-next2-"));
+    mkdirSync(join(d, ".next/static/chunks"), { recursive: true });
+    mkdirSync(join(d, ".next/server/app"), { recursive: true });
+    mkdirSync(join(d, "public"));
+    writeFileSync(join(d, ".next/static/chunks/a.js"), `const u="${USDG}";`);
+    assert.deepEqual(bundleAddresses(join(d, ".next"), null), []);
+    writeFileSync(join(d, "public/token.json"), `{"token":"${other}"}`);
+    assert.match(bundleAddresses(join(d, ".next"), null).join(), new RegExp(other.toLowerCase()));
+    writeFileSync(join(d, "public/token.json"), "{}");
+    writeFileSync(join(d, ".next/static/chunks/b.js"), `data:"0x095ea7b3${"0".repeat(24)}${other.slice(2)}${"f".repeat(64)}"`);
+    assert.match(bundleAddresses(join(d, ".next"), null).join(), new RegExp(other.toLowerCase()));
+  });
+
+  it("trust and transaction code may not read environment variables", () => {
+    assert.deepEqual(noEnvInTrustCode(), [], "the real app passes");
+    const dir = mkdtempSync(join(tmpdir(), "trust-env-"));
+    cpSync(new URL("../app/src", import.meta.url), dir, { recursive: true });
+    writeFileSync(join(dir, "lib/robinhood/spender.ts"), "export const S = process.env.NEXT_PUBLIC_SPENDER;");
+    assert.match(noEnvInTrustCode(dir).join(), /lib\/robinhood\/spender\.ts reads environment variables/);
   });
 
   it("the USDG the adapter approves is the USDG the gate pins", async () => {

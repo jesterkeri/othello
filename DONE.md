@@ -3012,3 +3012,11 @@ it), tests/trust-config-subpath-imports.spec.ts.
 Fix (ARB-FINDINGS F-12): rules for each, and a build-output scan (CI: next build, then --build app/.next): only USDG,
 zero, viem's placeholder and the trusted factory may appear. Today's build holds exactly USDG, zero and the placeholder.
 verify: trust specs 37 passing; mutation: bundle scan disabled -> 2 failing; CLI with --build app/.next passes.
+
+## A1 trust-config, sixth adversary pass + fix (2026-09-28)
+adversary on 9ceaaae..64ab60b: DEFECTS proved with a real next build: (1) a spender inside a hard-coded approve
+calldata literal was invisible to the scan (no 0x before it); (2) app/public (fetched at run time) was not scanned.
+Suspicion acted on: Vercel builds with its own env -> env reads banned in trust/transaction code; deploy-from-CI-build
+left as a review-3 decision. Spec kept: tests/trust-config-bundle-scan-misses.spec.ts.
+Fix (ARB-FINDINGS F-13). verify: trust specs 42 passing; mutations: padded detection off -> 3 failing, public scan
+off -> 2 failing; real build scan passes with no false alarms.

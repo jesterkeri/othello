@@ -144,3 +144,20 @@ every 20-byte hex address in it to be USDG, the zero address, viem's native plac
 set factory to be present. However an import is routed, a hard-coded factory must appear in those bytes, so this
 check does not depend on knowing the resolver's rules. The adversary's extensionless-file build is flagged by the
 scan alone. Remaining limit: an address assembled at run time from pieces (obfuscation) is out of scope, as before.
+
+## F-13. Addresses inside hex data, app/public, environment variables (sixth trust-config adversary pass)
+
+- The scan matched only `0x`-prefixed literals, so a hard-coded `approve(spender, max)` calldata string hid the
+  spender (proved with a real build, `tests/trust-config-bundle-scan-misses.spec.ts`). It now also takes the
+  address from every 32-byte word of 24 zero digits plus 40 hex digits inside any hex run (calldata, topics,
+  `pad()`), skipping small padded numbers (first 4 address bytes zero). Today's build has three such words, all
+  small numbers from library bytecode; none is flagged.
+- `app/public` is shipped with the page and can be fetched at run time, so the scan reads it too (and more text
+  file types).
+- `lib/robinhood`, `lib/core` and `components/robinhood` may not read `process.env` / `import.meta.env`.
+- **Decision for review 3 (Joshua):** CI scans CI's build, but Vercel rebuilds `app/` with its own environment.
+  With the env rule above, the trust and transaction code cannot take an address from Vercel's environment; the
+  remaining gap is only that Vercel's build is a separate build of the same commit. Option: deploy the Robinhood
+  page with `vercel deploy --prebuilt` from the CI-scanned build, or accept the separate build given the env rule.
+- Bare 40-hex strings with no `0x` and no padding are not matched (the build has Solana-style `111…` runs that
+  would false-alarm); turning one into an address takes code that assembles it at run time, which is the stated limit.

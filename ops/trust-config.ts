@@ -13,7 +13,8 @@
  *      which ties the live code to this exact compiler, source and constructor argument;
  *   5. the chain itself confirms the receipt's deployment transaction: a contract creation whose input is exactly
  *      the reviewed init code plus USDG, successful, creating that address (so no lookalike with other init code).
- * With --build <.next dir> (CI always passes it after `next build`): every 20-byte address in the build output is
+ * With --build <.next dir> (CI always passes it after `next build`): every address in the build output and app/public
+ * (0x literals, and address words inside hex data) is
  * USDG, the zero address, viem's native placeholder or the trusted factory, and a set factory must appear in it.
  * Always: app/ has no alias fields in package.json and no module files outside src (except next.config.mjs and
  * next-env.d.ts), no extensionless files, chain.ts's USDG equals the pinned USDG,
@@ -267,6 +268,25 @@ export function appTreeRules(appDir: string = `${ROOT}app`): string[] {
   return f;
 }
 
+/**
+ * Code that decides trust or builds a transaction may not read environment variables: Vercel builds with its own
+ * environment, so an address from NEXT_PUBLIC_* would never appear in the build CI scans.
+ */
+export function noEnvInTrustCode(appSrc: string = `${ROOT}app/src`): string[] {
+  const f: string[] = [];
+  for (const sub of ["lib/robinhood", "lib/core", "components/robinhood"]) {
+    const d = join(appSrc, sub);
+    if (!existsSync(d)) continue;
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isFile() && /(process\.env|import\.meta\.env)/.test(readFileSync(p, "utf8"))) {
+        f.push(`${sub}/${n} reads environment variables; trust and transaction code may not`);
+      }
+    }
+  }
+  return f;
+}
+
 /** Contract addresses that may appear in the built app (besides the trusted factory once it is set). */
 export const BUNDLE_ADDRESS_ALLOWLIST = new Set([
   "0x0000000000000000000000000000000000000000", // zero address
@@ -279,17 +299,35 @@ export const BUNDLE_ADDRESS_ALLOWLIST = new Set([
  * allowlist or be the trusted factory; once the factory is set it must appear. However an import is routed, a
  * hard-coded factory has to be in the bytes the browser receives.
  */
-export function bundleAddresses(nextDir: string, trusted: Address | null): string[] {
+/** Every address in `text`: 0x-prefixed 20-byte literals, and 32-byte words holding an address inside hex data. */
+export function addressesIn(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)) out.push(m[0].toLowerCase());
+  // ABI-encoded data (calldata, topics, pad()): a word of 24 zero digits then 40 hex digits. Take the word at the
+  // start of each run of >= 24 zeros; small padded numbers (whose first 4 address bytes are zero) are not addresses.
+  for (const run of text.matchAll(/[0-9a-fA-F]{64,}/g)) {
+    const hex = run[0];
+    for (const z of hex.matchAll(/0{24,}/g)) {
+      const cand = hex.slice(z.index! + 24, z.index! + 64);
+      if (cand.length === 40 && !/^0{8}/.test(cand)) out.push(`0x${cand.toLowerCase()}`);
+    }
+  }
+  return out;
+}
+
+export function bundleAddresses(nextDir: string, trusted: Address | null, publicDir: string = join(nextDir, "..", "public")): string[] {
   const f: string[] = [];
   const found = new Set<string>();
   const roots = ["static", "server"].map((r) => join(nextDir, r)).filter((r) => existsSync(r));
   if (roots.length !== 2) return [`no complete Next build at ${nextDir} (run next build first)`];
+  // Files the page can fetch at run time are shipped with it: scan them too.
+  if (existsSync(publicDir)) roots.push(publicDir);
   const walk = (d: string) => {
     for (const n of readdirSync(d)) {
       const p = join(d, n);
       if (statSync(p).isDirectory()) walk(p);
-      else if (/\.(js|mjs|cjs|html|rsc|json|txt|map)$/.test(n)) {
-        for (const m of readFileSync(p, "utf8").matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)) found.add(m[0].toLowerCase());
+      else if (/\.(js|mjs|cjs|html|rsc|json|txt|map|body|meta|svg|xml|csv|md|webmanifest)$/.test(n)) {
+        for (const a of addressesIn(readFileSync(p, "utf8"))) found.add(a);
       }
     }
   };
@@ -437,7 +475,9 @@ async function main() {
   const url = at > 0 ? process.argv[at + 1] : "https://rpc.testnet.chain.robinhood.com";
   if (!url) throw new Error("--rpc needs a URL");
   const config = await loadConfig();
-  const trustSources = [...importBoundary(), ...moduleShadows(), ...appTreeRules(), ...buildFilePins(), ...(await usdgMatches())];
+  const trustSources = [
+    ...importBoundary(), ...moduleShadows(), ...appTreeRules(), ...buildFilePins(), ...noEnvInTrustCode(), ...(await usdgMatches()),
+  ];
   if (trustSources.length) {
     // Where the page's factory comes from is wrong: say so before anything else is read.
     console.error("trust-config FAILED:\n- " + trustSources.join("\n- "));
