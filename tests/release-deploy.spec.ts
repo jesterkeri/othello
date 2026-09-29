@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { deployEnv, deployRecorded, installPinnedCli, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
+import { deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { fakePinnedCli } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
@@ -368,8 +368,8 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");
     const commands = (t: string) => t.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
     // the script installs the CLI with --install-cli and runs every Vercel command as `node "$VC"`
-    assert.match(script, /VC="\$\(npx tsx ops\/release-deploy\.ts --install-cli "\$CLI_DIR"\)"/);
-    for (const sub of ["pull", "build"]) assert.match(commands(script), new RegExp(`node "\\$VC" ${sub} `), sub);
+    assert.match(script, /VC="\$\(npx tsx ops\/release-deploy\.ts --install-cli "\$WORK\/cli"\)"/);
+    for (const sub of ["pull", "build"]) assert.match(commands(script), new RegExp(`--run-cli "\\$VC" --cwd app -- ${sub} `), sub);
     assert.match(commands(script), /ops\/release-deploy\.ts --record release\/robinhood-prebuilt\.json --cli "\$VC"/);
     // npx running Vercel (`npx [flags] vercel…`, any version), or a bare `vercel` command; paths like .vercel/ are not
     assert.doesNotMatch(commands(script), /vercel@|\bnpx(\s+-\S+)*\s+vercel\b|(?<![.\/\w-])vercel(?![@\w.-])/, "no npx or bare vercel in the release");
@@ -380,6 +380,30 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const lock = JSON.parse(readFileSync(join(REPO, "ops/vercel-cli/package-lock.json"), "utf8"));
     assert.equal(lock.packages["node_modules/vercel"].version, VERCEL_CLI);
     assert.equal(lock.packages["node_modules/vercel"].integrity, VERCEL_CLI_INTEGRITY);
+  });
+
+  it("pull and build run the verified CLI in the allow-listed environment; the release resets app/.vercel first", () => {
+    const calls: { cmd: string; a: string[]; o: { cwd: string; env: NodeJS.ProcessEnv } }[] = [];
+    const saved = { ...process.env };
+    process.env.VERCEL_BUILDERS_DIR = "/planted";
+    process.env.NODE_OPTIONS = "--require /planted.js";
+    process.env.VERCEL_CLI_USE_NATIVE_BINARY = "1";
+    try {
+      const code = execPinnedCli(fakePinnedCli(), ["build", "--yes"], "/tmp", (cmd, a, o) => { calls.push({ cmd, a, o }); return 0; });
+      assert.equal(code, 0);
+    } finally {
+      for (const k of ["VERCEL_BUILDERS_DIR", "NODE_OPTIONS", "VERCEL_CLI_USE_NATIVE_BINARY"]) if (saved[k] === undefined) delete process.env[k];
+    }
+    assert.equal(calls[0]!.cmd, process.execPath);
+    assert.deepEqual(calls[0]!.a, [fakePinnedCli(), "build", "--yes"]);
+    for (const k of ["VERCEL_BUILDERS_DIR", "NODE_OPTIONS", "VERCEL_CLI_USE_NATIVE_BINARY"]) assert.equal(calls[0]!.o.env[k], undefined, k);
+    assert.throws(() => execPinnedCli("/tmp/not-an-install/node_modules/vercel/dist/vc.js", [], "/tmp", () => 0));
+    const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
+    assert.match(script, /rm -rf app\/\.vercel && mkdir app\/\.vercel && cp "\$WORK\/project\.json" app\/\.vercel\/project\.json/);
+    assert.match(script, /--preflight[\s\S]*--install-cli[\s\S]*--run-cli "\$VC" --cwd app -- pull[\s\S]*--run-cli "\$VC" --cwd app -- build/);
+    const f = fixture();
+    mkdirSync(join(f.app, ".vercel", "builders", "node_modules"), { recursive: true });
+    assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);
   });
 
   it("verifyPinnedCli refuses anything but exactly the pinned install, and the deploy refuses without it", async () => {

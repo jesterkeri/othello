@@ -29,11 +29,18 @@ done
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 command -v pnpm >/dev/null || { echo "release: the Vercel build runs pnpm; install it first (npm install -g pnpm@10.32.1)" >&2; exit 1; }
-CLI_DIR="$(mktemp -d)"; trap 'rm -rf "$CLI_DIR"' EXIT
-VC="$(npx tsx ops/release-deploy.ts --install-cli "$CLI_DIR")"   # verified vercel@59.11.7 vc.js
+# app/.vercel is build state (gitignored): keep only the project link, so nothing planted there (a builders folder,
+# a compiled config, an old output) takes part; pull and build then write it afresh.
+[ -f app/.vercel/project.json ] || { echo "release: link the Vercel project first (app/.vercel/project.json)" >&2; exit 1; }
+WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+cp app/.vercel/project.json "$WORK/project.json"
+rm -rf app/.vercel && mkdir app/.vercel && cp "$WORK/project.json" app/.vercel/project.json
+npx tsx ops/release-deploy.ts --preflight   # repo root, app/.vercel and the project link (keys, ids)
+mkdir "$WORK/cli"
+VC="$(npx tsx ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified vercel@59.11.7 vc.js
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
-(cd app && node "$VC" pull --yes --environment="$TARGET")
-(cd app && node "$VC" build --yes $PROD)
+npx tsx ops/release-deploy.ts --run-cli "$VC" --cwd app -- pull --yes --environment="$TARGET"
+npx tsx ops/release-deploy.ts --run-cli "$VC" --cwd app -- build --yes $PROD
 npx tsx ops/trust-config.ts --rpc "$RPC" --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json
 npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli "$VC" $PROD
 echo

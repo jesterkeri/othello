@@ -4,6 +4,8 @@
  * trust-config writes the record; Joshua runs that script with his own Vercel login.
  *
  *   npx tsx ops/release-deploy.ts --install-cli <empty dir>        prints the path of the verified pinned CLI
+ *   npx tsx ops/release-deploy.ts --preflight                      the repo-root and app/.vercel refusals, before a build
+ *   npx tsx ops/release-deploy.ts --run-cli <vc.js> --cwd app -- <args>   runs the verified CLI in the deploy's env
  *   npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli <that path> [--prod]
  *
  * In order, refusing before Vercel is contacted if any step fails:
@@ -14,7 +16,7 @@
  * Then the pinned CLI deploys it; the set is hashed once more (a change during the upload voids the deployment); only
  * then is the deployment URL written into the record, which is committed and reviewed with it.
  */
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,6 +101,26 @@ export function verifyPinnedCli(dir: string): string {
   const bin = join(pkgDir, "dist", "vc.js");
   if (!lstatSync(bin).isFile()) throw new Error(`${bin} is not a regular file`);
   return realpathSync(bin);
+}
+
+/** The refusals that must hold before the release builds anything (the repo root, app/.vercel, the project link). */
+export function preflight(root: string): string[] {
+  const app = join(root, "app");
+  return [...repoRootRefusals(root, app), ...cliExtraUploads(app)];
+}
+
+/**
+ * Runs the verified pinned CLI (`vc.js`, checked by verifyPinnedCli) with the deploy's allow-listed environment, so
+ * pull and build get no VERCEL_*, NODE_OPTIONS, ESBUILD_* or builder-directory switch either.
+ */
+export function execPinnedCli(
+  cliPath: string, args: string[], cwd: string,
+  spawnIt: (cmd: string, a: string[], o: { cwd: string; env: NodeJS.ProcessEnv }) => number = (cmd, a, o) =>
+    spawnSync(cmd, a, { ...o, stdio: "inherit" }).status ?? 1,
+): number {
+  const cli = verifyPinnedCli(join(cliPath, "..", "..", "..", ".."));
+  if (cli !== realpathSync(cliPath)) throw new Error(`${cliPath} is not that install's vc.js`);
+  return spawnIt(process.execPath, [cli, ...args], { cwd, env: { ...deployEnv(process.env), NEXT_TELEMETRY_DISABLED: "1" } });
 }
 
 export async function deployRecorded(d: {
@@ -187,6 +209,21 @@ const git = (root: string): Git => ({
 });
 
 async function main() {
+  if (process.argv.includes("--preflight")) {
+    const f = preflight(ROOT);
+    if (f.length) {
+      console.error(`release-deploy REFUSED before the build:\n- ${f.join("\n- ")}`);
+      process.exit(1);
+    }
+    return;
+  }
+  const rc = process.argv.indexOf("--run-cli");
+  if (rc > 0) {
+    const sep = process.argv.indexOf("--");
+    const cw = process.argv.indexOf("--cwd");
+    if (sep < 0 || cw < 0 || !process.argv[rc + 1] || !process.argv[cw + 1]) throw new Error("--run-cli <vc.js> --cwd <dir> -- <args>");
+    process.exit(execPinnedCli(resolve(process.argv[rc + 1]!), process.argv.slice(sep + 1), resolve(ROOT, process.argv[cw + 1]!)));
+  }
   const ic = process.argv.indexOf("--install-cli");
   if (ic > 0) {
     const dir = process.argv[ic + 1];

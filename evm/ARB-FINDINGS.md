@@ -342,3 +342,16 @@ CI's offline build and the real-build spec use the same installer, so a real Nex
 scripts off is proved on every push. The adversary's spec is kept with its last assertion adapted to this fix: the one
 command run is node with the verified vc.js, never npx. Stated limit (with the tampered-machine one): the checkout's own
 `node_modules` from `pnpm install --frozen-lockfile` is trusted, since the checks themselves run with its tsx.
+
+### F-17 fourteenth adversary pass: a builder planted in app/.vercel/builders
+
+The pinned CLI's `build` loads each builder first from `app/.vercel/builders/node_modules/<name>` when its version
+string matches, and only then its own locked dependency (proved by running the real release with the real build). The
+scan would refuse that folder afterwards, so nothing planted could deploy, but unlocked code would already have run.
+The release now treats `app/.vercel` as build state: it keeps only the project link, removes the rest, and `--preflight`
+checks the repo root, `app/.vercel` and the link (keys, ids) before anything is installed or built. Pull and build run
+through `release-deploy --run-cli`, which re-verifies the pinned install and gives the CLI the same allow-listed
+environment as the deploy (no `VERCEL_*`, `NODE_OPTIONS`, `ESBUILD_*` or builder-directory switch). A real build
+through that path completes (1,073 output files, gate and preflight pass). The adversary's spec is kept, made
+hermetic (an `npx` shim skips only the pull and deploy steps, HOME is empty so no Vercel login exists) and with a
+second check that the locked `@vercel/next` did run.

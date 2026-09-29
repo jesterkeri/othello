@@ -3125,4 +3125,6 @@ the tenth pass's rule-by-rule table has no other uncovered row (76391cc, CI gree
 and a project.json without ids refused (d957b89, CI green); then a root Vercel config (services mode) and local CLI
 copies refused (ffb3547, CI green). Then on branch task/A1-r4-cli-pin (Codex r4 may be reading ffb3547): the release
 never runs Vercel through npx; ops/vercel-cli lockfile, npm ci into a fresh folder, verifyPinnedCli, node vc.js.
-verify: mocha CI list 119 passing (the real build uses the lockfile CLI). Passes: 13.
+verify: mocha CI list 119 passing (the real build uses the lockfile CLI), CI green on ee474d2 after a Google Fonts
+re-run. Then app/.vercel reset to the project link, --preflight, pull/build via --run-cli in the allow-listed env; a real
+build through it completes and passes the gate. Passes: 14.
