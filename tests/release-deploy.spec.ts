@@ -103,7 +103,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const spy = spyRun(() => writeFileSync(f.server, "rebuilt by next build during the upload"));
     const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.equal(r.ok, false);
-    assert.match(!r.ok ? r.reason : "", new RegExp(`changed while they were uploading, so ${DEPLOY_URL.replace(/\./g, "\\.")} may not be the scanned artifact. Do not use`));
+    assert.match(!r.ok ? r.reason : "", new RegExp(`changed while they were uploading, so ${DEPLOY_URL.replace(/\./g, "\\.")} may not be the scanned artifact; do not use or share it`));
     assert.equal(read(f.record).deploymentUrl, null);
   });
 
@@ -125,6 +125,45 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(spy.calls.length, 0);
   });
 
+  it("files the CLI uploads besides the output and filePathMap (routes.json, microfrontends, Vercel config) are refused", async () => {
+    for (const [rel, body] of [
+      [".vercel/routes.json", "{\"routes\":[]}"],
+      ["microfrontends.json", "{\"applications\":{}}"],
+      ["src/deep/microfrontends.jsonc", "{}"],
+      ["vercel.json", "{\"bulkRedirectsPath\":\"redirects.csv\"}"],
+    ] as const) {
+      const f = fixture();
+      mkdirSync(join(f.app, rel, ".."), { recursive: true });
+      writeFileSync(join(f.app, rel), body);
+      const spy = spyRun();
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      assert.match(!r.ok ? r.reason : "", new RegExp(`scan never covered[\\s\\S]*${rel.replace(/\./g, "\\.")}: vercel deploy --prebuilt`), rel);
+      assert.equal(spy.calls.length, 0, `${rel}: vercel was never run`);
+    }
+  });
+
+  it("a routes.json written during the upload voids the deployment; in production the message says roll back", async () => {
+    for (const prod of [false, true]) {
+      const f = fixture();
+      const spy = spyRun(() => writeFileSync(join(f.app, ".vercel", "routes.json"), "{}"));
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod, run: spy.run, git: cleanGit() });
+      assert.match(!r.ok ? r.reason : "", prod ? /already live in production: roll back now/ : /do not use or share it/);
+      assert.equal(read(f.record).deploymentUrl, null);
+    }
+  });
+
+  it("only one https://<deployment>.vercel.app line on stdout is taken as the URL", async () => {
+    for (const out of ["https://evil.example.com\n", `${DEPLOY_URL}\nhttps://othello-other-jesterkeri.vercel.app\n`, "https://othello.vercel.app/path\n"]) {
+      const f = fixture();
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spyRun(undefined, out).run, git: cleanGit() });
+      assert.match(!r.ok ? r.reason : "", /vercel deploy failed/, out);
+      assert.equal(read(f.record).deploymentUrl, null);
+    }
+    const f = fixture();
+    const ok = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spyRun(undefined, `Inspect: x\n${DEPLOY_URL}\n${DEPLOY_URL}\n`).run, git: cleanGit() });
+    assert.deepEqual(ok, { ok: true, url: DEPLOY_URL });
+  });
+
   it("a failed deploy or one that prints no URL leaves the record unchanged", async () => {
     for (const spy of [spyRun(undefined, "", 1), spyRun(undefined, "Error: not logged in\n", 0)]) {
       const f = fixture();
@@ -138,11 +177,13 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");
     for (const [name, text] of [["ops/release-robinhood.sh", script], [".github/workflows/evm.yml", ci]] as const) {
-      const pins = [...text.matchAll(/vercel@([0-9.]+)/g)].map((m) => m[1]);
-      assert.ok(pins.length > 0, `${name} pins a Vercel CLI`);
-      assert.deepEqual([...new Set(pins)], [VERCEL_CLI], `${name} uses only vercel@${VERCEL_CLI}`);
       const commands = text.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // shell and YAML comments are not commands
-      assert.doesNotMatch(commands.replace(/vercel@[0-9.]+/g, ""), /(^|[\s("])vercel (pull|build|deploy)/m, `${name} runs no unpinned vercel`);
+      // every "vercel@<spec>" names exactly the pinned version (not latest, a range or a longer version)
+      const specs = [...commands.matchAll(/vercel@([^\s"')]*)/g)].map((m) => m[1]);
+      assert.ok(specs.length > 0, `${name} pins a Vercel CLI`);
+      assert.deepEqual([...new Set(specs)], [VERCEL_CLI], `${name} uses only vercel@${VERCEL_CLI}`);
+      // and no bare "vercel" runs (".vercel/" paths and "Vercel" in prose are not commands)
+      assert.doesNotMatch(commands, /(?<![.\/\w-])vercel(?![@\w.-])/, `${name} runs no unpinned vercel`);
     }
     assert.match(script, /ops\/release-deploy\.ts --record release\/robinhood-prebuilt\.json/, "the script deploys only through the checked step");
   });

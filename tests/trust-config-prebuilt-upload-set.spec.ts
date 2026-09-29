@@ -27,15 +27,16 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import {
-  appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, symlinkSync, writeFileSync,
+  appendFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, symlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getAddress, keccak256, toHex } from "viem";
 
-import { USDG, artifactDigest, scanTree } from "../ops/trust-config.ts";
+import { USDG, VERCEL_CLI, artifactDigest, scanTree, uploadSet } from "../ops/trust-config.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FOREIGN = getAddress(`0x${keccak256(toHex("unreviewed factory in an uploaded server file")).slice(26)}`);
@@ -64,6 +65,21 @@ function prebuiltExtraUploads(appDir: string): string[] {
   return [...refs].sort();
 }
 
+/**
+ * The pinned CLI's own prebuilt file collector (`inspectDeploymentFiles`, behind `vercel deploy --dry`: local, no
+ * network). CI installs vercel@VERCEL_CLI globally for it; any other version fails here rather than being skipped.
+ */
+async function pinnedCollector(): Promise<(o: object) => Promise<{ files: { path: string }[] }>> {
+  const root = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+  const pkg = join(root, "vercel", "package.json");
+  assert.ok(existsSync(pkg), `vercel@${VERCEL_CLI} must be installed globally (npm i -g vercel@${VERCEL_CLI})`);
+  assert.equal((JSON.parse(readFileSync(pkg, "utf8")) as { version: string }).version, VERCEL_CLI, "the global vercel is the pinned CLI");
+  const cli = (await import(join(root, "vercel", "dist", "chunks", "chunk-G3PXSXIB.js"))) as {
+    require_dist(): { inspectDeploymentFiles(o: object): Promise<{ files: { path: string }[] }> };
+  };
+  return (o) => cli.require_dist().inspectDeploymentFiles(o);
+}
+
 function vercelBin(): { cmd: string; args: string[] } {
   const v = spawnSync("vercel", ["--version"], { encoding: "utf8" });
   if (v.status === 0 && /59\.11\.7/.test(`${v.stdout}${v.stderr}`)) return { cmd: "vercel", args: [] };
@@ -82,13 +98,15 @@ describe("trust-config adversary: what `vercel deploy --prebuilt` uploads is wha
   let digestAtScan = "";
   let digestAfterChange = "";
   let release: SpawnSyncReturns<string>;
+  let notCovered: string[] = [];
+  let cliUploadCount = 0;
   const record = () => join(tree, "release-record.json");
   const pageServer = ".next/server/app/robinhood/page.js";
   const gate = (...args: string[]) => spawnSync(process.execPath, [
     "--import", "tsx", "ops/trust-config.ts", "--rpc", "http://127.0.0.1:9", ...args,
   ], { cwd: tree, encoding: "utf8" });
 
-  before(() => {
+  before(async () => {
     tree = mkdtempSync(join(tmpdir(), "trust-config-prebuilt-"));
     app = join(tree, "app");
     out = join(app, ".vercel/output");
@@ -127,6 +145,20 @@ describe("trust-config adversary: what `vercel deploy --prebuilt` uploads is wha
     // 1. The gate exactly as CI and ops/release-robinhood.sh run it, on the unmodified build.
     gateOnCleanBuild = gate("--vercel-output", "app/.vercel/output");
 
+    // 5. Everything the pinned CLI would upload for `deploy --prebuilt`, by its own collector, against what the scan and
+    // the digest cover: the output directory plus uploadSet's filePathMap files and package links.
+    const collect = await pinnedCollector();
+    const cliFiles = (await collect({ path: app, prebuilt: true, vercelOutputDir: out, debug: false })).files.map((f) => f.path);
+    cliUploadCount = cliFiles.length;
+    const up = uploadSet(out, app);
+    const covered = new Set([...up.files.map((f) => f.path), ...up.dirs.map((d) => d.path)]);
+    const outReal = realpathSync(out);
+    notCovered = cliFiles.filter((p) => {
+      let real: string;
+      try { real = realpathSync(join(app, p)); } catch { return true; }
+      return !(real.startsWith(outReal + sep) || covered.has(real));
+    });
+
     // 2 and 3. The files the prebuilt deploy uploads besides .vercel/output, and what the scan and digest see of them.
     uploads = prebuiltExtraUploads(app);
     digestAtScan = artifactDigest(out).sha256;
@@ -148,6 +180,11 @@ describe("trust-config adversary: what `vercel deploy --prebuilt` uploads is wha
 
   it("the gate, as CI and the release script run it, passes on an unmodified offline vercel build", () => {
     assert.equal(gateOnCleanBuild.status, 0, `gate refused a clean vercel build:\n${gateOnCleanBuild.stderr.split("\n").slice(0, 6).join("\n")}`);
+  });
+
+  it("every file the pinned CLI's own collector would upload is covered by the scan and the digest", () => {
+    assert.ok(cliUploadCount > 100, `the collector listed ${cliUploadCount} files`);
+    assert.deepEqual(notCovered, [], `vercel@${VERCEL_CLI} would upload files the scan never read`);
   });
 
   it("an unreviewed address in a file vercel deploy --prebuilt uploads fails the scan", () => {

@@ -3,10 +3,10 @@ name: evm
 
 on:
   pull_request:
-    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", "ops/release-deploy.ts", "tests/release-deploy.spec.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", "ops/release-deploy.ts", "tests/release-deploy*", ".github/workflows/evm.yml"]
   push:
     branches: ["task/A1-*", "staging", "main"]
-    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", "ops/release-deploy.ts", "tests/release-deploy.spec.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", "ops/release-deploy.ts", "tests/release-deploy*", ".github/workflows/evm.yml"]
 
 permissions:
   contents: read
@@ -68,8 +68,10 @@ jobs:
           npx --yes pnpm@10.32.1 -C app install --frozen-lockfile --ignore-scripts
       - name: Type checks (root includes the adapter type-level tests)
         run: npx tsc --noEmit && npx --yes pnpm@10.32.1 -C app typecheck
+      - name: The pinned Vercel CLI, whose own file collector two release specs compare against
+        run: npm install -g vercel@59.11.7
       - name: Adapter, trust check and profile tests
-        run: npx mocha --import=tsx --timeout 300000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/robinhood-adapter-cancelled-action.spec.ts tests/robinhood-create-list-adversary.spec.ts tests/robinhood-adapter-repriced-topup.spec.ts tests/robinhood-my-circles.spec.ts tests/release-deploy.spec.ts tests/trust-config.spec.ts tests/trust-config-hostile-config.spec.ts tests/trust-config-trust-sources.spec.ts tests/trust-config-shadow-module.spec.ts tests/trust-config-rename-hides-delete.spec.ts tests/trust-config-extensionless-shadow.spec.ts tests/trust-config-subpath-imports.spec.ts tests/trust-config-bundle-scan-misses.spec.ts tests/trust-config-prebuilt-upload-set.spec.ts
+        run: npx mocha --import=tsx --timeout 300000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/robinhood-adapter-cancelled-action.spec.ts tests/robinhood-create-list-adversary.spec.ts tests/robinhood-adapter-repriced-topup.spec.ts tests/robinhood-my-circles.spec.ts tests/release-deploy.spec.ts tests/release-deploy-uploads-adversary.spec.ts tests/trust-config.spec.ts tests/trust-config-hostile-config.spec.ts tests/trust-config-trust-sources.spec.ts tests/trust-config-shadow-module.spec.ts tests/trust-config-rename-hides-delete.spec.ts tests/trust-config-extensionless-shadow.spec.ts tests/trust-config-subpath-imports.spec.ts tests/trust-config-bundle-scan-misses.spec.ts tests/trust-config-prebuilt-upload-set.spec.ts
 
   fork:
     name: real USDG on a Robinhood testnet fork (read-only)

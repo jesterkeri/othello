@@ -344,6 +344,35 @@ export function bundleAddresses(nextDir: string, trusted: Address | null, public
 
 const MAX_SCANNED_FILE = 50 * 1024 * 1024;
 
+const VERCEL_PROJECT_CONFIGS = ["vercel.json", "now.json", "vercel.ts", "vercel.mts", "vercel.js", "vercel.mjs", "vercel.cjs"];
+
+/**
+ * Files the pinned CLI's prebuilt deploy also uploads from the project dir (vercel@59.11.7 buildFileTree2, besides
+ * `.vercel/output` and filePathMap sources): `.vercel/routes.json` when it exists, any `microfrontends.json(c)` in the
+ * project outside node_modules and .git, and a `bulkRedirectsPath` named by the project's Vercel config. This app uses
+ * none of them, so each one found is a refusal (scanTree, and ops/release-deploy.ts before and after the upload), and
+ * no scan has to guess what such a file does. A Vercel project config file of any kind is refused for the same reason.
+ * tests/release-deploy-uploads-adversary.spec.ts checks the list against the pinned CLI's own collector.
+ */
+export function cliExtraUploads(projectDir: string): string[] {
+  const found: string[] = [];
+  if (existsSync(join(projectDir, ".vercel", "routes.json"))) found.push(".vercel/routes.json");
+  const walk = (d: string) => {
+    let names: string[];
+    try { names = readdirSync(d); } catch { found.push(`${relative(projectDir, d) || "."} (unreadable, so it cannot be checked)`); return; }
+    for (const n of names) {
+      if (n === "node_modules" || n === ".git") continue;
+      const p = join(d, n);
+      const st = lstatSync(p);
+      if (st.isDirectory()) walk(p);
+      else if (n === "microfrontends.json" || n === "microfrontends.jsonc") found.push(relative(projectDir, p).split(sep).join("/"));
+    }
+  };
+  if (existsSync(projectDir)) walk(projectDir);
+  for (const c of VERCEL_PROJECT_CONFIGS) if (existsSync(join(projectDir, c))) found.push(c);
+  return found.map((f) => `${f}: vercel deploy --prebuilt ${VERCEL_CLI} would upload or apply it, and this release uses none; remove it`);
+}
+
 /**
  * Files `vercel deploy --prebuilt` uploads from OUTSIDE the output directory: every function's `.vc-config.json`
  * `filePathMap` (output path → source path relative to the project dir, i.e. app/). Each source must exist and lie in
@@ -417,6 +446,10 @@ export function scanTree(dir: string, trusted: Address | null, projectDir: strin
   // and every file the deploy uploads from outside the output (functions' filePathMap: .next/server, node_modules, …)
   const up = uploadSet(root, projectDir);
   f.push(...up.failures);
+  // routes.json, microfrontends config, Vercel config: refused, not scanned. Only for a real `<project>/.vercel/output`
+  // (what vercel build writes and the release deploys); ops/release-deploy.ts checks the project dir itself too.
+  const standard = resolve(projectDir, ".vercel", "output");
+  if (existsSync(standard) && root === realpathSync(standard)) f.push(...cliExtraUploads(projectDir));
   for (const u of up.files) {
     const st = statSync(u.path);
     if (st.size > MAX_SCANNED_FILE) { f.push(`upload ${u.key}: ${st.size} bytes, too large to scan`); continue; }

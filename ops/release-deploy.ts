@@ -18,15 +18,15 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERCEL_CLI, artifactDigest, type ReleaseRecord } from "./trust-config.ts";
+import { VERCEL_CLI, artifactDigest, cliExtraUploads, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 export type Git = { head(): string; changed(): string[] };
 export type DeployResult = { ok: true; url: string } | { ok: false; reason: string };
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-/** `vercel deploy` prints the deployment URL, and only that, on stdout. */
-const URL_LINE = /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/\S*)?$/i;
+/** `vercel deploy` prints the deployment URL, and only that, on stdout: https://<name>-<hash>-<scope>.vercel.app */
+const URL_LINE = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
 const norm = (p: string) => p.split("\\").join("/").replace(/^\.\//, "");
 
 function differences(recorded: string[], now: string[]): string[] {
@@ -54,6 +54,8 @@ export async function deployRecorded(d: {
   if (!existsSync(listFile)) return fail(`the record's file list ${rec.fileList} is missing`);
   const recorded = readFileSync(listFile, "utf8").split("\n").filter(Boolean);
   if (!existsSync(outDir)) return fail(`no build at ${outDir}`);
+  const extra = cliExtraUploads(app);
+  if (extra.length) return fail(`the deploy would upload files the scan never covered; nothing was deployed:\n${extra.join("\n")}`);
   const before = artifactDigest(outDir, app);
   const drift = differences(recorded, before.lines);
   if (before.sha256 !== rec.artifactSha256 || drift.length) {
@@ -61,14 +63,22 @@ export async function deployRecorded(d: {
   }
 
   const r = await d.run("npx", ["--yes", `vercel@${VERCEL_CLI}`, "deploy", "--prebuilt", ...(d.prod ? ["--prod"] : [])], app);
-  const url = r.stdout.split("\n").map((l) => l.trim()).filter((l) => URL_LINE.test(l)).at(-1);
-  if (r.code !== 0 || !url) return fail(`vercel deploy failed (exit ${r.code}${url ? "" : ", no deployment URL printed"}); the record is unchanged`);
+  const urls = [...new Set(r.stdout.split("\n").map((l) => l.trim()).filter((l) => URL_LINE.test(l)))];
+  if (r.code !== 0 || urls.length !== 1) {
+    const why = urls.length > 1 ? `, several deployment URLs printed (${urls.join(", ")})` : urls.length ? "" : ", no deployment URL printed";
+    return fail(`vercel deploy failed (exit ${r.code}${why}); the record is unchanged`);
+  }
+  const url = urls[0]!;
 
   const after = artifactDigest(outDir, app);
-  if (after.sha256 !== rec.artifactSha256) {
+  const lateExtra = cliExtraUploads(app);
+  if (after.sha256 !== rec.artifactSha256 || lateExtra.length) {
+    const undo = d.prod
+      ? `it is already live in production: roll back now (npx vercel@${VERCEL_CLI} rollback) and release again`
+      : `do not use or share it; remove it (npx vercel@${VERCEL_CLI} remove ${url}) and release again`;
     return fail(
-      `files changed while they were uploading, so ${url} may not be the scanned artifact. Do not use or share it; ` +
-        `remove it (npx vercel@${VERCEL_CLI} remove ${url}) and release again.\n${differences(recorded, after.lines).slice(0, 20).join("\n")}`,
+      `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}.\n` +
+        [...lateExtra, ...differences(recorded, after.lines)].slice(0, 20).join("\n"),
     );
   }
   const done: ReleaseRecord = { ...rec, deploymentUrl: url, target: d.prod ? "production" : "preview", deployedAt: new Date().toISOString() };

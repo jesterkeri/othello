@@ -217,3 +217,18 @@ filePathMap files) hashes to the recorded digest and per-file list; then it depl
 the URL, target and time into the record. The release script and CI use only `vercel@59.11.7` (`VERCEL_CLI` in
 trust-config.ts; a test fails on any other pin or an unpinned `vercel pull|build|deploy`). Tests:
 `tests/release-deploy.spec.ts` (8), including the mutated-upload refusal with Vercel never run.
+
+### F-17 adversary pass: files the CLI uploads beyond the output and filePathMap
+
+The adversary proved (with the pinned CLI's own collector, `inspectDeploymentFiles`, the function behind
+`vercel deploy --dry`) that vercel@59.11.7 also uploads `<app>/.vercel/routes.json` when it exists, which neither the
+digest nor `git status` (app/.vercel is ignored) saw. The CLI's `buildFileTree2` adds three such things: that file, any
+`microfrontends.json(c)` in the project outside node_modules and .git, and a `bulkRedirectsPath` from the project's
+Vercel config. This app uses none, so `cliExtraUploads` refuses each (and any Vercel project config file): in the
+scan of a real `<project>/.vercel/output`, and in `release-deploy` before the deploy and again after it (then the
+deployment is void; in production the message says to roll back). Kept tests: the adversary's
+`tests/release-deploy-uploads-adversary.spec.ts`; release-deploy cases for each extra file and for one written during
+the upload; and on the real offline build, every file the pinned CLI's collector lists is inside what the scan and
+digest cover (CI installs vercel@59.11.7 globally for it). Also from its suspicions: the pin test now rejects any
+`vercel@<spec>` other than the pinned version (`@latest`, ranges) and any bare `vercel` command, each proved by a
+mutated script; the deployment URL must be the single `https://<name>.vercel.app` line on stdout.
