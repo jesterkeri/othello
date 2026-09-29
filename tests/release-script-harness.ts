@@ -37,8 +37,10 @@ export function sealedReleaseEnv(tmp: string, uploadedTo: string): NodeJS.Proces
   symlinkSync(npmCache, join(home, ".npm"));
   // forge's installed Solidity compilers (only compiler binaries), so a release that builds the contracts does not
   // download solc again
-  const svm = join(process.env.HOME ?? "", ".svm");
-  if (existsSync(svm)) symlinkSync(svm, join(home, ".svm"));
+  for (const rel of [".svm", join(".local", "share", "svm")]) {
+    const svm = join(process.env.HOME ?? "", rel);
+    if (existsSync(svm)) symlinkSync(svm, join(home, rel));
+  }
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${shim}:${process.env.PATH}`, HOME: home };
   for (const k of Object.keys(env)) if (k.startsWith("XDG_") || k.startsWith("VERCEL_") || k.startsWith("NEXT_PUBLIC_")) delete env[k];
   return env;
