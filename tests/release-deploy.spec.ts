@@ -269,6 +269,22 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(spy.calls.length, 0);
   });
 
+  it("a linked app/.vercel, or a name with a tab or line break, is refused", async () => {
+    const f = fixture();
+    const moved = join(f.root, "vercel-real");
+    execFileSync("mv", [join(f.app, ".vercel"), moved]);
+    symlinkSync(moved, join(f.app, ".vercel"));
+    const r1 = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+    assert.match(!r1.ok ? r1.reason : "", /\.vercel \(a link, not a folder\)/);
+
+    const g = fixture();
+    writeFileSync(join(g.out, "static", "a\tb.js"), "x");
+    const spy = spyRun();
+    const r2 = await deployRecorded({ root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r2.ok ? r2.reason : "", /a tab or line break in a name/);
+    assert.equal(spy.calls.length, 0);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");

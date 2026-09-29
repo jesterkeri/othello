@@ -366,9 +366,10 @@ const VERCEL_DIR_ALLOWED = (n: string) =>
 export function cliExtraUploads(projectDir: string): string[] {
   const found: string[] = [];
   const vdir = join(projectDir, ".vercel");
+  // the CLI uploads a linked `.vercel` (or `output`, `node`) as the link itself, not its files: all must be real folders
+  if (existsSync(vdir) && lstatSync(vdir).isSymbolicLink()) found.push(".vercel (a link, not a folder)");
   if (existsSync(vdir)) {
     for (const n of readdirSync(vdir)) if (!VERCEL_DIR_ALLOWED(n)) found.push(`.vercel/${n}`);
-    // the CLI would upload a linked `output` as the link itself, not its files: both must be real folders
     for (const d of ["output", "node"]) {
       const p = join(vdir, d);
       if (existsSync(p) && lstatSync(p).isSymbolicLink()) found.push(`.vercel/${d} (a link, not a folder)`);
@@ -394,6 +395,8 @@ export function cliExtraUploads(projectDir: string): string[] {
     for (const n of names) {
       if (n === "node_modules" || n === ".git") continue;
       const p = join(d, n);
+      // digest lines are tab-separated: a name with a tab or line break could make two trees read alike
+      if (/[\t\n\r]/.test(n)) found.push(`${JSON.stringify(relative(projectDir, p))} (a tab or line break in a name)`);
       const st = lstatSync(p);
       if (st.isDirectory()) walk(p);
       else if (n === "microfrontends.json" || n === "microfrontends.jsonc") found.push(relative(projectDir, p).split(sep).join("/"));
@@ -444,6 +447,7 @@ export function uploadSet(outDir: string, projectDir: string): {
         // value join and resolve agree; one that climbs out of the project is dropped by the CLI, and hashed here only
         // if it stays in the project or node_modules' real location (hashing more than is uploaded is harmless).
         if (isAbsolute(String(v))) { failures.push(`upload ${v}: an absolute filePathMap source`); continue; }
+        if (/[\t\n\r]/.test(`${key}${v}`)) { failures.push(`upload ${JSON.stringify(key)}: a tab or line break in a name`); continue; }
         const abs = resolve(projectDir, String(v));
         let real: string;
         try { real = realpathSync(abs); } catch { failures.push(`upload ${v}: missing`); continue; }

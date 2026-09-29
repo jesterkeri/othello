@@ -278,3 +278,9 @@ An empty output folder is uploaded with its mode, which the `dir` line did not c
 adversary's spec is kept), and a filePathMap folder source likewise. Folder lines now carry the mode. Its suspicion, an
 `app/.vercel/output` replaced by a link to a copy (the CLI would upload the link, not the files: a broken deploy), is
 refused: `.vercel/output` and `.vercel/node` must be real folders (tested).
+
+### F-17 seventh adversary pass: a linked app/.vercel, names with tabs
+
+A linked `app/.vercel` passed (the digest follows it; the CLI uploads only the link: a broken deploy, no unscanned
+bytes; the adversary's spec is kept). `app/.vercel` must now be a real folder, like `output` and `node`. From its
+suspicion: digest lines are tab-separated, so a file or filePathMap name with a tab or line break is refused.
