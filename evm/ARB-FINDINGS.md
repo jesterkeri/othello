@@ -161,3 +161,16 @@ scan alone. Remaining limit: an address assembled at run time from pieces (obfus
   page with `vercel deploy --prebuilt` from the CI-scanned build, or accept the separate build given the env rule.
 - Bare 40-hex strings with no `0x` and no padding are not matched (the build has Solana-style `111…` runs that
   would false-alarm); turning one into an address takes code that assembles it at run time, which is the stated limit.
+
+## F-14. The deployed page is the scanned artifact (code review r2, MAJOR 2)
+
+CI's build scan only covered CI's own build, while a normal Vercel deployment rebuilds `app/`. The release path is now
+**prebuilt**: `ops/release-robinhood.sh` (run by Joshua with his Vercel login, from a clean commit) does `vercel pull`,
+`vercel build`, then `trust-config --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json`: every
+file of the artifact is scanned (any file type, server functions included; a file over 50 MB or a link that leaves the
+artifact fails), and one sha256 over all `path<TAB>sha256` lines is written with the commit. Joshua then runs
+`cd app && vercel deploy --prebuilt` (it uploads exactly those files, no rebuild) and records the deployment URL in the
+same file. Review 3 checks the record's commit and digest against the reviewed config commit. The record file is
+allowed to change after the deployed commit. CI builds the same kind of artifact offline (`vercel@59.11.7 build`) and
+scans it, so the gate is exercised on Vercel output on every push. A local run: 778 files, only USDG, zero and viem's
+placeholder, stable digest.

@@ -11,14 +11,14 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createPublicClient, createWalletClient, defineChain, http, keccak256, type Abi, type Address, type Hex } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { createRobinhoodAdapter } from "../app/src/lib/robinhood/adapter.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  USDG, addressesIn, appTreeRules, buildFilePins, bundleAddresses, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
-  moduleShadows, noEnvInTrustCode, usdgMatches, verify,
+  USDG, addressesIn, appTreeRules, artifactDigest, buildFilePins, bundleAddresses, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
+  moduleShadows, noEnvInTrustCode, scanTree, usdgMatches, verify,
   type Inputs,
 } from "../ops/trust-config.ts";
 
@@ -133,7 +133,9 @@ describe("trust-config (ops/trust-config.ts)", function () {
       assert.match(verify({ ...good(), changedSinceReceipt: [p] }).join(), /files other than the config/, p);
     }
     assert.deepEqual(verify({ ...good(), changedSinceReceipt: [
-      "app/src/lib/robinhood/config.ts", "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json", "DONE.md"] }), []);
+      "app/src/lib/robinhood/config.ts", "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json", "DONE.md",
+      "release/robinhood-prebuilt.json"] }), []);
+    assert.match(verify({ ...good(), changedSinceReceipt: ["release/other.json"] }).join(), /files other than the config/);
   });
 
   it("fails when the config hash is not the live code's hash", () => {
@@ -371,6 +373,32 @@ describe("trust-config (ops/trust-config.ts)", function () {
     cpSync(new URL("../app/src", import.meta.url), dir, { recursive: true });
     writeFileSync(join(dir, "lib/robinhood/spender.ts"), "export const S = process.env.NEXT_PUBLIC_SPENDER;");
     assert.match(noEnvInTrustCode(dir).join(), /lib\/robinhood\/spender\.ts reads environment variables/);
+  });
+
+  it("the prebuilt artifact scan reads every file, refuses links leaving it, and its digest moves with any byte", () => {
+    const mk = () => {
+      const d = mkdtempSync(join(tmpdir(), "trust-vo-"));
+      mkdirSync(join(d, "static/_next"), { recursive: true });
+      mkdirSync(join(d, "functions/page.func"), { recursive: true });
+      writeFileSync(join(d, "static/_next/a.js"), `u="${USDG}"`);
+      writeFileSync(join(d, "functions/page.func/index.js"), "module.exports = 1;");
+      writeFileSync(join(d, "config.json"), "{}");
+      return d;
+    };
+    const ok = mk();
+    assert.deepEqual(scanTree(ok, null), []);
+    const d1 = artifactDigest(ok);
+    assert.equal(artifactDigest(ok).sha256, d1.sha256, "stable");
+    writeFileSync(join(ok, "config.json"), "{ }");
+    assert.notEqual(artifactDigest(ok).sha256, d1.sha256, "one byte changes the digest");
+    const rogue = mk();
+    writeFileSync(join(rogue, "functions/page.func/weird.bin"), `\x00${other}\x00`);
+    assert.match(scanTree(rogue, null).join(), new RegExp(other.toLowerCase()), "any file type is scanned");
+    const leaky = mk();
+    symlinkSync("/etc", join(leaky, "functions/escape"));
+    assert.match(scanTree(leaky, null).join(), /link leaves the artifact/);
+    assert.match(scanTree(ok, factory).join(), /does not contain the trusted factory/);
+    assert.match(scanTree(join(tmpdir(), "no-such-artifact"), null).join(), /no artifact directory/);
   });
 
   it("the USDG the adapter approves is the USDG the gate pins", async () => {

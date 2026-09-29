@@ -31,3 +31,7 @@ app/tsconfig.tsbuildinfo
 evm/cache/
 evm/broadcast/*/31337/
 __pycache__/
+
+# vercel project link and build output (never committed)
+app/.vercel/
+.vercel/

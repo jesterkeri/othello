@@ -29,8 +29,8 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";
@@ -339,6 +339,61 @@ export function bundleAddresses(nextDir: string, trusted: Address | null, public
   return f;
 }
 
+const MAX_SCANNED_FILE = 50 * 1024 * 1024;
+
+/**
+ * Scans EVERY file of a deployable artifact (e.g. `app/.vercel/output` from `vercel build`, the exact bytes
+ * `vercel deploy --prebuilt` uploads). Every address found must be USDG, the zero address, viem's placeholder or the
+ * trusted factory; a set factory and USDG must be present. Fails closed: a file over 50 MB, or a symbolic link that
+ * resolves outside the artifact, is a failure, not a skip.
+ */
+export function scanTree(dir: string, trusted: Address | null): string[] {
+  const f: string[] = [];
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return [`no artifact directory at ${dir}`];
+  const root = realpathSync(dir);
+  const found = new Set<string>();
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) {
+        let target: string;
+        try { target = realpathSync(p); } catch { f.push(`${relative(root, p)}: broken link`); continue; }
+        if (target !== root && !target.startsWith(root + sep)) f.push(`${relative(root, p)}: link leaves the artifact (${target})`);
+        continue; // its target is scanned where it lives inside the artifact
+      }
+      if (st.isDirectory()) { walk(p); continue; }
+      if (st.size > MAX_SCANNED_FILE) { f.push(`${relative(root, p)}: ${st.size} bytes, too large to scan`); continue; }
+      for (const a of addressesIn(readFileSync(p, "latin1"))) found.add(a);
+    }
+  };
+  walk(root);
+  const want = trusted?.toLowerCase();
+  for (const a of found) if (!BUNDLE_ADDRESS_ALLOWLIST.has(a) && a !== want) f.push(`the artifact contains address ${a}, which is not USDG or the trusted factory`);
+  if (want && !found.has(want)) f.push(`the artifact does not contain the trusted factory ${trusted}`);
+  if (!found.has(USDG.toLowerCase())) f.push("the artifact does not contain USDG");
+  return f;
+}
+
+/** One sha256 over the artifact: sorted `path<TAB>sha256` lines (links as `path<TAB>-> target`). */
+export function artifactDigest(dir: string): { sha256: string; files: number } {
+  const root = realpathSync(dir);
+  const lines: string[] = [];
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const rel = relative(root, p).split(sep).join("/");
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) lines.push(`${rel}\t-> ${readlinkSync(p)}`);
+      else if (st.isDirectory()) walk(p);
+      else lines.push(`${rel}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}`);
+    }
+  };
+  walk(root);
+  lines.sort();
+  return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length };
+}
+
 /** The USDG the adapter approves (app/src/lib/robinhood/chain.ts) must be the USDG this gate pins. */
 export async function usdgMatches(): Promise<string[]> {
   try {
@@ -364,7 +419,8 @@ export function changedSince(commit: string | undefined): string[] | null {
 
 /** After the reviewed deploy, only the config, the receipt and Markdown notes may change. */
 export const CONFIG_COMMIT_ALLOWS = (p: string) =>
-  p === "app/src/lib/robinhood/config.ts" || p === "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json" || /\.md$/.test(p);
+  p === "app/src/lib/robinhood/config.ts" || p === "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json" ||
+  p === "release/robinhood-prebuilt.json" || /\.md$/.test(p);
 
 /** The factory's runtime bytecode as the reviewed source compiles it, with its immutables filled. */
 export function expectedRuntime(artifact: {
@@ -492,6 +548,30 @@ async function main() {
       process.exit(1);
     }
     console.log(`trust-config: the build at ${nextDir} contains only allowed addresses.`);
+  }
+  const vo = process.argv.indexOf("--vercel-output");
+  if (vo > 0) {
+    const outDir = process.argv[vo + 1];
+    const vf = outDir ? scanTree(outDir, config.state === "set" ? config.address : null) : ["--vercel-output needs a directory"];
+    if (vf.length) {
+      console.error("trust-config FAILED:\n- " + vf.join("\n- "));
+      process.exit(1);
+    }
+    const dg = artifactDigest(outDir!);
+    console.log(`trust-config: the artifact at ${outDir} (${dg.files} files, sha256 ${dg.sha256}) contains only allowed addresses.`);
+    const rec = process.argv.indexOf("--record");
+    if (rec > 0) {
+      const file = process.argv[rec + 1];
+      if (!file) throw new Error("--record needs a file");
+      const commit = execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim();
+      if (dirty) throw new Error("the working tree has uncommitted changes; a release is built from a commit");
+      writeFileSync(resolve(ROOT, file), JSON.stringify({
+        commit, artifactSha256: dg.sha256, files: dg.files, trustedFactory: config.state === "set" ? config.address : null,
+        scannedAt: new Date().toISOString(), deploy: "cd app && vercel deploy --prebuilt", deploymentUrl: null,
+      }, null, 2) + "\n");
+      console.log(`trust-config: release record written to ${file}`);
+    }
   }
   if (config.state === "null") {
     console.log("trust-config: TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it; the Robinhood page offers no action.");

@@ -3072,3 +3072,15 @@ Fix: waitForOwnReceipt (viem onReplaced reason; "repriced" = the same action) fo
 listCirclesWith reads every circle in pages of 8.
 verify: specs 65 passing; mutations: repriced not accepted -> speed-up case fails; 40-circle limit -> list case fails;
 tsc root/app; next build; trust-config --build passes.
+
+## A1 code review r2 (Codex): REVISE, fixed (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE | commit: 44e9538
+Codex r2: r1 MINORs resolved; trust-config gate "materially stronger", no new trust-source bypass; no contract money,
+access or registry defect. MAJORs: (1) a successful wallet speed-up reported as "did not run" (duplicate top-up risk):
+already fixed in c7c6bf6 (waitForOwnReceipt accepts viem "repriced"); added Codex's requested regression
+tests/robinhood-adapter-repriced-topup.spec.ts (a sped-up top-up: reported done, applied once, no approval left; it
+fails without the fix: "adapter said Replaced ... for a sped-up top-up that ran"). (2) the scanned build is not what
+Vercel serves: prebuilt release path (ARB-FINDINGS F-14): scanTree + artifactDigest + --vercel-output/--record,
+ops/release-robinhood.sh, CI offline vercel build + scan, release record allowed after the deploy, app/.vercel ignored.
+verify: specs 67 passing; mutation: scan skipping functions -> 1 failing; real vercel output 778 files scanned, digest
+stable; next build; tsc; workflows clean.

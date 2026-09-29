@@ -3,10 +3,10 @@ name: evm
 
 on:
   pull_request:
-    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", ".github/workflows/evm.yml"]
   push:
     branches: ["task/A1-*", "staging", "main"]
-    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", ".github/workflows/evm.yml"]
+    paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", ".github/workflows/evm.yml"]
 
 permissions:
   contents: read
@@ -69,7 +69,7 @@ jobs:
       - name: Type checks (root includes the adapter type-level tests)
         run: npx tsc --noEmit && npx --yes pnpm@10.32.1 -C app typecheck
       - name: Adapter, trust check and profile tests
-        run: npx mocha --import=tsx --timeout 120000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/robinhood-adapter-cancelled-action.spec.ts tests/robinhood-create-list-adversary.spec.ts tests/trust-config.spec.ts tests/trust-config-hostile-config.spec.ts tests/trust-config-trust-sources.spec.ts tests/trust-config-shadow-module.spec.ts tests/trust-config-rename-hides-delete.spec.ts tests/trust-config-extensionless-shadow.spec.ts tests/trust-config-subpath-imports.spec.ts tests/trust-config-bundle-scan-misses.spec.ts
+        run: npx mocha --import=tsx --timeout 120000 tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts tests/robinhood-adapter-leftover-approval.spec.ts tests/robinhood-adapter-cancelled-action.spec.ts tests/robinhood-create-list-adversary.spec.ts tests/robinhood-adapter-repriced-topup.spec.ts tests/trust-config.spec.ts tests/trust-config-hostile-config.spec.ts tests/trust-config-trust-sources.spec.ts tests/trust-config-shadow-module.spec.ts tests/trust-config-rename-hides-delete.spec.ts tests/trust-config-extensionless-shadow.spec.ts tests/trust-config-subpath-imports.spec.ts tests/trust-config-bundle-scan-misses.spec.ts
 
   fork:
     name: real USDG on a Robinhood testnet fork (read-only)
@@ -102,3 +102,9 @@ jobs:
         run: cd app && npx next build
       - name: Verify (fails closed once TRUSTED_FACTORY is set)
         run: npx tsx ops/trust-config.ts --rpc https://rpc.testnet.chain.robinhood.com --build app/.next
+      - name: Vercel prebuilt output, built offline the way ops/release-robinhood.sh builds it, then scanned
+        run: |
+          mkdir -p app/.vercel
+          echo '{"projectId":"ci-offline","orgId":"ci-offline","settings":{"framework":"nextjs","installCommand":"true"}}' > app/.vercel/project.json
+          (cd app && npx --yes vercel@59.11.7 build --yes)
+          npx tsx ops/trust-config.ts --rpc https://rpc.testnet.chain.robinhood.com --vercel-output app/.vercel/output
