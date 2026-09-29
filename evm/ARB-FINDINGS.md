@@ -263,3 +263,11 @@ and upload entries are one per source path, as the CLI dedupes them, so a plain 
 target are two entries (tested). Stated limit, not fixed: the release trusts the operator's machine. A tampered global
 Vercel CLI config (`api` in its config under HOME/XDG) could point the CLI at a server that is not Vercel; the digest
 and the URL check cannot detect that. Joshua runs the release from his own logged-in machine.
+
+### F-17 fifth adversary pass: modes, empty folders, special files
+
+The pinned CLI sends each upload's mode, and an empty output folder as its own entry; the digest bound neither, so a
+`chmod` or a new empty folder after the record deployed unrefused (no bytes changed; the adversary's spec is kept). The
+digest now has `path<TAB>sha256<TAB>mode` for files (and the source mode for filePathMap entries) and a `path/<TAB>dir`
+line for every output folder. A FIFO or device in the output is refused by the scan and listed, never read, by the
+digest (it would have hung); a filePathMap source that is not a regular file or folder is refused.

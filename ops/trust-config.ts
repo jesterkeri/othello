@@ -407,12 +407,12 @@ export function cliExtraUploads(projectDir: string): string[] {
  * the project dir or in its node_modules' real location (node_modules may itself be a link).
  */
 export function uploadSet(outDir: string, projectDir: string): {
-  files: { key: string; path: string; link?: string }[];
+  files: { key: string; path: string; mode: number; link?: string }[];
   dirs: { key: string; path: string; link?: string }[];
   failures: string[];
 } {
   const failures: string[] = [];
-  const files = new Map<string, { key: string; path: string; link?: string }>();
+  const files = new Map<string, { key: string; path: string; mode: number; link?: string }>();
   const dirs = new Map<string, { key: string; path: string; link?: string }>();
   // one entry per SOURCE path, as the CLI dedupes (a Set of `join(path, v)`), so a link and a plain file that reach the
   // same target are two entries; when several keys name one source, the smallest key labels it (a stable digest)
@@ -445,9 +445,12 @@ export function uploadSet(outDir: string, projectDir: string): {
         if (!inside(real)) { failures.push(`upload ${v}: outside the project`); continue; }
         // a package link (pnpm) resolves to a folder: its needed files are listed as their own entries
         // a linked source (pnpm package link, or a file link) is uploaded as its link text: bind the text too
-        const link = lstatSync(abs).isSymbolicLink() ? { link: readlinkSync(abs) } : {};
-        if (statSync(real).isDirectory()) put(dirs, abs, { key, path: real, ...link });
-        else put(files, abs, { key, path: real, ...link });
+        const src = lstatSync(abs);
+        const link = src.isSymbolicLink() ? { link: readlinkSync(abs) } : {};
+        const target = statSync(real);
+        if (target.isDirectory()) put(dirs, abs, { key, path: real, ...link });
+        else if (!target.isFile()) failures.push(`upload ${v}: not a regular file`);
+        else put(files, abs, { key, path: real, mode: src.mode, ...link });
       }
     }
   };
@@ -479,6 +482,7 @@ export function scanTree(dir: string, trusted: Address | null, projectDir: strin
         continue; // its target is scanned where it lives inside the artifact
       }
       if (st.isDirectory()) { walk(p); continue; }
+      if (!st.isFile()) { f.push(`${relative(root, p)}: not a regular file`); continue; } // a FIFO or device: never read
       if (st.size > MAX_SCANNED_FILE) { f.push(`${relative(root, p)}: ${st.size} bytes, too large to scan`); continue; }
       for (const a of addressesIn(readFileSync(p, "latin1"))) found.add(a);
     }
@@ -504,8 +508,10 @@ export function scanTree(dir: string, trusted: Address | null, projectDir: strin
 }
 
 /**
- * One sha256 over what the deploy uploads: sorted `path<TAB>sha256` lines for the output directory (links as
- * `path<TAB>-> target`) and `upload:<filePathMap key><TAB>sha256` for each file uploaded from outside it. `lines` is the
+ * One sha256 over what the deploy uploads, as the pinned CLI sends it (path, bytes, mode; directories, empty ones
+ * included; links as their text): sorted `path<TAB>sha256<TAB>mode` lines for the output directory (`path/<TAB>dir`,
+ * links `path<TAB>-> target`, anything else `path<TAB>special mode`, never read) and `upload:<filePathMap key>` lines
+ * for each file or package link uploaded from outside it. `lines` is the
  * full per-file list, written next to the release record so a reviewer can compare files directly (a Next build ID is
  * random, so a rebuild cannot reproduce the digest).
  */
@@ -518,15 +524,17 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
       const rel = relative(root, p).split(sep).join("/");
       const st = lstatSync(p);
       if (st.isSymbolicLink()) lines.push(`${rel}\t-> ${readlinkSync(p)}`);
-      else if (st.isDirectory()) walk(p);
-      else lines.push(`${rel}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}`);
+      else if (st.isDirectory()) { lines.push(`${rel}/\tdir`); walk(p); }
+      else if (!st.isFile()) lines.push(`${rel}\tspecial ${st.mode.toString(8)}`);
+      else lines.push(`${rel}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}\t${st.mode.toString(8)}`);
     }
   };
   walk(root);
   const up = uploadSet(root, projectDir);
   // a linked source is uploaded as its link text, so the text is bound as well as the target's bytes
   for (const u of up.files) {
-    lines.push(`upload:${u.key}\t${createHash("sha256").update(readFileSync(u.path)).digest("hex")}${u.link === undefined ? "" : `\t-> ${u.link}`}`);
+    const sha = createHash("sha256").update(readFileSync(u.path)).digest("hex");
+    lines.push(`upload:${u.key}\t${sha}\t${u.mode.toString(8)}${u.link === undefined ? "" : `\t-> ${u.link}`}`);
   }
   // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
   const pj = join(projectDir, ".vercel", "project.json");

@@ -7,13 +7,14 @@
  *   npx mocha --import=tsx tests/release-deploy.spec.ts
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { deployEnv, deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { VERCEL_CLI, artifactDigest, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
+import { VERCEL_CLI, artifactDigest, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -245,6 +246,15 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*upload:b\.js/);
     assert.equal(spy.calls.length, 0);
+  });
+
+  it("a special file (FIFO) in the output is refused by the scan and never read by the digest", async () => {
+    const f = fixture();
+    execFileSync("mkfifo", [join(f.out, "static", "pipe")]);
+    assert.match(scanTree(f.out, null, f.app).join("\n"), /static\/pipe: not a regular file/);
+    assert.ok(artifactDigest(f.out, f.app).lines.some((l) => /^static\/pipe\tspecial 1\d+$/.test(l)), "listed, not read (no hang)");
+    const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+    assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*static\/pipe/);
   });
 
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
