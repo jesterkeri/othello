@@ -194,6 +194,19 @@ export const withHeadroom = (estimate: bigint) => (estimate * 12n) / 10n + 10_00
 /** min(escrowDeficit, amount): the part of a top-up that pays other members' missed payments (EVM-I24). */
 export const topUpFill = (escrowDeficit: bigint, amount: bigint) => (escrowDeficit < amount ? escrowDeficit : amount);
 
+/**
+ * Waits for `hash`. A wallet can replace a pending transaction; viem then returns the replacement's receipt and says
+ * why: "repriced" (a speed-up: same destination, data and value, only the fee changed, so it IS this action),
+ * "cancelled" or "replaced" (a different transaction: this action did not run). Returns the receipt and whether it is
+ * this action.
+ */
+export async function waitForOwnReceipt(client: Pick<PublicClient, "waitForTransactionReceipt">, hash: Hex) {
+  let reason: "repriced" | "cancelled" | "replaced" | undefined;
+  const receipt = await client.waitForTransactionReceipt({ hash, onReplaced: (r) => { reason = r.reason; } });
+  const sameAction = receipt.transactionHash === hash || reason === "repriced";
+  return { receipt, sameAction };
+}
+
 type ViemLike = Error & { shortMessage?: string; walk?: (fn: (e: unknown) => boolean) => unknown };
 type RevertLike = { name: string; data?: { errorName?: string; args?: readonly unknown[] } };
 
@@ -257,10 +270,10 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     }));
     const hash = await d.walletClient.writeContract({ ...request, gas, chain: d.walletClient.chain ?? null });
     if (memo) memo.pending = true; // sent: from here its outcome is unknown until the receipt says otherwise
-    const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
+    const { receipt, sameAction } = await waitForOwnReceipt(d.publicClient, hash);
     if (memo) memo.pending = false;
-    // A wallet "cancel" or "speed up" replaces the transaction; viem then returns the replacement's receipt.
-    if (receipt.transactionHash !== hash) throw new Error("The approval was replaced or cancelled in your wallet.");
+    // A wallet "cancel" replaces the approval with something else; a "speed up" (repriced) is still this approval.
+    if (!sameAction) throw new Error("The approval was replaced or cancelled in your wallet.");
     if (receipt.status !== "success") throw new Error("The approval transaction failed.");
   }
 
@@ -328,8 +341,8 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
         address: d.circle, abi: othelloCircleAbi, functionName, args, account: d.account,
       } as never));
       const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
-      const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.transactionHash !== hash) {
+      const { receipt, sameAction } = await waitForOwnReceipt(d.publicClient, hash);
+      if (!sameAction) {
         // Cancelled or replaced in the wallet: the action did not run, whatever the replacement's status.
         return restore({ ok: false, error: "Replaced", args: [hash, receipt.transactionHash],
           message: "The transaction was cancelled or replaced in your wallet, so it did not run." }, memo);
@@ -337,7 +350,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
       if (receipt.status !== "success") {
         return restore({ ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." }, memo);
       }
-      return { ok: true, txHash: hash };
+      return { ok: true, txHash: receipt.transactionHash };
     } catch (e) {
       return restore(decodeFailure(e), memo);
     }
@@ -439,8 +452,8 @@ export async function createCircleWith(
     const { request } = await d.publicClient.simulateContract(call as never);
     const gas = withHeadroom(await d.publicClient.estimateContractGas(call as never));
     const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
-    const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.transactionHash !== hash) {
+    const { receipt, sameAction } = await waitForOwnReceipt(d.publicClient, hash);
+    if (!sameAction) {
       return { ok: false, error: "Replaced", args: [hash], message: "The transaction was cancelled or replaced in your wallet, so no circle was created." };
     }
     if (receipt.status !== "success") return { ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." };
@@ -448,7 +461,7 @@ export async function createCircleWith(
       if (log.address.toLowerCase() !== d.factory.address.toLowerCase()) continue;
       try {
         const ev = decodeEventLog({ abi: othelloFactoryAbi, data: log.data, topics: log.topics });
-        if (ev.eventName === "CircleCreated") return { ok: true, txHash: hash, circle: getAddress(ev.args.circle) };
+        if (ev.eventName === "CircleCreated") return { ok: true, txHash: receipt.transactionHash, circle: getAddress(ev.args.circle) };
       } catch {
         // not this event
       }
@@ -461,18 +474,20 @@ export async function createCircleWith(
 
 export type CircleSummary = { address: Address; n: number; c: bigint; status: Status; round: number; creator: Address; turn: number };
 
-/** Circles from this factory that `account` is a member of, newest first (reads at most `limit` circles). */
+/**
+ * Circles from this factory that `account` is a member of, newest first. Reads EVERY circle the factory lists (in
+ * pages of `concurrency`), so nobody can hide a member's circle by creating newer ones.
+ */
 export async function listCirclesWith(
   client: Pick<PublicClient, "readContract" | "getCode">,
   factory: TrustedFactory | null,
   account: Address,
-  limit = 40,
+  concurrency = 8,
 ): Promise<CircleSummary[]> {
   const t = await checkTrustedFactory(client, factory);
   if (!t.ok || !factory) return [];
   const count = (await client.readContract({ address: factory.address, abi: othelloFactoryAbi, functionName: "circleCount" })) as bigint;
-  const out: CircleSummary[] = [];
-  for (let i = count - 1n; i >= 0n && count - i <= BigInt(limit); i--) {
+  const one = async (i: bigint): Promise<CircleSummary | null> => {
     const addr = (await client.readContract({
       address: factory.address, abi: othelloFactoryAbi, functionName: "circles", args: [i],
     })) as Address;
@@ -483,7 +498,14 @@ export async function listCirclesWith(
     ]);
     const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
     const turn = members.findIndex((m) => isAddressEqual(m, account));
-    if (turn >= 0) out.push({ address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn });
+    return turn >= 0 ? { address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn } : null;
+  };
+  const out: CircleSummary[] = [];
+  for (let hi = count; hi > 0n; hi -= BigInt(concurrency)) {
+    const lo = hi - BigInt(concurrency) > 0n ? hi - BigInt(concurrency) : 0n;
+    const page: bigint[] = [];
+    for (let i = hi - 1n; i >= lo; i--) page.push(i);
+    for (const x of await Promise.all(page.map(one))) if (x) out.push(x);
   }
   return out;
 }

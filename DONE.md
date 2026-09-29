@@ -3059,3 +3059,16 @@ net 0.000000 USDG for A, B and C; failure (A skips round 2, recorded and settled
 full) net 0.000000 for A, B and C with a 2 USDG lock (read from chain balances, not the page).
 verify: next build compiled (/split-lab still built); trust-config --build passes; tsc root; specs 63 passing; no UI
 href to /split-lab remains.
+
+## A1 create/list adversary + fix (2026-09-29)
+adversary on 44e9538..b1eb00e: DEFECTS: (1) a wallet "Speed up" (repriced replacement) created the circle but the page
+said "no circle was created" (the same over-strict hash check in circle actions called a sped-up action "did not
+run"); (2) "My circles" read only the newest 40 circles, so anyone could hide a member's circle with 40 creates.
+Suggestions acted on: grace buttons use max(chain time, device time) (an old last block on a quiet chain could keep
+them hidden; early display only yields the contract's decoded "grace ends at" refusal); the create form fills the
+first empty member seat instead of overwriting member 1. Confirmed by it: TS peakNeed/leastGuarantee equal the
+Python model and CircleMath on 20,000 vectors. Spec kept: tests/robinhood-create-list-adversary.spec.ts.
+Fix: waitForOwnReceipt (viem onReplaced reason; "repriced" = the same action) for approvals, actions and create;
+listCirclesWith reads every circle in pages of 8.
+verify: specs 65 passing; mutations: repriced not accepted -> speed-up case fails; 40-circle limit -> list case fails;
+tsc root/app; next build; trust-config --build passes.

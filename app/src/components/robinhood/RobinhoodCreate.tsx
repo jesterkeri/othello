@@ -41,10 +41,15 @@ export default function RobinhoodCreate() {
     void checkFactory(robinhoodPublicClient).then(setFactory).catch(() => setFactory({ ok: false, reason: "factory-code" }));
   }, []);
 
-  // The connected wallet is the creator and must be a member: put it in the first empty seat once.
+  // The connected wallet is the creator and must be a member: put it in the first EMPTY seat, never over an entry.
   useEffect(() => {
     if (!w.address) return;
-    setMembers((m) => (m.some((x) => x.toLowerCase() === w.address!.toLowerCase()) ? m : [w.address!, ...m.slice(1)]));
+    const me = w.address;
+    setMembers((m) => {
+      if (m.some((x) => x.trim().toLowerCase() === me.toLowerCase())) return m;
+      const empty = m.findIndex((x) => x.trim() === "");
+      return empty < 0 ? m : m.map((x, i) => (i === empty ? me : x));
+    });
   }, [w.address]);
 
   const parsed = useMemo(() => {

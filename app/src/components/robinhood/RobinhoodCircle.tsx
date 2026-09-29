@@ -188,8 +188,10 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const reserveShown = finished ? remains + v.escrow - v.withdrawnFromReserve : remains;
   const paused = v.status === "Active" && v.nextGateShortBy > 0n;
   const graceEnds = v.deadline + v.graceSecs;
-  // Chain time: the last block's timestamp plus the seconds since that read (a device clock can be off).
-  const chainNow = v.chainTime + Math.max(0, now - v.readAt);
+  // Chain time (the last block's timestamp plus the seconds since that read) or the device clock, whichever is later:
+  // a slow device clock cannot hide the buttons, and on a quiet chain an old last block cannot either. If a device
+  // clock runs ahead the buttons can show early; the contract then refuses with "grace ends at …" (no funds move).
+  const chainNow = Math.max(v.chainTime + Math.max(0, now - v.readAt), now);
   const afterGrace = chainNow > graceEnds;
   const allSettled = v.seats.every((x) => x.paid || x.defaulted);
   const canWrite = Boolean(adapter) && w.onRobinhood && !busy;
