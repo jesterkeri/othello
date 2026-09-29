@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
+import { fakePinnedCli } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, scanTree, writeRecord } from "../ops/trust-config.ts";
 
 function pinnedCliDist(): string {
@@ -99,7 +100,7 @@ describe("release deploy adversary: .vercel/project.json names a repoRoot", func
 
     const calls: string[][] = [];
     const run: Run = async (_c, args) => { calls.push(args); return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" }; };
-    const r = await deployRecorded({ root, recordFile: record, prod: false, run, git, env: {} });
+    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git, env: {} });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) while project.json points the CLI at ${other}`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

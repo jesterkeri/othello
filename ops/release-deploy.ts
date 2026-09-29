@@ -3,7 +3,8 @@
  * what Vercel receives, not only what was scanned earlier). ops/release-robinhood.sh runs it straight after
  * trust-config writes the record; Joshua runs that script with his own Vercel login.
  *
- *   npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json [--prod]
+ *   npx tsx ops/release-deploy.ts --install-cli <empty dir>        prints the path of the verified pinned CLI
+ *   npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli <that path> [--prod]
  *
  * In order, refusing before Vercel is contacted if any step fails:
  *   1. the record is new (no deployment yet) and was built with the pinned Vercel CLI;
@@ -14,11 +15,11 @@
  * then is the deployment URL written into the record, which is committed and reviewed with it.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERCEL_CLI, artifactDigest, cliExtraUploads, uploadSet, type ReleaseRecord } from "./trust-config.ts";
+import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, uploadSet, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 export type Git = { head(): string; changed(): string[] };
@@ -65,8 +66,45 @@ export function repoRootRefusals(root: string, app: string): string[] {
   return found;
 }
 
+const CLI_LOCK_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "vercel-cli");
+
+/**
+ * The CLI the release runs, never through npx (which prefers any `node_modules/.bin/vercel@<version>` it finds in the
+ * working folder or above, and a local package, over the registry): `npm ci` of ops/vercel-cli's committed lockfile into
+ * a fresh empty folder, which checks every package's registry integrity, then `node <folder>/node_modules/vercel/dist/
+ * vc.js`. verifyPinnedCli proves the folder holds exactly VERCEL_CLI at VERCEL_CLI_INTEGRITY before anything runs it.
+ */
+export function installPinnedCli(dir: string, exec: (cmd: string, args: string[], cwd: string) => void = (c, a, cwd) => {
+  execFileSync(c, a, { cwd, stdio: ["ignore", "ignore", "inherit"] });
+}): string {
+  if (readdirSync(dir).length) throw new Error(`${dir} is not empty; the pinned CLI is installed into a fresh folder`);
+  for (const f of ["package.json", "package-lock.json"]) copyFileSync(join(CLI_LOCK_DIR, f), join(dir, f));
+  exec("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], dir);
+  return verifyPinnedCli(dir);
+}
+
+/** The path of the pinned CLI in `dir`, or an error saying why that folder does not hold exactly the pinned CLI. */
+export function verifyPinnedCli(dir: string): string {
+  const lock = JSON.parse(readFileSync(join(dir, "package-lock.json"), "utf8")) as { packages?: Record<string, { version?: string; integrity?: string }> };
+  const entry = lock.packages?.["node_modules/vercel"];
+  if (entry?.version !== VERCEL_CLI || entry.integrity !== VERCEL_CLI_INTEGRITY) {
+    throw new Error(`the CLI lock in ${dir} is not vercel@${VERCEL_CLI} with integrity ${VERCEL_CLI_INTEGRITY}`);
+  }
+  const committed = readFileSync(join(CLI_LOCK_DIR, "package-lock.json"), "utf8");
+  if (readFileSync(join(dir, "package-lock.json"), "utf8") !== committed) throw new Error(`the CLI lock in ${dir} differs from ops/vercel-cli/package-lock.json`);
+  const pkgDir = join(dir, "node_modules", "vercel");
+  if (lstatSync(pkgDir).isSymbolicLink()) throw new Error(`${pkgDir} is a link`);
+  const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8")) as { version?: string };
+  if (pkg.version !== VERCEL_CLI) throw new Error(`${pkgDir} is vercel ${pkg.version}, not ${VERCEL_CLI}`);
+  const bin = join(pkgDir, "dist", "vc.js");
+  if (!lstatSync(bin).isFile()) throw new Error(`${bin} is not a regular file`);
+  return realpathSync(bin);
+}
+
 export async function deployRecorded(d: {
   root: string; recordFile: string; prod: boolean; run: Run; git: Git; appDir?: string; env?: NodeJS.ProcessEnv;
+  /** The pinned CLI's vc.js, as installPinnedCli returned it; checked again here. */
+  cli?: string;
 }): Promise<DeployResult> {
   const fail = (reason: string): DeployResult => ({ ok: false, reason });
   const retarget = RETARGETING_ENV.filter((k) => (d.env ?? process.env)[k]);
@@ -94,7 +132,15 @@ export async function deployRecorded(d: {
     return fail(`the artifact changed after it was scanned; nothing was deployed. Release again.\n${drift.slice(0, 20).join("\n")}`);
   }
 
-  const r = await d.run("npx", ["--yes", `vercel@${VERCEL_CLI}`, "deploy", "--prebuilt", ...(d.prod ? ["--prod"] : [])], app);
+  let cli: string;
+  try {
+    if (!d.cli) throw new Error("no --cli given");
+    cli = verifyPinnedCli(join(d.cli, "..", "..", "..", ".."));
+    if (cli !== realpathSync(d.cli)) throw new Error(`${d.cli} is not that install's vc.js`);
+  } catch (e) {
+    return fail(`the deploy runs only the verified pinned CLI (ops/release-deploy.ts --install-cli): ${e instanceof Error ? e.message : e}`);
+  }
+  const r = await d.run(process.execPath, [cli, "deploy", "--prebuilt", ...(d.prod ? ["--prod"] : [])], app);
   const urls = [...new Set(r.stdout.split("\n").map((l) => l.trim()).filter((l) => URL_LINE.test(l)))];
   if (r.code !== 0 || urls.length !== 1) {
     const why = urls.length > 1 ? `, several deployment URLs printed (${urls.join(", ")})` : urls.length ? "" : ", no deployment URL printed";
@@ -106,8 +152,8 @@ export async function deployRecorded(d: {
   const lateExtra = [...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
   if (after.sha256 !== rec.artifactSha256 || lateExtra.length) {
     const undo = d.prod
-      ? `it is already live in production: roll back now (npx vercel@${VERCEL_CLI} rollback) and release again`
-      : `do not use or share it; remove it (npx vercel@${VERCEL_CLI} remove ${url}) and release again`;
+      ? `it is already live in production: roll back now (node ${cli} rollback) and release again`
+      : `do not use or share it; remove it (node ${cli} remove ${url}) and release again`;
     return fail(
       `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}.\n` +
         [...lateExtra, ...differences(recorded, after.lines)].slice(0, 20).join("\n"),
@@ -141,10 +187,21 @@ const git = (root: string): Git => ({
 });
 
 async function main() {
+  const ic = process.argv.indexOf("--install-cli");
+  if (ic > 0) {
+    const dir = process.argv[ic + 1];
+    if (!dir) throw new Error("--install-cli needs an empty folder");
+    console.log(installPinnedCli(resolve(dir)));
+    return;
+  }
+  const ci = process.argv.indexOf("--cli");
   const at = process.argv.indexOf("--record");
   const file = at > 0 ? process.argv[at + 1] : undefined;
   if (!file) throw new Error("--record needs the release record, e.g. release/robinhood-prebuilt.json");
-  const r = await deployRecorded({ root: ROOT, recordFile: resolve(ROOT, file), prod: process.argv.includes("--prod"), run, git: git(ROOT) });
+  const cliPath = ci > 0 ? process.argv[ci + 1] : undefined;
+  const r = await deployRecorded({
+    root: ROOT, recordFile: resolve(ROOT, file), prod: process.argv.includes("--prod"), run, git: git(ROOT), cli: cliPath && resolve(cliPath),
+  });
   if (!r.ok) {
     console.error(`release-deploy REFUSED: ${r.reason}`);
     process.exit(1);

@@ -39,6 +39,8 @@ import { encodeAbiParameters, getAddress, isAddress, isHex, keccak256, type Addr
 export const ROBINHOOD_TESTNET_ID = 46630;
 /** The one Vercel CLI the release builds, scans and deploys with (its filePathMap upload rule is what uploadSet reads). */
 export const VERCEL_CLI = "59.11.7";
+/** Its registry integrity; ops/vercel-cli/package-lock.json pins it and the whole dependency tree for `npm ci`. */
+export const VERCEL_CLI_INTEGRITY = "sha512-C+L/JKmlGDypKGcTU/atckydeK/AKa/7fKwUbvcwveguV1QPlY8beiIGgbwkdbb80bbIpPFHRQYrhi5XPAmCBA==";
 export const USDG: Address = "0x7E955252E15c84f5768B83c41a71F9eba181802F";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const PATHS = {

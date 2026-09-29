@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
+import { fakePinnedCli } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 function pinnedCliChunk(): string {
@@ -78,7 +79,7 @@ async function tryDeploy(f: ReturnType<typeof fixture>) {
     calls.push(args);
     return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" };
   };
-  const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run, git: f.git });
+  const r = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: false, run, git: f.git });
   return { r, calls };
 }
 

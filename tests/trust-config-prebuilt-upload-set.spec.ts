@@ -36,6 +36,7 @@ import { fileURLToPath } from "node:url";
 
 import { getAddress, keccak256, toHex } from "viem";
 
+import { installPinnedCli } from "../ops/release-deploy.ts";
 import { USDG, VERCEL_CLI, artifactDigest, scanTree, uploadSet } from "../ops/trust-config.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -80,10 +81,10 @@ async function pinnedCollector(): Promise<(o: object) => Promise<{ files: { path
   return (o) => cli.require_dist().inspectDeploymentFiles(o);
 }
 
+/** The release's own CLI: installed by ops/release-deploy.ts from ops/vercel-cli's lockfile (npm ci, scripts off). */
 function vercelBin(): { cmd: string; args: string[] } {
-  const v = spawnSync("vercel", ["--version"], { encoding: "utf8" });
-  if (v.status === 0 && /59\.11\.7/.test(`${v.stdout}${v.stderr}`)) return { cmd: "vercel", args: [] };
-  return { cmd: "npx", args: ["--yes", "vercel@59.11.7"] };
+  const dir = mkdtempSync(join(tmpdir(), "prebuilt-cli-"));
+  return { cmd: process.execPath, args: [installPinnedCli(dir)] };
 }
 
 describe("trust-config adversary: what `vercel deploy --prebuilt` uploads is what the gate scanned and fingerprinted", function () {

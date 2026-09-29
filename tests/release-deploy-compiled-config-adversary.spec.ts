@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
+import { fakePinnedCli } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, cliExtraUploads, writeRecord } from "../ops/trust-config.ts";
 
 /** The globally installed Vercel CLI's dist dir, only if it is the pinned version. */
@@ -86,7 +87,7 @@ describe("release deploy adversary: the compiled config .vercel/vercel.json name
       calls.push(args);
       return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" };
     };
-    const r = await deployRecorded({ root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) although the upload holds .vercel/redirects.csv via .vercel/vercel.json; cliExtraUploads found [${cliExtraUploads(app).join("; ")}]`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

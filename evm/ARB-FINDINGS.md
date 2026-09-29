@@ -327,3 +327,18 @@ allow-list), and `npx vercel@59.11.7` would run a local `node_modules/vercel` in
 `repoRootRefusals` (release-deploy) and the release script now refuse, by name so no git exclude hides them: a root
 `.vercel`, any root Vercel config (`vercel.*`, `now.*`, any case), and a `vercel` package or bin in the root's or app's
 node_modules. The real repository has none of them.
+
+### F-17 thirteenth adversary pass: npx runs a planted versioned bin (branch task/A1-r4-cli-pin)
+
+`npx --yes vercel@59.11.7` first runs any file named `node_modules/.bin/vercel@59.11.7` in the working folder or above
+(npm 10's libnpmexec), so a planted one in the gitignored `app/node_modules/.bin` ran instead of the pinned CLI for
+pull, build and deploy. The release no longer runs Vercel through npx at all: `ops/vercel-cli/` holds a package.json and
+a committed lockfile for `vercel@59.11.7` (388 entries, every one with its registry integrity); `release-deploy
+--install-cli` does `npm ci --ignore-scripts` of it into a fresh empty folder and `verifyPinnedCli` checks the installed
+lock is byte-identical to the committed one, the `vercel` entry is `VERCEL_CLI` at `VERCEL_CLI_INTEGRITY`, the installed
+package is that version, and `dist/vc.js` is a regular file; the script then runs `node "$VC" pull|build`, and
+`deployRecorded` runs `node <vc.js> deploy --prebuilt` only after re-verifying that install (without one it refuses).
+CI's offline build and the real-build spec use the same installer, so a real Next build from the lockfile install with
+scripts off is proved on every push. The adversary's spec is kept with its last assertion adapted to this fix: the one
+command run is node with the verified vc.js, never npx. Stated limit (with the tampered-machine one): the checkout's own
+`node_modules` from `pnpm install --frozen-lockfile` is trusted, since the checks themselves run with its tsx.

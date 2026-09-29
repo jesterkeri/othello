@@ -3123,4 +3123,6 @@ line-break names refused (8597eee, CI green); then every digest field escaped (l
 (b36f94b, CI green); then project.json keys allow-listed (repoRoot moved the deploy) and a repo-root .vercel refused;
 the tenth pass's rule-by-rule table has no other uncovered row (76391cc, CI green); then an ancestor .vercel/repo.json
 and a project.json without ids refused (d957b89, CI green); then a root Vercel config (services mode) and local CLI
-copies refused. verify: mocha CI list 117 passing. Passes: 12.
+copies refused (ffb3547, CI green). Then on branch task/A1-r4-cli-pin (Codex r4 may be reading ffb3547): the release
+never runs Vercel through npx; ops/vercel-cli lockfile, npm ci into a fresh folder, verifyPinnedCli, node vc.js.
+verify: mocha CI list 119 passing (the real build uses the lockfile CLI). Passes: 13.
