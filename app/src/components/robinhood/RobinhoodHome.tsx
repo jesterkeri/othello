@@ -1,11 +1,12 @@
 "use client";
 
-/** Robinhood circles the connected wallet belongs to (newest first), and the way to start one. */
-import { useEffect, useState } from "react";
+/** Robinhood circles the connected wallet created or joined (newest first, a page at a time), and the way to start one. */
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import Shell from "@/components/othello/Shell";
-import { checkFactory, listMyCircles, type CircleSummary, type TrustResult } from "@/lib/robinhood/adapter";
+import { checkFactory, listMyCircles, type TrustResult } from "@/lib/robinhood/adapter";
 import { fmtUsdg } from "@/lib/robinhood/copy";
+import { EMPTY, hasMore, myCircles, nextBefore } from "@/lib/robinhood/my-circles";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
 import EvmWalletPill from "./EvmWalletPill";
@@ -17,24 +18,33 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export default function RobinhoodHome() {
   const w = useEvmWallet();
   const [factory, setFactory] = useState<TrustResult | null>(null);
-  const [circles, setCircles] = useState<CircleSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [list, dispatch] = useReducer(myCircles, EMPTY);
+  // Each request carries the wallet it was for; a reply for an earlier wallet (or an unmounted page) is dropped.
+  const req = useRef(0);
 
   useEffect(() => {
     void checkFactory(robinhoodPublicClient).then(setFactory).catch(() => setFactory({ ok: false, reason: "factory-code" }));
   }, []);
 
+  const load = useCallback((address: `0x${string}`, before: number | undefined) => {
+    const id = req.current;
+    dispatch({ type: "start" });
+    listMyCircles(robinhoodPublicClient, address, before)
+      .then((page) => id === req.current && dispatch({ type: "page", page }))
+      .catch((e) => id === req.current && dispatch({ type: "fail", message: e instanceof Error ? e.message : String(e) }));
+  }, []);
+
   useEffect(() => {
+    req.current += 1;
+    dispatch({ type: "reset" });
     if (!w.address || !factory?.ok) return;
-    let live = true;
-    setCircles(null);
-    listMyCircles(robinhoodPublicClient, w.address)
-      .then((c) => live && setCircles(c))
-      .catch((e) => live && setError(e instanceof Error ? e.message : String(e)));
+    load(w.address, undefined);
     return () => {
-      live = false;
+      req.current += 1;
     };
-  }, [w.address, factory?.ok]);
+  }, [w.address, factory?.ok, load]);
+
+  const circles = list.started ? list.circles : null;
 
   return (
     <Shell active="Circles" network={NETWORK} wallet={<EvmWalletPill w={w} />}>
@@ -61,9 +71,10 @@ export default function RobinhoodHome() {
           {w.hasWallet && !w.address && (
             <button type="button" className={s.btn} onClick={() => void w.connect()}>Connect an EVM wallet (MetaMask)</button>
           )}
-          {w.address && factory?.ok && circles === null && !error && <p className={s.muted}>Looking for your circles…</p>}
-          {error && <p className={s.error}>Couldn&apos;t read your circles: {error}</p>}
-          {circles && circles.length === 0 && <p className={s.muted}>This wallet isn&apos;t in any circle yet. Start one, or open the link someone sent you.</p>}
+          {w.address && factory?.ok && circles === null && list.loading && <p className={s.muted}>Looking for your circles…</p>}
+          {circles && circles.length === 0 && (
+            <p className={s.muted}>This wallet hasn&apos;t started or joined a circle yet. Start one, or open the link someone sent you.</p>
+          )}
           {circles && circles.length > 0 && (
             <ol className={s.members}>
               {circles.map((c) => (
@@ -81,6 +92,21 @@ export default function RobinhoodHome() {
                 </li>
               ))}
             </ol>
+          )}
+          {list.error && (
+            <p className={s.error} role="alert">
+              Couldn&apos;t read your circles: {list.error}{" "}
+              {w.address && (
+                <button type="button" className={s.btnQuiet} onClick={() => w.address && load(w.address, nextBefore(list))}>
+                  Try again
+                </button>
+              )}
+            </p>
+          )}
+          {w.address && hasMore(list) && !list.error && (
+            <button type="button" className={s.btnQuiet} disabled={list.loading} onClick={() => w.address && load(w.address, nextBefore(list))}>
+              {list.loading ? "Loading…" : "Show more"}
+            </button>
           )}
         </section>
       </main>

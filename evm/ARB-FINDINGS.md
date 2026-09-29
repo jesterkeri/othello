@@ -188,3 +188,32 @@ writes `release/robinhood-prebuilt.files.txt` (the per-file list) because a Next
 files, not a rebuilt digest. `--record` and the release script now refuse untracked files (a stray page would be built
 in). The script takes `--prod` (a production deploy needs a production build) and warns not to run `next`/`pnpm` in
 `app/` between the release scan and the deploy.
+
+## F-16. "My circles" is bounded and cannot be buried by strangers (code review r3, M2; ARB-DESIGN r10)
+
+The page read every circle the factory ever created (5 reads plus one per member for each), so a sybil's thousands of
+unrelated circles could stall it before it reached a member's own. Reading the newest N instead loses older circles
+(the earlier 40-circle adversary case). ARB-DESIGN r10 adds a per-account index on the factory: `circlesOf[account]`
+gets a circle when the account creates it or first joins it (`joinAndLock` calls `factory.recordJoin(msg.sender)`;
+`recordJoin` refuses any caller that is not this factory's circle; `listed` deduplicates a leave and rejoin).
+Index-at-creation for every named member was rejected: anyone may name a victim in a circle, so that list is
+spammable. Views `circlesOfCount` and `circlesOfPage(account, start, count <= 50)`. The page reads it newest first,
+10 per page, continuing from an absolute index, with "Show more", a retry, and the error cleared when a request
+starts (r3 m1). A circle the wallet was only named in is reached by its invitation link (AL12). Tests: Foundry
+`MemberIndex.t.sol` (5), anvil: a joined circle found after 100 strangers' circles, 50 of them naming the victim, in
+at most 16 reads; paging 100+ entries with a circle added between pages; reducer spec for the stale error.
+Mutations M38-M43 (drop the isCircle check, the dedup, the recordJoin call, the creator listing, the page cap; list the
+creator instead of the joiner) all killed. The mutation runner now rebuilds after restoring `src/`: it used to leave
+the last mutated build in `out/`, which the anvil specs and the ABI export read.
+
+## F-17. The deploy is part of the reviewed release command (code review r3, M1)
+
+The record described what was scanned, but the deploy was a separate command typed later, so a `next build`,
+`pnpm install` or edit in between would upload unscanned bytes under a clean-looking record. `ops/release-robinhood.sh`
+now runs `ops/release-deploy.ts` itself, straight after the scan: it refuses unless the record is new, was built with
+the pinned CLI, the checkout is the recorded commit with only the record changed, and the upload set (output plus
+filePathMap files) hashes to the recorded digest and per-file list; then it deploys with `npx vercel@59.11.7 deploy
+--prebuilt`, hashes the set again (a change during the upload voids the deployment and says so), and only then writes
+the URL, target and time into the record. The release script and CI use only `vercel@59.11.7` (`VERCEL_CLI` in
+trust-config.ts; a test fails on any other pin or an unpinned `vercel pull|build|deploy`). Tests:
+`tests/release-deploy.spec.ts` (8), including the mutated-upload refusal with Vercel never run.

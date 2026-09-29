@@ -6,9 +6,15 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {CircleMath} from "./CircleMath.sol";
 
+/// The one factory function a circle calls (ARB r10).
+interface IJoinRegistry {
+    function recordJoin(address member) external;
+}
+
 /// @title OthelloCircle
 /// @notice One rotating savings circle on Robinhood Chain, saved and collateralised in USDG only.
-/// Rules: ARB-DESIGN r9 (Codex SHIP), which ports SPEC sections 4 to 7 and the P1 delinquency latch.
+/// Rules: ARB-DESIGN r10 (r9 Codex SHIP plus the r10 member index), which ports SPEC sections 4 to 7 and the P1
+/// delinquency latch.
 /// No owner, no admin, no upgrade, no pause, no ETH. `creator` may only activate or cancel while Forming.
 contract OthelloCircle is ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -147,7 +153,7 @@ contract OthelloCircle is ReentrancyGuard {
 
     /// @dev Called only by OthelloFactory, which has already validated `p` and `members_`
     /// (ARB section 4.2). The constructor re-derives nothing and trusts no caller-held authority:
-    /// `factory` is recorded for off-chain reads only and no function compares against it.
+    /// No function compares against `factory`; the circle's only call to it is recordJoin in joinAndLock (ARB r10).
     constructor(Params memory p, address[] memory members_, address creator_, IERC20 usdg_) {
         usdg = usdg_;
         factory = msg.sender;
@@ -208,6 +214,7 @@ contract OthelloCircle is ReentrancyGuard {
         depositsTotal += g;
 
         _pull(x);
+        IJoinRegistry(factory).recordJoin(msg.sender);
         emit MemberJoined(msg.sender, t, amount, g);
     }
 

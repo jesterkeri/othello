@@ -10,20 +10,26 @@ import {CircleMath} from "./CircleMath.sol";
 /// @notice Deploys Othello circles with plain CREATE. No owner, no admin, no setters, no ETH.
 /// `isCircle` is written in exactly one place (createCircle), for the address `new OthelloCircle` returned;
 /// the Robinhood app trusts a circle only if this factory (pinned address and code hash) lists it (ARB section A).
+/// `circlesOf` (ARB r10) lists, per account, the circles it created or joined; only that account's own actions add to
+/// it (createCircle as the caller, or joinAndLock through the circle's recordJoin), so nobody can bury its circles.
 contract OthelloFactory {
     error InvalidParams();
     error GuaranteeBelowPeakNeed(uint256 peakNeed, uint256 reserveAtStart);
     error InvalidToken();
+    error NotCircle();
 
     event CircleCreated(address indexed circle, address indexed creator, uint256 index);
 
     IERC20 public immutable usdg;
     mapping(address => bool) public isCircle;
     address[] public circles;
+    mapping(address => mapping(address => bool)) public listed;
+    mapping(address => address[]) internal _circlesOf;
 
     uint256 internal constant MAX_C = 1e12;
     uint256 internal constant MAX_G = 1e12;
     uint256 internal constant MAX_AMOUNT = 1e13;
+    uint256 internal constant MAX_PAGE = 50;
 
     constructor(IERC20 usdg_) {
         if (address(usdg_).code.length == 0) revert InvalidToken();
@@ -33,6 +39,28 @@ contract OthelloFactory {
 
     function circleCount() external view returns (uint256) {
         return circles.length;
+    }
+
+    function circlesOfCount(address account) external view returns (uint256) {
+        return _circlesOf[account].length;
+    }
+
+    /// Entries [start, start + count) of `account`'s list, oldest first; a range past the end returns what exists.
+    function circlesOfPage(address account, uint256 start, uint256 count) external view returns (address[] memory page) {
+        if (count > MAX_PAGE) revert InvalidParams();
+        address[] storage all = _circlesOf[account];
+        if (start >= all.length) return page;
+        uint256 end = all.length - start < count ? all.length : start + count;
+        page = new address[](end - start);
+        for (uint256 i = 0; i < page.length; ++i) {
+            page[i] = all[start + i];
+        }
+    }
+
+    /// Called by a circle this factory created, from joinAndLock, with its joiner. Lists the circle for that member.
+    function recordJoin(address member) external {
+        if (!isCircle[msg.sender]) revert NotCircle();
+        _list(member, msg.sender);
     }
 
     /// @notice Create a circle. The caller becomes its immutable creator and must be one of `members`.
@@ -64,6 +92,13 @@ contract OthelloFactory {
         circle = address(new OthelloCircle(p, members, msg.sender, usdg));
         isCircle[circle] = true;
         circles.push(circle);
+        _list(msg.sender, circle);
         emit CircleCreated(circle, msg.sender, circles.length - 1);
+    }
+
+    function _list(address account, address circle) internal {
+        if (listed[account][circle]) return;
+        listed[account][circle] = true;
+        _circlesOf[account].push(circle);
     }
 }

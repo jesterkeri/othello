@@ -10,8 +10,9 @@ import {
   checkTrustedFactory,
   createCircleWith,
   createRobinhoodAdapterWith,
-  listCirclesWith,
+  listCirclesPageWith,
   type CircleParams,
+  type CirclePage,
   type CircleSummary,
   type CreateResult,
   type RobinhoodAdapter,
@@ -21,11 +22,13 @@ import {
 import { TRUSTED_FACTORY } from "./config";
 
 export {
+  MY_CIRCLES_PAGE,
   STATUS,
   decodeFailure,
   leastGuarantee,
   peakNeed,
   type CircleParams,
+  type CirclePage,
   type CircleSummary,
   type CreateResult,
   readCircle,
@@ -77,7 +80,11 @@ export function createCircle(
   );
 }
 
-/** Circles of the one trusted factory that `account` belongs to, newest first. */
-export function listMyCircles(client: Pick<PublicClient, "readContract" | "getCode">, account: Address): Promise<CircleSummary[]> {
-  return listCirclesWith(client, TRUSTED_FACTORY, account);
+/** One page (newest first) of the circles of the one trusted factory that `account` created or joined. */
+export function listMyCircles(
+  client: Pick<PublicClient, "readContract" | "getCode">,
+  account: Address,
+  before?: number,
+): Promise<CirclePage> {
+  return listCirclesPageWith(client, TRUSTED_FACTORY, account, before);
 }

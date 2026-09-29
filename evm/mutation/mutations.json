@@ -35,5 +35,11 @@
   {"id": "M34", "rule": "recipient outbound delta check", "file": "src/OthelloCircle.sol", "find": "if (received != x) revert TransferAmountMismatch(x, received);", "replace": ""},
   {"id": "M35", "rule": "top-up gate update", "file": "src/CircleMath.sol", "find": "return (base > added ? base - added : 0) + (deficit - fill);", "replace": "return (base > added ? base - added : 0) + deficit;"},
   {"id": "M36", "rule": "withdraw pooled share uses forfeited weight", "file": "src/OthelloCircle.sol", "find": "uint256 weight = s.g + s.topUps - s.forfeited;", "replace": "uint256 weight = s.g + s.topUps;"},
-  {"id": "M37", "rule": "coverage-too-low branch (unreachable with USDG collateral: H_r >= min always)", "file": "src/OthelloCircle.sol", "find": "            if (hs[r] < minStockCover && sum - needs[r] <= avail) {", "replace": "            if (false) {", "expect": "survivor-unreachable"}
+  {"id": "M37", "rule": "coverage-too-low branch (unreachable with USDG collateral: H_r >= min always)", "file": "src/OthelloCircle.sol", "find": "            if (hs[r] < minStockCover && sum - needs[r] <= avail) {", "replace": "            if (false) {", "expect": "survivor-unreachable"},
+  {"id": "M38", "rule": "recordJoin only from a circle of this factory (r10)", "file": "src/OthelloFactory.sol", "find": "if (!isCircle[msg.sender]) revert NotCircle();", "replace": ""},
+  {"id": "M39", "rule": "member index deduplicated (r10)", "file": "src/OthelloFactory.sol", "find": "if (listed[account][circle]) return;", "replace": ""},
+  {"id": "M40", "rule": "joinAndLock records the join (r10)", "file": "src/OthelloCircle.sol", "find": "IJoinRegistry(factory).recordJoin(msg.sender);", "replace": ""},
+  {"id": "M41", "rule": "creator listed at creation (r10)", "file": "src/OthelloFactory.sol", "find": "_list(msg.sender, circle);", "replace": ""},
+  {"id": "M42", "rule": "page size capped at 50 (r10)", "file": "src/OthelloFactory.sol", "find": "if (count > MAX_PAGE) revert InvalidParams();", "replace": ""},
+  {"id": "M43", "rule": "the joiner, not the creator, is listed (r10)", "file": "src/OthelloCircle.sol", "find": "IJoinRegistry(factory).recordJoin(msg.sender);", "replace": "IJoinRegistry(factory).recordJoin(creator);"}
 ]

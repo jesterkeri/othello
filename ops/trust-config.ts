@@ -37,6 +37,8 @@ import ts from "typescript";
 import { encodeAbiParameters, getAddress, isAddress, isHex, keccak256, type Address, type Hex } from "viem";
 
 export const ROBINHOOD_TESTNET_ID = 46630;
+/** The one Vercel CLI the release builds, scans and deploys with (its filePathMap upload rule is what uploadSet reads). */
+export const VERCEL_CLI = "59.11.7";
 export const USDG: Address = "0x7E955252E15c84f5768B83c41a71F9eba181802F";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const PATHS = {
@@ -454,6 +456,26 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };
 }
 
+export type ReleaseRecord = {
+  commit: string; artifactSha256: string; files: number; trustedFactory: Address | null; scannedAt: string;
+  vercelCli: string; deploy: string; fileList: string;
+  deploymentUrl: string | null; target: "preview" | "production" | null; deployedAt: string | null;
+};
+
+/** Writes the release record and its per-file list (`<record>.files.txt`); ops/release-deploy.ts fills the deployment. */
+export function writeRecord(
+  file: string, dg: { sha256: string; files: number; lines: string[] }, commit: string, trusted: Address | null, root: string = ROOT,
+) {
+  const fileList = file.replace(/\.json$/, ".files.txt");
+  const rec: ReleaseRecord = {
+    commit, artifactSha256: dg.sha256, files: dg.files, trustedFactory: trusted, scannedAt: new Date().toISOString(),
+    vercelCli: VERCEL_CLI, deploy: `npx tsx ops/release-deploy.ts --record ${relative(root, file)}`, fileList: relative(root, fileList),
+    deploymentUrl: null, target: null, deployedAt: null,
+  };
+  writeFileSync(file, JSON.stringify(rec, null, 2) + "\n");
+  writeFileSync(fileList, dg.lines.join("\n") + "\n");
+}
+
 /** The USDG the adapter approves (app/src/lib/robinhood/chain.ts) must be the USDG this gate pins. */
 export async function usdgMatches(): Promise<string[]> {
   try {
@@ -627,12 +649,7 @@ async function main() {
       // untracked files count: vercel build would include an untracked page that is in no commit
       const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain"], { encoding: "utf8" }).trim();
       if (dirty) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty}`);
-      writeFileSync(resolve(ROOT, file), JSON.stringify({
-        commit, artifactSha256: dg.sha256, files: dg.files, trustedFactory: config.state === "set" ? config.address : null,
-        scannedAt: new Date().toISOString(), deploy: "cd app && vercel deploy --prebuilt", deploymentUrl: null,
-        fileList: file.replace(/\.json$/, ".files.txt"),
-      }, null, 2) + "\n");
-      writeFileSync(resolve(ROOT, file.replace(/\.json$/, ".files.txt")), dg.lines.join("\n") + "\n");
+      writeRecord(resolve(ROOT, file), dg, commit, config.state === "set" ? config.address : null);
       console.log(`trust-config: release record written to ${file}`);
     }
   }

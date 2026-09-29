@@ -14,6 +14,7 @@ import {
   createPublicClient,
   createWalletClient,
   defineChain,
+  erc20Abi,
   getAddress,
   http,
   keccak256,
@@ -28,7 +29,7 @@ import { mnemonicToAccount } from "viem/accounts";
 import { toCommon, type SolanaAdapter } from "../app/src/lib/core/adapter.ts";
 import { ACTION_ARGS, InvalidArguments, checked } from "../app/src/lib/core/profiles.ts";
 import {
-  checkTrustedAgainst, createCircleWith, createRobinhoodAdapterWith, leastGuarantee, listCirclesWith, readCircle, topUpFill,
+  checkTrustedAgainst, createCircleWith, createRobinhoodAdapterWith, leastGuarantee, listCirclesPageWith, readCircle, topUpFill,
 } from "../app/src/lib/robinhood/adapter-core.ts";
 import { othelloCircleAbi, othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
 
@@ -223,16 +224,32 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
       assert.equal(await pub.getTransactionCount({ address: accounts[0]!.address }), nonce, "nothing sent");
     });
 
-    it("lists exactly the circles a wallet is in, newest first", async () => {
+    it("lists exactly the circles a wallet created or joined, newest first (ARB r10)", async () => {
+      const low = (c: { address: string }) => c.address.toLowerCase();
       const outsider = mnemonicToAccount(MNEMONIC, { addressIndex: 7 }).address;
-      assert.deepEqual(await listCirclesWith(pub, pinned(), outsider), []);
-      const mine = await listCirclesWith(pub, pinned(), accounts[1]!.address);
+      assert.deepEqual(await listCirclesPageWith(pub, pinned(), outsider), { circles: [], total: 0, before: null });
+      // accounts[1] created circle B and is only named in every other circle: exactly circle B, where it is turn 1
+      const one = await listCirclesPageWith(pub, pinned(), accounts[1]!.address);
+      assert.deepEqual(one.circles.map(low), [circleB.toLowerCase()]);
+      assert.equal(one.circles[0]!.turn, 0);
+      // accounts[0] created circle A and the least-guarantee circle, which is the factory's newest: newest first
+      const zero = await listCirclesPageWith(pub, pinned(), accounts[0]!.address);
       const all = Number(await pub.readContract({ address: factory, abi: othelloFactoryAbi as Abi, functionName: "circleCount" }));
-      assert.ok(mine.length >= 2 && mine.length <= all);
-      assert.equal(mine[0]!.address.toLowerCase(), String(await pub.readContract({
-        address: factory, abi: othelloFactoryAbi as Abi, functionName: "circles", args: [BigInt(all - 1)] })).toLowerCase(), "newest first");
-      for (const c of mine) assert.equal(c.turn >= 0, true);
-      assert.deepEqual(await listCirclesWith(pub, null, accounts[1]!.address), [], "nothing before deployment");
+      const newest = String(await pub.readContract({ address: factory, abi: othelloFactoryAbi as Abi, functionName: "circles", args: [BigInt(all - 1)] }));
+      assert.equal(low(zero.circles[0]!), newest.toLowerCase(), "newest first");
+      assert.equal(low(zero.circles.at(-1)!), circleA.toLowerCase(), "the oldest last");
+      assert.equal(zero.total, zero.circles.length);
+      assert.equal(zero.before, null);
+      // accounts[2] is named in circle A and others but created or joined none of this factory's: nothing, until it joins
+      assert.deepEqual((await listCirclesPageWith(pub, pinned(), accounts[2]!.address)).circles, []);
+      const members = [accounts[0]!.address, accounts[1]!.address, accounts[2]!.address];
+      const fresh = (await write(wallets[0]!, factory, othelloFactoryAbi as Abi, "createCircle", [params(), members])) as Address;
+      await write(wallets[2]!, usdg, erc20Abi as Abi, "approve", [fresh, 25n * U]);
+      await write(wallets[2]!, fresh, othelloCircleAbi as Abi, "joinAndLock", [20n * U]);
+      const two = await listCirclesPageWith(pub, pinned(), accounts[2]!.address);
+      assert.deepEqual(two.circles.map(low), [fresh.toLowerCase()]);
+      assert.equal(two.circles[0]!.turn, 2);
+      assert.deepEqual(await listCirclesPageWith(pub, null, accounts[1]!.address), { circles: [], total: 0, before: null }, "nothing before deployment");
     });
   });
 

@@ -473,39 +473,48 @@ export async function createCircleWith(
 }
 
 export type CircleSummary = { address: Address; n: number; c: bigint; status: Status; round: number; creator: Address; turn: number };
+/** One page of a wallet's circles. `before` is where the next (older) page ends, or null when there is none. */
+export type CirclePage = { circles: CircleSummary[]; total: number; before: number | null };
+export const MY_CIRCLES_PAGE = 10;
+
+async function summarize(client: Pick<PublicClient, "readContract">, addr: Address, account: Address): Promise<CircleSummary | null> {
+  const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
+    client.readContract({ address: addr, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
+  const [n, c, status, round, creator] = await Promise.all([
+    r<bigint>("n"), r<bigint>("c"), r<number>("status"), r<number>("round"), r<Address>("creator"),
+  ]);
+  const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
+  const turn = members.findIndex((m) => isAddressEqual(m, account));
+  return turn >= 0 ? { address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn } : null;
+}
 
 /**
- * Circles from this factory that `account` is a member of, newest first. Reads EVERY circle the factory lists (in
- * pages of `concurrency`), so nobody can hide a member's circle by creating newer ones.
+ * One page of the circles `account` created or joined, newest first, from the trusted factory's own index
+ * (ARB r10: only the account's own createCircle or joinAndLock adds to it, so nobody else can bury its circles).
+ * `before` is the previous page's `before` (an absolute index into the append-only index, so a join between pages
+ * neither repeats nor skips an entry). The reads are bounded by `pageSize`, never by how many circles the chain has.
  */
-export async function listCirclesWith(
+export async function listCirclesPageWith(
   client: Pick<PublicClient, "readContract" | "getCode">,
   factory: TrustedFactory | null,
   account: Address,
-  concurrency = 8,
-): Promise<CircleSummary[]> {
+  before?: number,
+  pageSize = MY_CIRCLES_PAGE,
+): Promise<CirclePage> {
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new RangeError("pageSize must be 1 to 50");
+  if (before !== undefined && (!Number.isInteger(before) || before < 0)) throw new RangeError("before must be a whole number");
   const t = await checkTrustedFactory(client, factory);
-  if (!t.ok || !factory) return [];
-  const count = (await client.readContract({ address: factory.address, abi: othelloFactoryAbi, functionName: "circleCount" })) as bigint;
-  const one = async (i: bigint): Promise<CircleSummary | null> => {
-    const addr = (await client.readContract({
-      address: factory.address, abi: othelloFactoryAbi, functionName: "circles", args: [i],
-    })) as Address;
-    const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
-      client.readContract({ address: addr, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
-    const [n, c, status, round, creator] = await Promise.all([
-      r<bigint>("n"), r<bigint>("c"), r<number>("status"), r<number>("round"), r<Address>("creator"),
-    ]);
-    const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
-    const turn = members.findIndex((m) => isAddressEqual(m, account));
-    return turn >= 0 ? { address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn } : null;
-  };
+  if (!t.ok || !factory) return { circles: [], total: 0, before: null };
+  const total = Number(await client.readContract({
+    address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfCount", args: [account],
+  }));
+  const end = before === undefined ? total : Math.min(before, total);
+  const start = Math.max(0, end - pageSize);
+  if (end <= start) return { circles: [], total, before: null };
+  const addrs = (await client.readContract({
+    address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [account, BigInt(start), BigInt(end - start)],
+  })) as readonly Address[];
   const out: CircleSummary[] = [];
-  for (let hi = count; hi > 0n; hi -= BigInt(concurrency)) {
-    const lo = hi - BigInt(concurrency) > 0n ? hi - BigInt(concurrency) : 0n;
-    const page: bigint[] = [];
-    for (let i = hi - 1n; i >= lo; i--) page.push(i);
-    for (const x of await Promise.all(page.map(one))) if (x) out.push(x);
-  }
-  return out;
+  for (const x of await Promise.all([...addrs].reverse().map((a) => summarize(client, a, account)))) if (x) out.push(x);
+  return { circles: out, total, before: start > 0 ? start : null };
 }

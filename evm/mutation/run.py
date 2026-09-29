@@ -52,6 +52,8 @@ try:
 finally:
     restore()
     shutil.rmtree(backup)
+    # out/ still holds the last MUTATED build; rebuild so nothing later (ABI export, anvil specs) uses it
+    subprocess.run(["forge", "build"], capture_output=True, text=True, check=True)
 
 bad = [r for r in results if r[1] not in ("killed",) and not (r[1] == "SURVIVED" and next(
     m for m in muts if m["id"] == r[0]).get("expect") == "survivor-unreachable")]

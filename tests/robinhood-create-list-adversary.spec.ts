@@ -1,5 +1,6 @@
 /**
- * Adversarial cases for creating and listing Robinhood circles (A1, 44e9538..b1eb00e), against the REAL
+ * Adversarial cases for creating and listing Robinhood circles (A1, 44e9538..b1eb00e; list cases rewritten for
+ * ARB r10's per-wallet index after Codex code review r3 M2), against the REAL
  * contracts on a local anvil chain that uses Robinhood testnet's chain id (46630). Needs `forge build` in evm/.
  *
  *   cd evm && forge build && cd .. && npx mocha --import=tsx --timeout 180000 tests/robinhood-create-list-adversary.spec.ts
@@ -23,7 +24,7 @@ import {
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { createCircleWith, listCirclesWith } from "../app/src/lib/robinhood/adapter-core.ts";
+import { createCircleWith, listCirclesPageWith } from "../app/src/lib/robinhood/adapter-core.ts";
 import { othelloCircleAbi, othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
 
 const PORT = 8592;
@@ -56,10 +57,17 @@ describe("Robinhood create and list, adversarial (anvil, chain 46630)", function
   const wallets: WalletClient[] = [];
   let factory: Address;
   let factoryHash: Hex;
+  let usdg: Address;
+  const usdgAbi = artifact("MockUSDG.sol", "MockUSDG").abi;
 
   async function deploy(w: WalletClient, a: { abi: Abi; bytecode: Hex }, args: readonly unknown[] = []): Promise<Address> {
     const hash = await w.deployContract({ abi: a.abi, bytecode: a.bytecode, args, account: w.account!, chain });
     return (await pub.waitForTransactionReceipt({ hash })).contractAddress!;
+  }
+
+  async function write(w: WalletClient, address: Address, abi: Abi, functionName: string, args: readonly unknown[]) {
+    const { request } = await pub.simulateContract({ address, abi, functionName, args, account: w.account! } as never);
+    await pub.waitForTransactionReceipt({ hash: await w.writeContract({ ...(request as object), chain } as never) });
   }
 
   async function create(w: WalletClient, members: readonly Address[]): Promise<Address> {
@@ -83,7 +91,7 @@ describe("Robinhood create and list, adversarial (anvil, chain 46630)", function
       }
     }
     for (const a of accounts) wallets.push(createWalletClient({ account: a, chain, transport: http(RPC) }));
-    const usdg = await deploy(wallets[0]!, artifact("MockUSDG.sol", "MockUSDG"));
+    usdg = await deploy(wallets[0]!, artifact("MockUSDG.sol", "MockUSDG"));
     factory = await deploy(wallets[0]!, artifact("OthelloFactory.sol", "OthelloFactory"), [usdg]);
     factoryHash = keccak256((await pub.getCode({ address: factory }))!);
   });
@@ -141,16 +149,65 @@ describe("Robinhood create and list, adversarial (anvil, chain 46630)", function
     }
   });
 
-  it("My circles finds a wallet's circle even after 40 newer circles from strangers", async () => {
-    const victim = mnemonicToAccount(MNEMONIC, { addressIndex: 5 }).address;
+  it("My circles finds a wallet's circle after 100 strangers' circles, half of them naming it, with bounded reads", async () => {
+    // Codex r3 M2 (and the adversary's 40-circle case before it): anyone may create circles with members of their
+    // choosing. Under ARB r10 a wallet's list grows only by its own create or join, so neither unrelated circles nor
+    // circles that merely name the victim can bury the one it joined, and the page's reads do not grow with them.
+    const victimAcct = mnemonicToAccount(MNEMONIC, { addressIndex: 5 });
+    const victim = victimAcct.address;
+    const victimWallet = createWalletClient({ account: victimAcct, chain, transport: http(RPC) });
     const mine = await create(wallets[0]!, [accounts[0]!.address, accounts[1]!.address, victim]);
-    // anyone may call createCircle with members of their choosing; 40 circles that do not include the victim
-    for (let i = 0; i < 40; i++) await create(wallets[2]!, [accounts[2]!.address, accounts[0]!.address, accounts[1]!.address]);
-    const listed = await listCirclesWith(pub, pinned(), victim);
-    assert.deepEqual(
-      listed.map((c) => c.address.toLowerCase()),
-      [mine.toLowerCase()],
-      "the victim is a member of exactly one circle of the trusted factory; the page says \"This wallet isn't in any circle yet\"",
-    );
+    await write(wallets[0]!, usdg, usdgAbi, "mint", [victim, 100n * U]);
+    await write(victimWallet, usdg, usdgAbi, "approve", [mine, 20n * U]);
+    await write(victimWallet, mine, othelloCircleAbi as Abi, "joinAndLock", [15n * U]);
+    for (let i = 0; i < 100; i++) {
+      const members = i % 2 === 0
+        ? [accounts[2]!.address, accounts[0]!.address, accounts[1]!.address]
+        : [accounts[2]!.address, victim, accounts[1]!.address];
+      await create(wallets[2]!, members);
+    }
+    let reads = 0;
+    const counting = new Proxy(pub, {
+      get(t, k, r) {
+        const v = Reflect.get(t, k, r);
+        if (k === "readContract" || k === "getCode") return (...a: unknown[]) => { reads++; return (v as (...x: unknown[]) => unknown).apply(t, a); };
+        return v;
+      },
+    }) as PublicClient;
+    const page = await listCirclesPageWith(counting, pinned(), victim);
+    assert.deepEqual(page.circles.map((c) => c.address.toLowerCase()), [mine.toLowerCase()], "exactly the circle the victim joined");
+    assert.equal(page.before, null);
+    // trust check (code + factory reads), count, page, and one circle's 5 fields + 3 members: far below 100 circles
+    assert.ok(reads <= 16, `reads for one listed circle: ${reads}`);
+  });
+
+  it("\"Show more\" pages a long list newest first, without repeats or gaps when a circle is added between pages", async () => {
+    const who = accounts[2]!.address; // created 100+ circles above
+    const total0 = Number(await pub.readContract({ address: factory, abi: othelloFactoryAbi, functionName: "circlesOfCount", args: [who] }));
+    assert.ok(total0 > 20);
+    const seen: string[] = [];
+    let before: number | undefined;
+    let first = true;
+    let added: Address | null = null;
+    for (;;) {
+      const page = await listCirclesPageWith(pub, pinned(), who, before);
+      assert.ok(page.circles.length <= 10, "at most 10 per page");
+      seen.push(...page.circles.map((c) => c.address.toLowerCase()));
+      if (first) {
+        first = false;
+        added = await create(wallets[2]!, [accounts[2]!.address, accounts[0]!.address, accounts[1]!.address]); // lands between pages
+      }
+      if (page.before === null) break;
+      before = page.before;
+    }
+    const expected: string[] = [];
+    const all = (await pub.readContract({ address: factory, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [who, 0n, 50n] })) as Address[];
+    for (let start = 50; start < total0; start += 50) {
+      all.push(...((await pub.readContract({
+        address: factory, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [who, BigInt(start), 50n] })) as Address[]));
+    }
+    for (const a of all.slice(0, total0).reverse()) expected.push(a.toLowerCase());
+    assert.deepEqual(seen, expected, "the first total0 entries, newest first, each once");
+    assert.ok(added && !seen.includes(added.toLowerCase()), "a circle added after the first page appears on the next refresh, not mid-list");
   });
 });
