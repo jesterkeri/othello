@@ -3093,3 +3093,21 @@ list now recorded), preview-only build (--prod option). Spec kept: tests/trust-c
 (4 cases, 3 failed before, all pass now).
 Fix (ARB-FINDINGS F-15): uploadSet + scan/digest over it; untracked files refused; release/robinhood-prebuilt.files.txt;
 --prod. verify: specs 72 passing; real output 883 entries scanned; tsc; next build; workflows clean.
+CI 97fe920: all 5 jobs green (contracts, adapter/anvil, trust-config incl. offline vercel build, fork, core).
+
+## A1 code review r3 (Codex): REVISE, fixed (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE | commit: 97fe920
+Codex r3: r2 MAJOR 1 resolved, MAJOR 2 partly. M1: the record was not a deploy-time control (deploy typed later).
+M2: "My circles" scanned every circle (sybil DoS). m1: stale list error.
+Fix a17d3e3 (ARB-DESIGN r10, sha256 e8fe9952…; F-16, F-17): factory circlesOf index written only by the account's own
+create or first join (circle -> factory.recordJoin, isCircle gate, dedup), views circlesOfCount/circlesOfPage (<= 50);
+page reads 10 newest first with Show more and retry, absolute-index paging, error cleared on start; release-robinhood.sh
+now deploys through ops/release-deploy.ts (record new + pinned CLI + recorded commit + only record changed + upload set
+rehash == record, then npx vercel@59.11.7 deploy --prebuilt, rehash after, URL written). Mutation runner rebuilds out/.
+Adversary on a17d3e3: DEFECT: vercel@59.11.7 also uploads app/.vercel/routes.json (and microfrontends / bulk
+redirects), unseen by digest and git. Fix ce68233: cliExtraUploads refused in the scan and before/after the deploy;
+adversary spec kept; real-build spec compares the CLI's own collector list with the scan; pin test and URL rule tightened.
+verify: forge 41 + fork 3 pass; mutation 43: 42 killed, M37 the documented unreachable survivor, 0 bad (M38-M43 new);
+mocha CI list 93 passing; tsc root/app; next build + trust-config --build; ABI check; browser (local anvil, 3 wallets):
+A 10 then 12 after Show more, newest first, B only its joined circle, C the empty message, no console errors;
+CI a17d3e3 5/5 green.

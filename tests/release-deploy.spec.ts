@@ -131,6 +131,11 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       ["microfrontends.json", "{\"applications\":{}}"],
       ["src/deep/microfrontends.jsonc", "{}"],
       ["vercel.json", "{\"bulkRedirectsPath\":\"redirects.csv\"}"],
+      [".vercel/vercel.json", "{\"bulkRedirectsPath\":\".vercel/r.csv\"}"], // the compiled config the CLI falls back to
+      [".vercel/r.csv", "a,b"],
+      [".vercel/node/other.json", "{}"], // only the build's package-manifest.json may sit there
+      ["vercel.toml", "bulkRedirectsPath = 'r.csv'"],
+      ["vercel.cts", "export default {}"],
     ] as const) {
       const f = fixture();
       mkdirSync(join(f.app, rel, ".."), { recursive: true });
@@ -140,6 +145,29 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       assert.match(!r.ok ? r.reason : "", new RegExp(`scan never covered[\\s\\S]*${rel.replace(/\./g, "\\.")}: vercel deploy --prebuilt`), rel);
       assert.equal(spy.calls.length, 0, `${rel}: vercel was never run`);
     }
+  });
+
+  it("project.json: a rootDirectory is refused, a change after the record is refused, an env file from pull is allowed", async () => {
+    const withProject = (settings: object) => {
+      const f = fixture();
+      writeFileSync(join(f.app, ".vercel", "project.json"), JSON.stringify({ projectId: "p", orgId: "o", settings }));
+      writeFileSync(join(f.app, ".vercel", ".env.preview.local"), "NOT_READ=1\n"); // vercel pull writes one; only its name is checked
+      writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root);
+      return f;
+    };
+    const ok = withProject({ framework: "nextjs", rootDirectory: null });
+    assert.equal((await deployRecorded({ root: ok.root, recordFile: ok.record, prod: false, run: spyRun().run, git: cleanGit() })).ok, true);
+
+    const rd = withProject({ framework: "nextjs", rootDirectory: "node_modules/x" });
+    const spy = spyRun();
+    const r1 = await deployRecorded({ root: rd.root, recordFile: rd.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r1.ok ? r1.reason : "", /settings\.rootDirectory "node_modules\/x"/);
+
+    const changed = withProject({ framework: "nextjs", rootDirectory: null });
+    writeFileSync(join(changed.app, ".vercel", "project.json"), JSON.stringify({ projectId: "other", orgId: "o", settings: { framework: "nextjs" } }));
+    const r2 = await deployRecorded({ root: changed.root, recordFile: changed.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r2.ok ? r2.reason : "", /changed after it was scanned[\s\S]*project:\.vercel\/project\.json/);
+    assert.equal(spy.calls.length, 0);
   });
 
   it("a routes.json written during the upload voids the deployment; in production the message says roll back", async () => {

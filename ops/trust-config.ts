@@ -344,19 +344,45 @@ export function bundleAddresses(nextDir: string, trusted: Address | null, public
 
 const MAX_SCANNED_FILE = 50 * 1024 * 1024;
 
-const VERCEL_PROJECT_CONFIGS = ["vercel.json", "now.json", "vercel.ts", "vercel.mts", "vercel.js", "vercel.mjs", "vercel.cjs"];
+/**
+ * What `vercel pull` and `vercel build` (59.11.7) leave in `<project>/.vercel` for this app, and nothing else. `node`
+ * holds only the build's `package-manifest.json` (dependency list; the deploy command never reads it).
+ */
+const VERCEL_DIR_ALLOWED = (n: string) =>
+  n === "project.json" || n === "README.txt" || n === "output" || n === "node" || /^\.env\.[a-z]+\.local$/.test(n);
 
 /**
- * Files the pinned CLI's prebuilt deploy also uploads from the project dir (vercel@59.11.7 buildFileTree2, besides
- * `.vercel/output` and filePathMap sources): `.vercel/routes.json` when it exists, any `microfrontends.json(c)` in the
- * project outside node_modules and .git, and a `bulkRedirectsPath` named by the project's Vercel config. This app uses
- * none of them, so each one found is a refusal (scanTree, and ops/release-deploy.ts before and after the upload), and
- * no scan has to guess what such a file does. A Vercel project config file of any kind is refused for the same reason.
- * tests/release-deploy-uploads-adversary.spec.ts checks the list against the pinned CLI's own collector.
+ * Anything the pinned CLI's prebuilt deploy would upload or apply beyond `.vercel/output` and filePathMap sources.
+ * vercel@59.11.7 (buildFileTree2, getLocalPathConfig) also uploads `<project>/.vercel/routes.json`, any
+ * `microfrontends.json(c)` in the project outside node_modules and .git, and a `bulkRedirectsPath` named by the
+ * project config, which it reads from `vercel.json`/`vercel.toml` or, failing those, the compiled
+ * `<project>/.vercel/vercel.json`; and `settings.rootDirectory` in `.vercel/project.json` moves where it looks. So,
+ * rather than list known extras: `<project>/.vercel` may hold only what pull and build write (VERCEL_DIR_ALLOWED), no
+ * Vercel config file of any name may sit in the project dir, `rootDirectory` must be unset, and no microfrontends file
+ * may exist. Each finding is a refusal (scanTree of a real `<project>/.vercel/output`, and ops/release-deploy.ts
+ * before and after the upload); `.vercel/project.json` itself is in artifactDigest. Env files are only named, never read.
+ * tests/release-deploy-*-adversary.spec.ts check this against the pinned CLI's own config reader and collector.
  */
 export function cliExtraUploads(projectDir: string): string[] {
   const found: string[] = [];
-  if (existsSync(join(projectDir, ".vercel", "routes.json"))) found.push(".vercel/routes.json");
+  const vdir = join(projectDir, ".vercel");
+  if (existsSync(vdir)) {
+    for (const n of readdirSync(vdir)) if (!VERCEL_DIR_ALLOWED(n)) found.push(`.vercel/${n}`);
+    const nodeDir = join(vdir, "node");
+    if (existsSync(nodeDir)) {
+      if (!lstatSync(nodeDir).isDirectory()) found.push(".vercel/node (not a directory)");
+      else for (const n of readdirSync(nodeDir)) if (n !== "package-manifest.json") found.push(`.vercel/node/${n}`);
+    }
+    const pj = join(vdir, "project.json");
+    if (existsSync(pj)) {
+      try {
+        const rd = (JSON.parse(readFileSync(pj, "utf8")) as { settings?: { rootDirectory?: unknown } }).settings?.rootDirectory;
+        if (rd !== undefined && rd !== null && rd !== "" && rd !== ".") found.push(`.vercel/project.json settings.rootDirectory ${JSON.stringify(rd)}`);
+      } catch {
+        found.push(".vercel/project.json (unreadable)");
+      }
+    }
+  }
   const walk = (d: string) => {
     let names: string[];
     try { names = readdirSync(d); } catch { found.push(`${relative(projectDir, d) || "."} (unreadable, so it cannot be checked)`); return; }
@@ -368,8 +394,10 @@ export function cliExtraUploads(projectDir: string): string[] {
       else if (n === "microfrontends.json" || n === "microfrontends.jsonc") found.push(relative(projectDir, p).split(sep).join("/"));
     }
   };
-  if (existsSync(projectDir)) walk(projectDir);
-  for (const c of VERCEL_PROJECT_CONFIGS) if (existsSync(join(projectDir, c))) found.push(c);
+  if (existsSync(projectDir)) {
+    walk(projectDir);
+    for (const n of readdirSync(projectDir)) if (/^(vercel|now)\.[^.]+$/i.test(n)) found.push(n);
+  }
   return found.map((f) => `${f}: vercel deploy --prebuilt ${VERCEL_CLI} would upload or apply it, and this release uses none; remove it`);
 }
 
@@ -484,6 +512,9 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   walk(root);
   const up = uploadSet(root, projectDir);
   for (const u of up.files) lines.push(`upload:${u.key}\t${createHash("sha256").update(readFileSync(u.path)).digest("hex")}`);
+  // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
+  const pj = join(projectDir, ".vercel", "project.json");
+  if (existsSync(pj)) lines.push(`project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
   for (const u of up.dirs) lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}`);
   lines.sort();
   return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };

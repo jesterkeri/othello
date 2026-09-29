@@ -232,3 +232,14 @@ the upload; and on the real offline build, every file the pinned CLI's collector
 digest cover (CI installs vercel@59.11.7 globally for it). Also from its suspicions: the pin test now rejects any
 `vercel@<spec>` other than the pinned version (`@latest`, ranges) and any bare `vercel` command, each proved by a
 mutated script; the deployment URL must be the single `https://<name>.vercel.app` line on stdout.
+
+### F-17 second adversary pass: the compiled config and rootDirectory
+
+The follow-up pass proved (the pinned CLI's own `readLocalConfig` and collector) that with no `vercel.json` or
+`vercel.toml` in `app/` the CLI falls back to the compiled `app/.vercel/vercel.json` (ignored by git), whose
+`bulkRedirectsPath` adds a file to the upload; and that `settings.rootDirectory` in `.vercel/project.json` moves where it
+looks. Listing known extras was the wrong shape, so `cliExtraUploads` is now an allow-list: `app/.vercel` may hold only
+what `vercel pull` and `vercel build` write (`project.json`, `README.txt`, `output/`, `node/package-manifest.json`,
+`.env.<target>.local`, names only, never read); no Vercel config file of any name (`/^(vercel|now)\.[^.]+$/`) in `app/`;
+`rootDirectory` unset; no microfrontends file. `.vercel/project.json` is in the digest, so a change after the record is
+refused. The real offline build passes the allow-list (the clean-gate case), and the adversary's spec is kept.
