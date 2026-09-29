@@ -10,6 +10,7 @@ cd "$(git rev-parse --show-toplevel)"
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "release: commit or discard changes first; a release is built from a commit" >&2; exit 1
 fi
+command -v pnpm >/dev/null || { echo "release: vercel build runs pnpm; install it first (npm install -g pnpm@10.32.1)" >&2; exit 1; }
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 (cd app && vercel pull --yes --environment=preview)
 (cd app && vercel build --yes)

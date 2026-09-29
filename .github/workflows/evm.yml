@@ -104,6 +104,7 @@ jobs:
         run: npx tsx ops/trust-config.ts --rpc https://rpc.testnet.chain.robinhood.com --build app/.next
       - name: Vercel prebuilt output, built offline the way ops/release-robinhood.sh builds it, then scanned
         run: |
+          npm install -g pnpm@10.32.1   # vercel build runs "pnpm run build" and needs pnpm on PATH
           mkdir -p app/.vercel
           echo '{"projectId":"ci-offline","orgId":"ci-offline","settings":{"framework":"nextjs","installCommand":"true"}}' > app/.vercel/project.json
           (cd app && npx --yes vercel@59.11.7 build --yes)
