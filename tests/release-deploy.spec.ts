@@ -342,6 +342,26 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(spy.calls.length, 0);
   });
 
+  it("a Vercel config at the repository root, or a local Vercel CLI, is refused", async () => {
+    for (const [rel, body] of [["vercel.json", "{\"services\":{\"web\":{\"root\":\"app\"}}}"], ["vercel.ts", "export default {}"], ["Vercel.toml", ""]] as const) {
+      const f = fixture();
+      writeFileSync(join(f.root, rel), body);
+      const spy = spyRun();
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      assert.match(!r.ok ? r.reason : "", new RegExp(`${rel.replace(".", "\\.")} at the repository root`), rel);
+      assert.equal(spy.calls.length, 0);
+    }
+    for (const rel of ["node_modules/vercel", "app/node_modules/.bin/vercel"]) {
+      const f = fixture();
+      mkdirSync(join(f.root, rel), { recursive: true });
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+      assert.match(!r.ok ? r.reason : "", /a local Vercel CLI that npx would run/, rel);
+    }
+    const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
+    assert.match(script, /for f in vercel\.\* now\.\*/);
+    assert.match(script, /node_modules\/\.bin\/vercel/);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");

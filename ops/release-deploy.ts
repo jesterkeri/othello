@@ -14,7 +14,7 @@
  * then is the deployment URL written into the record, which is committed and reviewed with it.
  */
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +46,25 @@ export function deployEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return out;
 }
 
+/**
+ * What at the repository root (or on the CLI's path) can change how the pinned CLI resolves its project, checked by
+ * name so neither .gitignore nor .git/info/exclude hides it: a root `.vercel` or a root Vercel config of any name (the
+ * CLI's `resolveProjectCwd` turns services mode on from the git root's vercel.json/toml/ts and then ignores
+ * app/.vercel/project.json; a vercel.ts is compiled with the root .env files loaded), and a local `vercel` package that
+ * `npx vercel@59.11.7` would run instead of the pinned one from the registry.
+ */
+export function repoRootRefusals(root: string, app: string): string[] {
+  const found: string[] = [];
+  if (existsSync(join(root, ".vercel"))) found.push(".vercel at the repository root: the release never writes one; remove it");
+  for (const n of readdirSync(root)) if (/^(vercel|now)\.[^.]+$/i.test(n)) found.push(`${n} at the repository root: a Vercel config there moves the CLI's project root; remove it`);
+  for (const dir of [root, app]) {
+    for (const p of [join(dir, "node_modules", "vercel"), join(dir, "node_modules", ".bin", "vercel")]) {
+      if (existsSync(p)) found.push(`${relative(root, p)}: a local Vercel CLI that npx would run instead of the pinned one; remove it`);
+    }
+  }
+  return found;
+}
+
 export async function deployRecorded(d: {
   root: string; recordFile: string; prod: boolean; run: Run; git: Git; appDir?: string; env?: NodeJS.ProcessEnv;
 }): Promise<DeployResult> {
@@ -67,9 +86,7 @@ export async function deployRecorded(d: {
   if (!existsSync(listFile)) return fail(`the record's file list ${rec.fileList} is missing`);
   const recorded = readFileSync(listFile, "utf8").split("\n").filter(Boolean);
   if (!existsSync(outDir)) return fail(`no build at ${outDir}`);
-  // a repo-root .vercel (gitignored) can move the CLI's project root (its services mode); the release never makes one
-  const rootLink = existsSync(join(d.root, ".vercel")) ? [".vercel at the repository root: the release never writes one; remove it"] : [];
-  const extra = [...rootLink, ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
+  const extra = [...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
   if (extra.length) return fail(`the deploy would upload files the scan never covered; nothing was deployed:\n${extra.join("\n")}`);
   const before = artifactDigest(outDir, app);
   const drift = differences(recorded, before.lines);
@@ -86,7 +103,7 @@ export async function deployRecorded(d: {
   const url = urls[0]!;
 
   const after = artifactDigest(outDir, app);
-  const lateExtra = [...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
+  const lateExtra = [...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
   if (after.sha256 !== rec.artifactSha256 || lateExtra.length) {
     const undo = d.prod
       ? `it is already live in production: roll back now (npx vercel@${VERCEL_CLI} rollback) and release again`

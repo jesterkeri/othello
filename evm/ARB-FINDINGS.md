@@ -317,3 +317,13 @@ The pinned CLI's `findRepoRoot` looks for `.vercel/repo.json` in every folder ab
 holding only `settings` (what `vercel pull` writes for a repo-linked project), a planted ancestor `repo.json` moved the
 deploy to a folder never scanned (the adversary's spec is kept). The release now refuses a `.vercel/repo.json` in any
 folder above the project, and a `project.json` without both `projectId` and `orgId`.
+
+### F-17 twelfth adversary pass: a Vercel config at the repository root; local CLI copies
+
+The pinned CLI's `resolveProjectCwd` finds the git root and turns services mode on from a `vercel.json`, `vercel.toml`
+or `vercel.ts` there, then reads the link from the root and ignores `app/.vercel/project.json` (the adversary's spec is
+kept). From its suspicions: a root `vercel.ts` is compiled with the root `.env` files loaded (around the env
+allow-list), and `npx vercel@59.11.7` would run a local `node_modules/vercel` instead of the registry's pinned CLI.
+`repoRootRefusals` (release-deploy) and the release script now refuse, by name so no git exclude hides them: a root
+`.vercel`, any root Vercel config (`vercel.*`, `now.*`, any case), and a `vercel` package or bin in the root's or app's
+node_modules. The real repository has none of them.

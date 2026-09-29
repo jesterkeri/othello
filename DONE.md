@@ -3122,4 +3122,5 @@ line-break names refused (8597eee, CI green); then every digest field escaped (l
 (66a12dc, CI green); then a linked .vc-config.json refused and upload/project lines namespaced with "/".
 (b36f94b, CI green); then project.json keys allow-listed (repoRoot moved the deploy) and a repo-root .vercel refused;
 the tenth pass's rule-by-rule table has no other uncovered row (76391cc, CI green); then an ancestor .vercel/repo.json
-and a project.json without ids refused. verify: mocha CI list 115 passing. Passes: 11.
+and a project.json without ids refused (d957b89, CI green); then a root Vercel config (services mode) and local CLI
+copies refused. verify: mocha CI list 117 passing. Passes: 12.
