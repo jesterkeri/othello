@@ -591,6 +591,8 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
 export type ReleaseRecord = {
   commit: string; artifactSha256: string; files: number; trustedFactory: Address | null; scannedAt: string;
   vercelCli: string; deploy: string; fileList: string;
+  /** Set just before the CLI is started: a record with this and no URL means a deploy may have happened; check Vercel. */
+  deployStartedAt: string | null;
   deploymentUrl: string | null; target: "preview" | "production" | null; deployedAt: string | null;
 };
 
@@ -602,7 +604,7 @@ export function writeRecord(
   const rec: ReleaseRecord = {
     commit, artifactSha256: dg.sha256, files: dg.files, trustedFactory: trusted, scannedAt: new Date().toISOString(),
     vercelCli: VERCEL_CLI, deploy: `npx tsx ops/release-deploy.ts --record ${relative(root, file)}`, fileList: relative(root, fileList),
-    deploymentUrl: null, target: null, deployedAt: null,
+    deployStartedAt: null, deploymentUrl: null, target: null, deployedAt: null,
   };
   writeFileSync(file, JSON.stringify(rec, null, 2) + "\n");
   writeFileSync(fileList, dg.lines.join("\n") + "\n");

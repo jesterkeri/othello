@@ -3135,4 +3135,5 @@ script end to end (pull and deploy stubbed, empty HOME). Passes: 15. Then the re
 had planted a file in the clone (415b738, CI green, e2e 2.4 s). Then a private build folder under HOME, ancestor refusals,
 the seal verified from the environment itself (0d4821e; CI adapter failed on Google Fonts in two builds). Then a
 private TMPDIR for every later step and tsx --no-cache (another user could rewrite tsx's /tmp cache). verify: all seven
-sealed real-script runs pass. Passes: 18.
+sealed real-script runs pass (3e8e229, CI green). Pass 19: NO DEFECT; its suspicions closed (TMPDIR before any tool;
+deployStartedAt + record copied back on any exit; a started record refused). verify: mocha CI list 129 passing. Passes: 19.

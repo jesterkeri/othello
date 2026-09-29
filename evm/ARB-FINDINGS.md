@@ -410,3 +410,12 @@ with a watcher process and a scratch TMPDIR; the adversary's spec is kept). Afte
 script now sets `TMPDIR="$WORK/tmp"` (mode 700) for every later step (tsx, npm, pnpm, next), and tsx runs with
 `--no-cache`. Stated limit, recorded: the caller's shell (e.g. `BASH_ENV`, which bash runs before the script's first
 line) is the release account's own environment, like PATH and HOME; the script cannot defend against it from inside.
+
+### F-17 nineteenth adversary pass: no defect; two suspicions closed
+
+The pass found no defect (tsx's cache and IPC, the CLI's and Next's temp paths, build-utils' PATH entry, config above
+the clone, and falsifying the record all failed). Its two suspicions are closed anyway: the private folder and
+`TMPDIR` are now set before any tool runs (`pnpm --version` could otherwise leave node's compile cache in the shared
+/tmp); and the record now carries `deployStartedAt`, written before Vercel is contacted, while the EXIT trap copies
+any record the clone wrote back to the checkout on every exit, so an interrupted or failed deploy is never invisible;
+a record whose deploy started is refused a second deploy ("check Vercel, then build a new release").

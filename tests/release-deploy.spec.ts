@@ -363,6 +363,24 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(script, /node_modules\/\.bin\/vercel/);
   });
 
+  it("the record says a deploy started before Vercel is contacted; a started record is not deployed again", async () => {
+    const f = fixture();
+    let seen: ReleaseRecord | undefined;
+    const spy = spyRun(() => { seen = read(f.record); }, "", 1); // the CLI dies without a URL
+    const r = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    assert.equal(r.ok, false);
+    assert.ok(seen?.deployStartedAt, "written before the CLI ran");
+    assert.equal(seen?.target, "production");
+    assert.equal(seen?.deploymentUrl, null);
+    assert.ok(read(f.record).deployStartedAt, "an interrupted deploy stays visible in the record");
+    const again = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spyRun().run, git: cleanGit() });
+    assert.match(!again.ok ? again.reason : "", /started at .* and did not finish; check Vercel/);
+    const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
+    // the record comes back to the checkout on ANY exit, and the private TMPDIR is set before any tool (pnpm) runs
+    assert.match(script, /trap 'if \[ -f "\$WORK\/repo\/release\/robinhood-prebuilt\.json" \]; then [^']*cp [^']*"\$REPO\/release\/"; fi; rm -rf "\$WORK"' EXIT/);
+    assert.ok(script.indexOf('export TMPDIR="$WORK/tmp"') < script.indexOf("pnpm --version"), "TMPDIR before pnpm --version");
+  });
+
   it("the release runs only the verified pinned CLI: installed from the committed lockfile, never npx", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");
@@ -416,7 +434,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const cmds = script.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
     assert.doesNotMatch(cmds, /\bnpx\b/, "no step of the release goes through npx");
     assert.match(script, /--preflight[\s\S]*--install-cli[\s\S]*--run-cli "\$VC" --cwd app -- pull[\s\S]*--run-cli "\$VC" --cwd app -- build[\s\S]*mkdir -p release\n/);
-    assert.match(script, /cp release\/robinhood-prebuilt\.json release\/robinhood-prebuilt\.files\.txt "\$REPO\/release\/"/);
+    assert.match(script, /cp "\$WORK\/repo\/release\/robinhood-prebuilt\.json" "\$WORK\/repo\/release\/robinhood-prebuilt\.files\.txt" "\$REPO\/release\/"/);
     const f = fixture();
     mkdirSync(join(f.app, ".vercel", "builders", "node_modules"), { recursive: true });
     assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);

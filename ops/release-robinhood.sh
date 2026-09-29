@@ -45,18 +45,22 @@ done
 for p in node_modules/vercel node_modules/.bin/vercel app/node_modules/vercel app/node_modules/.bin/vercel; do
   if [ -e "$p" ]; then echo "release: $p is a local Vercel CLI; the release runs only its own verified install (remove it)" >&2; exit 1; fi
 done
+REPO="$(pwd)"
+# the build folder is private (under HOME, mode 700), never the shared /tmp: node resolves a missing package from any
+# node_modules ABOVE the clone, so no other user may be able to write above it (--preflight also refuses such files).
+# It is made before any tool runs, and every temporary file from here on (node's compile cache, tsx's, npm's, pnpm's,
+# next's) lives in it: a shared /tmp would let another user plant or rewrite what a step runs.
+mkdir -p "$HOME/.cache/othello-release" && chmod 700 "$HOME/.cache/othello-release"
+WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"
+# on ANY exit, a record the clone wrote (even one that only says a deploy started) comes back before the folder goes, so
+# an interrupted or failed deploy is never invisible in the checkout
+trap 'if [ -f "$WORK/repo/release/robinhood-prebuilt.json" ]; then mkdir -p "$REPO/release" && cp "$WORK/repo/release/robinhood-prebuilt.json" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"; fi; rm -rf "$WORK"' EXIT
+export TMPDIR="$WORK/tmp"; mkdir -m 700 "$TMPDIR"
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 [ "$(pnpm --version 2>/dev/null)" = "10.32.1" ] || { echo "release: needs pnpm 10.32.1 on PATH (npm install -g pnpm@10.32.1)" >&2; exit 1; }
 [ -f app/.vercel/project.json ] || { echo "release: link the Vercel project first (app/.vercel/project.json)" >&2; exit 1; }
-REPO="$(pwd)"; COMMIT="$(git rev-parse HEAD)"
-# the build folder is private (under HOME, mode 700), never the shared /tmp: node resolves a missing package from any
-# node_modules ABOVE the clone, so no other user may be able to write above it (--preflight also refuses such files)
-mkdir -p "$HOME/.cache/othello-release" && chmod 700 "$HOME/.cache/othello-release"
-WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"; trap 'rm -rf "$WORK"' EXIT
-# every temporary file of every later step (tsx's transform cache, npm's, pnpm's, next's) lives in the private folder:
-# a shared /tmp would let another user plant or rewrite what a step runs
-export TMPDIR="$WORK/tmp"; mkdir -m 700 "$TMPDIR"
+COMMIT="$(git rev-parse HEAD)"
 
 # the fresh clone: only the commit's files, plus the project link (checked by --preflight inside the clone). git runs
 # with no system or global config, no clone templates and no hooks, so nothing outside the commit runs or rewrites it.
@@ -78,8 +82,6 @@ RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 mkdir -p release
 "${TSX[@]}" ops/trust-config.ts --rpc "$RPC" --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json
 "${TSX[@]}" ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli "$VC" $PROD
-mkdir -p "$REPO/release"
-cp release/robinhood-prebuilt.json release/robinhood-prebuilt.files.txt "$REPO/release/"
 echo
 echo "Released from a fresh clone of $COMMIT. Commit release/robinhood-prebuilt.json and release/robinhood-prebuilt.files.txt"
 echo "(the config review reads them)."

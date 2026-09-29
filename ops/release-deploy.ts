@@ -154,6 +154,7 @@ export async function deployRecorded(d: {
   if (!existsSync(d.recordFile)) return fail(`no release record at ${d.recordFile}; run ops/release-robinhood.sh`);
   const rec = JSON.parse(readFileSync(d.recordFile, "utf8")) as ReleaseRecord;
   if (rec.deploymentUrl) return fail(`this record was already deployed to ${rec.deploymentUrl}; build a new release`);
+  if (rec.deployStartedAt) return fail(`a deploy of this record started at ${rec.deployStartedAt} and did not finish; check Vercel, then build a new release`);
   if (rec.vercelCli !== VERCEL_CLI) return fail(`the record was built with Vercel CLI ${rec.vercelCli}; this deploy pins ${VERCEL_CLI}`);
   const head = d.git.head();
   if (head !== rec.commit) return fail(`the checkout is ${head}, but the record was built from ${rec.commit}`);
@@ -180,6 +181,9 @@ export async function deployRecorded(d: {
   } catch (e) {
     return fail(`the deploy runs only the verified pinned CLI (ops/release-deploy.ts --install-cli): ${e instanceof Error ? e.message : e}`);
   }
+  // written before Vercel is contacted, so an interrupted deploy still leaves a record that says one may have happened
+  const started: ReleaseRecord = { ...rec, deployStartedAt: new Date().toISOString(), target: d.prod ? "production" : "preview" };
+  writeFileSync(d.recordFile, JSON.stringify(started, null, 2) + "\n");
   const r = await d.run(process.execPath, [cli, "deploy", "--prebuilt", ...(d.prod ? ["--prod"] : [])], app);
   const urls = [...new Set(r.stdout.split("\n").map((l) => l.trim()).filter((l) => URL_LINE.test(l)))];
   if (r.code !== 0 || urls.length !== 1) {
@@ -199,7 +203,7 @@ export async function deployRecorded(d: {
         [...lateExtra, ...differences(recorded, after.lines)].slice(0, 20).join("\n"),
     );
   }
-  const done: ReleaseRecord = { ...rec, deploymentUrl: url, target: d.prod ? "production" : "preview", deployedAt: new Date().toISOString() };
+  const done: ReleaseRecord = { ...started, deploymentUrl: url, deployedAt: new Date().toISOString() };
   writeFileSync(d.recordFile, JSON.stringify(done, null, 2) + "\n");
   return { ok: true, url };
 }
