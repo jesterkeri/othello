@@ -322,6 +322,26 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8"), /if \[ -e \.vercel \]/);
   });
 
+  it("a project.json without ids, or a repo link in a folder above the app, is refused", async () => {
+    const f = fixture();
+    writeFileSync(join(f.app, ".vercel", "project.json"), JSON.stringify({ settings: { framework: "nextjs" } }));
+    writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root);
+    const r1 = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+    assert.match(!r1.ok ? r1.reason : "", /project\.json without projectId[\s\S]*project\.json without orgId/);
+
+    const g = fixture();
+    // a repo link one level above the repository (the CLI walks up from app/)
+    const parent = mkdtempSync(join(tmpdir(), "release-deploy-parent-"));
+    const nested = join(parent, "repo");
+    execFileSync("cp", ["-a", g.root, nested]);
+    mkdirSync(join(parent, ".vercel"));
+    writeFileSync(join(parent, ".vercel", "repo.json"), JSON.stringify({ orgId: "o", projects: [{ id: "p", name: "x", directory: "." }] }));
+    const spy = spyRun();
+    const r2 = await deployRecorded({ root: nested, recordFile: join(nested, "release", "robinhood-prebuilt.json"), prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r2.ok ? r2.reason : "", /repo\.json \(a repo link above the project\)/);
+    assert.equal(spy.calls.length, 0);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");

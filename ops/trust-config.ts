@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";
@@ -388,6 +388,10 @@ export function cliExtraUploads(projectDir: string): string[] {
         const j = JSON.parse(readFileSync(pj, "utf8")) as Record<string, unknown> & { settings?: { rootDirectory?: unknown } };
         // only the keys `vercel pull` writes: `repoRoot` or `projectRootDirectory` would move the deploy's cwd
         for (const k of Object.keys(j)) if (!PROJECT_JSON_KEYS.has(k)) found.push(`.vercel/project.json key ${JSON.stringify(k)}`);
+        // without both ids the CLI treats the folder as repo-linked and looks for a repo link instead
+        for (const k of ["projectId", "orgId"]) {
+          if (typeof j[k] !== "string" || j[k] === "") found.push(`.vercel/project.json without ${k}`);
+        }
         const rd = j.settings?.rootDirectory;
         if (rd !== undefined && rd !== null && rd !== "" && rd !== ".") found.push(`.vercel/project.json settings.rootDirectory ${JSON.stringify(rd)}`);
       } catch {
@@ -408,6 +412,12 @@ export function cliExtraUploads(projectDir: string): string[] {
       else if (n === "microfrontends.json" || n === "microfrontends.jsonc") found.push(relative(projectDir, p).split(sep).join("/"));
     }
   };
+  // the CLI's findRepoRoot looks for `.vercel/repo.json` in every folder above the project, which would move the
+  // deploy's cwd to that folder: any one is refused
+  for (let d = dirname(resolve(projectDir)); ; d = dirname(d)) {
+    if (existsSync(join(d, ".vercel", "repo.json"))) found.push(`${join(d, ".vercel", "repo.json")} (a repo link above the project)`);
+    if (dirname(d) === d) break;
+  }
   if (existsSync(projectDir)) {
     walk(projectDir);
     for (const n of readdirSync(projectDir)) if (/^(vercel|now)\.[^.]+$/i.test(n)) found.push(n);

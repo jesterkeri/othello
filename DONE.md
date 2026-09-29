@@ -3121,4 +3121,5 @@ refused (7e29684, CI green after re-running a Google Fonts fetch failure); then 
 line-break names refused (8597eee, CI green); then every digest field escaped (link text could forge a line).
 (66a12dc, CI green); then a linked .vc-config.json refused and upload/project lines namespaced with "/".
 (b36f94b, CI green); then project.json keys allow-listed (repoRoot moved the deploy) and a repo-root .vercel refused;
-the tenth pass's rule-by-rule table has no other uncovered row. verify: mocha CI list 113 passing. Passes: 10.
+the tenth pass's rule-by-rule table has no other uncovered row (76391cc, CI green); then an ancestor .vercel/repo.json
+and a project.json without ids refused. verify: mocha CI list 115 passing. Passes: 11.

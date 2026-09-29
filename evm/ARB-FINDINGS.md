@@ -310,3 +310,10 @@ the CLI honours by switching its cwd and output directory, so a record written w
 folder (the adversary's spec is kept). `project.json` may now hold only the keys `vercel pull` writes (projectId,
 orgId, projectName, settings), and a `.vercel` folder at the repository root (which can move the CLI's project root)
 is refused by the release script and by release-deploy.
+
+### F-17 eleventh adversary pass: a repo link above the project
+
+The pinned CLI's `findRepoRoot` looks for `.vercel/repo.json` in every folder above `app/`; with a `project.json`
+holding only `settings` (what `vercel pull` writes for a repo-linked project), a planted ancestor `repo.json` moved the
+deploy to a folder never scanned (the adversary's spec is kept). The release now refuses a `.vercel/repo.json` in any
+folder above the project, and a `project.json` without both `projectId` and `orgId`.
