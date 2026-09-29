@@ -4,7 +4,9 @@
 #
 #   ops/release-robinhood.sh [--prod]   preview by default; production only on Joshua's go
 #
-# 1. refuses a checkout with any change or untracked file (a release is built from a commit);
+# 1. refuses a checkout with any change or untracked file (a release is built from a commit), then builds from a FRESH
+#    CLONE of that commit with dependencies installed from the lockfiles, so no gitignored file (an app/.env*.local that
+#    next build would inline, a build cache, anything under app/.vercel or node_modules) can take part;
 # 2. installs the pinned Vercel CLI with npm ci from ops/vercel-cli's lockfile into a fresh folder (never npx), checks
 #    it is exactly VERCEL_CLI at VERCEL_CLI_INTEGRITY, and builds with it (tests/release-deploy.spec.ts checks this);
 # 3. trust-config scans every uploaded file and writes release/robinhood-prebuilt.json and its .files.txt;
@@ -28,20 +30,30 @@ for p in node_modules/vercel node_modules/.bin/vercel app/node_modules/vercel ap
 done
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
-command -v pnpm >/dev/null || { echo "release: the Vercel build runs pnpm; install it first (npm install -g pnpm@10.32.1)" >&2; exit 1; }
-# app/.vercel is build state (gitignored): keep only the project link, so nothing planted there (a builders folder,
-# a compiled config, an old output) takes part; pull and build then write it afresh.
+if [ -n "${NODE_OPTIONS:-}" ]; then echo "release: NODE_OPTIONS is set; it would change every node step of the release; unset it" >&2; exit 1; fi
+[ "$(pnpm --version 2>/dev/null)" = "10.32.1" ] || { echo "release: needs pnpm 10.32.1 on PATH (npm install -g pnpm@10.32.1)" >&2; exit 1; }
 [ -f app/.vercel/project.json ] || { echo "release: link the Vercel project first (app/.vercel/project.json)" >&2; exit 1; }
+REPO="$(pwd)"; COMMIT="$(git rev-parse HEAD)"
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-cp app/.vercel/project.json "$WORK/project.json"
-rm -rf app/.vercel && mkdir app/.vercel && cp "$WORK/project.json" app/.vercel/project.json
+
+# the fresh clone: only the commit's files, plus the project link (checked by --preflight inside the clone)
+git clone -q --no-local "$REPO" "$WORK/repo"
+git -C "$WORK/repo" checkout -q --detach "$COMMIT"
+mkdir "$WORK/repo/app/.vercel" && cp app/.vercel/project.json "$WORK/repo/app/.vercel/project.json"
+cd "$WORK/repo"
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm -C app install --frozen-lockfile --ignore-scripts
 npx tsx ops/release-deploy.ts --preflight   # repo root, app/.vercel and the project link (keys, ids)
 mkdir "$WORK/cli"
 VC="$(npx tsx ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified vercel@59.11.7 vc.js
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 npx tsx ops/release-deploy.ts --run-cli "$VC" --cwd app -- pull --yes --environment="$TARGET"
 npx tsx ops/release-deploy.ts --run-cli "$VC" --cwd app -- build --yes $PROD
+mkdir -p release
 npx tsx ops/trust-config.ts --rpc "$RPC" --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json
 npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli "$VC" $PROD
+mkdir -p "$REPO/release"
+cp release/robinhood-prebuilt.json release/robinhood-prebuilt.files.txt "$REPO/release/"
 echo
-echo "Released. Commit release/robinhood-prebuilt.json and release/robinhood-prebuilt.files.txt (the config review reads them)."
+echo "Released from a fresh clone of $COMMIT. Commit release/robinhood-prebuilt.json and release/robinhood-prebuilt.files.txt"
+echo "(the config review reads them)."

@@ -399,8 +399,12 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     for (const k of ["VERCEL_BUILDERS_DIR", "NODE_OPTIONS", "VERCEL_CLI_USE_NATIVE_BINARY"]) assert.equal(calls[0]!.o.env[k], undefined, k);
     assert.throws(() => execPinnedCli("/tmp/not-an-install/node_modules/vercel/dist/vc.js", [], "/tmp", () => 0));
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
-    assert.match(script, /rm -rf app\/\.vercel && mkdir app\/\.vercel && cp "\$WORK\/project\.json" app\/\.vercel\/project\.json/);
-    assert.match(script, /--preflight[\s\S]*--install-cli[\s\S]*--run-cli "\$VC" --cwd app -- pull[\s\S]*--run-cli "\$VC" --cwd app -- build/);
+    // the release builds from a fresh clone of the commit, installs from the lockfiles, and copies only the record back
+    assert.match(script, /git clone -q --no-local "\$REPO" "\$WORK\/repo"\ngit -C "\$WORK\/repo" checkout -q --detach "\$COMMIT"/);
+    assert.match(script, /mkdir "\$WORK\/repo\/app\/\.vercel" && cp app\/\.vercel\/project\.json "\$WORK\/repo\/app\/\.vercel\/project\.json"\ncd "\$WORK\/repo"/);
+    assert.match(script, /cd "\$WORK\/repo"\npnpm install --frozen-lockfile --ignore-scripts\npnpm -C app install --frozen-lockfile --ignore-scripts\n/);
+    assert.match(script, /--preflight[\s\S]*--install-cli[\s\S]*--run-cli "\$VC" --cwd app -- pull[\s\S]*--run-cli "\$VC" --cwd app -- build[\s\S]*mkdir -p release\n/);
+    assert.match(script, /cp release\/robinhood-prebuilt\.json release\/robinhood-prebuilt\.files\.txt "\$REPO\/release\/"/);
     const f = fixture();
     mkdirSync(join(f.app, ".vercel", "builders", "node_modules"), { recursive: true });
     assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);

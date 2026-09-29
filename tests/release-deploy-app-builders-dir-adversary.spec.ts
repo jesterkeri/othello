@@ -26,10 +26,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { sealedReleaseEnv } from "./release-script-harness.ts";
+
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
 describe("release adversary: a builder left in app/.vercel/builders runs instead of the locked one", function () {
-  this.timeout(300_000);
+  this.timeout(900_000);
 
   it("the release's build with the pinned CLI never executes code from app/.vercel/builders", () => {
     const tmp = mkdtempSync(join(tmpdir(), "release-builders-dir-"));
@@ -56,23 +58,9 @@ describe("release adversary: a builder left in app/.vercel/builders runs instead
     assert.equal(execFileSync("git", ["-C", repo, "status", "--porcelain", "--untracked-files=all"], { encoding: "utf8" }), "",
       "precondition: the planted folder is invisible to the release's clean-checkout check");
 
-    // the pull and deploy steps become no-ops; every other npx call is the real npx. HOME is empty: no Vercel login.
-    // (Adapted after the fix, F-17 fourteenth pass: the release runs the CLI through release-deploy.ts, so a `node`
-    // shim no longer sits in its path, and with the builder gone the release would otherwise reach its deploy step.)
-    const realNpx = execFileSync("sh", ["-c", "command -v npx"], { encoding: "utf8" }).trim();
-    const shim = join(tmp, "shim");
-    mkdirSync(shim);
-    writeFileSync(join(shim, "npx"),
-      `#!/bin/sh\ncase " $* " in\n` +
-      `  *" ops/release-deploy.ts --run-cli "*" pull "*) echo "shim: pull skipped" >&2; exit 0;;\n` +
-      `  *" ops/release-deploy.ts --record "*) echo "shim: deploy skipped" >&2; exit 0;;\n` +
-      `esac\nexec ${JSON.stringify(realNpx)} "$@"\n`);
-    chmodSync(join(shim, "npx"), 0o755);
-    const home = mkdtempSync(join(tmpdir(), "release-builders-home-"));
-    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${shim}:${process.env.PATH}`, HOME: home, VERCEL_TELEMETRY_DISABLED: "1" };
-    delete env.XDG_DATA_HOME;
-    delete env.XDG_CONFIG_HOME;
-    delete env.VERCEL_TOKEN;
+    // sealed: pull and deploy stubbed (the deploy step copies the upload folder), empty HOME, no Vercel login
+    const uploaded = join(tmp, "uploaded-output");
+    const env = sealedReleaseEnv(tmp, uploaded);
     const r = spawnSync("bash", [join(repo, "ops", "release-robinhood.sh")], { cwd: repo, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
     const tail = `${r.stdout}\n${r.stderr}`.split("\n").filter(Boolean).slice(-40).join("\n");
     assert.equal(existsSync(sentinel), false,

@@ -355,3 +355,19 @@ environment as the deploy (no `VERCEL_*`, `NODE_OPTIONS`, `ESBUILD_*` or builder
 through that path completes (1,073 output files, gate and preflight pass). The adversary's spec is kept, made
 hermetic (an `npx` shim skips only the pull and deploy steps, HOME is empty so no Vercel login exists) and with a
 second check that the locked `@vercel/next` did run.
+
+### F-17 fifteenth adversary pass: gitignored files in the checkout take part in the build
+
+`next build` loads `app/.env.production.local`, `.env.local`, `.env.production` and `.env` on its own and inlines every
+`NEXT_PUBLIC_*` into the client chunks; all are gitignored, so a developer's local env file shipped to every browser
+under a clean record (proved with a sentinel RPC URL). It also found that nothing created `release/`, so the release
+failed on a fresh checkout, and that `app/.next/cache` survived the reset. The class, gitignored state in the working
+checkout, is now closed structurally: the release checks the checkout (clean, no re-targeting env, no `NODE_OPTIONS`,
+pnpm 10.32.1, a project link), then clones that commit into a fresh temporary folder (`git clone --no-local`,
+`checkout --detach`), copies in only the project link, installs root and app dependencies with `pnpm install
+--frozen-lockfile --ignore-scripts`, and runs every later step there (preflight, the verified CLI install, pull and build
+through `--run-cli`, `mkdir -p release`, scan and record, deploy); only the record and its file list are copied back.
+Nothing gitignored in the working checkout exists in the clone, and the checks themselves now run with freshly installed
+dependencies. The adversary's spec is kept, adapted: the sealed harness (tests/release-script-harness.ts) copies exactly
+the folder that would be uploaded before skipping the deploy, the spec searches that copy, and it no longer creates
+`release/` itself; it also asserts the release completed and reached its deploy step with an output.

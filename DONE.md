@@ -3127,4 +3127,7 @@ copies refused (ffb3547, CI green). Then on branch task/A1-r4-cli-pin (Codex r4 
 never runs Vercel through npx; ops/vercel-cli lockfile, npm ci into a fresh folder, verifyPinnedCli, node vc.js.
 verify: mocha CI list 119 passing (the real build uses the lockfile CLI), CI green on ee474d2 after a Google Fonts
 re-run. Then app/.vercel reset to the project link, --preflight, pull/build via --run-cli in the allow-listed env; a real
-build through it completes and passes the gate. Passes: 14.
+build through it completes and passes the gate (1d4c027; CI needed pnpm in the adapter job, c35e23b). Then the release
+builds from a fresh clone of the commit (a gitignored app/.env.local was inlined into the bundle; release/ was never
+created; .next cache survived). verify: mocha CI list 122 passing, the two sealed release-script specs run the real
+script end to end (pull and deploy stubbed, empty HOME). Passes: 15.
