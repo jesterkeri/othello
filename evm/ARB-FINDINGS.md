@@ -301,3 +301,12 @@ linked `.func` folders), but the CLI picks configs by the name `.vc-config.json`
 the sources it names: those were never digested (the adversary's spec is kept). A linked `.vc-config.json` is now
 refused (the real build has none). From its suspicion: upload and project lines now start with `/`, which no relative
 output path can, so an output file named `upload:…` cannot stand in for an upload line (tested).
+
+### F-17 tenth adversary pass (a full rule-by-rule table): project.json repoRoot
+
+Asked for a systematic table (each rule the pinned CLI uses to choose uploads against its digest line or refusal), the
+pass found every rule covered except one: `repoRoot` (or `projectRootDirectory`) in `app/.vercel/project.json`, which
+the CLI honours by switching its cwd and output directory, so a record written with it present deployed another
+folder (the adversary's spec is kept). `project.json` may now hold only the keys `vercel pull` writes (projectId,
+orgId, projectName, settings), and a `.vercel` folder at the repository root (which can move the CLI's project root)
+is refused by the release script and by release-deploy.

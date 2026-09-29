@@ -303,6 +303,25 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(lines.filter((l) => l.startsWith("/upload:")).length, real.length);
   });
 
+  it("project.json keys beyond what vercel pull writes, and a repo-root .vercel, are refused", async () => {
+    for (const extra of [{ repoRoot: "/tmp/elsewhere" }, { projectRootDirectory: "sub" }]) {
+      const f = fixture();
+      writeFileSync(join(f.app, ".vercel", "project.json"), JSON.stringify({ projectId: "p", orgId: "o", settings: {}, ...extra }));
+      writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root); // present when recorded
+      const spy = spyRun();
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      assert.match(!r.ok ? r.reason : "", new RegExp(`project\\.json key "${Object.keys(extra)[0]}"`));
+      assert.equal(spy.calls.length, 0);
+    }
+    const g = fixture();
+    mkdirSync(join(g.root, ".vercel"));
+    const spy = spyRun();
+    const r = await deployRecorded({ root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r.ok ? r.reason : "", /\.vercel at the repository root/);
+    assert.equal(spy.calls.length, 0);
+    assert.match(readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8"), /if \[ -e \.vercel \]/);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");

@@ -344,6 +344,9 @@ export function bundleAddresses(nextDir: string, trusted: Address | null, public
 
 const MAX_SCANNED_FILE = 50 * 1024 * 1024;
 
+/** The keys `vercel pull` (59.11.7) writes into `.vercel/project.json`; any other (repoRoot, projectRootDirectory, …) is refused. */
+const PROJECT_JSON_KEYS = new Set(["projectId", "orgId", "projectName", "settings"]);
+
 /**
  * What `vercel pull` and `vercel build` (59.11.7) leave in `<project>/.vercel` for this app, and nothing else. `node`
  * holds only the build's `package-manifest.json` (dependency list; the deploy command never reads it).
@@ -382,7 +385,10 @@ export function cliExtraUploads(projectDir: string): string[] {
     const pj = join(vdir, "project.json");
     if (existsSync(pj)) {
       try {
-        const rd = (JSON.parse(readFileSync(pj, "utf8")) as { settings?: { rootDirectory?: unknown } }).settings?.rootDirectory;
+        const j = JSON.parse(readFileSync(pj, "utf8")) as Record<string, unknown> & { settings?: { rootDirectory?: unknown } };
+        // only the keys `vercel pull` writes: `repoRoot` or `projectRootDirectory` would move the deploy's cwd
+        for (const k of Object.keys(j)) if (!PROJECT_JSON_KEYS.has(k)) found.push(`.vercel/project.json key ${JSON.stringify(k)}`);
+        const rd = j.settings?.rootDirectory;
         if (rd !== undefined && rd !== null && rd !== "" && rd !== ".") found.push(`.vercel/project.json settings.rootDirectory ${JSON.stringify(rd)}`);
       } catch {
         found.push(".vercel/project.json (unreadable)");

@@ -67,7 +67,9 @@ export async function deployRecorded(d: {
   if (!existsSync(listFile)) return fail(`the record's file list ${rec.fileList} is missing`);
   const recorded = readFileSync(listFile, "utf8").split("\n").filter(Boolean);
   if (!existsSync(outDir)) return fail(`no build at ${outDir}`);
-  const extra = [...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
+  // a repo-root .vercel (gitignored) can move the CLI's project root (its services mode); the release never makes one
+  const rootLink = existsSync(join(d.root, ".vercel")) ? [".vercel at the repository root: the release never writes one; remove it"] : [];
+  const extra = [...rootLink, ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
   if (extra.length) return fail(`the deploy would upload files the scan never covered; nothing was deployed:\n${extra.join("\n")}`);
   const before = artifactDigest(outDir, app);
   const drift = differences(recorded, before.lines);
