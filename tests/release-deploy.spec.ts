@@ -7,12 +7,12 @@
  *   npx mocha --import=tsx tests/release-deploy.spec.ts
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
+import { deployEnv, deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
@@ -199,6 +199,36 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       assert.match(!r.ok ? r.reason : "", /vercel deploy failed/);
       assert.equal(read(f.record).deploymentUrl, null);
     }
+  });
+
+  it("an environment that re-targets the CLI is refused, and the CLI gets no VERCEL_* switch", async () => {
+    for (const k of ["VERCEL_ORG_ID", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"]) {
+      const f = fixture();
+      const spy = spyRun();
+      const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit(), env: { [k]: "prj_other" } });
+      assert.match(!r.ok ? r.reason : "", new RegExp(`${k} set in the environment would deploy to another project`));
+      assert.equal(spy.calls.length, 0);
+    }
+    const env = deployEnv({ PATH: "/bin", HOME: "/h", VERCEL_USE_EXPERIMENTAL_SERVICES: "1", VERCEL_PROJECT_ID: "x", VERCEL_TOKEN: "t", SECRET: "s" });
+    assert.deepEqual(env, { VERCEL_TELEMETRY_DISABLED: "1", PATH: "/bin", HOME: "/h" });
+    assert.match(readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8"), /for v in VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TEAM_ID/);
+  });
+
+  it("a linked filePathMap source is bound by its link text as well as its bytes", async () => {
+    const f = fixture();
+    const target = join(f.app, ".next", "server", "app", "page-a.js");
+    writeFileSync(target, "module.exports = 'server page'"); // same bytes as page.js
+    rmSync(f.server);
+    symlinkSync("page-a.js", f.server);
+    writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root);
+    // re-point the link to another file with identical bytes: the upload's link text changes, so the deploy refuses
+    writeFileSync(join(f.app, ".next", "server", "app", "page-b.js"), "module.exports = 'server page'");
+    rmSync(f.server);
+    symlinkSync("page-b.js", f.server);
+    const spy = spyRun();
+    const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*-> page-b\.js/);
+    assert.equal(spy.calls.length, 0);
   });
 
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {

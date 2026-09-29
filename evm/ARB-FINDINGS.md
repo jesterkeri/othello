@@ -243,3 +243,13 @@ what `vercel pull` and `vercel build` write (`project.json`, `README.txt`, `outp
 `.env.<target>.local`, names only, never read); no Vercel config file of any name (`/^(vercel|now)\.[^.]+$/`) in `app/`;
 `rootDirectory` unset; no microfrontends file. `.vercel/project.json` is in the digest, so a change after the record is
 refused. The real offline build passes the allow-list (the clean-gate case), and the adversary's spec is kept.
+
+### F-17 third adversary pass: absolute filePathMap sources and the CLI's environment
+
+(1) `uploadSet` read a filePathMap source with `resolve`, the pinned CLI with `join`: for an absolute value the release
+hashed `v` while the CLI uploads `<app>/<v>` (proved with the CLI's collector; the adversary's spec is kept). An
+absolute source is now refused (no real build has one); relative values behave as before (join and resolve agree).
+`release-deploy` also refuses on any upload-set failure before and after the deploy, and a linked source's link text
+is in the digest (the CLI uploads the link). (2) `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `VERCEL_TEAM_ID` re-target the
+CLI away from the recorded `.vercel/project.json`: the release script and `release-deploy` refuse them, and the deploy
+CLI runs with an allow-listed environment (PATH, HOME, locale, XDG, proxy, nvm), so no other `VERCEL_*` switch reaches it.

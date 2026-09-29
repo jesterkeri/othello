@@ -15,6 +15,9 @@ if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
   git status --short >&2; exit 1
 fi
+for v in VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TEAM_ID; do
+  if [ -n "${!v:-}" ]; then echo "release: $v is set; it would point the Vercel CLI at another project; unset it" >&2; exit 1; fi
+done
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 command -v pnpm >/dev/null || { echo "release: the Vercel build runs pnpm; install it first (npm install -g pnpm@10.32.1)" >&2; exit 1; }

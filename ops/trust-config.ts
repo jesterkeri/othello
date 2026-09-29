@@ -30,7 +30,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";
@@ -407,12 +407,12 @@ export function cliExtraUploads(projectDir: string): string[] {
  * the project dir or in its node_modules' real location (node_modules may itself be a link).
  */
 export function uploadSet(outDir: string, projectDir: string): {
-  files: { key: string; path: string }[];
+  files: { key: string; path: string; link?: string }[];
   dirs: { key: string; path: string }[];
   failures: string[];
 } {
   const failures: string[] = [];
-  const files = new Map<string, { key: string; path: string }>();
+  const files = new Map<string, { key: string; path: string; link?: string }>();
   const dirs = new Map<string, { key: string; path: string }>();
   const roots = [realpathSync(projectDir)];
   const nm = join(projectDir, "node_modules");
@@ -428,13 +428,18 @@ export function uploadSet(outDir: string, projectDir: string): {
       let cfg: { filePathMap?: Record<string, string> };
       try { cfg = JSON.parse(readFileSync(p, "utf8")); } catch { failures.push(`${relative(outDir, p)}: unreadable`); continue; }
       for (const [key, v] of Object.entries(cfg.filePathMap ?? {})) {
-        const abs = resolve(projectDir, v);
+        // The pinned CLI joins (buildFileTree2: `join(path, v)`), so for an absolute value it uploads `<project>/<v>`
+        // while resolve() would read `v` itself: refused rather than interpreted (no real build has one). For a relative
+        // value join and resolve agree; one that climbs out of the project is dropped by the CLI, and hashed here only
+        // if it stays in the project or node_modules' real location (hashing more than is uploaded is harmless).
+        if (isAbsolute(String(v))) { failures.push(`upload ${v}: an absolute filePathMap source`); continue; }
+        const abs = resolve(projectDir, String(v));
         let real: string;
         try { real = realpathSync(abs); } catch { failures.push(`upload ${v}: missing`); continue; }
         if (!inside(real)) { failures.push(`upload ${v}: outside the project`); continue; }
         // a package link (pnpm) resolves to a folder: its needed files are listed as their own entries
         if (statSync(real).isDirectory()) dirs.set(key, { key, path: real });
-        else files.set(real, { key, path: real });
+        else files.set(real, { key, path: real, ...(lstatSync(abs).isSymbolicLink() ? { link: readlinkSync(abs) } : {}) });
       }
     }
   };
@@ -511,7 +516,10 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   };
   walk(root);
   const up = uploadSet(root, projectDir);
-  for (const u of up.files) lines.push(`upload:${u.key}\t${createHash("sha256").update(readFileSync(u.path)).digest("hex")}`);
+  // a linked source is uploaded as its link text, so the text is bound as well as the target's bytes
+  for (const u of up.files) {
+    lines.push(`upload:${u.key}\t${createHash("sha256").update(readFileSync(u.path)).digest("hex")}${u.link === undefined ? "" : `\t-> ${u.link}`}`);
+  }
   // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
   const pj = join(projectDir, ".vercel", "project.json");
   if (existsSync(pj)) lines.push(`project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);

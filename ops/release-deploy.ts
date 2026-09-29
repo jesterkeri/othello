@@ -18,7 +18,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERCEL_CLI, artifactDigest, cliExtraUploads, type ReleaseRecord } from "./trust-config.ts";
+import { VERCEL_CLI, artifactDigest, cliExtraUploads, uploadSet, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 export type Git = { head(): string; changed(): string[] };
@@ -35,10 +35,23 @@ function differences(recorded: string[], now: string[]): string[] {
   return [...recorded.filter((l) => !b.has(l)).map((l) => `- ${l}`), ...now.filter((l) => !a.has(l)).map((l) => `+ ${l}`)];
 }
 
+/** These re-target the CLI at another project or team than the recorded `.vercel/project.json`: refused. */
+export const RETARGETING_ENV = ["VERCEL_ORG_ID", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"];
+/** The only variables the deploy CLI is given; every other VERCEL_* switch (experimental modes, overrides) is dropped. */
+const PASSED_ENV = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "TMPDIR", "XDG_DATA_HOME", "XDG_CONFIG_HOME",
+  "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "NVM_DIR", "NVM_BIN"];
+export function deployEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { VERCEL_TELEMETRY_DISABLED: "1" };
+  for (const k of PASSED_ENV) if (env[k] !== undefined) out[k] = env[k];
+  return out;
+}
+
 export async function deployRecorded(d: {
-  root: string; recordFile: string; prod: boolean; run: Run; git: Git; appDir?: string;
+  root: string; recordFile: string; prod: boolean; run: Run; git: Git; appDir?: string; env?: NodeJS.ProcessEnv;
 }): Promise<DeployResult> {
   const fail = (reason: string): DeployResult => ({ ok: false, reason });
+  const retarget = RETARGETING_ENV.filter((k) => (d.env ?? process.env)[k]);
+  if (retarget.length) return fail(`${retarget.join(", ")} set in the environment would deploy to another project than the recorded one; unset it`);
   const app = d.appDir ?? join(d.root, "app");
   const outDir = join(app, ".vercel", "output");
   if (!existsSync(d.recordFile)) return fail(`no release record at ${d.recordFile}; run ops/release-robinhood.sh`);
@@ -54,7 +67,7 @@ export async function deployRecorded(d: {
   if (!existsSync(listFile)) return fail(`the record's file list ${rec.fileList} is missing`);
   const recorded = readFileSync(listFile, "utf8").split("\n").filter(Boolean);
   if (!existsSync(outDir)) return fail(`no build at ${outDir}`);
-  const extra = cliExtraUploads(app);
+  const extra = [...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
   if (extra.length) return fail(`the deploy would upload files the scan never covered; nothing was deployed:\n${extra.join("\n")}`);
   const before = artifactDigest(outDir, app);
   const drift = differences(recorded, before.lines);
@@ -71,7 +84,7 @@ export async function deployRecorded(d: {
   const url = urls[0]!;
 
   const after = artifactDigest(outDir, app);
-  const lateExtra = cliExtraUploads(app);
+  const lateExtra = [...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
   if (after.sha256 !== rec.artifactSha256 || lateExtra.length) {
     const undo = d.prod
       ? `it is already live in production: roll back now (npx vercel@${VERCEL_CLI} rollback) and release again`
@@ -89,7 +102,7 @@ export async function deployRecorded(d: {
 /** Real runner: progress and prompts on the terminal (stderr, stdin); stdout captured for the URL and echoed. */
 const run: Run = (cmd, args, cwd) =>
   new Promise((done, reject) => {
-    const p = spawn(cmd, args, { cwd, stdio: ["inherit", "pipe", "inherit"] });
+    const p = spawn(cmd, args, { cwd, env: deployEnv(process.env), stdio: ["inherit", "pipe", "inherit"] });
     let stdout = "";
     p.stdout.on("data", (b: Buffer) => {
       stdout += b.toString();

@@ -421,6 +421,8 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.match(uploadSet(out, proj).failures.join(), /missing/);
     cfg({ "passwd": "../../../../../../../../etc/hostname" });
     assert.match(uploadSet(out, proj).failures.join(), /outside the project/);
+    cfg({ "abs.js": join(proj, ".next/server/page.js") }); // the CLI would upload <proj>/<that path>, not that file
+    assert.match(uploadSet(out, proj).failures.join(), /an absolute filePathMap source/);
   });
 
   it("the USDG the adapter approves is the USDG the gate pins", async () => {
