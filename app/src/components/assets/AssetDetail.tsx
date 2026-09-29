@@ -186,7 +186,6 @@ export default function AssetDetail({ symbol }: { symbol: string }) {
                 <span>The demo circle locks a labelled devnet mirror of NFLXx, not the real token on this page, and puts it through the same x1 to x10.</span>
                 <span className={d.demoBtns}>
                   <Link href="/circle/demo" className={d.btnInk}>See the demo circle ↗</Link>
-                  <Link href="/split-lab" className={d.btnLine}>Open Split lab</Link>
                 </span>
               </section>
             )}

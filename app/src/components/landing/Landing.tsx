@@ -23,7 +23,8 @@ export type LandingProps = {
   onRetry?: () => void;
 };
 
-const NAV = ['Home', 'Circles', 'xStocks', 'Portfolio', 'Split lab', 'How it works'];
+// Split lab is kept in the code (/split-lab) but no longer linked from the UI (Joshua, 2026-09-29).
+const NAV = ['Home', 'Circles', 'xStocks', 'Portfolio', 'How it works'];
 const TABS = ['Pay in', 'Get the pot', 'If someone stops'];
 const PHRASES = ['Nobody has to trust anybody', 'You still own it', 'You get it back when the circle ends', 'Locked stock pays for anyone who stops'];
 const TAPE_HUES = ['var(--clay)', 'var(--acid)', 'var(--teal)', 'var(--cream)'];

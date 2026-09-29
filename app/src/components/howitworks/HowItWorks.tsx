@@ -119,7 +119,6 @@ export default function HowItWorks() {
             vault that reads the display would see a 90% loss and liquidate. Othello reads the multiplier: the cover stays
             {cover ? ` ${cover} ${money}` : ' the same'}, before and after.
           </p>
-          <Link className={s.cta} href="/split-lab">Play the split</Link>
         </section>
 
         <section className={`${s.card} ${s.hero} ${s.s6}`}>

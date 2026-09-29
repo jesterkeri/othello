@@ -3047,3 +3047,15 @@ exactly the wallet's circles newest first); all adapter + trust specs 63 passing
 separate sessions/wallets, every step clicked: create, 3 joins, start, round 1 paid and released, round 2 two paid,
 grace passed, missed payment recorded, default settled, released, round 3 paid and released, 3 withdrawals: all "done",
 no page or console errors.
+
+## Split lab removed from the UI, kept in code; demo = success first, then failure (2026-09-29)
+Joshua: "remove split lab from the UI not the code...its not needed for colosseum either since we will actually use
+proper demos." Unlinked from: the landing nav, the Solana circle page, How it works ("Play the split"), the NFLXx
+asset page ("Open Split lab"). The /split-lab route and components stay (it builds; 57.8 kB). The How it works card
+explaining that a split cannot fool the cover stays (true); only its link went.
+Demo order (Joshua): a working circle first, then a default if time allows. Rehearsed both in three browser sessions
+on local anvil, every step signed on the page: success (create, 3 joins, start, 9 payments, 3 payouts, 3 withdrawals)
+net 0.000000 USDG for A, B and C; failure (A skips round 2, recorded and settled after grace, B and C still paid in
+full) net 0.000000 for A, B and C with a 2 USDG lock (read from chain balances, not the page).
+verify: next build compiled (/split-lab still built); trust-config --build passes; tsc root; specs 63 passing; no UI
+href to /split-lab remains.
