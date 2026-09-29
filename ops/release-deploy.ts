@@ -188,7 +188,7 @@ export async function deployRecorded(d: {
   const urls = [...new Set(r.stdout.split("\n").map((l) => l.trim()).filter((l) => URL_LINE.test(l)))];
   if (r.code !== 0 || urls.length !== 1) {
     const why = urls.length > 1 ? `, several deployment URLs printed (${urls.join(", ")})` : urls.length ? "" : ", no deployment URL printed";
-    return fail(`vercel deploy failed (exit ${r.code}${why}); the record is unchanged`);
+    return fail(`vercel deploy failed (exit ${r.code}${why}); the record says a deploy started and has no URL: check Vercel`);
   }
   const url = urls[0]!;
 

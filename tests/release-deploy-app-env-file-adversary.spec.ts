@@ -77,7 +77,9 @@ describe("release adversary: a gitignored app/.env.local takes part in the relea
 
     if (process.env.ADV_DEBUG) console.log(tail);
     const hits = filesContaining(uploaded, SENTINEL);
-    const recorded = existsSync(join(repo, "release", "robinhood-prebuilt.files.txt"));
+    // trust-config wrote its record in the clone (so release/ was created there); the sealed deploy step keeps a copy.
+    // (A stubbed deploy never marks "deploy started", so, correctly, no record comes back to the checkout.)
+    const recorded = existsSync(`${uploaded}.record.json`);
     assert.deepEqual(hits, [],
       `app/.env.local (uncommitted) is inlined into the uploaded output; release exit ${r.status}, record written: ${recorded}\n${tail}`);
     // not vacuous: either the release refused, or the build really ran and was recorded

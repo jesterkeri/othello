@@ -52,9 +52,17 @@ REPO="$(pwd)"
 # next's) lives in it: a shared /tmp would let another user plant or rewrite what a step runs.
 mkdir -p "$HOME/.cache/othello-release" && chmod 700 "$HOME/.cache/othello-release"
 WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"
-# on ANY exit, a record the clone wrote (even one that only says a deploy started) comes back before the folder goes, so
-# an interrupted or failed deploy is never invisible in the checkout
-trap 'if [ -f "$WORK/repo/release/robinhood-prebuilt.json" ]; then mkdir -p "$REPO/release" && cp "$WORK/repo/release/robinhood-prebuilt.json" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"; fi; rm -rf "$WORK"' EXIT
+# on ANY exit, a record that reached the deploy step (it carries deployStartedAt, written before Vercel is contacted)
+# comes back to the checkout before the folder goes, so an interrupted or failed deploy is never invisible; a record from
+# a run that stopped earlier never replaces the committed one. The copy cannot stop the clean-up.
+bring_back() {
+  local r="$WORK/repo/release/robinhood-prebuilt.json"
+  if [ -f "$r" ] && grep -q '"deployStartedAt": "' "$r"; then
+    { mkdir -p "$REPO/release" && cp "$r" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"; } ||
+      echo "release: could not copy the record back from $r" >&2
+  fi
+}
+trap 'bring_back; rm -rf "$WORK"' EXIT
 export TMPDIR="$WORK/tmp"; mkdir -m 700 "$TMPDIR"
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
@@ -71,6 +79,12 @@ mkdir "$WORK/repo/app/.vercel" && cp app/.vercel/project.json "$WORK/repo/app/.v
 cd "$WORK/repo"
 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 pnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
+# a set TRUSTED_FACTORY is verified against the reviewed contract's own build (trust-config reads evm/out): fetch the
+# libraries at the commits the repository pins and build them here, never from the working checkout's evm/out
+if ! grep -qx 'export const TRUSTED_FACTORY: TrustedFactory | null = null;' app/src/lib/robinhood/config.ts; then
+  git -c core.hooksPath=/dev/null -c init.templateDir= submodule update --init --recursive -q
+  (cd evm && forge build)
+fi
 # the checks run with the clone's own tsx, started by node directly (npx would apply npm's node-options setting)
 TSX=(node "$WORK/repo/node_modules/tsx/dist/cli.mjs" --no-cache)
 "${TSX[@]}" ops/release-deploy.ts --preflight   # repo root, app/.vercel and the project link (keys, ids)

@@ -377,7 +377,9 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(!again.ok ? again.reason : "", /started at .* and did not finish; check Vercel/);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the record comes back to the checkout on ANY exit, and the private TMPDIR is set before any tool (pnpm) runs
-    assert.match(script, /trap 'if \[ -f "\$WORK\/repo\/release\/robinhood-prebuilt\.json" \]; then [^']*cp [^']*"\$REPO\/release\/"; fi; rm -rf "\$WORK"' EXIT/);
+    assert.match(script, /if \[ -f "\$r" \] && grep -q '"deployStartedAt": "' "\$r"; then/);
+    assert.match(script, /\|\|\n\s+echo "release: could not copy the record back from \$r" >&2/);
+    assert.match(script, /trap 'bring_back; rm -rf "\$WORK"' EXIT/);
     assert.ok(script.indexOf('export TMPDIR="$WORK/tmp"') < script.indexOf("pnpm --version"), "TMPDIR before pnpm --version");
   });
 
@@ -434,7 +436,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const cmds = script.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
     assert.doesNotMatch(cmds, /\bnpx\b/, "no step of the release goes through npx");
     assert.match(script, /--preflight[\s\S]*--install-cli[\s\S]*--run-cli "\$VC" --cwd app -- pull[\s\S]*--run-cli "\$VC" --cwd app -- build[\s\S]*mkdir -p release\n/);
-    assert.match(script, /cp "\$WORK\/repo\/release\/robinhood-prebuilt\.json" "\$WORK\/repo\/release\/robinhood-prebuilt\.files\.txt" "\$REPO\/release\/"/);
+    assert.match(script, /cp "\$r" "\$WORK\/repo\/release\/robinhood-prebuilt\.files\.txt" "\$REPO\/release\/"/);
     const f = fixture();
     mkdirSync(join(f.app, ".vercel", "builders", "node_modules"), { recursive: true });
     assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);

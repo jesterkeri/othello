@@ -4,7 +4,8 @@
  *   (`release-deploy.ts --record`) into a copy of exactly the folder that would be uploaded (the fresh clone's
  *   app/.vercel/output) to `uploadedTo`, then a no-op; every other node call runs the real node;
  * - HOME is an empty temporary folder with no Vercel login in it (XDG dirs and VERCEL_TOKEN are removed); only the pnpm
- *   store and the npm cache are linked into it (no credentials live there), so installs reuse this machine's packages.
+ *   store, the npm cache and forge's Solidity compilers are linked into it (no credentials live there), so installs
+ *   and builds reuse this machine's packages.
  *   (The release script drops every other variable itself, so the store cannot be passed as npm_config_store_dir.)
  * - where this machine's pnpm is a corepack shim (which, with an empty HOME, would fetch the newest pnpm), the pinned
  *   pnpm 10.32.1 from corepack's cache is run directly.
@@ -22,7 +23,7 @@ export function sealedReleaseEnv(tmp: string, uploadedTo: string): NodeJS.Proces
   writeFileSync(join(shim, "node"),
     `#!/bin/sh\ncase " $* " in\n` +
     `  *" ops/release-deploy.ts --run-cli "*" pull "*) echo "shim: pull skipped" >&2; exit 0;;\n` +
-    `  *" ops/release-deploy.ts --record "*) cp -R app/.vercel/output ${JSON.stringify(uploadedTo)} && echo "shim: deploy skipped" >&2; exit 0;;\n` +
+    `  *" ops/release-deploy.ts --record "*) cp -R app/.vercel/output ${JSON.stringify(uploadedTo)} && cp release/robinhood-prebuilt.json ${JSON.stringify(`${uploadedTo}.record.json`)} && echo "shim: deploy skipped" >&2; exit 0;;\n` +
     `esac\nexec ${JSON.stringify(process.execPath)} "$@"\n`);
   chmodSync(join(shim, "node"), 0o755);
   const cached = join(process.env.HOME ?? "", ".cache", "node", "corepack", "v1", "pnpm", "10.32.1", "bin", "pnpm.cjs");
@@ -34,6 +35,10 @@ export function sealedReleaseEnv(tmp: string, uploadedTo: string): NodeJS.Proces
   mkdirSync(join(home, ".local", "share", "pnpm"), { recursive: true });
   symlinkSync(dirname(store), join(home, ".local", "share", "pnpm", "store"));
   symlinkSync(npmCache, join(home, ".npm"));
+  // forge's installed Solidity compilers (only compiler binaries), so a release that builds the contracts does not
+  // download solc again
+  const svm = join(process.env.HOME ?? "", ".svm");
+  if (existsSync(svm)) symlinkSync(svm, join(home, ".svm"));
   const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${shim}:${process.env.PATH}`, HOME: home };
   for (const k of Object.keys(env)) if (k.startsWith("XDG_") || k.startsWith("VERCEL_") || k.startsWith("NEXT_PUBLIC_")) delete env[k];
   return env;

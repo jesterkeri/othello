@@ -419,3 +419,14 @@ the clone, and falsifying the record all failed). Its two suspicions are closed 
 /tmp); and the record now carries `deployStartedAt`, written before Vercel is contacted, while the EXIT trap copies
 any record the clone wrote back to the checkout on every exit, so an interrupted or failed deploy is never invisible;
 a record whose deploy started is refused a second deploy ("check Vercel, then build a new release").
+
+### F-17 twentieth adversary pass: a failed scan must not replace the committed record
+
+trust-config wrote its record before verifying a set TRUSTED_FACTORY against the chain, and the new EXIT trap copied
+any record back, so a run whose chain check failed replaced the checkout's record of the last real deploy (the
+adversary's spec is kept, its precondition adapted). Now trust-config writes the record only after every check has
+passed; the trap copies back only a record that reached the deploy step (it carries `deployStartedAt`), and a failed
+copy cannot stop the clean-up; the deploy-failure message no longer claims the record is unchanged. Running that spec
+exposed that a fresh clone has no `evm/out`, which trust-config needs to verify a set factory: when the factory is set,
+the release now fetches the libraries at the commits the repository pins (`git submodule update --init`, no hooks or
+templates) and runs `forge build` inside the clone, never using the working checkout's `evm/out`.

@@ -743,6 +743,7 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
 }
 
 async function main() {
+  let writeRecordWhenVerified = () => {};
   const at = process.argv.indexOf("--rpc");
   const url = at > 0 ? process.argv[at + 1] : "https://rpc.testnet.chain.robinhood.com";
   if (!url) throw new Error("--rpc needs a URL");
@@ -783,11 +784,15 @@ async function main() {
       // untracked files count: vercel build would include an untracked page that is in no commit
       const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain"], { encoding: "utf8" }).trim();
       if (dirty) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty}`);
-      writeRecord(resolve(ROOT, file), dg, commit, config.state === "set" ? config.address : null);
-      console.log(`trust-config: release record written to ${file}`);
+      // written only once EVERY check below has passed: a record in the release folder always means "scanned and verified"
+      writeRecordWhenVerified = () => {
+        writeRecord(resolve(ROOT, file), dg, commit, config.state === "set" ? config.address : null);
+        console.log(`trust-config: release record written to ${file}`);
+      };
     }
   }
   if (config.state === "null") {
+    writeRecordWhenVerified();
     console.log("trust-config: TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it; the Robinhood page offers no action.");
     return;
   }
@@ -814,6 +819,7 @@ async function main() {
     console.error("trust-config FAILED:\n- " + failures.join("\n- "));
     process.exit(1);
   }
+  writeRecordWhenVerified();
   console.log(`trust-config: ${config.state === "set" ? config.address : ""} verified against the receipt, the chain's deployment, its live code and the reviewed source.`);
 }
 
