@@ -3084,3 +3084,12 @@ Vercel serves: prebuilt release path (ARB-FINDINGS F-14): scanTree + artifactDig
 ops/release-robinhood.sh, CI offline vercel build + scan, release record allowed after the deploy, app/.vercel ignored.
 verify: specs 67 passing; mutation: scan skipping functions -> 1 failing; real vercel output 778 files scanned, digest
 stable; next build; tsc; workflows clean.
+
+## A1 prebuilt-release adversary + fix (2026-09-29)
+adversary on c7c6bf6..5f6c91a: DEFECTS (real offline vercel build): (1) the deploy uploads app/.next and node_modules
+files listed in functions' filePathMap, which scan and digest never read; (2) the gate refused real Vercel output (already
+fixed in f0e4c7c, CI green); (3) --record ignored untracked files. Suspicions acted on: digest not reproducible (per-file
+list now recorded), preview-only build (--prod option). Spec kept: tests/trust-config-prebuilt-upload-set.spec.ts
+(4 cases, 3 failed before, all pass now).
+Fix (ARB-FINDINGS F-15): uploadSet + scan/digest over it; untracked files refused; release/robinhood-prebuilt.files.txt;
+--prod. verify: specs 72 passing; real output 883 entries scanned; tsc; next build; workflows clean.

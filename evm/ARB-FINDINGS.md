@@ -174,3 +174,17 @@ same file. Review 3 checks the record's commit and digest against the reviewed c
 allowed to change after the deployed commit. CI builds the same kind of artifact offline (`vercel@59.11.7 build`) and
 scans it, so the gate is exercised on Vercel output on every push. A local run: 778 files, only USDG, zero and viem's
 placeholder, stable digest.
+
+## F-15. Everything `vercel deploy --prebuilt` uploads is scanned and fingerprinted (prebuilt adversary pass)
+
+`vercel deploy --prebuilt` also uploads, from `app/` itself, every file listed in each function's `.vc-config.json`
+`filePathMap` (`.next/server/**` including the Robinhood page's server code, `node_modules/**`, `package.json`), and the
+scan and digest covered only `.vercel/output` (proved with a real offline `vercel build`,
+`tests/trust-config-prebuilt-upload-set.spec.ts`). Now `uploadSet` reads every real `.vc-config.json`, resolves each
+filePathMap source against the project dir (it must exist and stay in `app/` or `app/node_modules`' real location), and
+`scanTree` scans those files and `artifactDigest` fingerprints them (`upload:<key><TAB>sha256`; package links as
+`-> target`). Local run: 778 output files + 104 uploaded files + 1 package link, only allowed addresses. The record also
+writes `release/robinhood-prebuilt.files.txt` (the per-file list) because a Next build ID is random: a reviewer compares
+files, not a rebuilt digest. `--record` and the release script now refuse untracked files (a stray page would be built
+in). The script takes `--prod` (a production deploy needs a production build) and warns not to run `next`/`pnpm` in
+`app/` between the release scan and the deploy.

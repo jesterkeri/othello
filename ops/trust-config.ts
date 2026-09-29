@@ -343,12 +343,55 @@ export function bundleAddresses(nextDir: string, trusted: Address | null, public
 const MAX_SCANNED_FILE = 50 * 1024 * 1024;
 
 /**
+ * Files `vercel deploy --prebuilt` uploads from OUTSIDE the output directory: every function's `.vc-config.json`
+ * `filePathMap` (output path → source path relative to the project dir, i.e. app/). Each source must exist and lie in
+ * the project dir or in its node_modules' real location (node_modules may itself be a link).
+ */
+export function uploadSet(outDir: string, projectDir: string): {
+  files: { key: string; path: string }[];
+  dirs: { key: string; path: string }[];
+  failures: string[];
+} {
+  const failures: string[] = [];
+  const files = new Map<string, { key: string; path: string }>();
+  const dirs = new Map<string, { key: string; path: string }>();
+  const roots = [realpathSync(projectDir)];
+  const nm = join(projectDir, "node_modules");
+  if (existsSync(nm)) roots.push(realpathSync(nm));
+  const inside = (p: string) => roots.some((r) => p === r || p.startsWith(r + sep));
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) continue; // a linked .func shares a real one, read where it lives
+      if (st.isDirectory()) { walk(p); continue; }
+      if (n !== ".vc-config.json") continue;
+      let cfg: { filePathMap?: Record<string, string> };
+      try { cfg = JSON.parse(readFileSync(p, "utf8")); } catch { failures.push(`${relative(outDir, p)}: unreadable`); continue; }
+      for (const [key, v] of Object.entries(cfg.filePathMap ?? {})) {
+        const abs = resolve(projectDir, v);
+        let real: string;
+        try { real = realpathSync(abs); } catch { failures.push(`upload ${v}: missing`); continue; }
+        if (!inside(real)) { failures.push(`upload ${v}: outside the project`); continue; }
+        // a package link (pnpm) resolves to a folder: its needed files are listed as their own entries
+        if (statSync(real).isDirectory()) dirs.set(key, { key, path: real });
+        else files.set(real, { key, path: real });
+      }
+    }
+  };
+  walk(outDir);
+  return { files: [...files.values()], dirs: [...dirs.values()], failures };
+}
+
+const projectOf = (outDir: string) => resolve(outDir, "..", "..");
+
+/**
  * Scans EVERY file of a deployable artifact (e.g. `app/.vercel/output` from `vercel build`, the exact bytes
  * `vercel deploy --prebuilt` uploads). Every address found must be USDG, the zero address, viem's placeholder or the
  * trusted factory; a set factory and USDG must be present. Fails closed: a file over 50 MB, or a symbolic link that
  * resolves outside the artifact, is a failure, not a skip.
  */
-export function scanTree(dir: string, trusted: Address | null): string[] {
+export function scanTree(dir: string, trusted: Address | null, projectDir: string = projectOf(dir)): string[] {
   const f: string[] = [];
   if (!existsSync(dir) || !statSync(dir).isDirectory()) return [`no artifact directory at ${dir}`];
   const root = realpathSync(dir);
@@ -369,6 +412,14 @@ export function scanTree(dir: string, trusted: Address | null): string[] {
     }
   };
   walk(root);
+  // and every file the deploy uploads from outside the output (functions' filePathMap: .next/server, node_modules, …)
+  const up = uploadSet(root, projectDir);
+  f.push(...up.failures);
+  for (const u of up.files) {
+    const st = statSync(u.path);
+    if (st.size > MAX_SCANNED_FILE) { f.push(`upload ${u.key}: ${st.size} bytes, too large to scan`); continue; }
+    for (const a of addressesIn(readFileSync(u.path, "latin1"))) found.add(a);
+  }
   const want = trusted?.toLowerCase();
   for (const a of found) if (!BUNDLE_ADDRESS_ALLOWLIST.has(a) && a !== want) f.push(`the artifact contains address ${a}, which is not USDG or the trusted factory`);
   if (want && !found.has(want)) f.push(`the artifact does not contain the trusted factory ${trusted}`);
@@ -376,8 +427,13 @@ export function scanTree(dir: string, trusted: Address | null): string[] {
   return f;
 }
 
-/** One sha256 over the artifact: sorted `path<TAB>sha256` lines (links as `path<TAB>-> target`). */
-export function artifactDigest(dir: string): { sha256: string; files: number } {
+/**
+ * One sha256 over what the deploy uploads: sorted `path<TAB>sha256` lines for the output directory (links as
+ * `path<TAB>-> target`) and `upload:<filePathMap key><TAB>sha256` for each file uploaded from outside it. `lines` is the
+ * full per-file list, written next to the release record so a reviewer can compare files directly (a Next build ID is
+ * random, so a rebuild cannot reproduce the digest).
+ */
+export function artifactDigest(dir: string, projectDir: string = projectOf(dir)): { sha256: string; files: number; lines: string[] } {
   const root = realpathSync(dir);
   const lines: string[] = [];
   const walk = (d: string) => {
@@ -391,8 +447,11 @@ export function artifactDigest(dir: string): { sha256: string; files: number } {
     }
   };
   walk(root);
+  const up = uploadSet(root, projectDir);
+  for (const u of up.files) lines.push(`upload:${u.key}\t${createHash("sha256").update(readFileSync(u.path)).digest("hex")}`);
+  for (const u of up.dirs) lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}`);
   lines.sort();
-  return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length };
+  return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };
 }
 
 /** The USDG the adapter approves (app/src/lib/robinhood/chain.ts) must be the USDG this gate pins. */
@@ -421,7 +480,7 @@ export function changedSince(commit: string | undefined): string[] | null {
 /** After the reviewed deploy, only the config, the receipt and Markdown notes may change. */
 export const CONFIG_COMMIT_ALLOWS = (p: string) =>
   p === "app/src/lib/robinhood/config.ts" || p === "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json" ||
-  p === "release/robinhood-prebuilt.json" || /\.md$/.test(p);
+  p === "release/robinhood-prebuilt.json" || p === "release/robinhood-prebuilt.files.txt" || /\.md$/.test(p);
 
 /** The factory's runtime bytecode as the reviewed source compiles it, with its immutables filled. */
 export function expectedRuntime(artifact: {
@@ -565,12 +624,15 @@ async function main() {
       const file = process.argv[rec + 1];
       if (!file) throw new Error("--record needs a file");
       const commit = execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-      const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim();
-      if (dirty) throw new Error("the working tree has uncommitted changes; a release is built from a commit");
+      // untracked files count: vercel build would include an untracked page that is in no commit
+      const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain"], { encoding: "utf8" }).trim();
+      if (dirty) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty}`);
       writeFileSync(resolve(ROOT, file), JSON.stringify({
         commit, artifactSha256: dg.sha256, files: dg.files, trustedFactory: config.state === "set" ? config.address : null,
         scannedAt: new Date().toISOString(), deploy: "cd app && vercel deploy --prebuilt", deploymentUrl: null,
+        fileList: file.replace(/\.json$/, ".files.txt"),
       }, null, 2) + "\n");
+      writeFileSync(resolve(ROOT, file.replace(/\.json$/, ".files.txt")), dg.lines.join("\n") + "\n");
       console.log(`trust-config: release record written to ${file}`);
     }
   }

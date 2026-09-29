@@ -18,7 +18,7 @@ import { join } from "node:path";
 
 import {
   USDG, addressesIn, appTreeRules, artifactDigest, buildFilePins, bundleAddresses, changedSince, checkConfigValue, configFromSource, expectedCreationInput, expectedRuntime, importBoundary, loadConfig,
-  moduleShadows, noEnvInTrustCode, scanTree, usdgMatches, verify,
+  moduleShadows, noEnvInTrustCode, scanTree, uploadSet, usdgMatches, verify,
   type Inputs,
 } from "../ops/trust-config.ts";
 
@@ -405,6 +405,22 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.match(scanTree(leaky, null).join(), /link leaves the artifact/);
     assert.match(scanTree(ok, factory).join(), /does not contain the trusted factory/);
     assert.match(scanTree(join(tmpdir(), "no-such-artifact"), null).join(), /no artifact directory/);
+  });
+
+  it("files the deploy uploads from outside the output must exist and stay in the project", () => {
+    const proj = mkdtempSync(join(tmpdir(), "trust-proj-"));
+    const out = join(proj, ".vercel/output");
+    mkdirSync(join(out, "functions/p.func"), { recursive: true });
+    mkdirSync(join(proj, ".next/server"), { recursive: true });
+    writeFileSync(join(proj, ".next/server/page.js"), `u="${USDG}"`);
+    const cfg = (m: Record<string, string>) => writeFileSync(join(out, "functions/p.func/.vc-config.json"), JSON.stringify({ filePathMap: m }));
+    cfg({ ".next/server/page.js": ".next/server/page.js" });
+    assert.deepEqual(uploadSet(out, proj).failures, []);
+    assert.equal(uploadSet(out, proj).files.length, 1);
+    cfg({ "gone.js": ".next/server/gone.js" });
+    assert.match(uploadSet(out, proj).failures.join(), /missing/);
+    cfg({ "passwd": "../../../../../../../../etc/hostname" });
+    assert.match(uploadSet(out, proj).failures.join(), /outside the project/);
   });
 
   it("the USDG the adapter approves is the USDG the gate pins", async () => {
