@@ -386,3 +386,17 @@ goes through npx. The kept spec now sets the npm, git-template, git-config-hooks
 sealed harness stubs pull and deploy with a `node` shim and links only the pnpm store and npm cache into its empty HOME.
 Also: the adapter spec's viem client polls every 250 ms (a missed first receipt check had cost 4 s per transaction in
 CI, timing the end-to-end test out).
+
+### F-17 seventeenth adversary pass: what lies above the clone; the seal flag
+
+(1) The clone sat in `$(mktemp -d)` under the shared `/tmp` (or `$TMPDIR`), and `next build` requires packages it does
+not install (`@opentelemetry/api`), which node resolves from any `node_modules` in a folder ABOVE the clone: a module
+planted in `$TMPDIR/node_modules` ran in the build and its value was uploaded under a clean record. (2) The seal trusted
+its own flag: `RELEASE_ENV_SEALED=1` in the caller's environment skipped it, and a `GIT_CONFIG_COUNT` smudge filter (with
+a matching clean filter to blind the dirty check) rewrote the clone. Fixes: the build folder is private, under
+`$HOME/.cache/othello-release` (mode 700), never the shared temp; `--preflight` refuses any of node_modules,
+package.json, pnpm-workspace.yaml, a pnpmfile, PostCSS, Browserslist, Babel, SWC, tsconfig/jsconfig, .npmrc or yarnrc in
+any folder above the clone (this machine has none); after re-running itself the script checks that the environment
+holds nothing but the allowed variables and bash's own, whatever the flag says; and it releases the repository it
+belongs to, wherever it is run from. The adversary's spec is kept with a third case added (a node_modules in HOME,
+above the new build folder, is refused before anything is built).

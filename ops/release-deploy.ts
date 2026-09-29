@@ -18,7 +18,7 @@
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, uploadSet, type ReleaseRecord } from "./trust-config.ts";
@@ -103,10 +103,28 @@ export function verifyPinnedCli(dir: string): string {
   return realpathSync(bin);
 }
 
-/** The refusals that must hold before the release builds anything (the repo root, app/.vercel, the project link). */
+/**
+ * Names that node, pnpm, Next, PostCSS, Browserslist, Babel or TypeScript look for in the folders ABOVE a project (a
+ * missing package resolves from any ancestor's node_modules; config lookups walk upward). None may exist above the
+ * release's clone.
+ */
+const ANCESTOR_REFUSED = /^(node_modules|package\.json|pnpm-workspace\.yaml|\.pnpmfile\.cjs|postcss\.config\..*|\.postcssrc.*|\.browserslistrc|browserslist|babel\.config\..*|\.babelrc.*|\.swcrc|tsconfig\.json|jsconfig\.json|\.npmrc|\.yarnrc.*)$/;
+
+export function ancestorRefusals(root: string): string[] {
+  const found: string[] = [];
+  for (let d = dirname(resolve(root)); ; d = dirname(d)) {
+    let names: string[] = [];
+    try { names = readdirSync(d); } catch { found.push(`${d} (unreadable, so it cannot be checked)`); }
+    for (const n of names) if (ANCESTOR_REFUSED.test(n)) found.push(`${join(d, n)}: above the release's clone, the build would read it`);
+    if (dirname(d) === d) break;
+  }
+  return found;
+}
+
+/** The refusals that must hold before the release builds anything (above the clone, its root, app/.vercel, the link). */
 export function preflight(root: string): string[] {
   const app = join(root, "app");
-  return [...repoRootRefusals(root, app), ...cliExtraUploads(app)];
+  return [...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
 }
 
 /**

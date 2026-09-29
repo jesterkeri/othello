@@ -20,14 +20,20 @@ for v in VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TEAM_ID; do
   if [ -n "${!v:-}" ]; then echo "release: $v is set; it would point the Vercel CLI at another project; unset it" >&2; exit 1; fi
 done
 if [ -n "${NODE_OPTIONS:-}" ]; then echo "release: NODE_OPTIONS is set; it would change every node step of the release; unset it" >&2; exit 1; fi
+ALLOWED_ENV=(PATH HOME USER LOGNAME SHELL TERM LANG LC_ALL TMPDIR XDG_DATA_HOME XDG_CONFIG_HOME HTTPS_PROXY HTTP_PROXY NO_PROXY NVM_DIR NVM_BIN ROBINHOOD_RPC)
+SCRIPT="$(readlink -f "$0")"
 if [ "${RELEASE_ENV_SEALED:-}" != 1 ]; then
   keep=(RELEASE_ENV_SEALED=1)
-  for v in PATH HOME USER LOGNAME SHELL TERM LANG LC_ALL TMPDIR XDG_DATA_HOME XDG_CONFIG_HOME HTTPS_PROXY HTTP_PROXY NO_PROXY NVM_DIR NVM_BIN ROBINHOOD_RPC; do
+  for v in "${ALLOWED_ENV[@]}"; do
     if [ -n "${!v:-}" ]; then keep+=("$v=${!v}"); fi
   done
-  exec env -i "${keep[@]}" bash "$0" "$@"
+  exec env -i "${keep[@]}" bash "$SCRIPT" "$@"
 fi
-cd "$(git rev-parse --show-toplevel)"
+# the flag is not trusted: the environment itself must hold nothing but the allowed variables (and bash's own)
+extra="$(env | cut -d= -f1 | grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|RELEASE_ENV_SEALED|PWD|OLDPWD|SHLVL|_" || true)"
+if [ -n "$extra" ]; then echo "release: the environment holds more than the release allows ($(echo $extra)); run it plainly" >&2; exit 1; fi
+# the repository the script belongs to, wherever it is run from
+cd "$(dirname "$SCRIPT")/.." && cd "$(git rev-parse --show-toplevel)"
 if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
   git status --short >&2; exit 1
@@ -44,7 +50,10 @@ if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 [ "$(pnpm --version 2>/dev/null)" = "10.32.1" ] || { echo "release: needs pnpm 10.32.1 on PATH (npm install -g pnpm@10.32.1)" >&2; exit 1; }
 [ -f app/.vercel/project.json ] || { echo "release: link the Vercel project first (app/.vercel/project.json)" >&2; exit 1; }
 REPO="$(pwd)"; COMMIT="$(git rev-parse HEAD)"
-WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+# the build folder is private (under HOME, mode 700), never the shared /tmp: node resolves a missing package from any
+# node_modules ABOVE the clone, so no other user may be able to write above it (--preflight also refuses such files)
+mkdir -p "$HOME/.cache/othello-release" && chmod 700 "$HOME/.cache/othello-release"
+WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"; trap 'rm -rf "$WORK"' EXIT
 
 # the fresh clone: only the commit's files, plus the project link (checked by --preflight inside the clone). git runs
 # with no system or global config, no clone templates and no hooks, so nothing outside the commit runs or rewrites it.

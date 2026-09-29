@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
+import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { fakePinnedCli } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
@@ -402,8 +402,12 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     // the release builds from a fresh clone of the commit, installs from the lockfiles, and copies only the record back
     assert.match(script, /export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=\/dev\/null\ngit clone -q --no-local --template= -c core\.hooksPath=\/dev\/null "\$REPO" "\$WORK\/repo"\ngit -C "\$WORK\/repo" -c core\.hooksPath=\/dev\/null checkout -q --detach "\$COMMIT"/);
     // the whole release runs in an environment of only the listed variables (npm_config_*, GIT_*, NODE_* … dropped)
-    assert.match(script, /exec env -i "\$\{keep\[@\]\}" bash "\$0" "\$@"/);
-    assert.doesNotMatch(script.match(/for v in PATH [^;]*;/)![0], /npm_config|NODE_|GIT_|VERCEL_|PNPM/);
+    assert.match(script, /exec env -i "\$\{keep\[@\]\}" bash "\$SCRIPT" "\$@"/);
+    assert.doesNotMatch(script.match(/ALLOWED_ENV=\([^)]*\)/)![0], /npm_config|NODE_|GIT_|VERCEL_|PNPM/);
+    // the seal flag is not trusted: the environment is checked to hold only the allowed variables
+    assert.match(script, /extra="\$\(env \| cut -d= -f1 \| grep -vxE/);
+    // the build folder is private, under HOME, never the shared /tmp
+    assert.match(script, /WORK="\$\(mktemp -d "\$HOME\/\.cache\/othello-release\/XXXXXXXX"\)"/);
     assert.match(script, /mkdir "\$WORK\/repo\/app\/\.vercel" && cp app\/\.vercel\/project\.json "\$WORK\/repo\/app\/\.vercel\/project\.json"\ncd "\$WORK\/repo"/);
     assert.match(script, /cd "\$WORK\/repo"\npnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\npnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\n/);
     const cmds = script.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
@@ -413,6 +417,19 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const f = fixture();
     mkdirSync(join(f.app, ".vercel", "builders", "node_modules"), { recursive: true });
     assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);
+  });
+
+  it("anything above the clone that node or a build tool would read is refused by the preflight", () => {
+    for (const name of ["node_modules", "package.json", "postcss.config.js", ".browserslistrc", "pnpm-workspace.yaml", ".babelrc"]) {
+      const above = mkdtempSync(join(tmpdir(), "release-ancestor-"));
+      const root = join(above, "work", "repo");
+      mkdirSync(root, { recursive: true });
+      if (name === "node_modules") mkdirSync(join(above, name)); else writeFileSync(join(above, name), "{}");
+      assert.match(ancestorRefusals(root).join("\n"), new RegExp(`${name.replace(/\./g, "\\.")}: above the release's clone`), name);
+    }
+    const clean = mkdtempSync(join(tmpdir(), "release-ancestor-clean-"));
+    mkdirSync(join(clean, "work", "repo"), { recursive: true });
+    assert.deepEqual(ancestorRefusals(join(clean, "work", "repo")).filter((f) => f.startsWith(clean)), []);
   });
 
   it("verifyPinnedCli refuses anything but exactly the pinned install, and the deploy refuses without it", async () => {

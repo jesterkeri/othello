@@ -3132,4 +3132,6 @@ builds from a fresh clone of the commit (a gitignored app/.env.local was inlined
 created; .next cache survived). verify: mocha CI list 122 passing, the two sealed release-script specs run the real
 script end to end (pull and deploy stubbed, empty HOME). Passes: 15. Then the release runs in a sealed environment
 (env -i re-exec; git without config/templates/hooks; pnpm --ignore-pnpmfile; tsx via node, no npx): npm_config_node_options
-had planted a file in the clone. verify: mocha CI list 123 passing (three sealed runs of the real script). Passes: 16.
+had planted a file in the clone (415b738, CI green, e2e 2.4 s). Then a private build folder under HOME, ancestor refusals,
+the seal verified from the environment itself. verify: mocha CI list 127 passing (six sealed runs of the real script).
+Passes: 17.
