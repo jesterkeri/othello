@@ -368,6 +368,11 @@ export function cliExtraUploads(projectDir: string): string[] {
   const vdir = join(projectDir, ".vercel");
   if (existsSync(vdir)) {
     for (const n of readdirSync(vdir)) if (!VERCEL_DIR_ALLOWED(n)) found.push(`.vercel/${n}`);
+    // the CLI would upload a linked `output` as the link itself, not its files: both must be real folders
+    for (const d of ["output", "node"]) {
+      const p = join(vdir, d);
+      if (existsSync(p) && lstatSync(p).isSymbolicLink()) found.push(`.vercel/${d} (a link, not a folder)`);
+    }
     const nodeDir = join(vdir, "node");
     if (existsSync(nodeDir)) {
       if (!lstatSync(nodeDir).isDirectory()) found.push(".vercel/node (not a directory)");
@@ -408,12 +413,12 @@ export function cliExtraUploads(projectDir: string): string[] {
  */
 export function uploadSet(outDir: string, projectDir: string): {
   files: { key: string; path: string; mode: number; link?: string }[];
-  dirs: { key: string; path: string; link?: string }[];
+  dirs: { key: string; path: string; mode: number; link?: string }[];
   failures: string[];
 } {
   const failures: string[] = [];
   const files = new Map<string, { key: string; path: string; mode: number; link?: string }>();
-  const dirs = new Map<string, { key: string; path: string; link?: string }>();
+  const dirs = new Map<string, { key: string; path: string; mode: number; link?: string }>();
   // one entry per SOURCE path, as the CLI dedupes (a Set of `join(path, v)`), so a link and a plain file that reach the
   // same target are two entries; when several keys name one source, the smallest key labels it (a stable digest)
   const put = <T extends { key: string }>(m: Map<string, T>, id: string, e: T) => {
@@ -448,7 +453,7 @@ export function uploadSet(outDir: string, projectDir: string): {
         const src = lstatSync(abs);
         const link = src.isSymbolicLink() ? { link: readlinkSync(abs) } : {};
         const target = statSync(real);
-        if (target.isDirectory()) put(dirs, abs, { key, path: real, ...link });
+        if (target.isDirectory()) put(dirs, abs, { key, path: real, mode: src.mode, ...link });
         else if (!target.isFile()) failures.push(`upload ${v}: not a regular file`);
         else put(files, abs, { key, path: real, mode: src.mode, ...link });
       }
@@ -524,7 +529,7 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
       const rel = relative(root, p).split(sep).join("/");
       const st = lstatSync(p);
       if (st.isSymbolicLink()) lines.push(`${rel}\t-> ${readlinkSync(p)}`);
-      else if (st.isDirectory()) { lines.push(`${rel}/\tdir`); walk(p); }
+      else if (st.isDirectory()) { lines.push(`${rel}/\tdir\t${st.mode.toString(8)}`); walk(p); }
       else if (!st.isFile()) lines.push(`${rel}\tspecial ${st.mode.toString(8)}`);
       else lines.push(`${rel}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}\t${st.mode.toString(8)}`);
     }
@@ -540,7 +545,8 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   const pj = join(projectDir, ".vercel", "project.json");
   if (existsSync(pj)) lines.push(`project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
   for (const u of up.dirs) {
-    lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}${u.link === undefined ? "" : `\t(link text ${u.link})`}`);
+    const text = u.link === undefined ? "" : `\t(link text ${u.link})`;
+    lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}\t${u.mode.toString(8)}${text}`);
   }
   lines.sort();
   return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };

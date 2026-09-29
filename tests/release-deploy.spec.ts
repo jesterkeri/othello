@@ -257,6 +257,18 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*static\/pipe/);
   });
 
+  it("app/.vercel/output replaced by a link to a copy is refused (the CLI would upload the link, not the files)", async () => {
+    const f = fixture();
+    const copy = join(f.root, "output-copy");
+    execFileSync("cp", ["-a", f.out, copy]);
+    rmSync(f.out, { recursive: true });
+    symlinkSync(copy, f.out);
+    const spy = spyRun();
+    const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r.ok ? r.reason : "", /\.vercel\/output \(a link, not a folder\)/);
+    assert.equal(spy.calls.length, 0);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");

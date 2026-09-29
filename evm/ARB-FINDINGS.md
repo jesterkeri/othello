@@ -271,3 +271,10 @@ The pinned CLI sends each upload's mode, and an empty output folder as its own e
 digest now has `path<TAB>sha256<TAB>mode` for files (and the source mode for filePathMap entries) and a `path/<TAB>dir`
 line for every output folder. A FIFO or device in the output is refused by the scan and listed, never read, by the
 digest (it would have hung); a filePathMap source that is not a regular file or folder is refused.
+
+### F-17 sixth adversary pass: folder modes, a linked output
+
+An empty output folder is uploaded with its mode, which the `dir` line did not carry (a `chmod` deployed unrefused; the
+adversary's spec is kept), and a filePathMap folder source likewise. Folder lines now carry the mode. Its suspicion, an
+`app/.vercel/output` replaced by a link to a copy (the CLI would upload the link, not the files: a broken deploy), is
+refused: `.vercel/output` and `.vercel/node` must be real folders (tested).

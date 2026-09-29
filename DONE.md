@@ -3116,3 +3116,5 @@ bulk redirects refused; 2ac8fc7 app/.vercel allow-list (compiled .vercel/vercel.
 the digest; 260a333 absolute filePathMap sources refused, re-targeting VERCEL_* env refused, deploy CLI env allow-listed;
 then folder-link text bound, entries per source path. verify: mocha CI list 100 passing; CI green on ce68233, 2ac8fc7,
 260a333. Stated limit: a tampered global Vercel CLI config on the release machine.
+Then 3b7c9bd modes and every folder in the digest, special files refused; and folder modes, a linked .vercel/output
+refused. verify: mocha CI list 105 passing; CI green on 455ed22 and 3b7c9bd. Adversary passes on the release path: 6.
