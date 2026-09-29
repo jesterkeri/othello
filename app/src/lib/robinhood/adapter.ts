@@ -3,11 +3,17 @@
  * nothing the app calls takes a factory argument, so no page can trust another factory by passing one.
  * Only this module may import ./config or ./adapter-core (CI job trust-config, ops/trust-config.ts).
  */
-import type { PublicClient } from "viem";
+import type { Address, PublicClient, WalletClient } from "viem";
 
 import {
   checkTrustedAgainst,
+  checkTrustedFactory,
+  createCircleWith,
   createRobinhoodAdapterWith,
+  listCirclesWith,
+  type CircleParams,
+  type CircleSummary,
+  type CreateResult,
   type RobinhoodAdapter,
   type RobinhoodDeps,
   type TrustResult,
@@ -17,6 +23,11 @@ import { TRUSTED_FACTORY } from "./config";
 export {
   STATUS,
   decodeFailure,
+  leastGuarantee,
+  peakNeed,
+  type CircleParams,
+  type CircleSummary,
+  type CreateResult,
   readCircle,
   topUpFill,
   withHeadroom,
@@ -46,4 +57,27 @@ export function createRobinhoodAdapter(d: Omit<RobinhoodDeps, "factory" | "usdg"
     circle: d.circle,
     factory: TRUSTED_FACTORY,
   });
+}
+
+/** Whether the one trusted factory is deployed with its pinned code (null config: not deployed). */
+export function checkFactory(client: Pick<PublicClient, "getCode">): Promise<TrustResult> {
+  return checkTrustedFactory(client, TRUSTED_FACTORY);
+}
+
+/** Creates a circle on the one trusted factory; the caller becomes its creator and must be one of `members`. */
+export function createCircle(
+  d: { publicClient: PublicClient; walletClient: WalletClient; account: Address },
+  params: CircleParams,
+  members: readonly Address[],
+): Promise<CreateResult> {
+  return createCircleWith(
+    { publicClient: d.publicClient, walletClient: d.walletClient, account: d.account, factory: TRUSTED_FACTORY },
+    params,
+    members,
+  );
+}
+
+/** Circles of the one trusted factory that `account` belongs to, newest first. */
+export function listMyCircles(client: Pick<PublicClient, "readContract" | "getCode">, account: Address): Promise<CircleSummary[]> {
+  return listCirclesWith(client, TRUSTED_FACTORY, account);
 }

@@ -11,6 +11,7 @@
  * wallet. Approvals are for the exact amount of the action, never unlimited.
  */
 import {
+  decodeEventLog,
   erc20Abi,
   getAddress,
   isAddressEqual,
@@ -83,6 +84,8 @@ export type RhCircleView = {
   surplus: bigint;
   seats: RhSeat[];
   readAt: number;
+  /** The chain's latest block time at this read. Time-based buttons follow the chain, not the device clock. */
+  chainTime: number;
 };
 
 export type TrustResult =
@@ -117,7 +120,7 @@ export async function checkTrustedAgainst(
 const bit = (map: number, t: number) => ((map >> t) & 1) === 1;
 
 export async function readCircle(
-  client: Pick<PublicClient, "readContract">,
+  client: Pick<PublicClient, "readContract" | "getBlock">,
   circle: Address,
   usdg: Address = USDG,
 ): Promise<RhCircleView> {
@@ -140,7 +143,7 @@ export async function readCircle(
     r<bigint>("heldContributions"), r<bigint>("lastCoverageAt"), r<bigint>("accounted"),
   ]);
   const count = Number(n);
-  const [members, seats, balance] = await Promise.all([
+  const [members, seats, balance, block] = await Promise.all([
     Promise.all(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
     Promise.all(
       Array.from({ length: count }, (_, t) =>
@@ -151,6 +154,7 @@ export async function readCircle(
       ),
     ),
     client.readContract({ address: usdg, abi: erc20Abi, functionName: "balanceOf", args: [circle] }),
+    client.getBlock({ blockTag: "latest" }),
   ]);
   return {
     address: getAddress(circle),
@@ -176,6 +180,7 @@ export async function readCircle(
       withdrawn: bit(withdrawn, t),
     })),
     readAt: Math.floor(Date.now() / 1000),
+    chainTime: Number(block.timestamp),
   };
 }
 
@@ -367,3 +372,118 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
 }
 
 export type { Hex };
+
+// ---------------------------------------------------------------------------------------------------------------
+// Creating and finding circles (factory side). Same rules as the circle actions: chain 46630 on both clients, the
+// factory's runtime code hash must equal the pinned one, a simulation first (refusals come back decoded), gas
+// headroom, and a receipt only counts if it is the transaction sent.
+
+export type CircleParams = {
+  n: bigint;
+  c: bigint;
+  g: bigint;
+  minStockCover: bigint;
+  haircutBps: bigint;
+  coverageBps: bigint;
+  warnBps: bigint;
+  roundSecs: bigint;
+  graceSecs: bigint;
+};
+
+/** The factory's own peak-guarantee rule (CircleMath.peakNeed): max over k of k x max(0, ceil(c(n-k)cov/1e4) - min). */
+export function peakNeed(p: Pick<CircleParams, "n" | "c" | "coverageBps" | "minStockCover">): bigint {
+  let best = 0n;
+  for (let k = 1n; k < p.n; k++) {
+    const o = p.c * (p.n - k) * p.coverageBps;
+    const required = o === 0n ? 0n : (o - 1n) / 10_000n + 1n;
+    const per = required > p.minStockCover ? required - p.minStockCover : 0n;
+    if (k * per > best) best = k * per;
+  }
+  return best;
+}
+
+/** The least guarantee per member the factory accepts for these parameters: ceil(peak / n), at least 1 base unit. */
+export const leastGuarantee = (p: Pick<CircleParams, "n" | "c" | "coverageBps" | "minStockCover">) => {
+  const peak = peakNeed(p);
+  const g = peak === 0n ? 1n : (peak - 1n) / p.n + 1n;
+  return g < 1n ? 1n : g;
+};
+
+export async function checkTrustedFactory(
+  client: Pick<PublicClient, "getCode">,
+  factory: TrustedFactory | null,
+): Promise<TrustResult> {
+  if (!factory) return { ok: false, reason: "not-deployed" };
+  const fcode = await client.getCode({ address: factory.address });
+  if (!fcode || fcode === "0x" || keccak256(fcode) !== factory.codeHash.toLowerCase()) return { ok: false, reason: "factory-code" };
+  return { ok: true };
+}
+
+export type CreateResult = { ok: true; txHash: string; circle: Address } | Extract<ActionResult, { ok: false }>;
+
+export async function createCircleWith(
+  d: { publicClient: PublicClient; walletClient: WalletClient; account: Address; factory: TrustedFactory | null },
+  params: CircleParams,
+  members: readonly Address[],
+): Promise<CreateResult> {
+  try {
+    const [readChain, walletChain] = await Promise.all([d.publicClient.getChainId(), d.walletClient.getChainId()]);
+    if (readChain !== ROBINHOOD_TESTNET_ID || walletChain !== ROBINHOOD_TESTNET_ID) {
+      return { ok: false, error: "WrongNetwork", args: [walletChain], message: explainRefusal("WrongNetwork", []) };
+    }
+    const t = await checkTrustedFactory(d.publicClient, d.factory);
+    if (!t.ok || !d.factory) return { ok: false, error: "NotTrusted", args: [t.ok ? "not-deployed" : t.reason], message: "Robinhood circles aren't open yet." };
+    const call = {
+      address: d.factory.address, abi: othelloFactoryAbi, functionName: "createCircle", args: [params, members], account: d.account,
+    } as const;
+    const { request } = await d.publicClient.simulateContract(call as never);
+    const gas = withHeadroom(await d.publicClient.estimateContractGas(call as never));
+    const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
+    const receipt = await d.publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.transactionHash !== hash) {
+      return { ok: false, error: "Replaced", args: [hash], message: "The transaction was cancelled or replaced in your wallet, so no circle was created." };
+    }
+    if (receipt.status !== "success") return { ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." };
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== d.factory.address.toLowerCase()) continue;
+      try {
+        const ev = decodeEventLog({ abi: othelloFactoryAbi, data: log.data, topics: log.topics });
+        if (ev.eventName === "CircleCreated") return { ok: true, txHash: hash, circle: getAddress(ev.args.circle) };
+      } catch {
+        // not this event
+      }
+    }
+    return { ok: false, error: "Failed", args: [hash], message: "The circle was created but its address was not in the receipt; find it under My circles." };
+  } catch (e) {
+    return decodeFailure(e);
+  }
+}
+
+export type CircleSummary = { address: Address; n: number; c: bigint; status: Status; round: number; creator: Address; turn: number };
+
+/** Circles from this factory that `account` is a member of, newest first (reads at most `limit` circles). */
+export async function listCirclesWith(
+  client: Pick<PublicClient, "readContract" | "getCode">,
+  factory: TrustedFactory | null,
+  account: Address,
+  limit = 40,
+): Promise<CircleSummary[]> {
+  const t = await checkTrustedFactory(client, factory);
+  if (!t.ok || !factory) return [];
+  const count = (await client.readContract({ address: factory.address, abi: othelloFactoryAbi, functionName: "circleCount" })) as bigint;
+  const out: CircleSummary[] = [];
+  for (let i = count - 1n; i >= 0n && count - i <= BigInt(limit); i--) {
+    const addr = (await client.readContract({
+      address: factory.address, abi: othelloFactoryAbi, functionName: "circles", args: [i],
+    })) as Address;
+    const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
+      client.readContract({ address: addr, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
+    const [n, c, status, round, creator] = await Promise.all([
+      r<bigint>("n"), r<bigint>("c"), r<number>("status"), r<number>("round"), r<Address>("creator"),
+    ]);
+    const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
+    const turn = members.findIndex((m) => isAddressEqual(m, account));
+    if (turn >= 0) out.push({ address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn });
+  }
+  return out;
+}

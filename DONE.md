@@ -3031,3 +3031,19 @@ recorded before the approval is sent; a sent-but-unconfirmed approval is always 
 after it); a confirmed-state check skips needless resets; timeouts say the transaction may still go through.
 verify: adapter specs 14 passing, 5/5 repeat runs green; mutations: hash check off -> case 1 fails; pending-reset off
 -> case 2 fails; tsc root/app.
+
+## A1 live-demo readiness: create and list circles in the page (2026-09-29)
+Joshua: the judged demo is real people in separate browsers/wallets, each signing on the page (the script stays).
+Built: adapter-core createCircleWith (chain + pinned factory hash, simulate first, gas headroom, receipt hash must
+match, circle address from CircleCreated), listCirclesWith, TS peakNeed/leastGuarantee (the factory's rule);
+adapter.ts binds both to TRUSTED_FACTORY (createCircle, listMyCircles, checkFactory); pages /robinhood (my circles)
+and /robinhood/new (create form: members in payout order, money, timing; suggested guarantee = least allowed rounded
+up to the cent); shared EvmWalletPill. Found by the rehearsal and fixed: time-based buttons used the device clock;
+now the chain's latest block time (readCircle.chainTime) plus seconds since the read.
+verify: tests/robinhood-adapter.spec.ts +3 (least guarantee creates and least-1 is refused GuaranteeBelowPeakNeed,
+i.e. the page's formula equals the factory's; decoded refusal and wrong factory hash sends nothing; list finds
+exactly the wallet's circles newest first); all adapter + trust specs 63 passing; next build (new routes /robinhood,
+/robinhood/new); trust-config --build passes (only allowed addresses). Browser rehearsal on local anvil with three
+separate sessions/wallets, every step clicked: create, 3 joins, start, round 1 paid and released, round 2 two paid,
+grace passed, missed payment recorded, default settled, released, round 3 paid and released, 3 withdrawals: all "done",
+no page or console errors.

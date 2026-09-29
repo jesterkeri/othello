@@ -27,7 +27,9 @@ import { mnemonicToAccount } from "viem/accounts";
 
 import { toCommon, type SolanaAdapter } from "../app/src/lib/core/adapter.ts";
 import { ACTION_ARGS, InvalidArguments, checked } from "../app/src/lib/core/profiles.ts";
-import { checkTrustedAgainst, createRobinhoodAdapterWith, readCircle, topUpFill } from "../app/src/lib/robinhood/adapter-core.ts";
+import {
+  checkTrustedAgainst, createCircleWith, createRobinhoodAdapterWith, leastGuarantee, listCirclesWith, readCircle, topUpFill,
+} from "../app/src/lib/robinhood/adapter-core.ts";
 import { othelloCircleAbi, othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
 
 const PORT = 8591;
@@ -194,6 +196,43 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
 
     it("reports topUpConsentBound: true on Robinhood", () => {
       assert.equal(evm().capabilities.topUpConsentBound, true);
+    });
+  });
+
+  describe("creating and listing circles through the adapter", () => {
+    const deps = (i: number) => ({ publicClient: pub, walletClient: wallets[i]!, account: accounts[i]!.address, factory: pinned() });
+
+    it("the page's least guarantee is exactly the factory's rule: least creates, one unit less is refused", async () => {
+      const members = accounts.map((a) => a.address);
+      const base = params({ c: 7n * U, minStockCover: 3n * U, coverageBps: 15000n });
+      const least = leastGuarantee(base as never);
+      const ok = await createCircleWith(deps(0), { ...base, g: least } as never, members);
+      assert.equal(ok.ok, true, ok.ok ? "" : ok.message);
+      if (ok.ok) assert.deepEqual(await checkTrustedAgainst(pub, ok.circle, pinned()), { ok: true }, "the new circle passes the trust check");
+      const low = await createCircleWith(deps(0), { ...base, g: least - 1n } as never, members);
+      assert.equal(!low.ok && low.error, "GuaranteeBelowPeakNeed");
+    });
+
+    it("refusals are decoded and a wrong factory hash sends nothing", async () => {
+      const dup = await createCircleWith(deps(0), params() as never, [accounts[0]!.address, accounts[0]!.address, accounts[1]!.address]);
+      assert.equal(!dup.ok && dup.error, "InvalidParams");
+      const nonce = await pub.getTransactionCount({ address: accounts[0]!.address });
+      const bad = await createCircleWith({ ...deps(0), factory: { address: factory, codeHash: keccak256("0x00") } }, params() as never,
+        accounts.map((a) => a.address));
+      assert.equal(!bad.ok && bad.error, "NotTrusted");
+      assert.equal(await pub.getTransactionCount({ address: accounts[0]!.address }), nonce, "nothing sent");
+    });
+
+    it("lists exactly the circles a wallet is in, newest first", async () => {
+      const outsider = mnemonicToAccount(MNEMONIC, { addressIndex: 7 }).address;
+      assert.deepEqual(await listCirclesWith(pub, pinned(), outsider), []);
+      const mine = await listCirclesWith(pub, pinned(), accounts[1]!.address);
+      const all = Number(await pub.readContract({ address: factory, abi: othelloFactoryAbi as Abi, functionName: "circleCount" }));
+      assert.ok(mine.length >= 2 && mine.length <= all);
+      assert.equal(mine[0]!.address.toLowerCase(), String(await pub.readContract({
+        address: factory, abi: othelloFactoryAbi as Abi, functionName: "circles", args: [BigInt(all - 1)] })).toLowerCase(), "newest first");
+      for (const c of mine) assert.equal(c.turn >= 0, true);
+      assert.deepEqual(await listCirclesWith(pub, null, accounts[1]!.address), [], "nothing before deployment");
     });
   });
 

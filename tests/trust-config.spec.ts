@@ -266,6 +266,7 @@ describe("trust-config (ops/trust-config.ts)", function () {
     const reads: { address: string; functionName: string }[] = [];
     const client = {
       getCode: async () => "0x6000",
+      getBlock: async () => ({ timestamp: 0n }),
       readContract: async ({ address, functionName }: { address: string; functionName: string }) => {
         reads.push({ address, functionName });
         if (["factory", "creator", "members"].includes(functionName)) return factory;

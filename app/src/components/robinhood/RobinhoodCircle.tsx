@@ -24,6 +24,8 @@ import { explorerAddress, explorerTx } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
+import EvmWalletPill from "./EvmWalletPill";
+
 import s from "./Robinhood.module.css";
 
 const REFRESH_MS = 8_000;
@@ -65,18 +67,6 @@ function seatTags(v: RhCircleView, seat: RhSeat): string[] {
   if (seat.turn === v.round && v.status === "Active") t.push("Receives this round");
   if (seat.withdrawn) t.push("Withdrew");
   return t;
-}
-
-/** The top bar's wallet control on Robinhood pages: the EVM wallet, never the Solana one. */
-function EvmWalletPill({ w }: { w: ReturnType<typeof useEvmWallet> }) {
-  if (!w.hasWallet) return <span className={s.walletPill}>No EVM wallet</span>;
-  if (!w.address) {
-    return <button type="button" className={s.walletPill} onClick={() => void w.connect()}>Connect EVM wallet</button>;
-  }
-  if (!w.onRobinhood) {
-    return <button type="button" className={s.walletPill} onClick={() => void w.switchToRobinhood()}>Switch network</button>;
-  }
-  return <span className={s.walletPill} title={w.address}>{short(w.address)}</span>;
 }
 
 export default function RobinhoodCircle({ address }: { address: string }) {
@@ -198,7 +188,9 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const reserveShown = finished ? remains + v.escrow - v.withdrawnFromReserve : remains;
   const paused = v.status === "Active" && v.nextGateShortBy > 0n;
   const graceEnds = v.deadline + v.graceSecs;
-  const afterGrace = now > graceEnds;
+  // Chain time: the last block's timestamp plus the seconds since that read (a device clock can be off).
+  const chainNow = v.chainTime + Math.max(0, now - v.readAt);
+  const afterGrace = chainNow > graceEnds;
   const allSettled = v.seats.every((x) => x.paid || x.defaulted);
   const canWrite = Boolean(adapter) && w.onRobinhood && !busy;
   const statusClass = paused ? s.paused : s[v.status.toLowerCase() as "forming" | "active" | "completed" | "cancelled"];
@@ -219,6 +211,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
             <span className={`${s.pill} ${statusClass}`}>{paused ? "Paused" : v.status}</span>
             <span className={s.pill}>USDG on Robinhood Chain</span>
             <a className={s.pill} href={explorerAddress(v.address)} target="_blank" rel="noreferrer">{short(v.address)}</a>
+            <a className={s.pill} href="/robinhood">My circles</a>
           </div>
           <h1 className={s.title}>A savings circle of {v.n}</h1>
           <p className={s.sub}>
