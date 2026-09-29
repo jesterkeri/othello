@@ -3111,3 +3111,8 @@ verify: forge 41 + fork 3 pass; mutation 43: 42 killed, M37 the documented unrea
 mocha CI list 93 passing; tsc root/app; next build + trust-config --build; ABI check; browser (local anvil, 3 wallets):
 A 10 then 12 after Show more, newest first, B only its joined circle, C the empty message, no console errors;
 CI a17d3e3 5/5 green.
+Further adversary passes on the release path, each fixed with its spec kept (F-17): ce68233 routes.json/microfrontends/
+bulk redirects refused; 2ac8fc7 app/.vercel allow-list (compiled .vercel/vercel.json, rootDirectory), project.json in
+the digest; 260a333 absolute filePathMap sources refused, re-targeting VERCEL_* env refused, deploy CLI env allow-listed;
+then folder-link text bound, entries per source path. verify: mocha CI list 100 passing; CI green on ce68233, 2ac8fc7,
+260a333. Stated limit: a tampered global Vercel CLI config on the release machine.

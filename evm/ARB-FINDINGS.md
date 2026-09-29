@@ -253,3 +253,13 @@ absolute source is now refused (no real build has one); relative values behave a
 is in the digest (the CLI uploads the link). (2) `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `VERCEL_TEAM_ID` re-target the
 CLI away from the recorded `.vercel/project.json`: the release script and `release-deploy` refuse them, and the deploy
 CLI runs with an allow-listed environment (PATH, HOME, locale, XDG, proxy, nvm), so no other `VERCEL_*` switch reaches it.
+
+### F-17 fourth adversary pass: folder links
+
+A filePathMap source that is a link to a folder (the usual pnpm package link) is uploaded as its link text, but the
+digest recorded only the folder it resolves to, so a re-written link text with the same target deployed unrefused
+(the adversary's spec is kept). The digest now binds the link text of folder links as it already did for file links,
+and upload entries are one per source path, as the CLI dedupes them, so a plain file and a link reaching the same
+target are two entries (tested). Stated limit, not fixed: the release trusts the operator's machine. A tampered global
+Vercel CLI config (`api` in its config under HOME/XDG) could point the CLI at a server that is not Vercel; the digest
+and the URL check cannot detect that. Joshua runs the release from his own logged-in machine.

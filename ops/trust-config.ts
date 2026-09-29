@@ -408,12 +408,18 @@ export function cliExtraUploads(projectDir: string): string[] {
  */
 export function uploadSet(outDir: string, projectDir: string): {
   files: { key: string; path: string; link?: string }[];
-  dirs: { key: string; path: string }[];
+  dirs: { key: string; path: string; link?: string }[];
   failures: string[];
 } {
   const failures: string[] = [];
   const files = new Map<string, { key: string; path: string; link?: string }>();
-  const dirs = new Map<string, { key: string; path: string }>();
+  const dirs = new Map<string, { key: string; path: string; link?: string }>();
+  // one entry per SOURCE path, as the CLI dedupes (a Set of `join(path, v)`), so a link and a plain file that reach the
+  // same target are two entries; when several keys name one source, the smallest key labels it (a stable digest)
+  const put = <T extends { key: string }>(m: Map<string, T>, id: string, e: T) => {
+    const old = m.get(id);
+    if (!old || e.key < old.key) m.set(id, e);
+  };
   const roots = [realpathSync(projectDir)];
   const nm = join(projectDir, "node_modules");
   if (existsSync(nm)) roots.push(realpathSync(nm));
@@ -438,8 +444,10 @@ export function uploadSet(outDir: string, projectDir: string): {
         try { real = realpathSync(abs); } catch { failures.push(`upload ${v}: missing`); continue; }
         if (!inside(real)) { failures.push(`upload ${v}: outside the project`); continue; }
         // a package link (pnpm) resolves to a folder: its needed files are listed as their own entries
-        if (statSync(real).isDirectory()) dirs.set(key, { key, path: real });
-        else files.set(real, { key, path: real, ...(lstatSync(abs).isSymbolicLink() ? { link: readlinkSync(abs) } : {}) });
+        // a linked source (pnpm package link, or a file link) is uploaded as its link text: bind the text too
+        const link = lstatSync(abs).isSymbolicLink() ? { link: readlinkSync(abs) } : {};
+        if (statSync(real).isDirectory()) put(dirs, abs, { key, path: real, ...link });
+        else put(files, abs, { key, path: real, ...link });
       }
     }
   };
@@ -523,7 +531,9 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
   const pj = join(projectDir, ".vercel", "project.json");
   if (existsSync(pj)) lines.push(`project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
-  for (const u of up.dirs) lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}`);
+  for (const u of up.dirs) {
+    lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}${u.link === undefined ? "" : `\t(link text ${u.link})`}`);
+  }
   lines.sort();
   return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };
 }

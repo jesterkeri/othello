@@ -231,6 +231,22 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(spy.calls.length, 0);
   });
 
+  it("a plain source and a linked source reaching the same file are two entries; the link's text is bound", async () => {
+    const f = fixture();
+    const cfg = join(f.out, "functions", "robinhood.func", ".vc-config.json");
+    symlinkSync("page.js", join(f.app, ".next", "server", "app", "page-link.js"));
+    writeFileSync(cfg, JSON.stringify({ runtime: "nodejs22.x", handler: "index.js", filePathMap: {
+      "a.js": ".next/server/app/page.js", "b.js": ".next/server/app/page-link.js",
+    } }));
+    writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root);
+    rmSync(join(f.app, ".next", "server", "app", "page-link.js"));
+    symlinkSync("./page.js", join(f.app, ".next", "server", "app", "page-link.js")); // same target, other text
+    const spy = spyRun();
+    const r = await deployRecorded({ root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*upload:b\.js/);
+    assert.equal(spy.calls.length, 0);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");
