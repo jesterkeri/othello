@@ -408,6 +408,9 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(script, /extra="\$\(env \| cut -d= -f1 \| grep -vxE/);
     // the build folder is private, under HOME, never the shared /tmp
     assert.match(script, /WORK="\$\(mktemp -d "\$HOME\/\.cache\/othello-release\/XXXXXXXX"\)"/);
+    // and every later step's temporary files (tsx's transform cache among them) live inside it; tsx caches nothing
+    assert.match(script, /export TMPDIR="\$WORK\/tmp"; mkdir -m 700 "\$TMPDIR"/);
+    assert.match(script, /TSX=\(node "\$WORK\/repo\/node_modules\/tsx\/dist\/cli\.mjs" --no-cache\)/);
     assert.match(script, /mkdir "\$WORK\/repo\/app\/\.vercel" && cp app\/\.vercel\/project\.json "\$WORK\/repo\/app\/\.vercel\/project\.json"\ncd "\$WORK\/repo"/);
     assert.match(script, /cd "\$WORK\/repo"\npnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\npnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\n/);
     const cmds = script.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands

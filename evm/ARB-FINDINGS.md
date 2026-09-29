@@ -400,3 +400,13 @@ any folder above the clone (this machine has none); after re-running itself the 
 holds nothing but the allowed variables and bash's own, whatever the flag says; and it releases the repository it
 belongs to, wherever it is run from. The adversary's spec is kept with a third case added (a node_modules in HOME,
 above the new build folder, is refused before anything is built).
+
+### F-17 eighteenth adversary pass: tsx's transform cache in the shared /tmp
+
+Every check step runs through tsx, which caches each transformed file in `os.tmpdir()/tsx-<uid>` and later runs the
+cached code; TMPDIR was allowed and defaults to the shared `/tmp`, so another local user who creates that folder first
+can rewrite a cached `trust-config.ts` or `release-deploy.ts` and run their code in the scan or the deploy check (proved
+with a watcher process and a scratch TMPDIR; the adversary's spec is kept). After creating its private folder the
+script now sets `TMPDIR="$WORK/tmp"` (mode 700) for every later step (tsx, npm, pnpm, next), and tsx runs with
+`--no-cache`. Stated limit, recorded: the caller's shell (e.g. `BASH_ENV`, which bash runs before the script's first
+line) is the release account's own environment, like PATH and HOME; the script cannot defend against it from inside.

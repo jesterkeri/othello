@@ -54,6 +54,9 @@ REPO="$(pwd)"; COMMIT="$(git rev-parse HEAD)"
 # node_modules ABOVE the clone, so no other user may be able to write above it (--preflight also refuses such files)
 mkdir -p "$HOME/.cache/othello-release" && chmod 700 "$HOME/.cache/othello-release"
 WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"; trap 'rm -rf "$WORK"' EXIT
+# every temporary file of every later step (tsx's transform cache, npm's, pnpm's, next's) lives in the private folder:
+# a shared /tmp would let another user plant or rewrite what a step runs
+export TMPDIR="$WORK/tmp"; mkdir -m 700 "$TMPDIR"
 
 # the fresh clone: only the commit's files, plus the project link (checked by --preflight inside the clone). git runs
 # with no system or global config, no clone templates and no hooks, so nothing outside the commit runs or rewrites it.
@@ -65,7 +68,7 @@ cd "$WORK/repo"
 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 pnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 # the checks run with the clone's own tsx, started by node directly (npx would apply npm's node-options setting)
-TSX=(node "$WORK/repo/node_modules/tsx/dist/cli.mjs")
+TSX=(node "$WORK/repo/node_modules/tsx/dist/cli.mjs" --no-cache)
 "${TSX[@]}" ops/release-deploy.ts --preflight   # repo root, app/.vercel and the project link (keys, ids)
 mkdir "$WORK/cli"
 VC="$("${TSX[@]}" ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified vercel@59.11.7 vc.js
