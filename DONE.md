@@ -3118,4 +3118,5 @@ then folder-link text bound, entries per source path. verify: mocha CI list 100 
 260a333. Stated limit: a tampered global Vercel CLI config on the release machine.
 Then 3b7c9bd modes and every folder in the digest, special files refused; and folder modes, a linked .vercel/output
 refused (7e29684, CI green after re-running a Google Fonts fetch failure); then a linked app/.vercel and tab or
-line-break names refused. verify: mocha CI list 107 passing. Adversary passes on the release path: 7.
+line-break names refused (8597eee, CI green); then every digest field escaped (link text could forge a line).
+verify: mocha CI list 109 passing. Adversary passes on the release path: 8.

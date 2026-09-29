@@ -456,6 +456,7 @@ export function uploadSet(outDir: string, projectDir: string): {
         // a linked source (pnpm package link, or a file link) is uploaded as its link text: bind the text too
         const src = lstatSync(abs);
         const link = src.isSymbolicLink() ? { link: readlinkSync(abs) } : {};
+        if (/[\t\n\r]/.test(`${link.link ?? ""}${real}`)) { failures.push(`upload ${JSON.stringify(key)}: a tab or line break in a link or path`); continue; }
         const target = statSync(real);
         if (target.isDirectory()) put(dirs, abs, { key, path: real, mode: src.mode, ...link });
         else if (!target.isFile()) failures.push(`upload ${v}: not a regular file`);
@@ -524,6 +525,13 @@ export function scanTree(dir: string, trusted: Address | null, projectDir: strin
  * full per-file list, written next to the release record so a reviewer can compare files directly (a Next build ID is
  * random, so a rebuild cannot reproduce the digest).
  */
+/**
+ * Every free-text field of a digest line (a path, a key, link text) is escaped, so no name can carry a raw tab or line
+ * break and forge a field or a line: backslash first, then tab, CR, LF and every other control character.
+ */
+export const esc = (t: string) =>
+  t.replace(/\\/g, "\\\\").replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+
 export function artifactDigest(dir: string, projectDir: string = projectOf(dir)): { sha256: string; files: number; lines: string[] } {
   const root = realpathSync(dir);
   const lines: string[] = [];
@@ -532,10 +540,10 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
       const p = join(d, n);
       const rel = relative(root, p).split(sep).join("/");
       const st = lstatSync(p);
-      if (st.isSymbolicLink()) lines.push(`${rel}\t-> ${readlinkSync(p)}`);
-      else if (st.isDirectory()) { lines.push(`${rel}/\tdir\t${st.mode.toString(8)}`); walk(p); }
-      else if (!st.isFile()) lines.push(`${rel}\tspecial ${st.mode.toString(8)}`);
-      else lines.push(`${rel}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}\t${st.mode.toString(8)}`);
+      if (st.isSymbolicLink()) lines.push(`${esc(rel)}\t-> ${esc(readlinkSync(p))}`);
+      else if (st.isDirectory()) { lines.push(`${esc(rel)}/\tdir\t${st.mode.toString(8)}`); walk(p); }
+      else if (!st.isFile()) lines.push(`${esc(rel)}\tspecial ${st.mode.toString(8)}`);
+      else lines.push(`${esc(rel)}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}\t${st.mode.toString(8)}`);
     }
   };
   walk(root);
@@ -543,14 +551,14 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   // a linked source is uploaded as its link text, so the text is bound as well as the target's bytes
   for (const u of up.files) {
     const sha = createHash("sha256").update(readFileSync(u.path)).digest("hex");
-    lines.push(`upload:${u.key}\t${sha}\t${u.mode.toString(8)}${u.link === undefined ? "" : `\t-> ${u.link}`}`);
+    lines.push(`upload:${esc(u.key)}\t${sha}\t${u.mode.toString(8)}${u.link === undefined ? "" : `\t-> ${esc(u.link)}`}`);
   }
   // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
   const pj = join(projectDir, ".vercel", "project.json");
   if (existsSync(pj)) lines.push(`project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
   for (const u of up.dirs) {
-    const text = u.link === undefined ? "" : `\t(link text ${u.link})`;
-    lines.push(`upload:${u.key}\t-> ${relative(realpathSync(projectDir), u.path)}\t${u.mode.toString(8)}${text}`);
+    const text = u.link === undefined ? "" : `\t(link text ${esc(u.link)})`;
+    lines.push(`upload:${esc(u.key)}\t-> ${esc(relative(realpathSync(projectDir), u.path))}\t${u.mode.toString(8)}${text}`);
   }
   lines.sort();
   return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };

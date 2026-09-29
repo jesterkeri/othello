@@ -284,3 +284,12 @@ refused: `.vercel/output` and `.vercel/node` must be real folders (tested).
 A linked `app/.vercel` passed (the digest follows it; the CLI uploads only the link: a broken deploy, no unscanned
 bytes; the adversary's spec is kept). `app/.vercel` must now be a real folder, like `output` and `node`. From its
 suspicion: digest lines are tab-separated, so a file or filePathMap name with a tab or line break is refused.
+
+### F-17 eighth adversary pass: the digest's line format itself
+
+The digest is a sorted list of tab-separated lines, and a linked filePathMap source's link text went in raw, so a link
+whose text held a line break could forge the line of a file added later: an added output file then left the digest
+unchanged (the adversary's spec is kept). The class is closed at its root: every free-text field (paths, keys, link
+text, real paths) goes through `esc` (backslash first, then every control character as `\xNN`), so no name can carry a
+raw tab or line break into a line and distinct names stay distinct (tested); ordinary names are unchanged. The name
+refusals stay as a second layer and now include link text and real paths.

@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { deployEnv, deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { VERCEL_CLI, artifactDigest, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
+import { VERCEL_CLI, artifactDigest, esc, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -283,6 +283,14 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const r2 = await deployRecorded({ root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r2.ok ? r2.reason : "", /a tab or line break in a name/);
     assert.equal(spy.calls.length, 0);
+  });
+
+  it("digest fields are escaped: no name can carry a raw tab or line break into a line", () => {
+    const samples = ["a\tb", "a\\x09b", "x\ny", "x\\ny", "c\\d", "plain/path.js", "\u0007", "\u007f"];
+    const out = samples.map(esc);
+    assert.equal(new Set(out).size, samples.length, "distinct names stay distinct");
+    for (const o of out) assert.doesNotMatch(o, /[\u0000-\u001f\u007f]/, `${JSON.stringify(o)} has no raw control character`);
+    assert.equal(esc("plain/path.js"), "plain/path.js", "ordinary names are unchanged");
   });
 
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
