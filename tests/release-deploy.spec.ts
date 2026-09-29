@@ -293,6 +293,16 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(esc("plain/path.js"), "plain/path.js", "ordinary names are unchanged");
   });
 
+  it("an output file named like an upload line cannot stand in for it", () => {
+    const f = fixture();
+    const real = artifactDigest(f.out, f.app).lines.filter((l) => l.includes("upload:"));
+    assert.ok(real.length > 0 && real.every((l) => l.startsWith("/upload:")), "upload lines start with /, which no output path can");
+    writeFileSync(join(f.out, "upload:.next"), "x"); // a root output file whose name imitates the prefix
+    const lines = artifactDigest(f.out, f.app).lines;
+    assert.ok(lines.some((l) => l.startsWith("upload:.next\t")), "it is an output line of its own");
+    assert.equal(lines.filter((l) => l.startsWith("/upload:")).length, real.length);
+  });
+
   it("the release script and CI build with the same pinned CLI the deploy uses", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");

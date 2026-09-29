@@ -436,7 +436,12 @@ export function uploadSet(outDir: string, projectDir: string): {
     for (const n of readdirSync(d)) {
       const p = join(d, n);
       const st = lstatSync(p);
-      if (st.isSymbolicLink()) continue; // a linked .func shares a real one, read where it lives
+      if (st.isSymbolicLink()) {
+        // a linked .func shares a real one, read where it lives; but the CLI reads a LINKED .vc-config.json by its name
+        // (buildFileTree2 picks by basename and follows it), so one is refused rather than skipped
+        if (n === ".vc-config.json") failures.push(`${relative(outDir, p)}: a linked .vc-config.json`);
+        continue;
+      }
       if (st.isDirectory()) { walk(p); continue; }
       if (n !== ".vc-config.json") continue;
       let cfg: { filePathMap?: Record<string, string> };
@@ -551,14 +556,15 @@ export function artifactDigest(dir: string, projectDir: string = projectOf(dir))
   // a linked source is uploaded as its link text, so the text is bound as well as the target's bytes
   for (const u of up.files) {
     const sha = createHash("sha256").update(readFileSync(u.path)).digest("hex");
-    lines.push(`upload:${esc(u.key)}\t${sha}\t${u.mode.toString(8)}${u.link === undefined ? "" : `\t-> ${esc(u.link)}`}`);
+    lines.push(`/upload:${esc(u.key)}\t${sha}\t${u.mode.toString(8)}${u.link === undefined ? "" : `\t-> ${esc(u.link)}`}`);
   }
   // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
   const pj = join(projectDir, ".vercel", "project.json");
-  if (existsSync(pj)) lines.push(`project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
+  // "/upload:" and "/project:" lines cannot collide with an output line: a relative output path never starts with "/"
+  if (existsSync(pj)) lines.push(`/project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
   for (const u of up.dirs) {
     const text = u.link === undefined ? "" : `\t(link text ${esc(u.link)})`;
-    lines.push(`upload:${esc(u.key)}\t-> ${esc(relative(realpathSync(projectDir), u.path))}\t${u.mode.toString(8)}${text}`);
+    lines.push(`/upload:${esc(u.key)}\t-> ${esc(relative(realpathSync(projectDir), u.path))}\t${u.mode.toString(8)}${text}`);
   }
   lines.sort();
   return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };

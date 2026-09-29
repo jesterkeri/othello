@@ -293,3 +293,11 @@ unchanged (the adversary's spec is kept). The class is closed at its root: every
 text, real paths) goes through `esc` (backslash first, then every control character as `\xNN`), so no name can carry a
 raw tab or line break into a line and distinct names stay distinct (tested); ordinary names are unchanged. The name
 refusals stay as a second layer and now include link text and real paths.
+
+### F-17 ninth adversary pass: a linked .vc-config.json; line namespaces
+
+The escaping was confirmed injective. In older code, `uploadSet` skipped every link while walking the output (for
+linked `.func` folders), but the CLI picks configs by the name `.vc-config.json` and follows a linked one, uploading
+the sources it names: those were never digested (the adversary's spec is kept). A linked `.vc-config.json` is now
+refused (the real build has none). From its suspicion: upload and project lines now start with `/`, which no relative
+output path can, so an output file named `upload:…` cannot stand in for an upload line (tested).
