@@ -248,7 +248,8 @@ export function appTreeRules(appDir: string = `${ROOT}app`): string[] {
     const j = JSON.parse(readFileSync(pkg, "utf8")) as Record<string, unknown>;
     for (const k of ["imports", "exports", "browser"]) if (k in j) f.push(`app/package.json has an "${k}" field, which can re-route imports`);
   }
-  const skip = new Set(["node_modules", ".next", "public", "src"]);
+  // .next and .vercel are build output (gitignored, never from the repo; .vercel/output is checked by scanTree)
+  const skip = new Set(["node_modules", ".next", ".vercel", "public", "src"]);
   const allowedModules = new Set(["next.config.mjs", "next-env.d.ts"]);
   const walk = (d: string) => {
     for (const n of readdirSync(d)) {

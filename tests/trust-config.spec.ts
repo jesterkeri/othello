@@ -303,6 +303,12 @@ describe("trust-config (ops/trust-config.ts)", function () {
       writeFileSync(join(d, "package.json"), JSON.stringify({ name: "x", [field!]: { "#a": "./a.ts" } }));
       assert.match(appTreeRules(d).join(), new RegExp(`"${field}" field`));
     }
+    const built = mk();
+    mkdirSync(join(built, ".vercel/output/static/_next"), { recursive: true });
+    writeFileSync(join(built, ".vercel/output/static/_next/chunk.js"), "x");
+    mkdirSync(join(built, ".next/static"), { recursive: true });
+    writeFileSync(join(built, ".next/static/chunk.js"), "x");
+    assert.deepEqual(appTreeRules(built), [], "build output (.next, .vercel) is not source; scanTree checks it");
     const d = mk();
     mkdirSync(join(d, "rhdev"));
     writeFileSync(join(d, "rhdev/x.ts"), 'export * from "../src/lib/robinhood/adapter-core";');
