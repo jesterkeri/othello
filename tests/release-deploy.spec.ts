@@ -368,9 +368,9 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const ci = readFileSync(join(REPO, ".github/workflows/evm.yml"), "utf8");
     const commands = (t: string) => t.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
     // the script installs the CLI with --install-cli and runs every Vercel command as `node "$VC"`
-    assert.match(script, /VC="\$\(npx tsx ops\/release-deploy\.ts --install-cli "\$WORK\/cli"\)"/);
+    assert.match(script, /VC="\$\("\$\{TSX\[@\]\}" ops\/release-deploy\.ts --install-cli "\$WORK\/cli"\)"/);
     for (const sub of ["pull", "build"]) assert.match(commands(script), new RegExp(`--run-cli "\\$VC" --cwd app -- ${sub} `), sub);
-    assert.match(commands(script), /ops\/release-deploy\.ts --record release\/robinhood-prebuilt\.json --cli "\$VC"/);
+    assert.match(commands(script), /"\$\{TSX\[@\]\}" ops\/release-deploy\.ts --record release\/robinhood-prebuilt\.json --cli "\$VC"/);
     // npx running Vercel (`npx [flags] vercel…`, any version), or a bare `vercel` command; paths like .vercel/ are not
     assert.doesNotMatch(commands(script), /vercel@|\bnpx(\s+-\S+)*\s+vercel\b|(?<![.\/\w-])vercel(?![@\w.-])/, "no npx or bare vercel in the release");
     // CI (a test environment, not the release) uses only the pinned version
@@ -400,9 +400,14 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.throws(() => execPinnedCli("/tmp/not-an-install/node_modules/vercel/dist/vc.js", [], "/tmp", () => 0));
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the release builds from a fresh clone of the commit, installs from the lockfiles, and copies only the record back
-    assert.match(script, /git clone -q --no-local "\$REPO" "\$WORK\/repo"\ngit -C "\$WORK\/repo" checkout -q --detach "\$COMMIT"/);
+    assert.match(script, /export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=\/dev\/null\ngit clone -q --no-local --template= -c core\.hooksPath=\/dev\/null "\$REPO" "\$WORK\/repo"\ngit -C "\$WORK\/repo" -c core\.hooksPath=\/dev\/null checkout -q --detach "\$COMMIT"/);
+    // the whole release runs in an environment of only the listed variables (npm_config_*, GIT_*, NODE_* … dropped)
+    assert.match(script, /exec env -i "\$\{keep\[@\]\}" bash "\$0" "\$@"/);
+    assert.doesNotMatch(script.match(/for v in PATH [^;]*;/)![0], /npm_config|NODE_|GIT_|VERCEL_|PNPM/);
     assert.match(script, /mkdir "\$WORK\/repo\/app\/\.vercel" && cp app\/\.vercel\/project\.json "\$WORK\/repo\/app\/\.vercel\/project\.json"\ncd "\$WORK\/repo"/);
-    assert.match(script, /cd "\$WORK\/repo"\npnpm install --frozen-lockfile --ignore-scripts\npnpm -C app install --frozen-lockfile --ignore-scripts\n/);
+    assert.match(script, /cd "\$WORK\/repo"\npnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\npnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\n/);
+    const cmds = script.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
+    assert.doesNotMatch(cmds, /\bnpx\b/, "no step of the release goes through npx");
     assert.match(script, /--preflight[\s\S]*--install-cli[\s\S]*--run-cli "\$VC" --cwd app -- pull[\s\S]*--run-cli "\$VC" --cwd app -- build[\s\S]*mkdir -p release\n/);
     assert.match(script, /cp release\/robinhood-prebuilt\.json release\/robinhood-prebuilt\.files\.txt "\$REPO\/release\/"/);
     const f = fixture();

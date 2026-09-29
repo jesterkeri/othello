@@ -371,3 +371,18 @@ Nothing gitignored in the working checkout exists in the clone, and the checks t
 dependencies. The adversary's spec is kept, adapted: the sealed harness (tests/release-script-harness.ts) copies exactly
 the folder that would be uploaded before skipping the deploy, the spec searches that copy, and it no longer creates
 `release/` itself; it also asserts the release completed and reached its deploy step with an output.
+
+### F-17 sixteenth adversary pass: configuration through environment variables
+
+The script refused `NODE_OPTIONS` but every step after the clone started through `npx`, and npm turns its `node-options`
+setting, read from `npm_config_node_options`, into `NODE_OPTIONS` for what it runs: a preload planted `app/.env.local`
+inside the fresh clone and the build inlined it (the adversary's spec is kept). Its suspicions were the same class
+through git (`GIT_TEMPLATE_DIR`, `GIT_CONFIG_*` hooks) and pnpm (`npm_config_global_pnpmfile`). Closed as a class: the
+script refuses the re-targeting VERCEL_* ids and `NODE_OPTIONS`, then re-runs itself under `env -i` with only PATH,
+HOME, user, shell, terminal, locale, TMPDIR, XDG, proxy, nvm and ROBINHOOD_RPC, so every `npm_config_*`, `GIT_*`,
+`NODE_*`, pnpm and VERCEL_* variable is gone; git in the clone runs with no system or global config, an empty template
+and no hooks; pnpm runs with `--ignore-pnpmfile`; and the checks run with the clone's own tsx started by node, so no step
+goes through npx. The kept spec now sets the npm, git-template, git-config-hooks and pnpmfile variables together. The
+sealed harness stubs pull and deploy with a `node` shim and links only the pnpm store and npm cache into its empty HOME.
+Also: the adapter spec's viem client polls every 250 ms (a missed first receipt check had cost 4 s per transaction in
+CI, timing the end-to-end test out).

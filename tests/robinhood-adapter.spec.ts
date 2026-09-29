@@ -87,7 +87,7 @@ describe("Robinhood adapter against the real contracts (anvil, chain 46630)", fu
 
   before(async () => {
     anvil = spawn("anvil", ["--port", String(PORT), "--chain-id", "46630", "--silent"], { stdio: "ignore" });
-    pub = createPublicClient({ chain, transport: http(RPC) });
+    pub = createPublicClient({ chain, transport: http(RPC), pollingInterval: 250 }); // a missed first receipt check waits 250 ms, not viem's 4 s
     for (let i = 0; i < 50; i++) {
       try {
         await pub.getChainId();
