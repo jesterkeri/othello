@@ -151,7 +151,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   if (!valid || (trust && !trust.ok)) {
     const notDeployed = trust && !trust.ok && trust.reason === "not-deployed";
     return (
-      <Shell active="Circles" network={NETWORK}>
+      <Shell active="Circles" side="robinhood" network={NETWORK}>
         <main className={s.page}>
           <section className={`${s.banner} ${s.refusal}`} role="alert">
             <h1 className={s.bannerTitle}>{notDeployed ? "Robinhood circles aren't open yet" : "This isn't an Othello circle"}</h1>
@@ -168,7 +168,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
 
   if (!view) {
     return (
-      <Shell active="Circles" network={NETWORK}>
+      <Shell active="Circles" side="robinhood" network={NETWORK}>
         <main className={s.page}>
           <p className={s.muted} role="status">{readError ? `Couldn't read the circle: ${readError}` : "Checking the circle on Robinhood Chain…"}</p>
           {readError && (
@@ -207,7 +207,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const fill = topUnits !== null ? topUpFill(v.escrowDeficit, topUnits) : 0n;
 
   return (
-    <Shell active="Circles" network={NETWORK}>
+    <Shell active="Circles" side="robinhood" network={NETWORK}>
       <main className={s.page}>
         <header className={s.head}>
           <div className={s.pills}>

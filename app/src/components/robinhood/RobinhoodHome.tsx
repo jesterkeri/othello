@@ -48,7 +48,7 @@ export default function RobinhoodHome() {
   const circles = list.started ? list.circles : null;
 
   return (
-    <Shell active="Circles" network={NETWORK}>
+    <Shell active="Circles" side="robinhood" network={NETWORK}>
       <main className={s.page}>
         <header className={s.head}>
           <div className={s.pills}><span className={s.pill}>USDG on Robinhood Chain</span></div>

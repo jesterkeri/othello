@@ -125,7 +125,7 @@ export default function RobinhoodCreate() {
   const notOpen = factory && !factory.ok;
 
   return (
-    <Shell active="Circles" network={NETWORK}>
+    <Shell active="Circles" side="robinhood" network={NETWORK}>
       <main className={s.page}>
         <header className={s.head}>
           <div className={s.pills}>

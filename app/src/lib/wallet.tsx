@@ -137,7 +137,9 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     }
   }, [w.connected, w, router]);
 
-  const openConnect = useCallback(() => { cancelled.current = false; setStage(anyDetected ? 'list' : 'empty'); }, [anyDetected]);
+  // Opening the modal does not re-arm a Solana connect the person closed or cancelled: only a new Solana pick does
+  // (adversary pass on 9a24341), so a late approval of the old prompt is still dropped.
+  const openConnect = useCallback(() => { setStage(anyDetected ? 'list' : 'empty'); }, [anyDetected]);
 
   const pick = useCallback((name: string) => {
     cancelled.current = false;

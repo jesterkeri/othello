@@ -9,13 +9,15 @@ import { SIDE_HOME, destinationAfterConnect, sideName, sideOf } from "../app/src
 
 describe("chain side from the route", () => {
   it("Robinhood Chain pages are /robinhood and below, and a Robinhood circle's page", () => {
-    for (const p of ["/robinhood", "/robinhood/", "/robinhood/new", "/circle/rh:0xB1eDe3F5AC8654124Cb5124aDf0Fd3885CbDD1F7", "/circle/rh%3A0xabc", "/circle/RH:0xabc"]) {
+    // the circle page decodes its id twice (Next once, the page once) and tests startsWith("rh:")
+    for (const p of ["/robinhood", "/robinhood/", "/robinhood/new", "/circle/rh:0xB1eDe3F5AC8654124Cb5124aDf0Fd3885CbDD1F7", "/circle/rh%3A0xabc", "/circle/%72h:0xabc", "/circle/rh%253A0xabc", "/circle/rh:0xabc/join/1"]) {
       assert.equal(sideOf(p), "robinhood", p);
     }
   });
 
   it("everything else is the Solana side, including look-alike paths", () => {
-    for (const p of ["/", "", null, undefined, "/assets", "/assets/NFLXx", "/circle/demo", "/circle/new", "/circle/rhino", "/robinhoodx", "/how-it-works", "/split-lab", "/portfolio"]) {
+    for (const p of ["/", "", null, undefined, "/assets", "/assets/NFLXx", "/circle/demo", "/circle/new", "/circle/rhino", "/robinhoodx", "/how-it-works", "/split-lab", "/portfolio",
+      "/circle/RH:0xabc", "/circle/rh%25253A0xabc", "/circle/%E0%A4%A", "/circle/"]) {
       assert.equal(sideOf(p), "solana", String(p));
     }
   });
