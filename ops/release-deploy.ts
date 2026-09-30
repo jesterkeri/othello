@@ -243,7 +243,9 @@ export async function deployRecorded(d: {
   const head = d.git.head();
   if (head !== rec.commit) return fail(`the checkout is ${head}, but the record was built from ${rec.commit}`);
   const allowed = new Set([norm(relative(d.root, d.recordFile)), norm(rec.fileList)]);
-  const other = d.git.changed().map(norm).filter((p) => !allowed.has(p));
+  // git's paths are compared as git gives them: normalising them could turn a file named `release\robinhood-prebuilt.json`
+  // into the record's own path (adversary pass on 5ed06d3); only the release's own two paths are normalised
+  const other = d.git.changed().filter((p) => !allowed.has(p));
   if (other.length) return fail(`files changed since the record was written: ${other.join(", ")}`);
   const listFile = resolve(d.root, rec.fileList);
   if (!existsSync(listFile)) return fail(`the record's file list ${rec.fileList} is missing`);

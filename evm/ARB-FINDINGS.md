@@ -559,3 +559,14 @@ root `node_modules` joins `NOT_SOURCE` beside `app/node_modules` (an install fol
 Stated limit, now in `NOT_SOURCE`'s comment: install and build-cache folders (`node_modules`, `app/.next`, including
 Next's cache) are trusted because the sealed release creates them fresh from the committed lockfiles in its clone; in
 a checkout run by hand they are whatever is on disk, and only the upload set's hash and record bind what is deployed.
+
+### F-25 adversary pass on 5ed06d3: git's paths are compared exactly
+
+`deployRecorded` normalised every changed path (`\` to `/`) before dropping the record and its file list, so a root file
+named `release\robinhood-prebuilt.json` (reported by `sourceDrift`, hidden from `git status` by a line in the
+repository's own `.git/info/exclude`) was taken for the record itself (cosmetic: only the two allowed names, `.git`
+write access, and `trust-config --record` still refused it; the adversary's spec is kept). Git's paths are now compared
+as git gives them; only the release's own two paths are normalised. Also found, not changed: these development
+worktrees link `node_modules` and `app/node_modules`, which `git status` lists (the `.gitignore` pattern
+`node_modules/` matches folders only), so a hand-run record or deploy in such a worktree is refused; release
+checkouts and the sealed clone have real folders. No new exemption was added for it.
