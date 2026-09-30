@@ -5,7 +5,7 @@
  *
  *   npx tsx ops/release-deploy.ts --install-cli <empty dir>        prints the path of the verified pinned CLI
  *   npx tsx ops/release-deploy.ts --preflight                      the repo-root and app/.vercel refusals, before a build
- *   npx tsx ops/release-deploy.ts --run-cli <vc.js> --cwd app -- <args>   runs the verified CLI in the deploy's env
+ *   npx tsx ops/release-deploy.ts --run-cli <vc.js> --cwd app -- pull|build …   the release's pull or build, checked (RUNNABLE)
  *   npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli <that path> [--prod]
  *
  * In order, refusing before Vercel is contacted if any step fails:
@@ -134,8 +134,8 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
   } catch {
     return ["ops/release-target.json is missing or unreadable: the release has no reviewed target"];
   }
-  const org = target.vercelOrgId;
-  const project = target.vercelProjectId;
+  const org = target?.vercelOrgId;
+  const project = target?.vercelProjectId;
   if (typeof org !== "string" || !org || typeof project !== "string" || !project) {
     return ["ops/release-target.json must name vercelOrgId and vercelProjectId"];
   }
@@ -145,6 +145,7 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
   } catch {
     return [".vercel/project.json is missing or unreadable: link the reviewed target project first"];
   }
+  if (typeof link !== "object" || link === null) return [".vercel/project.json is not a project link: link the reviewed target project first"];
   const found: string[] = [];
   if (link.orgId !== org) found.push(`.vercel/project.json orgId ${JSON.stringify(link.orgId)} is not the reviewed target ${org}`);
   if (link.projectId !== project) found.push(`.vercel/project.json projectId ${JSON.stringify(link.projectId)} is not the reviewed target ${project}`);
@@ -155,23 +156,41 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
  * The refusals that must hold before the release pulls or builds anything, and again before it scans: the reviewed
  * target, above the clone, its root, app/.vercel and the link.
  */
-export function preflight(root: string): string[] {
+export function preflight(root: string, target?: ReleaseTarget): string[] {
   const app = join(root, "app");
-  return [...releaseTargetRefusals(root, app), ...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
+  return [...releaseTargetRefusals(root, app, target), ...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
 }
 
 /**
- * Runs the verified pinned CLI (`vc.js`, checked by verifyPinnedCli) with the deploy's allow-listed environment, so
- * pull and build get no VERCEL_*, NODE_OPTIONS, ESBUILD_* or builder-directory switch either.
+ * The only argument lists the runner starts: the release's pull and build, word for word. Deploy goes through
+ * --record alone (scanned and recorded), and no other command or global flag (--cwd, --scope, --token,
+ * --local-config, --global-config) reaches the CLI.
+ */
+const RUNNABLE = [
+  ["pull", "--yes", "--environment=preview"], ["pull", "--yes", "--environment=production"],
+  ["build", "--yes"], ["build", "--yes", "--prod"],
+].map((a) => JSON.stringify(a));
+
+/**
+ * Runs the verified pinned CLI (`vc.js`, checked by verifyPinnedCli) in `root`'s app folder with the deploy's
+ * allow-listed environment, so pull and build get no VERCEL_*, NODE_OPTIONS, ESBUILD_* or builder-directory switch
+ * either. This entry point can be run on its own, so it checks for itself: only a RUNNABLE argument list, and only
+ * while every preflight refusal holds (the reviewed target first), or the CLI never starts.
  */
 export function execPinnedCli(
-  cliPath: string, args: string[], cwd: string,
+  cliPath: string, args: string[], root: string,
   spawnIt: (cmd: string, a: string[], o: { cwd: string; env: NodeJS.ProcessEnv }) => number = (cmd, a, o) =>
     spawnSync(cmd, a, { ...o, stdio: "inherit" }).status ?? 1,
+  target?: ReleaseTarget,
 ): number {
+  if (!RUNNABLE.includes(JSON.stringify(args))) {
+    throw new Error(`REFUSED: the runner starts only the release's pull or build (${RUNNABLE.join(" or ")}), not ${JSON.stringify(args)}; deploy through --record`);
+  }
+  const refused = preflight(root, target);
+  if (refused.length) throw new Error(`REFUSED before the CLI started:\n- ${refused.join("\n- ")}`);
   const cli = verifyPinnedCli(join(cliPath, "..", "..", "..", ".."));
   if (cli !== realpathSync(cliPath)) throw new Error(`${cliPath} is not that install's vc.js`);
-  return spawnIt(process.execPath, [cli, ...args], { cwd, env: { ...deployEnv(process.env), NEXT_TELEMETRY_DISABLED: "1" } });
+  return spawnIt(process.execPath, [cli, ...args], { cwd: join(root, "app"), env: { ...deployEnv(process.env), NEXT_TELEMETRY_DISABLED: "1" } });
 }
 
 /** The record is replaced whole (written beside it, then renamed), so a crash never leaves it half-written. */
@@ -303,8 +322,9 @@ async function main() {
   if (rc > 0) {
     const sep = process.argv.indexOf("--");
     const cw = process.argv.indexOf("--cwd");
-    if (sep < 0 || cw < 0 || !process.argv[rc + 1] || !process.argv[cw + 1]) throw new Error("--run-cli <vc.js> --cwd <dir> -- <args>");
-    process.exit(execPinnedCli(resolve(process.argv[rc + 1]!), process.argv.slice(sep + 1), resolve(ROOT, process.argv[cw + 1]!)));
+    if (sep < 0 || cw < 0 || !process.argv[rc + 1] || !process.argv[cw + 1]) throw new Error("--run-cli <vc.js> --cwd app -- <args>");
+    if (resolve(ROOT, process.argv[cw + 1]!) !== join(ROOT, "app")) throw new Error(`REFUSED: --cwd must be this checkout's app folder, not ${process.argv[cw + 1]}`);
+    process.exit(execPinnedCli(resolve(process.argv[rc + 1]!), process.argv.slice(sep + 1), ROOT));
   }
   const ic = process.argv.indexOf("--install-cli");
   if (ic > 0) {

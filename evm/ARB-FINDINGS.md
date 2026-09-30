@@ -477,3 +477,17 @@ target matching their link (tests/fake-pinned-cli.ts `reviewedTarget`), and a de
 are tested. Its unproven suspicion, noted: if the linked project were inaccessible, `vercel pull --yes` might link
 another project and pull its settings into the private build folder; the second preflight then refuses before any
 scan or deploy, so nothing is deployed and the folder is deleted.
+
+### F-19 adversary pass on be54588: the CLI runner checks for itself
+
+`release-deploy.ts --run-cli` (the release's pull and build) is an entry point of its own, like `--record`, and started
+the pinned CLI for `pull` against a link to another project (another project in the reviewed team, or the reviewed
+project id under another team; the adversary's spec is kept). `execPinnedCli` now starts only the release's four
+argument lists word for word (pull preview/production, build with or without --prod), so no deploy, link, env or
+promote command and no global flag (--cwd, --scope, --token, --local-config, --global-config) reaches the CLI; it
+always runs in the checkout's app folder (`--cwd` other than `app` is refused); and it runs the full preflight (the
+reviewed target first) before starting, so the release's own pull and build are each checked, not only the script's
+separate `--preflight` calls. A `null` target file or link is now a refusal instead of a TypeError (it already stopped
+before Vercel). Noted, not changed: a standalone `--record` in an operator checkout reads the working-tree target, so a
+file hidden with `git update-index --skip-worktree` would pass; the same trick could alter release-deploy.ts itself,
+and the release proper runs from a fresh clone of the commit, where no such bit exists.

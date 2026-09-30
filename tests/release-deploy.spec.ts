@@ -419,16 +419,19 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     process.env.VERCEL_BUILDERS_DIR = "/planted";
     process.env.NODE_OPTIONS = "--require /planted.js";
     process.env.VERCEL_CLI_USE_NATIVE_BINARY = "1";
+    const root = mkdtempSync(join(tmpdir(), "release-run-cli-"));
+    const target = reviewedTarget(root);
     try {
-      const code = execPinnedCli(fakePinnedCli(), ["build", "--yes"], "/tmp", (cmd, a, o) => { calls.push({ cmd, a, o }); return 0; });
+      const code = execPinnedCli(fakePinnedCli(), ["build", "--yes"], root, (cmd, a, o) => { calls.push({ cmd, a, o }); return 0; }, target);
       assert.equal(code, 0);
     } finally {
       for (const k of ["VERCEL_BUILDERS_DIR", "NODE_OPTIONS", "VERCEL_CLI_USE_NATIVE_BINARY"]) if (saved[k] === undefined) delete process.env[k];
     }
     assert.equal(calls[0]!.cmd, process.execPath);
     assert.deepEqual(calls[0]!.a, [fakePinnedCli(), "build", "--yes"]);
+    assert.equal(calls[0]!.o.cwd, join(root, "app"));
     for (const k of ["VERCEL_BUILDERS_DIR", "NODE_OPTIONS", "VERCEL_CLI_USE_NATIVE_BINARY"]) assert.equal(calls[0]!.o.env[k], undefined, k);
-    assert.throws(() => execPinnedCli("/tmp/not-an-install/node_modules/vercel/dist/vc.js", [], "/tmp", () => 0));
+    assert.throws(() => execPinnedCli("/tmp/not-an-install/node_modules/vercel/dist/vc.js", ["build", "--yes"], root, () => 0, target), /not-an-install/);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the release builds from a fresh clone of the commit, installs from the lockfiles, and copies only the record back
     assert.match(script, /export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=\/dev\/null\ngit clone -q --no-local --template= -c core\.hooksPath=\/dev\/null "\$REPO" "\$WORK\/repo"\ngit -C "\$WORK\/repo" -c core\.hooksPath=\/dev\/null checkout -q --detach "\$COMMIT"/);
@@ -453,6 +456,37 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);
   });
 
+
+  it("the runner starts only the release's pull and build, and only for the reviewed target (adversary pass on be54588)", () => {
+    const root = mkdtempSync(join(tmpdir(), "release-run-cli-"));
+    const target = reviewedTarget(root);
+    let started = 0;
+    const spy = () => { started++; return 0; };
+    for (const args of [["pull", "--yes", "--environment=preview"], ["pull", "--yes", "--environment=production"], ["build", "--yes"], ["build", "--yes", "--prod"]]) {
+      assert.equal(execPinnedCli(fakePinnedCli(), args, root, spy, target), 0, args.join(" "));
+    }
+    assert.equal(started, 4);
+    // deploy goes through --record alone; no other command, and no flag that moves the CLI to another folder, team or login
+    for (const args of [
+      [], ["deploy", "--prebuilt", "--prod"], ["link", "--yes"], ["promote", "x"], ["env", "pull"],
+      ["pull", "--yes", "--environment=production", "--scope", "team_other"], ["build", "--yes", "--cwd", "/tmp"],
+      ["--cwd", "/tmp", "build", "--yes"], ["build", "--yes", "--local-config", "/tmp/vercel.json"], ["build", "--yes", "--token", "t"],
+      ["pull", "--yes", "--environment=preview", "--global-config", "/tmp/cfg"], ["pull", "--yes"], ["build"],
+    ]) {
+      assert.throws(() => execPinnedCli(fakePinnedCli(), args, root, spy, target), /starts only the release's pull or build/, JSON.stringify(args));
+    }
+    assert.equal(started, 4, "a refused argument list never starts the CLI");
+    // a link to another project in the reviewed team, or the reviewed project under another team
+    for (const t of [{ ...target, vercelProjectId: "prj_other" }, { ...target, vercelOrgId: "team_other" }]) {
+      assert.throws(() => execPinnedCli(fakePinnedCli(), ["pull", "--yes", "--environment=production"], root, spy, t), /is not the reviewed target/);
+    }
+    // with no target given, the committed ops/release-target.json is read; a root without one has no reviewed target
+    assert.throws(() => execPinnedCli(fakePinnedCli(), ["pull", "--yes", "--environment=production"], root, spy), /no reviewed target/);
+    // the other preflight refusals hold here too: a root vercel.json would move the CLI
+    writeFileSync(join(root, "vercel.json"), "{}");
+    assert.throws(() => execPinnedCli(fakePinnedCli(), ["build", "--yes"], root, spy, target), /REFUSED before the CLI started/);
+    assert.equal(started, 4);
+  });
   it("the release refuses any Vercel link but the reviewed target's (Codex r4 F1), before pull, before the scan and at deploy", async () => {
     const setup = (target: object | null, link: object | null) => {
       const root = mkdtempSync(join(tmpdir(), "release-target-"));
