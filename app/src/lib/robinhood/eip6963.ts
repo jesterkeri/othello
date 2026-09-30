@@ -25,6 +25,8 @@ export const REQUEST = "eip6963:requestProvider";
 export const LEGACY_UUID = "legacy-window-ethereum";
 
 const ICON = /^data:image\/(png|jpeg|gif|webp|svg\+xml)[;,]/i;
+/** The uuid is the list's key, so it is taken exactly as announced and never cleaned: plain characters only. */
+const UUID = /^[0-9A-Za-z-]{1,128}$/;
 const RDNS = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 const MAX_ICON = 100_000;
 
@@ -43,7 +45,7 @@ export function parseAnnouncement(detail: unknown): EvmWallet | null {
   if (typeof provider !== "object" || provider === null) return null;
   if (typeof (provider as { request?: unknown }).request !== "function") return null;
   const i = info as Record<string, unknown>;
-  const uuid = text(i.uuid, 128);
+  const uuid = typeof i.uuid === "string" && UUID.test(i.uuid) ? i.uuid : null;
   const name = text(i.name, 64);
   const rdns = typeof i.rdns === "string" && i.rdns.length <= 253 && RDNS.test(i.rdns) ? i.rdns : null;
   if (!uuid || !name || !rdns || uuid === LEGACY_UUID) return null;

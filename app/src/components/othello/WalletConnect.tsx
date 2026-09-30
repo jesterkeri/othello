@@ -237,7 +237,7 @@ function ModalBody() {
                 </>
               )}
               {!w.address && w.solanaBusy && (
-                <p className={s.groupNote}>{w.walletName ?? 'A Solana wallet'} is still asking in its own window. Answer or close it there, then pick a Solana wallet again.</p>
+                <p className={s.groupNote}>{w.walletName ?? 'A Solana wallet'} is still asking in its own window. Answer or close it there, then pick a Solana wallet again. If that window is gone, reload the page.</p>
               )}
               {!w.address && w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
               {!w.address && w.detected.map((x, i) => {
