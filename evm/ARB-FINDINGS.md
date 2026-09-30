@@ -491,3 +491,15 @@ separate `--preflight` calls. A `null` target file or link is now a refusal inst
 before Vercel). Noted, not changed: a standalone `--record` in an operator checkout reads the working-tree target, so a
 file hidden with `git update-index --skip-worktree` would pass; the same trick could alter release-deploy.ts itself,
 and the release proper runs from a fresh clone of the commit, where no such bit exists.
+
+### F-20 adversary pass on 222e3fc: the target is read from HEAD
+
+The reviewed input is the committed `ops/release-target.json`, but `releaseTargetRefusals` read the working-tree copy,
+so an uncommitted edit naming another project, with app/ linked to it, passed `--run-cli`'s preflight and the pinned
+CLI started `pull` against an unreviewed project (nothing could be uploaded: `--record` refuses a changed tree; the
+adversary's spec is kept). The target is now read with `git cat-file blob HEAD:ops/release-target.json` in a checkout
+whose top is the release root, and the working-tree copy must be the same text; a file never committed, an edited copy,
+or a root below another checkout's top is a refusal. Every entry point therefore also requires a git checkout at the
+release root, which closes the adversary's unproven note that, without a `.git` there, the CLI looks for `.vercel` or
+`vercel.json` in folders above. Unit specs that mean "the committed target" now commit it (tests/fake-pinned-cli.ts
+`commitTarget`); the two earlier target adversary specs commit theirs, keeping each test's meaning.

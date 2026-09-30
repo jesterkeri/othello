@@ -3,6 +3,7 @@
  * `vercel` package.json at the pinned version, and a placeholder vc.js. Release specs pass its vc.js as `cli`, so each
  * still reaches the check it is about; their spy runner never executes it.
  */
+import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -43,4 +44,18 @@ export function reviewedTarget(root: string): { vercelOrgId: string; vercelProje
     vercelOrgId: typeof link.orgId === "string" ? link.orgId : "team_TEST",
     vercelProjectId: typeof link.projectId === "string" ? link.projectId : "prj_TEST",
   };
+}
+
+/**
+ * The release reads the reviewed target from HEAD, never from the working tree (adversary pass on 222e3fc), so a spec
+ * that means "the committed target" makes its folder a git checkout and commits ops/release-target.json there.
+ */
+export function commitTarget(root: string, target: object): void {
+  mkdirSync(join(root, "ops"), { recursive: true });
+  writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify(target));
+  const git = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid",
+    "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...a], { stdio: "ignore" });
+  if (!existsSync(join(root, ".git"))) git("init", "-q");
+  git("add", "ops/release-target.json");
+  git("commit", "-q", "-m", "reviewed target");
 }

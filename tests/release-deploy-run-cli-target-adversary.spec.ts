@@ -17,7 +17,7 @@
  *   npx mocha --import=tsx --timeout 300000 tests/release-deploy-run-cli-target-adversary.spec.ts
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +34,13 @@ function runCliPull(link: { orgId: string; projectId: string }) {
   for (const f of ["release-deploy.ts", "trust-config.ts", "release-target.json", "vercel-cli/package.json", "vercel-cli/package-lock.json"]) {
     copyFileSync(join(REPO, "ops", f), join(root, "ops", f));
   }
+  // a committed checkout, since the release reads the reviewed target from HEAD (adversary pass on 222e3fc)
+  writeFileSync(join(root, ".gitignore"), "node_modules\napp/.vercel\n");
+  const git = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid",
+    "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...a], { stdio: "ignore" });
+  git("init", "-q");
+  git("add", "-A");
+  git("commit", "-q", "-m", "reviewed target");
   symlinkSync(join(REPO, "node_modules"), join(root, "node_modules")); // typescript and viem for trust-config's imports
   mkdirSync(join(root, "app", ".vercel"), { recursive: true });
   // a stale link to a project the operator can also deploy to

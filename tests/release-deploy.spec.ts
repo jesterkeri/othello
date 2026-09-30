@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { commitTarget, fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
@@ -488,11 +488,12 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(started, 4);
   });
   it("the release refuses any Vercel link but the reviewed target's (Codex r4 F1), before pull, before the scan and at deploy", async () => {
-    const setup = (target: object | null, link: object | null) => {
+    const setup = (target: object | null, link: object | null, uncommitted?: object) => {
       const root = mkdtempSync(join(tmpdir(), "release-target-"));
       mkdirSync(join(root, "ops"));
       mkdirSync(join(root, "app", ".vercel"), { recursive: true });
-      if (target) writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify(target));
+      if (target) commitTarget(root, target); // the committed (reviewed) target
+      if (uncommitted) writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify(uncommitted));
       if (link) writeFileSync(join(root, "app", ".vercel", "project.json"), JSON.stringify(link));
       return releaseTargetRefusals(root, join(root, "app"));
     };
@@ -503,6 +504,21 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(setup(null, { orgId: "team_A", projectId: "prj_A" }).join(), /no reviewed target/);
     assert.match(setup({ vercelOrgId: "team_A" }, { orgId: "team_A", projectId: "prj_A" }).join(), /must name vercelOrgId and vercelProjectId/);
     assert.match(setup(target, null).join(), /link the reviewed target project first/);
+    // only the committed target counts: an uncommitted edit naming the link's project is refused (adversary pass on 222e3fc)
+    const other = { vercelOrgId: "team_B", vercelProjectId: "prj_B" };
+    assert.match(setup(target, { orgId: "team_B", projectId: "prj_B" }, other).join(), /differs from the committed copy at HEAD/);
+    // a target file present but never committed is no reviewed target either
+    const plain = mkdtempSync(join(tmpdir(), "release-target-plain-"));
+    mkdirSync(join(plain, "ops"));
+    writeFileSync(join(plain, "ops", "release-target.json"), JSON.stringify(target));
+    assert.match(releaseTargetRefusals(plain, join(plain, "app")).join(), /not committed at HEAD/);
+    // nor is a checkout whose top is above the release root (HEAD would name another folder's file)
+    const outer = mkdtempSync(join(tmpdir(), "release-target-outer-"));
+    commitTarget(outer, target);
+    const inner = join(outer, "sub");
+    mkdirSync(join(inner, "ops"), { recursive: true });
+    writeFileSync(join(inner, "ops", "release-target.json"), JSON.stringify(target));
+    assert.match(releaseTargetRefusals(inner, join(inner, "app")).join(), /is not the top of its git checkout/);
     // and the deploy step refuses a link that is not the target it is given (the release reads the committed one)
     const f = fixture();
     const spy = spyRun();

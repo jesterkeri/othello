@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, releaseTargetRefusals, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { commitTarget, fakePinnedCli } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -26,8 +26,8 @@ describe("adversary: the deploy step itself does not enforce the reviewed Vercel
     const app = join(root, "app");
     const out = join(app, ".vercel", "output");
     mkdirSync(join(out, "static"), { recursive: true });
-    mkdirSync(join(root, "ops"));
-    writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify({ vercelOrgId: "team_A", vercelProjectId: "prj_A" }));
+    // the reviewed target, committed (the release reads it from HEAD, adversary pass on 222e3fc)
+    commitTarget(root, { vercelOrgId: "team_A", vercelProjectId: "prj_A" });
     // a stale link to a project the operator can also deploy to
     writeFileSync(join(app, ".vercel", "project.json"), JSON.stringify({ orgId: "team_B", projectId: "prj_B", settings: {} }));
     writeFileSync(join(out, "config.json"), JSON.stringify({ version: 3 }));

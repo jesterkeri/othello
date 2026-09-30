@@ -3150,3 +3150,7 @@ r3 M1, M2, m1 RESOLVED; recordJoin and the per-account index judged sound. F1 MA
 authorised input. Fix: ops/release-target.json + releaseTargetRefusals in --preflight (before pull and after build);
 the void-write fix queued from pass 24. verify: release specs 30 passing.
 
+2026-09-30 | be54588 + 222e3fc pushed to task/A1-r4-cli-pin | adversary passes on 28df8a6 and be54588 each found one entry point
+without the target check (--record, then --run-cli); both now check it (F-18, F-19). The runner starts only the release's
+four pull/build argument lists, in app/, after the full preflight. verify: full CI list 139 passing (20m), both typechecks
+ok; CI run 36705263485 watching; adversary on 222e3fc running. Target IDs still othello's; Joshua to create othello-chains.

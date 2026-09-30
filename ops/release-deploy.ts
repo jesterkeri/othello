@@ -125,14 +125,37 @@ export function ancestorRefusals(root: string): string[] {
  * The reviewed deployment target (Codex r4 F1): ops/release-target.json, committed and reviewed, names the one Vercel
  * team and project the release may use; the caller's app/.vercel/project.json must name exactly those, or nothing is
  * pulled, built or deployed. (The digest only binds the link that was chosen; this checks it is the right one.)
+ * The target is read from HEAD of the checkout whose top is `root`, and the working-tree copy must be that same text:
+ * an uncommitted edit is not reviewed (adversary pass on 222e3fc).
  */
 export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown };
+function committedTarget(root: string): { text: string } | { refusal: string } {
+  const g = (a: string[]) => execFileSync("git", ["-C", root, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  let top: string;
+  let text: string;
+  try {
+    top = g(["rev-parse", "--show-toplevel"]).trim();
+    text = g(["cat-file", "blob", "HEAD:ops/release-target.json"]);
+  } catch {
+    return { refusal: "ops/release-target.json is not committed at HEAD of this checkout: the release has no reviewed target" };
+  }
+  if (realpathSync(top) !== realpathSync(root)) return { refusal: `${root} is not the top of its git checkout: the release has no reviewed target` };
+  let disk: string | undefined;
+  try { disk = readFileSync(join(root, "ops", "release-target.json"), "utf8"); } catch { /* differs below */ }
+  if (disk !== text) return { refusal: "ops/release-target.json differs from the committed copy at HEAD: only the committed (reviewed) target is used" };
+  return { text };
+}
 export function releaseTargetRefusals(root: string, app: string, given?: ReleaseTarget): string[] {
   let target: ReleaseTarget;
-  try {
-    target = given ?? JSON.parse(readFileSync(join(root, "ops", "release-target.json"), "utf8"));
-  } catch {
-    return ["ops/release-target.json is missing or unreadable: the release has no reviewed target"];
+  if (given) target = given;
+  else {
+    const c = committedTarget(root);
+    if ("refusal" in c) return [c.refusal];
+    try {
+      target = JSON.parse(c.text);
+    } catch {
+      return ["ops/release-target.json is not valid JSON: the release has no reviewed target"];
+    }
   }
   const org = target?.vercelOrgId;
   const project = target?.vercelProjectId;
