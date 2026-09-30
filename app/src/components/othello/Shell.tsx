@@ -49,6 +49,8 @@ export type ShellProps = {
    * keeps the page's own chip instead: the Assets pages read real Solana mainnet, which neither label would describe.
    */
   chainSwitch?: boolean;
+  /** The page's chain, when the page knows it (the Robinhood pages pass "robinhood"); otherwise read from the route. */
+  side?: ChainSide;
   children: ReactNode;
 };
 
@@ -83,8 +85,7 @@ export function useTheme() {
  * The two chains, as links: the route decides which one is current (lib/chains.ts), so the switch, the wallet button
  * and the page always agree. Nothing here needs a wallet; a judge can look at both sides without connecting.
  */
-function ChainSwitch() {
-  const current = sideOf(usePathname());
+function ChainSwitch({ current }: { current: ChainSide }) {
   return (
     <nav className={s.chainSwitch} aria-label="Chain">
       {(['solana', 'robinhood'] as ChainSide[]).map((k) => (
@@ -97,7 +98,9 @@ function ChainSwitch() {
   );
 }
 
-export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, chainSwitch = true, children }: ShellProps) {
+export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, chainSwitch = true, side, children }: ShellProps) {
+  const pathname = usePathname();
+  const current = side ?? sideOf(pathname);
   const t = useTheme();
   // Which colours menu is open: the rail's (desktop) or the top bar's (phone). One state, two places.
   const [menu, setMenu] = useState<'rail' | 'top' | null>(null);
@@ -231,7 +234,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
         <div className={s.topbar}>
           <span className={s.logoTop} aria-hidden>O</span>
           {chainSwitch ? (
-            <ChainSwitch />
+            <ChainSwitch current={current} />
           ) : network ? (
             <span className={s.devnet}>{network.chip}</span>
           ) : (
@@ -244,7 +247,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
               {paletteIcon}
             </button>
             {menu === 'top' && colours('top')}
-            {wallet ?? <WalletControl />}
+            {wallet ?? <WalletControl side={current} />}
           </span>
         </div>
         {children}
