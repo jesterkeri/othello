@@ -1,95 +1,76 @@
 "use client";
 
 /**
- * The injected EVM wallet (EIP-1193, e.g. MetaMask) for Robinhood Chain pages. Signing stays in the
- * wallet; this only reads the account and chain and asks the wallet to switch to Robinhood Chain testnet.
+ * The EVM wallet for Robinhood Chain pages: one session for the whole app (the root layout mounts the provider), so
+ * the top bar, the connect modal and every Robinhood page see the same wallet. Wallets are found by EIP-6963 and the
+ * one the person picks is the one that signs (lib/robinhood/eip6963.ts); the session's rules live in
+ * lib/robinhood/evm-session.ts. Signing stays in the wallet: this reads the account and network, asks to connect only
+ * when the person picks a wallet, and asks the wallet to switch to Robinhood Chain testnet.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPublicClient, createWalletClient, custom, getAddress, http, type Address, type EIP1193Provider } from "viem";
+import { createContext, createElement, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPublicClient, createWalletClient, custom, http, type EIP1193Provider } from "viem";
 
 import { ROBINHOOD_TESTNET_ID, robinhoodTestnet } from "./chain";
+import { discoverEvmWallets } from "./eip6963";
+import { createEvmSession, type EvmSession, type EvmSnapshot, type RememberedWallet } from "./evm-session";
 
 export const robinhoodPublicClient = createPublicClient({ chain: robinhoodTestnet, transport: http(undefined, { batch: true }) });
 
-const HEX_ID = `0x${ROBINHOOD_TESTNET_ID.toString(16)}`;
+/** The remembered wallet's rdns (not an address, not a key): a per-browser convenience, safe to lose. */
+const REMEMBER_KEY = "othello.evmWallet";
+
+function rememberedInThisBrowser(): RememberedWallet {
+  return {
+    get: () => window.localStorage.getItem(REMEMBER_KEY),
+    set: (rdns) => window.localStorage.setItem(REMEMBER_KEY, rdns),
+    clear: () => window.localStorage.removeItem(REMEMBER_KEY),
+  };
+}
 
 function injected(): EIP1193Provider | undefined {
-  if (typeof window === "undefined") return undefined;
   return (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
 }
 
-export function useEvmWallet() {
-  const [address, setAddress] = useState<Address | null>(null);
-  const [chainId, setChainId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // Read after mount: the server has no window, so the first render must match it (no hydration mismatch).
-  const [eth, setEth] = useState<EIP1193Provider | undefined>(undefined);
-  useEffect(() => setEth(injected()), []);
+const SessionContext = createContext<EvmSession | null>(null);
 
+/** Mounted once by the root layout. The session starts after mount: the server has no window, and the first render matches it. */
+export function EvmWalletProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<EvmSession | null>(null);
   useEffect(() => {
-    if (!eth) return;
-    const onAccounts = (a: unknown) => setAddress(Array.isArray(a) && a[0] ? getAddress(a[0] as string) : null);
-    const onChain = (id: unknown) => setChainId(Number.parseInt(String(id), 16));
-    void eth.request({ method: "eth_accounts" }).then(onAccounts).catch(() => {});
-    void eth.request({ method: "eth_chainId" }).then(onChain).catch(() => {});
-    eth.on("accountsChanged", onAccounts);
-    eth.on("chainChanged", onChain);
-    return () => {
-      eth.removeListener("accountsChanged", onAccounts);
-      eth.removeListener("chainChanged", onChain);
-    };
-  }, [eth]);
+    const discovery = discoverEvmWallets(window, injected);
+    const s = createEvmSession({ discovery, remembered: rememberedInThisBrowser() });
+    setSession(s);
+    return () => { s.stop(); discovery.stop(); };
+  }, []);
+  return createElement(SessionContext.Provider, { value: session }, children);
+}
 
-  const connect = useCallback(async () => {
-    setError(null);
-    if (!eth) {
-      setError("No EVM wallet found. Install MetaMask or another EVM wallet to use Robinhood Chain.");
-      return;
-    }
-    try {
-      const a = await eth.request({ method: "eth_requestAccounts" });
-      setAddress(a[0] ? getAddress(a[0]) : null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [eth]);
+const EMPTY: EvmSnapshot = { wallets: [], chosen: null, address: null, chainId: null, error: null };
+const noSubscribe = () => () => {};
+const empty = () => EMPTY;
 
-  const switchToRobinhood = useCallback(async () => {
-    if (!eth) return;
-    setError(null);
-    try {
-      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: HEX_ID }] });
-    } catch (e) {
-      if ((e as { code?: number }).code !== 4902) {
-        setError(e instanceof Error ? e.message : String(e));
-        return;
-      }
-      await eth.request({
-        method: "wallet_addEthereumChain",
-        params: [{
-          chainId: HEX_ID,
-          chainName: robinhoodTestnet.name,
-          nativeCurrency: robinhoodTestnet.nativeCurrency,
-          rpcUrls: [...robinhoodTestnet.rpcUrls.default.http],
-          blockExplorerUrls: [robinhoodTestnet.blockExplorers.default.url],
-        }],
-      });
-    }
-  }, [eth]);
-
+export function useEvmWallet() {
+  const session = useContext(SessionContext);
+  const snap = useSyncExternalStore(session ? session.subscribe : noSubscribe, session ? session.getSnapshot : empty, empty);
   const walletClient = useMemo(
-    () => (eth && address ? createWalletClient({ account: address, chain: robinhoodTestnet, transport: custom(eth) }) : null),
-    [eth, address],
+    () => (snap.chosen && snap.address ? createWalletClient({ account: snap.address, chain: robinhoodTestnet, transport: custom(snap.chosen.provider) }) : null),
+    [snap.chosen, snap.address],
   );
-
   return {
-    hasWallet: Boolean(eth),
-    address,
-    chainId,
-    onRobinhood: chainId === ROBINHOOD_TESTNET_ID,
+    /** Every EVM wallet found in this browser, for the connect modal. */
+    wallets: snap.wallets,
+    walletName: snap.chosen?.info.name ?? null,
+    hasWallet: snap.wallets.length > 0,
+    address: snap.address,
+    chainId: snap.chainId,
+    onRobinhood: snap.chainId === ROBINHOOD_TESTNET_ID,
     walletClient,
-    connect,
-    switchToRobinhood,
-    error,
+    /** Connects the picked wallet and switches it to Robinhood Chain testnet; rejects if the wallet refuses. */
+    connectWith: (uuid: string) => (session ? session.connectWith(uuid) : Promise.reject(new Error("The wallet list is still loading. Try again."))),
+    switchToRobinhood: () => (session ? session.switchToRobinhood() : Promise.resolve(false)),
+    disconnect: () => session?.disconnect(),
+    error: snap.error,
   };
 }
+
+export type EvmWalletState = ReturnType<typeof useEvmWallet>;

@@ -9,7 +9,7 @@ import { fmtUsdg } from "@/lib/robinhood/copy";
 import { EMPTY, hasMore, myCircles, nextBefore } from "@/lib/robinhood/my-circles";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
-import EvmWalletPill from "./EvmWalletPill";
+import { useWalletUi } from "@/lib/wallet";
 import s from "./Robinhood.module.css";
 
 const NETWORK = { chip: "Robinhood Chain testnet", note: "Test USDG only. It has no value." };
@@ -17,6 +17,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default function RobinhoodHome() {
   const w = useEvmWallet();
+  const connectUi = useWalletUi();
   const [factory, setFactory] = useState<TrustResult | null>(null);
   const [list, dispatch] = useReducer(myCircles, EMPTY);
   // Each request carries the wallet it was for; a reply for an earlier wallet (or an unmounted page) is dropped.
@@ -47,7 +48,7 @@ export default function RobinhoodHome() {
   const circles = list.started ? list.circles : null;
 
   return (
-    <Shell active="Circles" network={NETWORK} wallet={<EvmWalletPill w={w} />}>
+    <Shell active="Circles" network={NETWORK}>
       <main className={s.page}>
         <header className={s.head}>
           <div className={s.pills}><span className={s.pill}>USDG on Robinhood Chain</span></div>
@@ -69,7 +70,7 @@ export default function RobinhoodHome() {
         <section className={s.section} aria-live="polite">
           {!w.hasWallet && <p className={s.muted}>Install MetaMask or another EVM wallet to see your circles.</p>}
           {w.hasWallet && !w.address && (
-            <button type="button" className={s.btn} onClick={() => void w.connect()}>Connect an EVM wallet (MetaMask)</button>
+            <button type="button" className={s.btn} onClick={connectUi.openConnect}>Connect an EVM wallet (MetaMask)</button>
           )}
           {w.address && factory?.ok && circles === null && list.loading && <p className={s.muted}>Looking for your circles…</p>}
           {circles && circles.length === 0 && (
