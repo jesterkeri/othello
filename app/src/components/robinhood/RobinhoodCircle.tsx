@@ -24,7 +24,7 @@ import { explorerAddress, explorerTx } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
-import EvmWalletPill from "./EvmWalletPill";
+import { useWalletUi } from "@/lib/wallet";
 
 import s from "./Robinhood.module.css";
 
@@ -75,6 +75,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const valid = isAddress(address, { strict: false });
   const circle = (valid ? getAddress(address.toLowerCase()) : "0x0000000000000000000000000000000000000000") as Address;
   const w = useEvmWallet();
+  const connectUi = useWalletUi();
   const [trust, setTrust] = useState<TrustResult | null>(null);
   const [view, setView] = useState<RhCircleView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
@@ -150,7 +151,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   if (!valid || (trust && !trust.ok)) {
     const notDeployed = trust && !trust.ok && trust.reason === "not-deployed";
     return (
-      <Shell active="Circles" network={NETWORK} wallet={<EvmWalletPill w={w} />}>
+      <Shell active="Circles" network={NETWORK}>
         <main className={s.page}>
           <section className={`${s.banner} ${s.refusal}`} role="alert">
             <h1 className={s.bannerTitle}>{notDeployed ? "Robinhood circles aren't open yet" : "This isn't an Othello circle"}</h1>
@@ -167,7 +168,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
 
   if (!view) {
     return (
-      <Shell active="Circles" network={NETWORK} wallet={<EvmWalletPill w={w} />}>
+      <Shell active="Circles" network={NETWORK}>
         <main className={s.page}>
           <p className={s.muted} role="status">{readError ? `Couldn't read the circle: ${readError}` : "Checking the circle on Robinhood Chain…"}</p>
           {readError && (
@@ -206,7 +207,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const fill = topUnits !== null ? topUpFill(v.escrowDeficit, topUnits) : 0n;
 
   return (
-    <Shell active="Circles" network={NETWORK} wallet={<EvmWalletPill w={w} />}>
+    <Shell active="Circles" network={NETWORK}>
       <main className={s.page}>
         <header className={s.head}>
           <div className={s.pills}>
@@ -317,7 +318,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
           <h2 className={s.sectionTitle}>What you can do</h2>
           {!w.hasWallet && <p className={s.muted}>Install MetaMask or another EVM wallet to take part.</p>}
           {w.hasWallet && !w.address && (
-            <button type="button" className={s.btn} onClick={() => void w.connect()}>Connect an EVM wallet (MetaMask)</button>
+            <button type="button" className={s.btn} onClick={connectUi.openConnect}>Connect an EVM wallet (MetaMask)</button>
           )}
           {w.address && !w.onRobinhood && (
             <button type="button" className={s.btn} onClick={() => void w.switchToRobinhood()}>Switch to Robinhood Chain testnet</button>

@@ -14,7 +14,7 @@ import { checkFactory, createCircle, leastGuarantee, peakNeed, type CircleParams
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
-import EvmWalletPill from "./EvmWalletPill";
+import { useWalletUi } from "@/lib/wallet";
 import s from "./Robinhood.module.css";
 
 const NETWORK = { chip: "Robinhood Chain testnet", note: "Test USDG only. It has no value." };
@@ -24,6 +24,7 @@ const whole = (t: string): bigint | null => (/^\d+$/.test(t.trim()) ? BigInt(t.t
 
 export default function RobinhoodCreate() {
   const w = useEvmWallet();
+  const connectUi = useWalletUi();
   const router = useRouter();
   const [factory, setFactory] = useState<TrustResult | null>(null);
   const [members, setMembers] = useState<string[]>(["", "", ""]);
@@ -124,7 +125,7 @@ export default function RobinhoodCreate() {
   const notOpen = factory && !factory.ok;
 
   return (
-    <Shell active="Circles" network={NETWORK} wallet={<EvmWalletPill w={w} />}>
+    <Shell active="Circles" network={NETWORK}>
       <main className={s.page}>
         <header className={s.head}>
           <div className={s.pills}>
@@ -209,7 +210,7 @@ export default function RobinhoodCreate() {
           {parsed.problems.map((x) => <p key={x} className={s.error}>{x}</p>)}
           {!w.hasWallet && <p className={s.muted}>Install MetaMask or another EVM wallet to create a circle.</p>}
           {w.hasWallet && !w.address && (
-            <button type="button" className={s.btn} onClick={() => void w.connect()}>Connect an EVM wallet (MetaMask)</button>
+            <button type="button" className={s.btn} onClick={connectUi.openConnect}>Connect an EVM wallet (MetaMask)</button>
           )}
           {w.address && !w.onRobinhood && (
             <button type="button" className={s.btn} onClick={() => void w.switchToRobinhood()}>Switch to Robinhood Chain testnet</button>

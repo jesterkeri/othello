@@ -5,8 +5,12 @@
 // Screen", rows 1a to 1f. Row 1g, wrong network, is deliberately absent; see
 // the note on WalletModal.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { usePathname } from 'next/navigation';
 import s from './WalletConnect.module.css';
 import { useTheme } from './Shell';
+import { sideOf, type ChainSide } from '@/lib/chains';
+import { explorerAddress } from '@/lib/robinhood/chain';
+import { useEvmWallet } from '@/lib/robinhood/wallet';
 import { shortAddress, useWalletUi } from '@/lib/wallet';
 
 /** The design's three named wallets, each on its own accent. */
@@ -14,8 +18,11 @@ const KNOWN: Record<string, { slot: string; href: string }> = {
   Phantom: { slot: 'sky', href: 'https://phantom.com' },
   Solflare: { slot: 'clay', href: 'https://solflare.com' },
   Backpack: { slot: 'acid', href: 'https://backpack.app' },
+  MetaMask: { slot: 'teal', href: 'https://metamask.io' },
 };
 const INSTALLS = ['Phantom', 'Solflare', 'Backpack'] as const;
+/** For Robinhood Chain: an EVM wallet. MetaMask is named because it is the one the demo was rehearsed with. */
+const EVM_INSTALLS = ['MetaMask'] as const;
 /** A detected wallet the design did not name still gets an accent, in turn. */
 const FALLBACK = ['teal', 'cobalt', 'sky', 'clay', 'acid'];
 const TILTS = ['-1.2deg', '1deg', '-.6deg'];
@@ -34,11 +41,57 @@ function Icon({ d, size = 19, width = 2.3 }: { d: string; size?: number; width?:
 }
 
 /**
- * The header control. Shell renders it in its top bar; it reads the wallet
- * from context, so no page has to pass an address down.
+ * The header control. Shell renders it in its top bar; it reads the wallets
+ * from context, so no page has to pass an address down. Which wallet it shows
+ * follows the page's chain (lib/chains.ts): the Solana wallet on Solana pages,
+ * the EVM wallet on Robinhood Chain pages. Either way, "Connect wallet" opens
+ * the one modal, where the wallet picked decides the chain.
  */
-export function WalletControl() {
+export function WalletControl({ side }: { side?: ChainSide } = {}) {
+  const pathname = usePathname();
+  return (side ?? sideOf(pathname)) === 'robinhood' ? <EvmControl /> : <SolanaControl />;
+}
+
+function ConnectButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className={s.connect} onClick={onClick}>
+      <span className={s.connectIcon}><Icon d={WALLET_ICON} size={15} width={2.6} /></span>Connect wallet
+    </button>
+  );
+}
+
+function SolanaControl() {
   const w = useWalletUi();
+  if (!w.address) return <ConnectButton onClick={w.openConnect} />;
+  const name = w.walletName ?? 'your wallet';
+  return (
+    <AddressPill name={name} address={w.address} short={shortAddress(w.address)} chip="Devnet"
+      explorerHref={`https://explorer.solana.com/address/${w.address}?cluster=devnet`} onDisconnect={w.disconnect} />
+  );
+}
+
+function EvmControl() {
+  const ui = useWalletUi();
+  const evm = useEvmWallet();
+  if (!evm.address) return <ConnectButton onClick={ui.openConnect} />;
+  if (!evm.onRobinhood) {
+    return (
+      <button type="button" className={s.connect} onClick={() => void evm.switchToRobinhood()} title={evm.error ?? undefined}>
+        <span className={s.connectIcon}><Icon d={WALLET_ICON} size={15} width={2.6} /></span>Switch network
+      </button>
+    );
+  }
+  const name = evm.walletName ?? 'your wallet';
+  return (
+    <AddressPill name={name} address={evm.address} short={`${evm.address.slice(0, 6)}…${evm.address.slice(-4)}`} chip="Robinhood testnet"
+      explorerHref={explorerAddress(evm.address)} onDisconnect={evm.disconnect} />
+  );
+}
+
+/** The connected wallet: address pill and its menu (copy, explorer, disconnect). */
+function AddressPill({ name, address, short, chip, explorerHref, onDisconnect }: {
+  name: string; address: string; short: string; chip: string; explorerHref: string; onDisconnect: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -51,25 +104,14 @@ export function WalletControl() {
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
   }, [open]);
-  useEffect(() => { if (!w.address) setOpen(false); }, [w.address]);
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 1600);
     return () => clearTimeout(t);
   }, [copied]);
 
-  if (!w.address) {
-    return (
-      <button type="button" className={s.connect} onClick={w.openConnect}>
-        <span className={s.connectIcon}><Icon d={WALLET_ICON} size={15} width={2.6} /></span>Connect wallet
-      </button>
-    );
-  }
-
-  const name = w.walletName ?? 'your wallet';
-  const short = shortAddress(w.address);
   const copy = async () => {
-    try { await navigator.clipboard.writeText(w.address!); setCopied(true); } catch { /* clipboard blocked: the label stays "Copy address" */ }
+    try { await navigator.clipboard.writeText(address); setCopied(true); } catch { /* clipboard blocked: the label stays "Copy address" */ }
   };
 
   return (
@@ -87,15 +129,27 @@ export function WalletControl() {
               <span className={s.menuWith}>Connected with {name}</span>
               <span className={s.menuAddr}>{short}</span>
             </span>
-            <span className={s.devnetChip}>Devnet</span>
+            <span className={s.devnetChip}>{chip}</span>
           </div>
           <button type="button" role="menuitem" className={s.item} onClick={copy}><Icon d={copied ? CHECK : COPY} />{copied ? 'Copied' : 'Copy address'}</button>
-          <a role="menuitem" className={s.item} href={`https://explorer.solana.com/address/${w.address}?cluster=devnet`} target="_blank" rel="noopener noreferrer"><Icon d={OUT} />View on explorer</a>
-          <button type="button" role="menuitem" className={s.item} onClick={() => { setOpen(false); w.disconnect(); }}><Icon d="M12 3.5v8M7 6.5a7 7 0 1 0 10 0" />Disconnect</button>
+          <a role="menuitem" className={s.item} href={explorerHref} target="_blank" rel="noopener noreferrer"><Icon d={OUT} />View on explorer</a>
+          <button type="button" role="menuitem" className={s.item} onClick={() => { setOpen(false); onDisconnect(); }}><Icon d="M12 3.5v8M7 6.5a7 7 0 1 0 10 0" />Disconnect</button>
           <p className={s.menuNote}>Othello never holds your keys. Every transaction opens in {name} for you to approve.</p>
         </div>
       )}
     </span>
+  );
+}
+
+/** A link to install a wallet, with an optional line saying why it is offered. */
+function InstallRow({ name, note }: { name: keyof typeof KNOWN & string; note?: string }) {
+  const k = KNOWN[name]!;
+  return (
+    <a className={s.install} href={k.href} target="_blank" rel="noopener noreferrer">
+      <span className={s.installBadge} style={fill(k.slot)}>{name[0]}</span>
+      <span className={s.installName}>{note ? `${note}. Get ${name}` : `Get ${name}`}</span>
+      <Icon d={OUT} size={17} width={2.8} />
+    </a>
   );
 }
 
@@ -143,7 +197,9 @@ function ModalBody() {
   const waiting = stage === 'connecting';
   const bad = stage === 'rejected' || stage === 'failed';
   const status = {
-    connecting: { chip: 'Waiting for approval', style: fill('cobalt'), line: `${wallet} is asking you to share your address with Othello. Nothing is signed and nothing moves.`, hint: `No window? Open ${wallet} from your browser toolbar.` },
+    connecting: { chip: 'Waiting for approval', style: fill('cobalt'), line: w.pendingKind === 'robinhood'
+      ? `${wallet} is asking you to share your address with Othello, then to use Robinhood Chain testnet. Nothing is signed and nothing moves.`
+      : `${wallet} is asking you to share your address with Othello. Nothing is signed and nothing moves.`, hint: `No window? Open ${wallet} from your browser toolbar.` },
     rejected: { chip: 'Cancelled', style: { background: 'var(--raised)', color: 'var(--onPanel)' }, line: 'You cancelled in your wallet. Nothing was sent.', hint: 'Try again when you are ready, or pick a different wallet.' },
     failed: { chip: 'Wallet error', style: fill('clay'), line: `${wallet} closed the request before it finished. Nothing was sent.`, hint: `Unlock ${wallet}, then try again.` },
   }[stage as 'connecting' | 'rejected' | 'failed'];
@@ -166,6 +222,8 @@ function ModalBody() {
         {stage === 'list' && (
           <>
             <div className={s.list}>
+              <span className={s.label}>Solana devnet</span>
+              {w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
               {w.detected.map((x, i) => {
                 const slot = slotFor(x.name, i);
                 return (
@@ -174,6 +232,24 @@ function ModalBody() {
                     <span className={s.walletText}>
                       <span className={s.walletName}>{x.name}</span>
                       <span className={s.walletSub}>Detected in this browser</span>
+                    </span>
+                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                  </button>
+                );
+              })}
+              <span className={s.label}>Robinhood Chain testnet</span>
+              {w.evmDetected.length === 0 && <InstallRow name="MetaMask" note="No EVM wallet in this browser" />}
+              {w.evmDetected.map((x, j) => {
+                const i = j + w.detected.length;
+                const slot = slotFor(x.name, i);
+                return (
+                  <button key={x.uuid} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pickEvm(x.uuid)}>
+                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>
+                      {x.icon ? <img className={s.walletIcon} src={x.icon} alt="" width={30} height={30} /> : x.name[0]}
+                    </span>
+                    <span className={s.walletText}>
+                      <span className={s.walletName}>{x.name}</span>
+                      <span className={s.walletSub}>EVM wallet, detected in this browser</span>
                     </span>
                     <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
                   </button>
@@ -191,15 +267,13 @@ function ModalBody() {
           <>
             <div className={s.empty}>
               <p className={s.emptyLead}>A wallet is an app you install that holds your keys and asks you before anything is sent.</p>
-              <span className={s.label}>Install one for Solana</span>
+              <span className={s.label}>Install one for Solana devnet</span>
               <div className={s.installs}>
-                {INSTALLS.map((name) => (
-                  <a key={name} className={s.install} href={KNOWN[name]!.href} target="_blank" rel="noopener noreferrer">
-                    <span className={s.installBadge} style={fill(KNOWN[name]!.slot)}>{name[0]}</span>
-                    <span className={s.installName}>Get {name}</span>
-                    <Icon d={OUT} size={17} width={2.8} />
-                  </a>
-                ))}
+                {INSTALLS.map((name) => <InstallRow key={name} name={name} />)}
+              </div>
+              <span className={s.label}>Or one for Robinhood Chain testnet</span>
+              <div className={s.installs}>
+                {EVM_INSTALLS.map((name) => <InstallRow key={name} name={name} />)}
               </div>
             </div>
             <div className={s.emptyFoot}>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
+import { SIDE_HOME, sideName } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
@@ -345,6 +346,23 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
               <p className={s.note}>{secondaryNote}</p>
             </div>
           )}
+        </section>
+
+        {/* Both chains from the first screen (A2-SWITCH): a judge sees there are two, and neither needs a wallet to look. */}
+        <section className={s.tryOn} aria-labelledby="try-on">
+          <span id="try-on" className={s.micro}>Try it on</span>
+          <div className={s.tryRow}>
+            <a className={s.tryCard} href={hrefFor('Circles')} style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
+              <span className={`${s.display} ${s.tryTitle}`}>{sideName('solana')}</span>
+              <span className={s.tryBody}>Savings circles backed by stock, traded as labelled test mirrors of xStocks.</span>
+              <Arrow size={20} />
+            </a>
+            <a className={s.tryCard} href={SIDE_HOME.robinhood} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
+              <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
+              <span className={s.tryBody}>Savings circles in USDG. Test USDG only; it has no value.</span>
+              <Arrow size={20} />
+            </a>
+          </div>
         </section>
 
         <div className={s.tabsWrap}>

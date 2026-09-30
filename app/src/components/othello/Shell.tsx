@@ -4,9 +4,11 @@
 // floating rail on desktop whose glass follows the MODE, the bottom nav pill on phone, and the colours
 // menu (palettes AND the light/dark switch). Shared by every page but Landing.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import s from './Shell.module.css';
 import StockSearch from './StockSearch';
 import { WalletControl } from './WalletConnect';
+import { SIDE_HOME, SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
@@ -40,8 +42,13 @@ export type ShellProps = {
   surface?: 'panel' | 'gutter';
   /** The top bar's chip and note. Default: the devnet demo. Mainnet read-only pages pass their own. */
   network?: { chip: string; note: string };
-  /** Replaces the top bar's (Solana) wallet control, e.g. with an EVM wallet on Robinhood Chain pages. */
+  /** Replaces the top bar's wallet control. By default it follows the page's chain (WalletControl). */
   wallet?: ReactNode;
+  /**
+   * The top bar shows the chain switch (Solana devnet | Robinhood Chain testnet) in place of a network chip. False
+   * keeps the page's own chip instead: the Assets pages read real Solana mainnet, which neither label would describe.
+   */
+  chainSwitch?: boolean;
   children: ReactNode;
 };
 
@@ -72,7 +79,25 @@ export function useTheme() {
   return { mode, setMode, choice, setChoice, mine, vars, custom, setCustom };
 }
 
-export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, children }: ShellProps) {
+/**
+ * The two chains, as links: the route decides which one is current (lib/chains.ts), so the switch, the wallet button
+ * and the page always agree. Nothing here needs a wallet; a judge can look at both sides without connecting.
+ */
+function ChainSwitch() {
+  const current = sideOf(usePathname());
+  return (
+    <nav className={s.chainSwitch} aria-label="Chain">
+      {(['solana', 'robinhood'] as ChainSide[]).map((k) => (
+        <a key={k} href={SIDE_HOME[k]} className={`${s.chainOpt} ${k === current ? s.chainOn : ''}`} aria-current={k === current ? 'true' : undefined} aria-label={sideName(k)}>
+          <span className={s.chainName}>{SIDE_LABEL[k].chain}</span>
+          <span className={s.chainNet}>{SIDE_LABEL[k].network}</span>
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, chainSwitch = true, children }: ShellProps) {
   const t = useTheme();
   // Which colours menu is open: the rail's (desktop) or the top bar's (phone). One state, two places.
   const [menu, setMenu] = useState<'rail' | 'top' | null>(null);
@@ -205,7 +230,9 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
       <main className={`${s.panel} ${surface === 'gutter' ? s.panelGutter : ''}`}>
         <div className={s.topbar}>
           <span className={s.logoTop} aria-hidden>O</span>
-          {network ? (
+          {chainSwitch ? (
+            <ChainSwitch />
+          ) : network ? (
             <span className={s.devnet}>{network.chip}</span>
           ) : (
             <span className={s.devnet}><span className={s.dots} aria-hidden>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>Devnet<span className={s.devnetFull}>&nbsp;demo</span></span>
