@@ -100,8 +100,11 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   // Set when a person picks a Solana wallet, so the connect that follows (and only that one, not a restore on
   // reload) takes them to the Solana side.
   const goAfterSolana = useRef(false);
-  // Each EVM pick gets a number; an answer to an older pick is dropped.
+  // Each EVM pick gets a number; an answer to an older pick is dropped. An EVM cancel has its own flag: sharing
+  // `cancelled` let an EVM pick re-arm a Solana connect the person had cancelled (adversary pass on 04fc114), and an
+  // EVM cancel must never disconnect a Solana wallet.
   const evmPick = useRef(0);
+  const evmCancelled = useRef(false);
   // Set by Cancel. The wallet's own prompt cannot be withdrawn from here, so if
   // it is approved after the person cancelled, the connection is dropped
   // rather than appearing out of nowhere.
@@ -155,7 +158,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   const pickEvm = useCallback((uuid: string) => {
     const name = evm.wallets.find((x) => x.info.uuid === uuid)?.info.name ?? 'your wallet';
     const mine = ++evmPick.current;
-    cancelled.current = false;
+    evmCancelled.current = false;
     goAfterSolana.current = false;
     setPending(name);
     setPendingKind('robinhood');
@@ -165,17 +168,23 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
       () => {
         // Cancelled, closed or superseded: the session already dropped the wallet's late answer (cancelPending), so
         // there is nothing to undo here, and the wallet connected before, if any, is untouched.
-        if (mine !== evmPick.current || cancelled.current) return;
+        if (mine !== evmPick.current || evmCancelled.current) return;
         setStage('closed');
         const to = destinationAfterConnect('robinhood', path.current);
         if (to) router.push(to);
       },
       (e: unknown) => {
-        if (mine !== evmPick.current || cancelled.current) return;
+        if (mine !== evmPick.current || evmCancelled.current) return;
         setStage(isEvmRejection(e) ? 'rejected' : 'failed');
       },
     );
   }, [evm, router]);
+
+  /** Abandons the connect waiting in a wallet: only the kind that is waiting, so neither side's cancel touches the other. */
+  const cancelPendingPick = useCallback(() => {
+    if (pendingKind === 'robinhood') { evmCancelled.current = true; evm.cancelPending(); }
+    else cancelled.current = true;
+  }, [pendingKind, evm]);
 
   const value = useMemo<WalletUi>(() => ({
     address: w.publicKey?.toBase58() ?? null,
@@ -187,13 +196,13 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     pendingKind,
     openConnect,
     close: () => {
-      if (stage === 'connecting') { cancelled.current = true; evm.cancelPending(); }
+      if (stage === 'connecting') cancelPendingPick();
       goAfterSolana.current = false;
       setStage('closed');
     },
     pick,
     pickEvm,
-    cancel: () => { cancelled.current = true; evm.cancelPending(); goAfterSolana.current = false; setStage('list'); },
+    cancel: () => { cancelPendingPick(); goAfterSolana.current = false; setStage('list'); },
     retry: () => {
       if (pendingKind === 'robinhood' && pendingUuid) pickEvm(pendingUuid);
       else if (pending) pick(pending);
@@ -201,7 +210,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     another: () => setStage(anyDetected ? 'list' : 'empty'),
     recheck: () => setStage(anyDetected ? 'list' : 'empty'),
     disconnect: () => { void w.disconnect(); },
-  }), [w, evm, stage, detected, evmDetected, pending, pendingKind, pendingUuid, anyDetected, openConnect, pick, pickEvm]);
+  }), [w, stage, detected, evmDetected, pending, pendingKind, pendingUuid, anyDetected, openConnect, pick, pickEvm, cancelPendingPick]);
 
   return <WalletUiContext.Provider value={value}>{children}</WalletUiContext.Provider>;
 }
