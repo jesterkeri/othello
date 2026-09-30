@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -107,6 +107,8 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(r.ok, false);
     assert.match(!r.ok ? r.reason : "", new RegExp(`changed while they were uploading, so ${DEPLOY_URL.replace(/\./g, "\\.")} may not be the scanned artifact; do not use or share it`));
     assert.equal(read(f.record).deploymentUrl, null);
+    assert.equal(read(f.record).voidedDeploymentUrl, DEPLOY_URL, "the voided deployment is named in the record, to remove it");
+    assert.equal(existsSync(`${f.record}.writing`), false, "the record is replaced whole");
   });
 
   it("refuses a record already deployed, another commit, other changed files, or a record built with another CLI", async () => {

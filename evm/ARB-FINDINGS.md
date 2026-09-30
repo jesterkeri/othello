@@ -440,3 +440,10 @@ Vercel call replaced). Now a failed copy KEEPS the folder, names the record's pa
 suspicions: the contracts are built with `forge build --force` (no committed or cached output reused); whether the
 factory is set is asked of trust-config's own parser (`--config-state`), not matched as text; and that build now runs
 after `--preflight`.
+
+### F-17 twenty-second adversary pass: no defect; two record suspicions closed
+
+The pass found no defect (every exit path, the copy-back, `--config-state`, errexit inside the trap). Two of its
+suspicions are closed: the record is now replaced whole (written beside it, then renamed), so a crash never leaves it
+half-written and unreadable by the copy-back check; and a deployment voided because files changed during the upload is
+now named in the record (`voidedDeploymentUrl`), so it can be found and removed.

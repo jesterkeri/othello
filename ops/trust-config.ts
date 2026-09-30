@@ -593,6 +593,8 @@ export type ReleaseRecord = {
   vercelCli: string; deploy: string; fileList: string;
   /** Set just before the CLI is started: a record with this and no URL means a deploy may have happened; check Vercel. */
   deployStartedAt: string | null;
+  /** A deployment whose files changed during the upload: not the scanned artifact; remove it on Vercel. */
+  voidedDeploymentUrl?: string;
   deploymentUrl: string | null; target: "preview" | "production" | null; deployedAt: string | null;
 };
 

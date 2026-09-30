@@ -17,7 +17,7 @@
  * then is the deployment URL written into the record, which is committed and reviewed with it.
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -141,6 +141,13 @@ export function execPinnedCli(
   return spawnIt(process.execPath, [cli, ...args], { cwd, env: { ...deployEnv(process.env), NEXT_TELEMETRY_DISABLED: "1" } });
 }
 
+/** The record is replaced whole (written beside it, then renamed), so a crash never leaves it half-written. */
+function writeRecordAtomically(file: string, rec: ReleaseRecord): void {
+  const tmp = `${file}.writing`;
+  writeFileSync(tmp, JSON.stringify(rec, null, 2) + "\n");
+  renameSync(tmp, file);
+}
+
 export async function deployRecorded(d: {
   root: string; recordFile: string; prod: boolean; run: Run; git: Git; appDir?: string; env?: NodeJS.ProcessEnv;
   /** The pinned CLI's vc.js, as installPinnedCli returned it; checked again here. */
@@ -183,7 +190,7 @@ export async function deployRecorded(d: {
   }
   // written before Vercel is contacted, so an interrupted deploy still leaves a record that says one may have happened
   const started: ReleaseRecord = { ...rec, deployStartedAt: new Date().toISOString(), target: d.prod ? "production" : "preview" };
-  writeFileSync(d.recordFile, JSON.stringify(started, null, 2) + "\n");
+  writeRecordAtomically(d.recordFile, started);
   const r = await d.run(process.execPath, [cli, "deploy", "--prebuilt", ...(d.prod ? ["--prod"] : [])], app);
   const urls = [...new Set(r.stdout.split("\n").map((l) => l.trim()).filter((l) => URL_LINE.test(l)))];
   if (r.code !== 0 || urls.length !== 1) {
@@ -198,13 +205,14 @@ export async function deployRecorded(d: {
     const undo = d.prod
       ? `it is already live in production: roll back now (node ${cli} rollback) and release again`
       : `do not use or share it; remove it (node ${cli} remove ${url}) and release again`;
+    writeRecordAtomically(d.recordFile, { ...started, voidedDeploymentUrl: url });
     return fail(
       `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}.\n` +
         [...lateExtra, ...differences(recorded, after.lines)].slice(0, 20).join("\n"),
     );
   }
   const done: ReleaseRecord = { ...started, deploymentUrl: url, deployedAt: new Date().toISOString() };
-  writeFileSync(d.recordFile, JSON.stringify(done, null, 2) + "\n");
+  writeRecordAtomically(d.recordFile, done);
   return { ok: true, url };
 }
 
