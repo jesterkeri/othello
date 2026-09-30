@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, gitFor, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { commitTarget, fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
-import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, gitIn, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
+import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, gitIn, scanTree, sourceDrift, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -586,6 +586,33 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.ok(gitFor(root).changed().includes("app/src/app/unreviewed/page.tsx"));
     assert.match(gitIn(root, ["status", "--porcelain"]), /\?\? app\/src\/app\/unreviewed\/page\.tsx/);
     assert.equal(existsSync(marker), false, "the repository's core.fsmonitor program never ran");
+  });
+
+  it("the build's inputs are compared with HEAD by content, not by git's status (adversary pass on 647e485)", () => {
+    const root = mkdtempSync(join(tmpdir(), "release-drift-"));
+    commitTarget(root, { vercelOrgId: "team_A", vercelProjectId: "prj_A" });
+    mkdirSync(join(root, "app", "src"), { recursive: true });
+    writeFileSync(join(root, "app", "src", "a.ts"), "export const a = 1;\n");
+    writeFileSync(join(root, "README.md"), "readme\n");
+    execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false",
+      "-c", "core.hooksPath=/dev/null", "add", "-A"]);
+    execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false",
+      "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "inputs"]);
+    assert.deepEqual(sourceDrift(root), []);
+    // what the build itself writes is not an input
+    for (const d of ["node_modules", ".next", ".vercel"]) mkdirSync(join(root, "app", d, "x"), { recursive: true });
+    writeFileSync(join(root, "app", "next-env.d.ts"), "/// types\n");
+    writeFileSync(join(root, "app", "tsconfig.tsbuildinfo"), "{}");
+    mkdirSync(join(root, "node_modules"));
+    assert.deepEqual(sourceDrift(root), []);
+    // a root-level file no commit holds, a changed input, a missing input, a file replaced by a link
+    writeFileSync(join(root, "postcss.config.js"), "module.exports = {};\n");
+    writeFileSync(join(root, "README.md"), "changed\n");
+    rmSync(join(root, "app", "src", "a.ts"));
+    symlinkSync("elsewhere.ts", join(root, "app", "src", "a.ts"));
+    assert.deepEqual(sourceDrift(root), ["README.md", "app/src/a.ts", "postcss.config.js"]);
+    rmSync(join(root, "app", "src", "a.ts"));
+    assert.deepEqual(sourceDrift(root), ["README.md", "app/src/a.ts", "postcss.config.js"], "missing on disk");
   });
 
   it("anything above the clone that node or a build tool would read is refused by the preflight", () => {

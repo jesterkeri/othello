@@ -21,7 +21,7 @@ import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpat
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitIn, uploadSet, type ReleaseRecord } from "./trust-config.ts";
+import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitIn, uncommittedPaths, uploadSet, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 export type Git = { head(): string; changed(): string[] };
@@ -326,11 +326,9 @@ const run: Run = (cmd, args, cwd) =>
 /** The deploy's view of the checkout, through gitIn (no caller GIT_* variables, no replace refs, nothing above root). */
 export const gitFor = (root: string): Git => ({
   head: () => gitIn(root, ["rev-parse", "HEAD"]).trim(),
-  changed: () =>
-    gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all"])
-      .split("\n")
-      .filter(Boolean)
-      .map((l) => l.slice(3)),
+  // git's status and the content check of the build's inputs against HEAD (sourceDrift): no ignore rule, stat cache
+  // or setting can call a changed input clean
+  changed: () => uncommittedPaths(root),
 });
 
 async function main() {

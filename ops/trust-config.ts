@@ -645,8 +645,75 @@ export function gitIn(root: string, args: string[]): string {
     "--no-replace-objects", "-C", real, `--git-dir=${join(real, ".git")}`, `--work-tree=${real}`,
     "-c", "core.excludesFile=/dev/null", "-c", "core.attributesFile=/dev/null", "-c", "core.fsmonitor=false",
     "-c", "core.untrackedCache=false", "-c", "core.hooksPath=/dev/null", "-c", "status.showUntrackedFiles=all",
+    "-c", "core.trustctime=true", "-c", "core.checkStat=default", "-c", "core.ignoreCase=false",
   ];
   return execFileSync("git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+}
+
+/**
+ * What the build may read that the build itself writes: install and output folders and Next's two generated files
+ * (types and the type-check cache; neither reaches the output). Everything else in app/, and every file at the
+ * repository root (Next looks upward for some build configs), is a build input.
+ */
+export const NOT_SOURCE = new Set(["app/node_modules", "app/.next", "app/.vercel", "app/next-env.d.ts", "app/tsconfig.tsbuildinfo"]);
+
+/**
+ * The build's inputs on disk against HEAD, by content (adversary pass on 647e485): git's own status rests on ignore
+ * rules (an untracked `.gitignore` can hide itself and a page beside it), the index's stat cache and repository
+ * settings, so it can call a changed tree clean. This reads HEAD's tree (`ls-tree`, through gitIn) and hashes every
+ * file under app/ (but NOT_SOURCE) and at the root as git would store it: a file not in HEAD, a file whose bytes or kind
+ * (file or link) differ, or a file of HEAD missing on disk is returned by path. No ignore rule, cache or setting takes
+ * part. (The executable bit is not compared: the repository does not track it, and it does not change the build.)
+ */
+export function sourceDrift(root: string): string[] {
+  const head = new Map<string, { mode: string; oid: string }>();
+  for (const rec of gitIn(root, ["ls-tree", "-z", "--full-tree", "HEAD"]).split("\0").filter(Boolean)) {
+    const tab = rec.indexOf("\t");
+    const [mode, type, oid] = rec.slice(0, tab).split(" ");
+    if (type === "blob") head.set(rec.slice(tab + 1), { mode: mode!, oid: oid! });
+  }
+  for (const rec of gitIn(root, ["ls-tree", "-r", "-z", "--full-tree", "HEAD", "--", "app"]).split("\0").filter(Boolean)) {
+    const tab = rec.indexOf("\t");
+    const [mode, type, oid] = rec.slice(0, tab).split(" ");
+    head.set(rec.slice(tab + 1), { mode: type === "blob" ? mode! : `${type}`, oid: oid! });
+  }
+  const drift: string[] = [];
+  const seen = new Set<string>();
+  const check = (p: string) => {
+    seen.add(p);
+    const st = lstatSync(join(root, p));
+    const h = head.get(p);
+    if (!h) return drift.push(p);
+    let data: Buffer;
+    let link: boolean;
+    if (st.isSymbolicLink()) { data = Buffer.from(readlinkSync(join(root, p))); link = true; }
+    else if (st.isFile()) { data = readFileSync(join(root, p)); link = false; }
+    else return drift.push(p);
+    if ((h.mode === "120000") !== link) return drift.push(p);
+    const oid = createHash(h.oid.length === 64 ? "sha256" : "sha1").update(`blob ${data.length}\0`).update(data).digest("hex");
+    if (oid !== h.oid) drift.push(p);
+  };
+  const walk = (rel: string) => {
+    for (const name of readdirSync(join(root, rel))) {
+      const p = `${rel}/${name}`;
+      if (NOT_SOURCE.has(p)) continue;
+      if (lstatSync(join(root, p)).isDirectory()) walk(p);
+      else check(p);
+    }
+  };
+  for (const name of readdirSync(root)) {
+    const st = lstatSync(join(root, name));
+    if (name === "app" && st.isDirectory()) walk("app");
+    else if (!st.isDirectory()) check(name);
+  }
+  for (const p of head.keys()) if ((p.startsWith("app/") || !p.includes("/")) && !seen.has(p) && ![...NOT_SOURCE].some((x) => p === x || p.startsWith(`${x}/`))) drift.push(p);
+  return [...new Set(drift)].sort();
+}
+
+/** Changed, untracked or drifted paths: git's status (every untracked file) together with sourceDrift. */
+export function uncommittedPaths(root: string): string[] {
+  const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all"]).split("\n").filter(Boolean).map((l) => l.slice(3));
+  return [...new Set([...status, ...sourceDrift(root)])].sort();
 }
 
 /** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */
@@ -816,8 +883,8 @@ async function main() {
       if (!file) throw new Error("--record needs a file");
       const commit = gitIn(ROOT, ["rev-parse", "HEAD"]).trim();
       // untracked files count: vercel build would include an untracked page that is in no commit
-      const dirty = gitIn(ROOT, ["status", "--porcelain"]).trim();
-      if (dirty) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty}`);
+      const dirty = uncommittedPaths(ROOT);
+      if (dirty.length) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty.join("\n")}`);
       // written only once EVERY check below has passed: a record in the release folder always means "scanned and verified"
       writeRecordWhenVerified = () => {
         writeRecord(resolve(ROOT, file), dg, commit, config.state === "set" ? config.address : null);

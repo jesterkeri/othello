@@ -532,3 +532,20 @@ configured fsmonitor never runs; `status.showUntrackedFiles=no` does not hide an
 worktree (`.git` is a gitdir file): HEAD, top, status and the committed target all resolve. Accepted and stated: a
 repository's own `.git/info/exclude` needs write access to the checkout, like editing the release code itself, and the
 sealed release runs in a fresh clone that has none.
+
+### F-23 adversary pass on 647e485: the build's inputs are checked by content, not by git's status
+
+`git status` rests on ignore rules, the index's stat cache and repository settings. An untracked `.gitignore` containing
+`*`, written beside an unreviewed page, hid the page and itself from the deploy's changed-file check and from
+trust-config `--record`'s dirty check with nothing but the working-tree write that placed the page; the repository's
+own `core.trustctime=false` let a same-size in-place edit pass, and `core.ignoreCase=true` hid `Page.tsx` beside
+`page.tsx` (the adversary's spec is kept; its "dirty check" assertions now name `uncommittedPaths`, the function
+`--record` uses). New `sourceDrift` (trust-config.ts) reads HEAD's tree with `ls-tree` (through gitIn) and hashes, as git
+would store them, every file under app/ and every file at the repository root (Next looks upward for some build
+configs), except what the build itself writes (`NOT_SOURCE`: app/node_modules, app/.next, app/.vercel, Next's
+generated `next-env.d.ts` and `tsconfig.tsbuildinfo`): a file not in HEAD, with other bytes or kind, or missing is
+reported, with no ignore rule, cache or setting involved. `uncommittedPaths` (status with every untracked file, plus
+sourceDrift) is now the deploy's `changed()` and `--record`'s dirty check; gitIn also pins `core.trustctime`,
+`core.checkStat` and `core.ignoreCase`. Noted, unchanged: `release-robinhood.sh`'s first `git status` runs in the
+operator's checkout before the fresh clone; untracked files there never reach the clone, which holds only the commit
+plus the checked project link.
