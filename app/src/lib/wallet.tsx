@@ -105,6 +105,9 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   // EVM cancel must never disconnect a Solana wallet.
   const evmPick = useRef(0);
   const evmCancelled = useRef(false);
+  // True from a Solana pick until its outcome: only then may a Solana connect close the modal. A restore, an account
+  // switch in the wallet, or a wallet connected before is not a pick (adversary pass on 1bbd3c4).
+  const solanaPicking = useRef(false);
   // Set by Cancel. The wallet's own prompt cannot be withdrawn from here, so if
   // it is approved after the person cancelled, the connection is dropped
   // rather than appearing out of nowhere.
@@ -120,7 +123,10 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   useEffect(() => {
     errorRef.current = (e) => {
       goAfterSolana.current = false;
-      if (cancelled.current) return;
+      const wasPicking = solanaPicking.current;
+      solanaPicking.current = false;
+      if (cancelled.current) { cancelled.current = false; return; }
+      if (!wasPicking) return;
       setStage((s) => (s === 'connecting' ? (isRejection(e) ? 'rejected' : 'failed') : s));
     };
     return () => { errorRef.current = null; };
@@ -128,6 +134,8 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
 
   useEffect(() => {
     if (!w.connected) return;
+    if (!solanaPicking.current && !cancelled.current) return;
+    solanaPicking.current = false;
     if (cancelled.current) { cancelled.current = false; goAfterSolana.current = false; void w.disconnect(); return; }
     setStage((s) => (s === 'connecting' ? 'closed' : s));
     if (goAfterSolana.current) {
@@ -142,9 +150,21 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   const openConnect = useCallback(() => { setStage(anyDetected ? 'list' : 'empty'); }, [anyDetected]);
 
   const pick = useCallback((name: string) => {
-    cancelled.current = false;
     evmPick.current++;
     evm.cancelPending();
+    // A Solana wallet is already connected (the modal can be opened from the Robinhood side): picking it goes to the
+    // Solana side, with nothing to ask; another Solana wallet is not offered, because selecting it would disconnect
+    // the connected one before the new one answered (adversary pass on 1bbd3c4).
+    if (w.connected) {
+      if (w.wallet?.adapter.name === name) {
+        setStage('closed');
+        const to = destinationAfterConnect('solana', path.current);
+        if (to) router.push(to);
+      }
+      return;
+    }
+    cancelled.current = false;
+    solanaPicking.current = true;
     goAfterSolana.current = true;
     setPending(name);
     setPendingKind('solana');
@@ -155,7 +175,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     // onError or `connected`.
     if (w.wallet?.adapter.name === name) void w.connect().catch(() => {});
     else w.select(name as WalletName);
-  }, [w, evm]);
+  }, [w, evm, router]);
 
   const pickEvm = useCallback((uuid: string) => {
     const name = evm.wallets.find((x) => x.info.uuid === uuid)?.info.name ?? 'your wallet';

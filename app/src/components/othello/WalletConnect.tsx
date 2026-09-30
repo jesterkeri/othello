@@ -223,8 +223,21 @@ function ModalBody() {
           <>
             <div className={s.list}>
               <span className={s.label}>Solana devnet</span>
-              {w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
-              {w.detected.map((x, i) => {
+              {w.address && w.walletName && (
+                <>
+                  <button type="button" className={s.walletRow} style={{ ...fill(slotFor(w.walletName, 0)), transform: `rotate(${TILTS[0]})` }} onClick={() => w.pick(w.walletName!)}>
+                    <span className={s.walletBadge} style={{ color: `var(--${slotFor(w.walletName, 0)})` }}>{w.walletName[0]}</span>
+                    <span className={s.walletText}>
+                      <span className={s.walletName}>{w.walletName}</span>
+                      <span className={s.walletSub}>Connected. Go to the Solana side</span>
+                    </span>
+                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                  </button>
+                  <p className={s.groupNote}>To use another Solana wallet, disconnect {w.walletName} from its menu on the Solana side first.</p>
+                </>
+              )}
+              {!w.address && w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
+              {!w.address && w.detected.map((x, i) => {
                 const slot = slotFor(x.name, i);
                 return (
                   <button key={x.name} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pick(x.name)}>
