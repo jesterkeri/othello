@@ -623,21 +623,30 @@ export async function usdgMatches(): Promise<string[]> {
 }
 
 /**
- * Every git call of the release goes through here (adversary pass on 9b44681). The caller's GIT_* variables (GIT_DIR,
- * GIT_WORK_TREE, GIT_INDEX_FILE, GIT_CONFIG_COUNT …), system and global config, replace refs (`refs/replace/`) and
- * repository discovery above `root` could each make git answer about another commit or another repository than
- * `root`'s own. So git gets only PATH and HOME, no system or global config, replace refs off, and a ceiling at
- * `root`'s parent. The sealed release already runs this way (env -i, a fresh --no-local clone); this makes the entry
- * points that can be run by hand agree with it.
+ * Every git call of the release goes through here (adversary passes on 9b44681 and 49ec527). The caller's GIT_*
+ * variables (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_CONFIG_COUNT …), system and global config, the user-global
+ * ignore and attributes files under HOME/XDG_CONFIG_HOME, replace refs (`refs/replace/`), repository discovery above
+ * `root`, and the repository's own `core.worktree`, `core.fsmonitor` (which runs a program) and untracked cache could
+ * each make git answer about something other than `root`'s own files against its own HEAD. So git gets only PATH (no
+ * HOME, no XDG_*), no system or global config, replace refs off, a ceiling at `root`'s parent, the repository named
+ * by `root/.git` with `root` itself as the working tree, and those repository settings overridden on the command line.
+ * The sealed release already runs in a fresh --no-local clone under env -i; this makes the entry points that can be
+ * run by hand agree with it. (A repository's own `.git/info/exclude` or hooks need write access to the checkout, like
+ * editing this file.)
  */
 export function gitIn(root: string, args: string[]): string {
   const real = realpathSync(root);
   const env: NodeJS.ProcessEnv = {
-    PATH: process.env.PATH, HOME: process.env.HOME,
+    PATH: process.env.PATH,
     GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1",
     GIT_CEILING_DIRECTORIES: dirname(real),
   };
-  return execFileSync("git", ["--no-replace-objects", "-C", real, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+  const pinned = [
+    "--no-replace-objects", "-C", real, `--git-dir=${join(real, ".git")}`, `--work-tree=${real}`,
+    "-c", "core.excludesFile=/dev/null", "-c", "core.attributesFile=/dev/null", "-c", "core.fsmonitor=false",
+    "-c", "core.untrackedCache=false", "-c", "core.hooksPath=/dev/null", "-c", "status.showUntrackedFiles=all",
+  ];
+  return execFileSync("git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
 }
 
 /** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */

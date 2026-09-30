@@ -517,3 +517,18 @@ now goes through `gitIn`: only PATH and HOME, no system or global config, `--no-
 cases: a replaced HEAD shows the target as changed to the deploy and is refused by the target check; `GIT_DIR` and
 `GIT_WORK_TREE` in the environment are ignored; a checkout above the root, or one whose `core.worktree` points
 elsewhere, is no reviewed target.
+
+### F-22 adversary pass on 49ec527: git gets no HOME, and the repository's own settings cannot redirect it
+
+`gitIn` still passed HOME, and git reads the user-global ignore file `$HOME/.config/git/ignore` (core.excludesFile's
+default) even with `GIT_CONFIG_GLOBAL=/dev/null`: a caller who sets or owns HOME hid an untracked page from the
+deploy's changed-file check and from trust-config `--record`'s dirty check, with no write access to the checkout (the
+adversary's spec is kept). `gitIn` now passes only PATH, names the repository and working tree explicitly
+(`--git-dir=<root>/.git --work-tree=<root>`, so a repository's `core.worktree` cannot move what is compared), and
+overrides on the command line `core.excludesFile` and `core.attributesFile` (/dev/null), `core.fsmonitor` (false, so no
+configured program runs), `core.untrackedCache` (false), `core.hooksPath` and `status.showUntrackedFiles=all`. Unit
+cases: a foreign `core.worktree` with the committed copy elsewhere still refuses an edited target at the root; a
+configured fsmonitor never runs; `status.showUntrackedFiles=no` does not hide an untracked page. Checked in a linked
+worktree (`.git` is a gitdir file): HEAD, top, status and the committed target all resolve. Accepted and stated: a
+repository's own `.git/info/exclude` needs write access to the checkout, like editing the release code itself, and the
+sealed release runs in a fresh clone that has none.

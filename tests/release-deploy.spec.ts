@@ -520,15 +520,18 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     mkdirSync(join(inner, "ops"), { recursive: true });
     writeFileSync(join(inner, "ops", "release-target.json"), JSON.stringify(target));
     assert.match(releaseTargetRefusals(inner, join(inner, "app")).join(), /not committed at HEAD of this checkout: the release has no reviewed target/);
-    // and a repository whose core.worktree points at the root from elsewhere is not the root's own checkout
-    const elsewhere = mkdtempSync(join(tmpdir(), "release-target-worktree-"));
-    commitTarget(elsewhere, target);
-    const shared = mkdtempSync(join(tmpdir(), "release-target-shared-"));
-    mkdirSync(join(shared, "ops"));
-    writeFileSync(join(shared, "ops", "release-target.json"), JSON.stringify(target));
-    writeFileSync(join(shared, ".git"), `gitdir: ${join(elsewhere, ".git")}\n`);
-    execFileSync("git", ["-C", elsewhere, "config", "core.worktree", join(elsewhere)]);
-    assert.match(releaseTargetRefusals(shared, join(shared, "app")).join(), /no reviewed target/);
+    // a repository's core.worktree cannot move the working tree the release compares (adversary pass on 49ec527): the
+    // root's own target file is read, so an edit there is refused even when core.worktree names a folder holding the
+    // committed copy
+    const moved = mkdtempSync(join(tmpdir(), "release-target-worktree-"));
+    commitTarget(moved, target);
+    const decoy = mkdtempSync(join(tmpdir(), "release-target-decoy-"));
+    mkdirSync(join(decoy, "ops"));
+    writeFileSync(join(decoy, "ops", "release-target.json"), JSON.stringify(target));
+    execFileSync("git", ["-C", moved, "config", "core.worktree", decoy]);
+    writeFileSync(join(moved, "ops", "release-target.json"), JSON.stringify(other));
+    assert.match(releaseTargetRefusals(moved, join(moved, "app")).join(), /differs from the committed copy at HEAD/);
+    assert.deepEqual(gitFor(moved).changed(), ["ops/release-target.json"]);
     // and the deploy step refuses a link that is not the target it is given (the release reads the committed one)
     const f = fixture();
     const spy = spyRun();
@@ -572,6 +575,17 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     } finally {
       for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
     }
+    // the repository's own settings cannot run a program or hide an untracked page (adversary pass on 49ec527)
+    const marker = join(other, "fsmonitor-ran");
+    const hook = join(other, "fsmonitor.sh");
+    writeFileSync(hook, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, { mode: 0o755 });
+    g("config", "core.fsmonitor", hook);
+    g("config", "status.showUntrackedFiles", "no");
+    mkdirSync(join(root, "app", "src", "app", "unreviewed"), { recursive: true });
+    writeFileSync(join(root, "app", "src", "app", "unreviewed", "page.tsx"), "export default function P() { return null; }\n");
+    assert.ok(gitFor(root).changed().includes("app/src/app/unreviewed/page.tsx"));
+    assert.match(gitIn(root, ["status", "--porcelain"]), /\?\? app\/src\/app\/unreviewed\/page\.tsx/);
+    assert.equal(existsSync(marker), false, "the repository's core.fsmonitor program never ran");
   });
 
   it("anything above the clone that node or a build tool would read is refused by the preflight", () => {
