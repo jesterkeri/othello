@@ -743,6 +743,11 @@ async function rpc(url: string, method: string, params: unknown[]): Promise<unkn
 }
 
 async function main() {
+  // for the release script: what config.ts holds, by this gate's own parser (never by matching its text)
+  if (process.argv.includes("--config-state")) {
+    console.log((await loadConfig()).state);
+    return;
+  }
   let writeRecordWhenVerified = () => {};
   const at = process.argv.indexOf("--rpc");
   const url = at > 0 ? process.argv[at + 1] : "https://rpc.testnet.chain.robinhood.com";

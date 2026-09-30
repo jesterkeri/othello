@@ -58,11 +58,11 @@ WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"
 bring_back() {
   local r="$WORK/repo/release/robinhood-prebuilt.json"
   if [ -f "$r" ] && grep -q '"deployStartedAt": "' "$r"; then
-    { mkdir -p "$REPO/release" && cp "$r" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"; } ||
-      echo "release: could not copy the record back from $r" >&2
+    mkdir -p "$REPO/release" && cp "$r" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"
   fi
 }
-trap 'bring_back; rm -rf "$WORK"' EXIT
+# if the record cannot be copied back, the folder that holds it is KEPT and the release fails, saying where it is
+trap 'if bring_back; then rm -rf "$WORK"; else echo "release: could not copy the record back; it is kept at $WORK/repo/release/robinhood-prebuilt.json and robinhood-prebuilt.files.txt (copy both into release/ yourself)" >&2; exit 1; fi' EXIT
 export TMPDIR="$WORK/tmp"; mkdir -m 700 "$TMPDIR"
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
@@ -79,15 +79,17 @@ mkdir "$WORK/repo/app/.vercel" && cp app/.vercel/project.json "$WORK/repo/app/.v
 cd "$WORK/repo"
 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 pnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
-# a set TRUSTED_FACTORY is verified against the reviewed contract's own build (trust-config reads evm/out): fetch the
-# libraries at the commits the repository pins and build them here, never from the working checkout's evm/out
-if ! grep -qx 'export const TRUSTED_FACTORY: TrustedFactory | null = null;' app/src/lib/robinhood/config.ts; then
-  git -c core.hooksPath=/dev/null -c init.templateDir= submodule update --init --recursive -q
-  (cd evm && forge build)
-fi
 # the checks run with the clone's own tsx, started by node directly (npx would apply npm's node-options setting)
 TSX=(node "$WORK/repo/node_modules/tsx/dist/cli.mjs" --no-cache)
 "${TSX[@]}" ops/release-deploy.ts --preflight   # repo root, app/.vercel and the project link (keys, ids)
+# a set TRUSTED_FACTORY is verified against the reviewed contract's own build (trust-config reads evm/out): fetch the
+# libraries at the commits the repository pins and build them here from scratch (--force: no committed or cached
+# output is reused), never from the working checkout's evm/out. Whether it is set is asked of trust-config's own parser.
+CONFIG_STATE="$("${TSX[@]}" ops/trust-config.ts --config-state)"
+if [ "$CONFIG_STATE" != "null" ]; then
+  git -c core.hooksPath=/dev/null -c init.templateDir= submodule update --init --recursive -q
+  (cd evm && forge build --force)
+fi
 mkdir "$WORK/cli"
 VC="$("${TSX[@]}" ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified vercel@59.11.7 vc.js
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"

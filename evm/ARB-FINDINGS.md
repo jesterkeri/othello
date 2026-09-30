@@ -430,3 +430,13 @@ copy cannot stop the clean-up; the deploy-failure message no longer claims the r
 exposed that a fresh clone has no `evm/out`, which trust-config needs to verify a set factory: when the factory is set,
 the release now fetches the libraries at the commits the repository pins (`git submodule update --init`, no hooks or
 templates) and runs `forge build` inside the clone, never using the working checkout's `evm/out`.
+
+### F-17 twenty-first adversary pass: a failed copy-back must not lose a completed deploy's record
+
+If copying the record back to the checkout failed after a completed deploy (a read-only committed record, a full
+disk), the trap printed a line and deleted the build folder anyway: the only record of that deploy was lost and the
+release exited 0 (the adversary's spec is kept; its deploy step runs the clone's real deployRecorded with only the
+Vercel call replaced). Now a failed copy KEEPS the folder, names the record's path and fails the release. From its
+suspicions: the contracts are built with `forge build --force` (no committed or cached output reused); whether the
+factory is set is asked of trust-config's own parser (`--config-state`), not matched as text; and that build now runs
+after `--preflight`.

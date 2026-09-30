@@ -378,8 +378,11 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the record comes back to the checkout on ANY exit, and the private TMPDIR is set before any tool (pnpm) runs
     assert.match(script, /if \[ -f "\$r" \] && grep -q '"deployStartedAt": "' "\$r"; then/);
-    assert.match(script, /\|\|\n\s+echo "release: could not copy the record back from \$r" >&2/);
-    assert.match(script, /trap 'bring_back; rm -rf "\$WORK"' EXIT/);
+    // a failed copy-back keeps the folder that holds the record and fails the release
+    assert.match(script, /trap 'if bring_back; then rm -rf "\$WORK"; else echo "release: could not copy the record back; it is kept at \$WORK\/repo\/release\/robinhood-prebuilt\.json[^']*exit 1; fi' EXIT/);
+    // whether the contracts are built is asked of trust-config's parser, after --preflight, and the build is forced
+    assert.match(script, /--preflight[\s\S]*CONFIG_STATE="\$\("\$\{TSX\[@\]\}" ops\/trust-config\.ts --config-state\)"\nif \[ "\$CONFIG_STATE" != "null" \]; then[\s\S]*forge build --force/);
+    assert.doesNotMatch(script, /grep -qx 'export const TRUSTED_FACTORY/);
     assert.ok(script.indexOf('export TMPDIR="$WORK/tmp"') < script.indexOf("pnpm --version"), "TMPDIR before pnpm --version");
   });
 
