@@ -503,3 +503,17 @@ or a root below another checkout's top is a refusal. Every entry point therefore
 release root, which closes the adversary's unproven note that, without a `.git` there, the CLI looks for `.vercel` or
 `vercel.json` in folders above. Unit specs that mean "the committed target" now commit it (tests/fake-pinned-cli.ts
 `commitTarget`); the two earlier target adversary specs commit theirs, keeping each test's meaning.
+
+### F-21 adversary pass on 9b44681: the release's git answers only about the root's own commit
+
+`committedTarget` asked git for `HEAD:ops/release-target.json` with replace refs on and the caller's environment
+inherited: a local `git replace <HEAD> <commit naming another project>` (HEAD and `git status` unchanged) let `--run-cli`
+start `pull` against an unreviewed project, and `GIT_DIR` pointing at another repository let an uncommitted target
+edit pass `--preflight` (the adversary's spec is kept). Both need write access to the checkout, and the sealed release
+was unaffected (env -i, a fresh --no-local clone), but the entry points run by hand were not. Every git call of the
+release (the target read, the deploy's HEAD and changed-file view, trust-config's record and reviewed-source checks)
+now goes through `gitIn`: only PATH and HOME, no system or global config, `--no-replace-objects`, and a
+`GIT_CEILING_DIRECTORIES` at the root's parent, so git never answers about a repository above or beside the root. Unit
+cases: a replaced HEAD shows the target as changed to the deploy and is refused by the target check; `GIT_DIR` and
+`GIT_WORK_TREE` in the environment are ignored; a checkout above the root, or one whose `core.worktree` points
+elsewhere, is no reviewed target.

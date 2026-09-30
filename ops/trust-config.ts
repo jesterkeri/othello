@@ -622,13 +622,31 @@ export async function usdgMatches(): Promise<string[]> {
   }
 }
 
+/**
+ * Every git call of the release goes through here (adversary pass on 9b44681). The caller's GIT_* variables (GIT_DIR,
+ * GIT_WORK_TREE, GIT_INDEX_FILE, GIT_CONFIG_COUNT …), system and global config, replace refs (`refs/replace/`) and
+ * repository discovery above `root` could each make git answer about another commit or another repository than
+ * `root`'s own. So git gets only PATH and HOME, no system or global config, replace refs off, and a ceiling at
+ * `root`'s parent. The sealed release already runs this way (env -i, a fresh --no-local clone); this makes the entry
+ * points that can be run by hand agree with it.
+ */
+export function gitIn(root: string, args: string[]): string {
+  const real = realpathSync(root);
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH, HOME: process.env.HOME,
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_CEILING_DIRECTORIES: dirname(real),
+  };
+  return execFileSync("git", ["--no-replace-objects", "-C", real, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+}
+
 /** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */
 export function changedSince(commit: string | undefined): string[] | null {
   if (!commit || !/^[0-9a-f]{7,40}$/.test(commit)) return null;
   try {
-    execFileSync("git", ["-C", ROOT, "merge-base", "--is-ancestor", commit, "HEAD"]);
+    gitIn(ROOT, ["merge-base", "--is-ancestor", commit, "HEAD"]);
     // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
-    const out = execFileSync("git", ["-C", ROOT, "diff", "--no-renames", "--name-only", commit, "HEAD"], { encoding: "utf8" });
+    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", commit, "HEAD"]);
     return out.split("\n").filter(Boolean);
   } catch {
     return null;
@@ -787,9 +805,9 @@ async function main() {
     if (rec > 0) {
       const file = process.argv[rec + 1];
       if (!file) throw new Error("--record needs a file");
-      const commit = execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      const commit = gitIn(ROOT, ["rev-parse", "HEAD"]).trim();
       // untracked files count: vercel build would include an untracked page that is in no commit
-      const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain"], { encoding: "utf8" }).trim();
+      const dirty = gitIn(ROOT, ["status", "--porcelain"]).trim();
       if (dirty) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty}`);
       // written only once EVERY check below has passed: a record in the release folder always means "scanned and verified"
       writeRecordWhenVerified = () => {

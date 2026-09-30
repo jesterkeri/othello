@@ -21,7 +21,7 @@ import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpat
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, uploadSet, type ReleaseRecord } from "./trust-config.ts";
+import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitIn, uploadSet, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 export type Git = { head(): string; changed(): string[] };
@@ -130,7 +130,7 @@ export function ancestorRefusals(root: string): string[] {
  */
 export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown };
 function committedTarget(root: string): { text: string } | { refusal: string } {
-  const g = (a: string[]) => execFileSync("git", ["-C", root, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  const g = (a: string[]) => gitIn(root, a); // no caller GIT_* variables, no replace refs, no discovery above root
   let top: string;
   let text: string;
   try {
@@ -323,10 +323,11 @@ const run: Run = (cmd, args, cwd) =>
     p.on("close", (code) => done({ code: code ?? 1, stdout }));
   });
 
-const git = (root: string): Git => ({
-  head: () => execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+/** The deploy's view of the checkout, through gitIn (no caller GIT_* variables, no replace refs, nothing above root). */
+export const gitFor = (root: string): Git => ({
+  head: () => gitIn(root, ["rev-parse", "HEAD"]).trim(),
   changed: () =>
-    execFileSync("git", ["-C", root, "status", "--porcelain", "--no-renames", "--untracked-files=all"], { encoding: "utf8" })
+    gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all"])
       .split("\n")
       .filter(Boolean)
       .map((l) => l.slice(3)),
@@ -362,7 +363,7 @@ async function main() {
   if (!file) throw new Error("--record needs the release record, e.g. release/robinhood-prebuilt.json");
   const cliPath = ci > 0 ? process.argv[ci + 1] : undefined;
   const r = await deployRecorded({
-    root: ROOT, recordFile: resolve(ROOT, file), prod: process.argv.includes("--prod"), run, git: git(ROOT), cli: cliPath && resolve(cliPath),
+    root: ROOT, recordFile: resolve(ROOT, file), prod: process.argv.includes("--prod"), run, git: gitFor(ROOT), cli: cliPath && resolve(cliPath),
   });
   if (!r.ok) {
     console.error(`release-deploy REFUSED: ${r.reason}`);

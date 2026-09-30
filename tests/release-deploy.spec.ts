@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
+import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, gitFor, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { commitTarget, fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
-import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
+import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, gitIn, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -512,13 +512,23 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     mkdirSync(join(plain, "ops"));
     writeFileSync(join(plain, "ops", "release-target.json"), JSON.stringify(target));
     assert.match(releaseTargetRefusals(plain, join(plain, "app")).join(), /not committed at HEAD/);
-    // nor is a checkout whose top is above the release root (HEAD would name another folder's file)
+    // nor is a checkout whose top is above the release root (HEAD would name another folder's file): git never looks
+    // above the root (adversary pass on 9b44681), so no checkout is found there at all
     const outer = mkdtempSync(join(tmpdir(), "release-target-outer-"));
     commitTarget(outer, target);
     const inner = join(outer, "sub");
     mkdirSync(join(inner, "ops"), { recursive: true });
     writeFileSync(join(inner, "ops", "release-target.json"), JSON.stringify(target));
-    assert.match(releaseTargetRefusals(inner, join(inner, "app")).join(), /is not the top of its git checkout/);
+    assert.match(releaseTargetRefusals(inner, join(inner, "app")).join(), /not committed at HEAD of this checkout: the release has no reviewed target/);
+    // and a repository whose core.worktree points at the root from elsewhere is not the root's own checkout
+    const elsewhere = mkdtempSync(join(tmpdir(), "release-target-worktree-"));
+    commitTarget(elsewhere, target);
+    const shared = mkdtempSync(join(tmpdir(), "release-target-shared-"));
+    mkdirSync(join(shared, "ops"));
+    writeFileSync(join(shared, "ops", "release-target.json"), JSON.stringify(target));
+    writeFileSync(join(shared, ".git"), `gitdir: ${join(elsewhere, ".git")}\n`);
+    execFileSync("git", ["-C", elsewhere, "config", "core.worktree", join(elsewhere)]);
+    assert.match(releaseTargetRefusals(shared, join(shared, "app")).join(), /no reviewed target/);
     // and the deploy step refuses a link that is not the target it is given (the release reads the committed one)
     const f = fixture();
     const spy = spyRun();
@@ -532,6 +542,36 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.deepEqual([committed.vercelOrgId, committed.vercelProjectId], ["team_kXXQhD4pqG6KG2NfVVFlVOHi", "prj_ZCQ6bP09jJeMX1wOwg7ErhJe8wB8"]);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     assert.match(script, /--preflight[^\n]*\n[\s\S]*-- pull [\s\S]*-- build [^\n]*\n"\$\{TSX\[@\]\}" ops\/release-deploy\.ts --preflight[\s\S]*--record release/);
+  });
+
+  it("the release's git ignores the caller's GIT_* variables and replace refs (adversary pass on 9b44681)", () => {
+    const root = mkdtempSync(join(tmpdir(), "release-gitfor-"));
+    const reviewed = { vercelOrgId: "team_A", vercelProjectId: "prj_A" };
+    commitTarget(root, reviewed);
+    const g = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid",
+      "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...a], { encoding: "utf8", env: { PATH: process.env.PATH, HOME: process.env.HOME } }).trim();
+    const head = g("rev-parse", "HEAD");
+    // a local replacement of HEAD naming another project, with the working tree matching the replacement
+    writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify({ vercelOrgId: "team_B", vercelProjectId: "prj_B" }));
+    g("add", "ops/release-target.json");
+    g("replace", head, g("commit-tree", g("write-tree"), "-m", "reviewed target"));
+    assert.equal(g("status", "--porcelain"), "", "plain git sees nothing changed");
+    // the deploy's view: HEAD is the reviewed commit, and the target differs from it
+    assert.equal(gitFor(root).head(), head);
+    assert.deepEqual(gitFor(root).changed(), ["ops/release-target.json"]);
+    assert.match(releaseTargetRefusals(root, join(root, "app"), undefined).join(), /differs from the committed copy at HEAD/);
+    // GIT_DIR (and friends) in the caller's environment are not passed to git
+    const other = mkdtempSync(join(tmpdir(), "release-gitfor-other-"));
+    commitTarget(other, { vercelOrgId: "team_B", vercelProjectId: "prj_B" });
+    const saved = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE };
+    process.env.GIT_DIR = join(other, ".git");
+    process.env.GIT_WORK_TREE = root;
+    try {
+      assert.equal(gitFor(root).head(), head);
+      assert.equal(gitIn(root, ["cat-file", "blob", "HEAD:ops/release-target.json"]), JSON.stringify(reviewed));
+    } finally {
+      for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    }
   });
 
   it("anything above the clone that node or a build tool would read is refused by the preflight", () => {
