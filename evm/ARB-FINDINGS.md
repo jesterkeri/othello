@@ -549,3 +549,13 @@ sourceDrift) is now the deploy's `changed()` and `--record`'s dirty check; gitIn
 `core.checkStat` and `core.ignoreCase`. Noted, unchanged: `release-robinhood.sh`'s first `git status` runs in the
 operator's checkout before the fresh clone; untracked files there never reach the clone, which holds only the commit
 plus the checked project link.
+
+### F-24 adversary pass on 3b651eb: a linked worktree's `.git` file is not a build input
+
+`sourceDrift` checked every root-level non-directory entry, and in a linked git worktree the root `.git` is a
+`gitdir:` file no commit holds, so every clean worktree was refused (a false refusal: nothing wrong could be deployed;
+the sealed clone and CI have a `.git` folder; the adversary's spec is kept). The root `.git` is now skipped, and the
+root `node_modules` joins `NOT_SOURCE` beside `app/node_modules` (an install folder; a link to one in these worktrees).
+Stated limit, now in `NOT_SOURCE`'s comment: install and build-cache folders (`node_modules`, `app/.next`, including
+Next's cache) are trusted because the sealed release creates them fresh from the committed lockfiles in its clone; in
+a checkout run by hand they are whatever is on disk, and only the upload set's hash and record bind what is deployed.

@@ -651,11 +651,14 @@ export function gitIn(root: string, args: string[]): string {
 }
 
 /**
- * What the build may read that the build itself writes: install and output folders and Next's two generated files
- * (types and the type-check cache; neither reaches the output). Everything else in app/, and every file at the
- * repository root (Next looks upward for some build configs), is a build input.
+ * What the build may read that the release itself writes: the install folders (from the committed lockfiles), the
+ * build's output folders and Next's two generated files (types and the type-check cache; neither reaches the output).
+ * Everything else in app/, and every file at the repository root (Next looks upward for some build configs), is a
+ * build input. The root `.git` is git's own (a folder, or a `gitdir:` file in a linked worktree), never an input.
+ * Stated limit: these folders are trusted because the sealed release creates them fresh in its clone; in a checkout
+ * run by hand they are whatever is on disk (the upload set is still hashed and recorded).
  */
-export const NOT_SOURCE = new Set(["app/node_modules", "app/.next", "app/.vercel", "app/next-env.d.ts", "app/tsconfig.tsbuildinfo"]);
+export const NOT_SOURCE = new Set(["node_modules", "app/node_modules", "app/.next", "app/.vercel", "app/next-env.d.ts", "app/tsconfig.tsbuildinfo"]);
 
 /**
  * The build's inputs on disk against HEAD, by content (adversary pass on 647e485): git's own status rests on ignore
@@ -702,6 +705,7 @@ export function sourceDrift(root: string): string[] {
     }
   };
   for (const name of readdirSync(root)) {
+    if (name === ".git" || NOT_SOURCE.has(name)) continue;
     const st = lstatSync(join(root, name));
     if (name === "app" && st.isDirectory()) walk("app");
     else if (!st.isDirectory()) check(name);
