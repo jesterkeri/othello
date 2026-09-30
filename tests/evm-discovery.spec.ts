@@ -33,7 +33,7 @@ describe("EIP-6963 announcements are checked", () => {
   });
 
   it("keeps a name readable: control and bidi characters are removed", () => {
-    const w = parseAnnouncement({ info: info("u1", "Meta‮ksaM\u0007"), provider: provider("p") });
+    const w = parseAnnouncement({ info: info("u1", "Meta\u202eksaM\u0007\u061c\ufeff\u200b\u2066"), provider: provider("p") });
     assert.equal(w?.info.name, "MetaksaM");
   });
 

@@ -68,6 +68,8 @@ export function useEvmWallet() {
     /** Connects the picked wallet and switches it to Robinhood Chain testnet; rejects if the wallet refuses. */
     connectWith: (uuid: string) => (session ? session.connectWith(uuid) : Promise.reject(new Error("The wallet list is still loading. Try again."))),
     switchToRobinhood: () => (session ? session.switchToRobinhood() : Promise.resolve(false)),
+    /** Drops the answer to a connect still waiting in the wallet; the wallet already connected stays. */
+    cancelPending: () => session?.cancelPending(),
     disconnect: () => session?.disconnect(),
     error: snap.error,
   };
