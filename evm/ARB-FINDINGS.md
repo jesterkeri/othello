@@ -466,3 +466,14 @@ refuses any other `orgId` or `projectId`, a missing target or a missing link, in
 before `vercel pull` and again after the build, before the scan and record. The sealed specs commit a test target in
 their own clone. Also (queued from the last adversary pass on b52d03f): if the voided-deploy record cannot be written,
 the URL and the remove/roll-back instruction still reach the operator (spec kept).
+
+### F-18 adversary pass: the deploy step checks the target too
+
+The first fix checked the target only in `--preflight`; `release-deploy.ts --record`, the deploy entry point every
+record names, can be run on its own, and it started `deploy --prebuilt --prod` against a stale link (the adversary's spec
+is kept). `deployRecorded` now runs `releaseTargetRefusals` with the other pre-deploy refusals, reading the committed
+`ops/release-target.json` (a missing one is a refusal); unit specs, which build their own release folders, pass the
+target matching their link (tests/fake-pinned-cli.ts `reviewedTarget`), and a deploy-time mismatch and a missing target
+are tested. Its unproven suspicion, noted: if the linked project were inaccessible, `vercel pull --yes` might link
+another project and pull its settings into the private build folder; the second preflight then refuses before any
+scan or deploy, so nothing is deployed and the folder is deleted.

@@ -126,10 +126,11 @@ export function ancestorRefusals(root: string): string[] {
  * team and project the release may use; the caller's app/.vercel/project.json must name exactly those, or nothing is
  * pulled, built or deployed. (The digest only binds the link that was chosen; this checks it is the right one.)
  */
-export function releaseTargetRefusals(root: string, app: string): string[] {
-  let target: { vercelOrgId?: unknown; vercelProjectId?: unknown };
+export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown };
+export function releaseTargetRefusals(root: string, app: string, given?: ReleaseTarget): string[] {
+  let target: ReleaseTarget;
   try {
-    target = JSON.parse(readFileSync(join(root, "ops", "release-target.json"), "utf8"));
+    target = given ?? JSON.parse(readFileSync(join(root, "ops", "release-target.json"), "utf8"));
   } catch {
     return ["ops/release-target.json is missing or unreadable: the release has no reviewed target"];
   }
@@ -184,6 +185,8 @@ export async function deployRecorded(d: {
   root: string; recordFile: string; prod: boolean; run: Run; git: Git; appDir?: string; env?: NodeJS.ProcessEnv;
   /** The pinned CLI's vc.js, as installPinnedCli returned it; checked again here. */
   cli?: string;
+  /** The reviewed target; the release (main) never passes it, so it is read from the committed ops/release-target.json. */
+  target?: ReleaseTarget;
 }): Promise<DeployResult> {
   const fail = (reason: string): DeployResult => ({ ok: false, reason });
   const retarget = RETARGETING_ENV.filter((k) => (d.env ?? process.env)[k]);
@@ -204,7 +207,10 @@ export async function deployRecorded(d: {
   if (!existsSync(listFile)) return fail(`the record's file list ${rec.fileList} is missing`);
   const recorded = readFileSync(listFile, "utf8").split("\n").filter(Boolean);
   if (!existsSync(outDir)) return fail(`no build at ${outDir}`);
-  const extra = [...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
+  // the link must still be the reviewed target right before the deploy (this entry point can be run on its own)
+  const extra = [
+    ...releaseTargetRefusals(d.root, app, d.target), ...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures,
+  ];
   if (extra.length) return fail(`the deploy would upload files the scan never covered; nothing was deployed:\n${extra.join("\n")}`);
   const before = artifactDigest(outDir, app);
   const drift = differences(recorded, before.lines);

@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 function pinnedCliChunk(): string {
@@ -59,6 +59,7 @@ describe("release deploy adversary: the mode of an empty output directory", func
     g("commit", "-q", "-m", "reviewed commit");
     mkdirSync(join(root, "release"));
     const record = join(root, "release", "robinhood-prebuilt.json");
+    reviewedTarget(root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(record, artifactDigest(out, app), g("rev-parse", "HEAD").trim(), null, root);
     const git: Git = {
       head: () => g("rev-parse", "HEAD").trim(),
@@ -78,7 +79,7 @@ describe("release deploy adversary: the mode of an empty output directory", func
       calls.push(args);
       return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" };
     };
-    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) although ${entry} now uploads with mode ${after?.mode.toString(8)}, not ${before.mode.toString(8)}`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

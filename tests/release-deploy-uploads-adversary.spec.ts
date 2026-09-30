@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 /** The globally installed Vercel CLI, only if it is the pinned version. */
@@ -53,6 +53,7 @@ describe("release deploy adversary: a file vercel deploy --prebuilt uploads but 
 
     mkdirSync(join(root, "release"));
     const record = join(root, "release", "robinhood-prebuilt.json");
+    reviewedTarget(root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(record, artifactDigest(out, app), head, null, root);
 
     // After the scan and record: a routes file appears in the ignored project link directory.
@@ -74,7 +75,7 @@ describe("release deploy adversary: a file vercel deploy --prebuilt uploads but 
       calls.push(args);
       return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" };
     };
-    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) although the upload holds .vercel/routes.json, which the record never saw`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

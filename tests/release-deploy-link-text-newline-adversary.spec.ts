@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { USDG, artifactDigest, cliExtraUploads, scanTree, writeRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -56,6 +56,7 @@ describe("release deploy adversary: a line break in a filePathMap source's link 
     mkdirSync(join(root, "release"));
     const record = join(root, "release", "robinhood-prebuilt.json");
     const recorded = artifactDigest(out, app);
+    reviewedTarget(root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(record, recorded, COMMIT, null, root);
 
     // after the record: the link names the plain file, and a new file is added to the uploaded output
@@ -69,7 +70,7 @@ describe("release deploy adversary: a line break in a filePathMap source's link 
     const calls: string[][] = [];
     const run: Run = async (_c, args) => { calls.push(args); return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" }; };
     const git: Git = { head: () => COMMIT, changed: () => ["release/robinhood-prebuilt.json", "release/robinhood-prebuilt.files.txt"] };
-    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) an output with an added file zzz-late.js`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

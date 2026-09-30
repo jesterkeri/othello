@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, scanTree, writeRecord } from "../ops/trust-config.ts";
 
 function pinnedCliChunk(): string {
@@ -77,6 +77,7 @@ describe("release deploy adversary: a .vc-config.json that is a link", () => {
     if (scanTree(out, null, app).length) return;
     mkdirSync(join(root, "release"));
     const record = join(root, "release", "robinhood-prebuilt.json");
+    reviewedTarget(root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(record, artifactDigest(out, app), g("rev-parse", "HEAD").trim(), null, root);
 
     // after the record: the uploaded source's bytes change
@@ -86,7 +87,7 @@ describe("release deploy adversary: a .vc-config.json that is a link", () => {
 
     const calls: string[][] = [];
     const run: Run = async (_c, args) => { calls.push(args); return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" }; };
-    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) a changed filePathMap source`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

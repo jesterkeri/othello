@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployEnv, deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -41,6 +41,7 @@ describe("release deploy adversary: a versioned bin name that npx runs before th
     writeFileSync(join(app, "package.json"), JSON.stringify({ name: "othello-app", private: true }));
     mkdirSync(join(root, "release"));
     const record = join(root, "release", "robinhood-prebuilt.json");
+    reviewedTarget(root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(record, artifactDigest(out, app), COMMIT, null, root);
 
     // the planted binary, in the gitignored app/node_modules/.bin, named after npx's whole first argument
@@ -58,7 +59,7 @@ describe("release deploy adversary: a versioned bin name that npx runs before th
     const calls: { cmd: string; args: string[] }[] = [];
     const run: Run = async (cmd, args) => { calls.push({ cmd, args }); return { code: 0, stdout: "https://othello-abc123-jesterkeri.vercel.app\n" }; };
     const git: Git = { head: () => COMMIT, changed: () => ["release/robinhood-prebuilt.json", "release/robinhood-prebuilt.files.txt"] };
-    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: false, run, git, env: {} });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git, env: {} });
     // Adapted to the fix (F-17, thirteenth pass): the deploy never goes through npx, so the planted name is never
     // resolved; the one command run is node with the verified pinned CLI's vc.js.
     assert.equal(r.ok, true, JSON.stringify(r));

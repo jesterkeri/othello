@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -27,6 +27,7 @@ describe("adversary: a deployment voided by a removed output folder", () => {
     writeFileSync(join(out, "static", "chunk.js"), "console.log('client chunk')");
     mkdirSync(join(root, "release"));
     const record = join(root, "release", "robinhood-prebuilt.json");
+    reviewedTarget(root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(record, artifactDigest(out, app), COMMIT, null, root);
     const git: Git = { head: () => COMMIT, changed: () => ["release/robinhood-prebuilt.json", "release/robinhood-prebuilt.files.txt"] };
     // the CLI uploads and prints the URL; meanwhile the output folder is removed (a rebuild, a clean)
@@ -36,7 +37,7 @@ describe("adversary: a deployment voided by a removed output folder", () => {
     };
     let reason = "";
     try {
-      const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: true, run, git });
+      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: true, run, git });
       reason = r.ok ? "ok" : r.reason;
     } catch (e) {
       reason = `threw: ${e instanceof Error ? e.message : e}`;
