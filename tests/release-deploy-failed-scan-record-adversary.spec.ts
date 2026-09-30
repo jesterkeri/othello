@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { sealedReleaseEnv } from "./release-script-harness.ts";
+import { commitTestReleaseTarget, sealedReleaseEnv } from "./release-script-harness.ts";
 import { writeRecord } from "../ops/trust-config.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -42,6 +42,7 @@ describe("release adversary: a failed trust-config run replaces the committed re
     const vercelDir = join(repo, "app", ".vercel");
     mkdirSync(vercelDir, { recursive: true });
     writeFileSync(join(vercelDir, "project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: { framework: "nextjs", installCommand: "true" } }));
+    commitTestReleaseTarget(repo); // the release refuses any link but the reviewed target's (Codex r4 F1)
 
     // the config commit: a set factory, as after DeployFactory; the release of the previous commit is recorded and deployed
     const cfg = join(repo, "app", "src", "lib", "robinhood", "config.ts");

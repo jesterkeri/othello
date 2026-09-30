@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
+import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { fakePinnedCli } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, scanTree, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
@@ -445,6 +445,29 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const f = fixture();
     mkdirSync(join(f.app, ".vercel", "builders", "node_modules"), { recursive: true });
     assert.match(preflight(f.root).join("\n"), /\.vercel\/builders/);
+  });
+
+  it("the release refuses any Vercel link but the reviewed target's (Codex r4 F1), before pull and again before the scan", () => {
+    const setup = (target: object | null, link: object | null) => {
+      const root = mkdtempSync(join(tmpdir(), "release-target-"));
+      mkdirSync(join(root, "ops"));
+      mkdirSync(join(root, "app", ".vercel"), { recursive: true });
+      if (target) writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify(target));
+      if (link) writeFileSync(join(root, "app", ".vercel", "project.json"), JSON.stringify(link));
+      return releaseTargetRefusals(root, join(root, "app"));
+    };
+    const target = { vercelOrgId: "team_A", vercelProjectId: "prj_A" };
+    assert.deepEqual(setup(target, { orgId: "team_A", projectId: "prj_A", settings: {} }), []);
+    assert.match(setup(target, { orgId: "team_B", projectId: "prj_A" }).join(), /orgId "team_B" is not the reviewed target team_A/);
+    assert.match(setup(target, { orgId: "team_A", projectId: "prj_B" }).join(), /projectId "prj_B" is not the reviewed target prj_A/);
+    assert.match(setup(null, { orgId: "team_A", projectId: "prj_A" }).join(), /no reviewed target/);
+    assert.match(setup({ vercelOrgId: "team_A" }, { orgId: "team_A", projectId: "prj_A" }).join(), /must name vercelOrgId and vercelProjectId/);
+    assert.match(setup(target, null).join(), /link the reviewed target project first/);
+    // the committed target is the othello project, and the script checks it before pull and again after build
+    const committed = JSON.parse(readFileSync(join(REPO, "ops/release-target.json"), "utf8"));
+    assert.deepEqual([committed.vercelOrgId, committed.vercelProjectId], ["team_kXXQhD4pqG6KG2NfVVFlVOHi", "prj_ZCQ6bP09jJeMX1wOwg7ErhJe8wB8"]);
+    const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
+    assert.match(script, /--preflight[^\n]*\n[\s\S]*-- pull [\s\S]*-- build [^\n]*\n"\$\{TSX\[@\]\}" ops\/release-deploy\.ts --preflight[\s\S]*--record release/);
   });
 
   it("anything above the clone that node or a build tool would read is refused by the preflight", () => {

@@ -81,7 +81,7 @@ pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 pnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 # the checks run with the clone's own tsx, started by node directly (npx would apply npm's node-options setting)
 TSX=(node "$WORK/repo/node_modules/tsx/dist/cli.mjs" --no-cache)
-"${TSX[@]}" ops/release-deploy.ts --preflight   # repo root, app/.vercel and the project link (keys, ids)
+"${TSX[@]}" ops/release-deploy.ts --preflight   # the reviewed target (ops/release-target.json), repo root, app/.vercel, the link
 # a set TRUSTED_FACTORY is verified against the reviewed contract's own build (trust-config reads evm/out): fetch the
 # libraries at the commits the repository pins and build them here from scratch (--force: no committed or cached
 # output is reused), never from the working checkout's evm/out. Whether it is set is asked of trust-config's own parser.
@@ -95,6 +95,7 @@ VC="$("${TSX[@]}" ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- pull --yes --environment="$TARGET"
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- build --yes $PROD
+"${TSX[@]}" ops/release-deploy.ts --preflight   # again: pull and build changed nothing about the target or app/.vercel
 mkdir -p release
 "${TSX[@]}" ops/trust-config.ts --rpc "$RPC" --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json
 "${TSX[@]}" ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli "$VC" $PROD

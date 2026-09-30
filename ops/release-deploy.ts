@@ -121,10 +121,42 @@ export function ancestorRefusals(root: string): string[] {
   return found;
 }
 
-/** The refusals that must hold before the release builds anything (above the clone, its root, app/.vercel, the link). */
+/**
+ * The reviewed deployment target (Codex r4 F1): ops/release-target.json, committed and reviewed, names the one Vercel
+ * team and project the release may use; the caller's app/.vercel/project.json must name exactly those, or nothing is
+ * pulled, built or deployed. (The digest only binds the link that was chosen; this checks it is the right one.)
+ */
+export function releaseTargetRefusals(root: string, app: string): string[] {
+  let target: { vercelOrgId?: unknown; vercelProjectId?: unknown };
+  try {
+    target = JSON.parse(readFileSync(join(root, "ops", "release-target.json"), "utf8"));
+  } catch {
+    return ["ops/release-target.json is missing or unreadable: the release has no reviewed target"];
+  }
+  const org = target.vercelOrgId;
+  const project = target.vercelProjectId;
+  if (typeof org !== "string" || !org || typeof project !== "string" || !project) {
+    return ["ops/release-target.json must name vercelOrgId and vercelProjectId"];
+  }
+  let link: { orgId?: unknown; projectId?: unknown };
+  try {
+    link = JSON.parse(readFileSync(join(app, ".vercel", "project.json"), "utf8"));
+  } catch {
+    return [".vercel/project.json is missing or unreadable: link the reviewed target project first"];
+  }
+  const found: string[] = [];
+  if (link.orgId !== org) found.push(`.vercel/project.json orgId ${JSON.stringify(link.orgId)} is not the reviewed target ${org}`);
+  if (link.projectId !== project) found.push(`.vercel/project.json projectId ${JSON.stringify(link.projectId)} is not the reviewed target ${project}`);
+  return found;
+}
+
+/**
+ * The refusals that must hold before the release pulls or builds anything, and again before it scans: the reviewed
+ * target, above the clone, its root, app/.vercel and the link.
+ */
 export function preflight(root: string): string[] {
   const app = join(root, "app");
-  return [...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
+  return [...releaseTargetRefusals(root, app), ...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
 }
 
 /**
@@ -213,9 +245,16 @@ export async function deployRecorded(d: {
     const undo = d.prod
       ? `it is already live in production: roll back now (node ${cli} rollback) and release again`
       : `do not use or share it; remove it (node ${cli} remove ${url}) and release again`;
-    writeRecordAtomically(d.recordFile, { ...started, voidedDeploymentUrl: url });
+    // the URL and what to do reach the operator even if the record cannot be written
+    let unrecorded = "";
+    try {
+      writeRecordAtomically(d.recordFile, { ...started, voidedDeploymentUrl: url });
+    } catch (e) {
+      unrecorded = ` (the record could not be updated: ${e instanceof Error ? e.message : e}; note this URL yourself)`;
+    }
     return fail(
-      `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}.\n` + problems.slice(0, 20).join("\n"),
+      `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}${unrecorded}.\n` +
+        problems.slice(0, 20).join("\n"),
     );
   }
   const done: ReleaseRecord = { ...started, deploymentUrl: url, deployedAt: new Date().toISOString() };

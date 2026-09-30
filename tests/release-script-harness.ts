@@ -45,3 +45,16 @@ export function sealedReleaseEnv(tmp: string, uploadedTo: string): NodeJS.Proces
   for (const k of Object.keys(env)) if (k.startsWith("XDG_") || k.startsWith("VERCEL_") || k.startsWith("NEXT_PUBLIC_")) delete env[k];
   return env;
 }
+
+/**
+ * The sealed specs link a test project ("ci-offline"); the release refuses any link but ops/release-target.json's, so
+ * each spec commits a matching test target in its own clone (the release's clean-checkout check then passes and the
+ * fresh clone carries it). Returns the commit.
+ */
+export function commitTestReleaseTarget(repo: string, orgId = "ci-offline", projectId = "ci-offline"): string {
+  writeFileSync(join(repo, "ops", "release-target.json"), JSON.stringify({ vercelOrgId: orgId, vercelProjectId: projectId }) + "\n");
+  const git = (...a: string[]) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.invalid", ...a], { encoding: "utf8" });
+  git("add", "ops/release-target.json");
+  git("commit", "-q", "-m", "test: release target for the sealed spec");
+  return git("rev-parse", "HEAD").trim();
+}

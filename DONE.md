@@ -3143,3 +3143,10 @@ no record, checkout record untouched) (3446710, CI green). Pass 21: a failed cop
 forge build --force; --config-state; contracts built after preflight (eb6a647). Pass 22: NO DEFECT; the record is
 replaced atomically and a voided deployment is named (f22a780, CI green). Pass 23 (low): a failing post-upload check
 now voids the deploy and records its URL. verify: release specs 28 + the kept spec passing. Passes: 23.
+
+## A1 code review r4 (Codex, two-stage): REVISE, fixed (2026-09-30)
+reviewed: othello-design/reviews/arb-code-review-r4.md (cold: r4-cold.md sha 7ee586df…) | verdict: REVISE | commit: b52d03f
+r3 M1, M2, m1 RESOLVED; recordJoin and the per-account index judged sound. F1 MAJOR: the Vercel target was not an
+authorised input. Fix: ops/release-target.json + releaseTargetRefusals in --preflight (before pull and after build);
+the void-write fix queued from pass 24. verify: release specs 30 passing.
+

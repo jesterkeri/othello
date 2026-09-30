@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { sealedReleaseEnv } from "./release-script-harness.ts";
+import { commitTestReleaseTarget, sealedReleaseEnv } from "./release-script-harness.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -59,6 +59,7 @@ describe("release adversary: a gitignored app/.env.local takes part in the relea
     mkdirSync(vercelDir, { recursive: true });
     // the same offline link CI's scanned-build job writes
     writeFileSync(join(vercelDir, "project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: { framework: "nextjs", installCommand: "true" } }));
+    commitTestReleaseTarget(repo); // the release refuses any link but the reviewed target's (Codex r4 F1)
 
     // (no release/ folder is created here: the release must create it itself, the pass's second finding)
     // a developer's local env file: gitignored, never committed, never reviewed

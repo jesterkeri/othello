@@ -454,3 +454,15 @@ Low severity: if the output folder vanished during the upload, the second `artif
 possibly live URL never reached `voidedDeploymentUrl` and nobody was told to roll it back (the record still said a
 deploy started, so it did not lie; the adversary's spec is kept). The check after the upload now treats any error as a
 voided deploy: the URL is recorded as voided and the message says to remove it or, in production, roll back.
+
+## F-18. The release deploys only to the reviewed Vercel project (code review r4, F1)
+
+Codex r4 (REVISE; r3 M1, M2 and m1 RESOLVED): the release copied the caller's `app/.vercel/project.json` into the clone
+and required only non-empty ids, so a stale link to another project the operator can deploy to (no compromise needed)
+would pull, build and deploy the reviewed page there with every check passing; the digest bound the chosen link, not
+the right one. `ops/release-target.json` (committed, reviewed) now names the one Vercel team and project
+(`team_kXXQhD4pqG6KG2NfVVFlVOHi` / `prj_ZCQ6bP09jJeMX1wOwg7ErhJe8wB8`, project "othello"); `releaseTargetRefusals`
+refuses any other `orgId` or `projectId`, a missing target or a missing link, in `--preflight`, which the release runs
+before `vercel pull` and again after the build, before the scan and record. The sealed specs commit a test target in
+their own clone. Also (queued from the last adversary pass on b52d03f): if the voided-deploy record cannot be written,
+the URL and the remove/roll-back instruction still reach the operator (spec kept).
