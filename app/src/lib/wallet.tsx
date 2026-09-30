@@ -47,6 +47,11 @@ type WalletUi = {
   pending: string | null;
   /** Which chain the pending wallet is for. */
   pendingKind: ChainSide | null;
+  /**
+   * A Solana wallet's request is still open in its own window (the library is connecting). No Solana wallet may be
+   * picked until it answers: the library's late answer to an old pick deselects whatever wallet is selected by then.
+   */
+  solanaBusy: boolean;
   openConnect: () => void;
   close: () => void;
   pick: (name: string) => void;
@@ -150,6 +155,10 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   const openConnect = useCallback(() => { setStage(anyDetected ? 'list' : 'empty'); }, [anyDetected]);
 
   const pick = useCallback((name: string) => {
+    // Never select a Solana wallet while the library is still connecting one: when that older request fails, the
+    // library's autoConnect calls changeWallet(null) and deselects the wallet selected by then, without onError
+    // (wallet-adapter-react 0.15.40 WalletProvider handleConnectError; adversary pass on b94f89a).
+    if (w.connecting) return;
     evmPick.current++;
     evm.cancelPending();
     // A Solana wallet is already connected (the modal can be opened from the Robinhood side): picking it goes to the
@@ -216,6 +225,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     evmDetected,
     pending,
     pendingKind,
+    solanaBusy: w.connecting && !w.connected,
     openConnect,
     close: () => {
       if (stage === 'connecting') cancelPendingPick();

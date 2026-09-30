@@ -236,11 +236,14 @@ function ModalBody() {
                   <p className={s.groupNote}>To use another Solana wallet, disconnect {w.walletName} from its menu on the Solana side first.</p>
                 </>
               )}
+              {!w.address && w.solanaBusy && (
+                <p className={s.groupNote}>{w.walletName ?? 'A Solana wallet'} is still asking in its own window. Answer or close it there, then pick a Solana wallet again.</p>
+              )}
               {!w.address && w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
               {!w.address && w.detected.map((x, i) => {
                 const slot = slotFor(x.name, i);
                 return (
-                  <button key={x.name} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pick(x.name)}>
+                  <button key={x.name} type="button" className={s.walletRow} disabled={w.solanaBusy} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pick(x.name)}>
                     <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>{x.name[0]}</span>
                     <span className={s.walletText}>
                       <span className={s.walletName}>{x.name}</span>
