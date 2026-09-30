@@ -31,7 +31,7 @@ const MAX_ICON = 100_000;
 function text(v: unknown, max: number): string | null {
   if (typeof v !== "string") return null;
   // control characters and bidi overrides out: a name is shown to the person choosing a wallet
-  const t = v.replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, "").trim();
+  const t = v.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g, "").trim();
   return t.length > 0 && t.length <= max ? t : null;
 }
 

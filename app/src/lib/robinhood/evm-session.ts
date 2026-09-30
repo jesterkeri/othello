@@ -34,6 +34,11 @@ export type EvmSession = {
   connectWith(uuid: string): Promise<void>;
   /** Asks the chosen wallet to switch (adding the network if it does not know it); false, with `error` set, if not. */
   switchToRobinhood(): Promise<boolean>;
+  /**
+   * Abandons a connect whose wallet prompt is still open (the person cancelled or closed the modal, or picked another
+   * wallet): if the wallet approves afterwards, the answer is dropped and the wallet already connected, if any, stays.
+   */
+  cancelPending(): void;
   disconnect(): void;
   stop(): void;
 };
@@ -192,6 +197,9 @@ export function createEvmSession(d: { discovery: Discovery; remembered: Remember
       await switchToRobinhood();
     },
     switchToRobinhood,
+    cancelPending() {
+      attempt++;
+    },
     disconnect() {
       const w = s.chosen;
       attempt++;

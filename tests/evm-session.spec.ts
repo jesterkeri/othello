@@ -266,6 +266,40 @@ describe("EVM session: only the latest intent counts", () => {
   });
 });
 
+describe("EVM session: cancelling a pending connect", () => {
+  it("an approval after cancelPending is dropped, and the wallet connected before stays connected and remembered", async () => {
+    const slow = deferred<string[]>();
+    const mm = approving(A1);
+    const rb = approving(A2);
+    rb.answers.eth_requestAccounts = () => slow.promise;
+    const mem = memory();
+    const s = createEvmSession({ discovery: discovery([wallet("u1", "MetaMask", "io.metamask", mm), wallet("u2", "Rabby", "io.rabby", rb)]), remembered: mem });
+    await s.connectWith("u1");
+    const pending = s.connectWith("u2");
+    s.cancelPending();
+    slow.resolve([A2]);
+    await pending;
+    await settle();
+    assert.equal(s.getSnapshot().chosen?.info.name, "MetaMask");
+    assert.equal(s.getSnapshot().address, A1);
+    assert.equal(mem.value, "io.metamask");
+    assert.ok(!rb.calls.includes("wallet_switchEthereumChain"), "the cancelled wallet is not asked anything more");
+  });
+
+  it("with nothing connected before, a cancelled connect leaves nothing connected", async () => {
+    const slow = deferred<string[]>();
+    const rb = approving(A2);
+    rb.answers.eth_requestAccounts = () => slow.promise;
+    const s = createEvmSession({ discovery: discovery([wallet("u2", "Rabby", "io.rabby", rb)]), remembered: memory() });
+    const pending = s.connectWith("u2");
+    s.cancelPending();
+    slow.resolve([A2]);
+    await pending;
+    assert.equal(s.getSnapshot().chosen, null);
+    assert.equal(s.getSnapshot().address, null);
+  });
+});
+
 describe("EVM session: disconnect", () => {
   it("forgets the wallet, asks it to drop the permission, and ignores it afterwards", async () => {
     const mm = approving(A1);

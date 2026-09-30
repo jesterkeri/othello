@@ -139,6 +139,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
   const pick = useCallback((name: string) => {
     cancelled.current = false;
     evmPick.current++;
+    evm.cancelPending();
     goAfterSolana.current = true;
     setPending(name);
     setPendingKind('solana');
@@ -149,7 +150,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     // onError or `connected`.
     if (w.wallet?.adapter.name === name) void w.connect().catch(() => {});
     else w.select(name as WalletName);
-  }, [w]);
+  }, [w, evm]);
 
   const pickEvm = useCallback((uuid: string) => {
     const name = evm.wallets.find((x) => x.info.uuid === uuid)?.info.name ?? 'your wallet';
@@ -162,9 +163,9 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     setStage('connecting');
     evm.connectWith(uuid).then(
       () => {
-        if (mine !== evmPick.current) return;
-        // Cancelled here but approved in the wallet afterwards: drop it rather than connect out of nowhere.
-        if (cancelled.current) { evm.disconnect(); return; }
+        // Cancelled, closed or superseded: the session already dropped the wallet's late answer (cancelPending), so
+        // there is nothing to undo here, and the wallet connected before, if any, is untouched.
+        if (mine !== evmPick.current || cancelled.current) return;
         setStage('closed');
         const to = destinationAfterConnect('robinhood', path.current);
         if (to) router.push(to);
@@ -185,10 +186,14 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     pending,
     pendingKind,
     openConnect,
-    close: () => { if (stage === 'connecting') cancelled.current = true; goAfterSolana.current = false; setStage('closed'); },
+    close: () => {
+      if (stage === 'connecting') { cancelled.current = true; evm.cancelPending(); }
+      goAfterSolana.current = false;
+      setStage('closed');
+    },
     pick,
     pickEvm,
-    cancel: () => { cancelled.current = true; goAfterSolana.current = false; setStage('list'); },
+    cancel: () => { cancelled.current = true; evm.cancelPending(); goAfterSolana.current = false; setStage('list'); },
     retry: () => {
       if (pendingKind === 'robinhood' && pendingUuid) pickEvm(pendingUuid);
       else if (pending) pick(pending);
@@ -196,7 +201,7 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     another: () => setStage(anyDetected ? 'list' : 'empty'),
     recheck: () => setStage(anyDetected ? 'list' : 'empty'),
     disconnect: () => { void w.disconnect(); },
-  }), [w, stage, detected, evmDetected, pending, pendingKind, pendingUuid, anyDetected, openConnect, pick, pickEvm]);
+  }), [w, evm, stage, detected, evmDetected, pending, pendingKind, pendingUuid, anyDetected, openConnect, pick, pickEvm]);
 
   return <WalletUiContext.Provider value={value}>{children}</WalletUiContext.Provider>;
 }
