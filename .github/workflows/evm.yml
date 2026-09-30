@@ -5,7 +5,7 @@ on:
   pull_request:
     paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/chain-switch.spec.ts", "tests/evm-*.spec.ts", "tests/a2-*.spec.ts", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", "ops/release-deploy.ts", "ops/release-target.json", "ops/vercel-cli/**", "tests/release-deploy*", "tests/fake-pinned-cli.ts", "tests/release-script-harness.ts", ".github/workflows/evm.yml"]
   push:
-    branches: ["task/A1-*", "staging", "main"]
+    branches: ["task/A1-*", "task/A2-*", "staging", "main"]
     paths: ["evm/**", "core/**", "app/**", "tests/robinhood-*", "tests/chain-switch.spec.ts", "tests/evm-*.spec.ts", "tests/a2-*.spec.ts", "tests/core-profiles.spec.ts", "tests/trust-config*", "ops/trust-config.ts", "ops/release-robinhood.sh", "ops/release-deploy.ts", "ops/release-target.json", "ops/vercel-cli/**", "tests/release-deploy*", "tests/fake-pinned-cli.ts", "tests/release-script-harness.ts", ".github/workflows/evm.yml"]
 
 permissions:
