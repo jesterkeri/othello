@@ -199,16 +199,23 @@ export async function deployRecorded(d: {
   }
   const url = urls[0]!;
 
-  const after = artifactDigest(outDir, app);
-  const lateExtra = [...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
-  if (after.sha256 !== rec.artifactSha256 || lateExtra.length) {
+  // the check after the upload; if it cannot even run (the folder vanished, a read failed), the deploy is void too
+  let problems: string[];
+  try {
+    const after = artifactDigest(outDir, app);
+    const lateExtra = [...repoRootRefusals(d.root, app), ...cliExtraUploads(app), ...uploadSet(outDir, app).failures];
+    problems = after.sha256 !== rec.artifactSha256 || lateExtra.length ? [...lateExtra, ...differences(recorded, after.lines)] : [];
+    if (after.sha256 !== rec.artifactSha256 && !problems.length) problems = ["the upload set's digest changed"];
+  } catch (e) {
+    problems = [`the check after the upload could not run: ${e instanceof Error ? e.message : e}`];
+  }
+  if (problems.length) {
     const undo = d.prod
       ? `it is already live in production: roll back now (node ${cli} rollback) and release again`
       : `do not use or share it; remove it (node ${cli} remove ${url}) and release again`;
     writeRecordAtomically(d.recordFile, { ...started, voidedDeploymentUrl: url });
     return fail(
-      `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}.\n` +
-        [...lateExtra, ...differences(recorded, after.lines)].slice(0, 20).join("\n"),
+      `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}.\n` + problems.slice(0, 20).join("\n"),
     );
   }
   const done: ReleaseRecord = { ...started, deploymentUrl: url, deployedAt: new Date().toISOString() };

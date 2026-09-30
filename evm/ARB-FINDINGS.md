@@ -447,3 +447,10 @@ The pass found no defect (every exit path, the copy-back, `--config-state`, erre
 suspicions are closed: the record is now replaced whole (written beside it, then renamed), so a crash never leaves it
 half-written and unreadable by the copy-back check; and a deployment voided because files changed during the upload is
 now named in the record (`voidedDeploymentUrl`), so it can be found and removed.
+
+### F-17 twenty-third adversary pass: the check after the upload must not lose a live deployment's URL
+
+Low severity: if the output folder vanished during the upload, the second `artifactDigest` threw, so a known and
+possibly live URL never reached `voidedDeploymentUrl` and nobody was told to roll it back (the record still said a
+deploy started, so it did not lie; the adversary's spec is kept). The check after the upload now treats any error as a
+voided deploy: the URL is recorded as voided and the message says to remove it or, in production, roll back.

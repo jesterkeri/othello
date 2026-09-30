@@ -3141,4 +3141,5 @@ after every check, copy back only started deploys; the clone builds the contract
 CI list 130 (the failed-scan spec runs the real release with a set factory: submodules, forge build, chain check fails,
 no record, checkout record untouched) (3446710, CI green). Pass 21: a failed copy-back keeps the folder and fails;
 forge build --force; --config-state; contracts built after preflight (eb6a647). Pass 22: NO DEFECT; the record is
-replaced atomically and a voided deployment is named. verify: release specs 30 passing. Passes: 22.
+replaced atomically and a voided deployment is named (f22a780, CI green). Pass 23 (low): a failing post-upload check
+now voids the deploy and records its URL. verify: release specs 28 + the kept spec passing. Passes: 23.
