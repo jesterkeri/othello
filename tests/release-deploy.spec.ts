@@ -615,6 +615,18 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.deepEqual(sourceDrift(root), ["README.md", "app/src/a.ts", "postcss.config.js"], "missing on disk");
   });
 
+  it("the record's file list is always its sibling, so no record can exempt another path (adversary pass on 975dc76)", async () => {
+    const f = fixture();
+    const rec = JSON.parse(readFileSync(f.record, "utf8")) as ReleaseRecord;
+    const page = "app/src/app/unreviewed/page.tsx";
+    writeFileSync(f.record, JSON.stringify({ ...rec, fileList: page }, null, 2) + "\n");
+    const spy = spyRun();
+    const git: Git = { head: () => rec.commit, changed: () => ["release/robinhood-prebuilt.json", page] };
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git });
+    assert.match(!r.ok ? r.reason : "", /file list must be release\/robinhood-prebuilt\.files\.txt, beside the record, not app\/src\/app\/unreviewed\/page\.tsx/);
+    assert.equal(spy.calls.length, 0, "the CLI never started");
+  });
+
   it("anything above the clone that node or a build tool would read is refused by the preflight", () => {
     for (const name of ["node_modules", "package.json", "postcss.config.js", ".browserslistrc", "pnpm-workspace.yaml", ".babelrc"]) {
       const above = mkdtempSync(join(tmpdir(), "release-ancestor-"));

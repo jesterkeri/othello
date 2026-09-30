@@ -570,3 +570,11 @@ as git gives them; only the release's own two paths are normalised. Also found, 
 worktrees link `node_modules` and `app/node_modules`, which `git status` lists (the `.gitignore` pattern
 `node_modules/` matches folders only), so a hand-run record or deploy in such a worktree is refused; release
 checkouts and the sealed clone have real folders. No new exemption was added for it.
+
+### F-26 adversary pass on 975dc76: the record's file list is pinned to the record's sibling
+
+No defect in the path comparison; the pass's suspicion held: `rec.fileList` came from the record, and it is the second
+path the deploy lets change, so a hand-written record could name an unreviewed source file there and exempt it from the
+changed-file check. deployRecorded now requires the record to be a `.json` file and its file list to be exactly
+`<record>.files.txt` beside it (as writeRecord writes it), and refuses before the CLI starts otherwise (unit case with a
+record naming `app/src/app/unreviewed/page.tsx`).

@@ -242,7 +242,13 @@ export async function deployRecorded(d: {
   if (rec.vercelCli !== VERCEL_CLI) return fail(`the record was built with Vercel CLI ${rec.vercelCli}; this deploy pins ${VERCEL_CLI}`);
   const head = d.git.head();
   if (head !== rec.commit) return fail(`the checkout is ${head}, but the record was built from ${rec.commit}`);
-  const allowed = new Set([norm(relative(d.root, d.recordFile)), norm(rec.fileList)]);
+  // the file list is always the record's sibling (writeRecord): a record naming any other path would let that path
+  // change unchecked, e.g. an unreviewed page (adversary pass on 975dc76)
+  const expectedList = norm(relative(d.root, d.recordFile.replace(/\.json$/, ".files.txt")));
+  if (!d.recordFile.endsWith(".json") || norm(rec.fileList) !== expectedList) {
+    return fail(`the record's file list must be ${expectedList}, beside the record, not ${rec.fileList}`);
+  }
+  const allowed = new Set([norm(relative(d.root, d.recordFile)), expectedList]);
   // git's paths are compared as git gives them: normalising them could turn a file named `release\robinhood-prebuilt.json`
   // into the record's own path (adversary pass on 5ed06d3); only the release's own two paths are normalised
   const other = d.git.changed().filter((p) => !allowed.has(p));
