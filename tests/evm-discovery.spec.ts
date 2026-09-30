@@ -28,6 +28,9 @@ describe("EIP-6963 announcements are checked", () => {
       { ...good, info: { ...good.info, uuid: "" } }, { ...good, info: { ...good.info, name: "   " } },
       { ...good, info: { ...good.info, name: "x".repeat(65) } }, { ...good, info: { ...good.info, rdns: "not dns" } },
       { ...good, info: { ...good.info, rdns: "metamask" } }, { ...good, info: { ...good.info, uuid: LEGACY_UUID } },
+      // the uuid is the list's key: plain characters only, never cleaned (an invisible character would alias another)
+      { ...good, info: { ...good.info, uuid: "u1\u200b" } }, { ...good, info: { ...good.info, uuid: "u 1" } },
+      { ...good, info: { ...good.info, uuid: "x".repeat(129) } }, { ...good, info: { ...good.info, uuid: 7 } },
     ];
     for (const d of bad) assert.equal(parseAnnouncement(d), null, JSON.stringify(d));
   });
