@@ -721,3 +721,18 @@ tests/release-script-non-utf8-driver-name-adversary.spec.ts). Every safe_git cal
 environment names `LC_ALL=C` explicitly. Passed (the report's list): empty, dot, space, quote, case and valid unicode
 names; no false positive on an ordinary clone; the two widened specs are not vacuous (each refusal message is printed
 only on a refusal, and each spec also asserts the exit, the sentinel and the upload).
+
+## F-36. Eighth adversary pass, on 86afb72: grep read git's output in the caller's locale
+
+86afb72 ran git in the C locale, but the script's own `grep`/`cut`/`sort` read git's output in the caller's locale. With
+the repository's `core.quotePath=false`, ls-tree and ls-files print a path's raw bytes, and under a UTF-8 locale GNU grep
+drops a line that is not valid UTF-8 ("binary file matches" on stderr), so a gitlink at `vendor\xff` passed the
+nested-repository check (refused under LC_ALL=C; the release then stopped only at the trust-config scan, on an ENOENT for
+the undecodable name; nothing deployed; spec kept: tests/release-script-locale-gitlink-grep-adversary.spec.ts). Now the
+script exports `LC_ALL=C` right after its environment seal, so every tool after it matches and parses in the C locale,
+and safe_git passes `-c core.quotePath=true`, so git escapes such bytes and its output is plain ASCII. Passed (the
+report's list): the two refused-config copies are byte-identical once unescaped; LANGUAGE and LC_* cannot override
+LC_ALL=C; NUL and newline in a driver name (git refuses or never reaches them); spaces in a name; status parsing; no git
+call outside safe_git or gitIn. Stated limit (the pass's unproven suspicion): trust-config decodes git's `-z` output
+and directory names as UTF-8, so a path that is not valid UTF-8 becomes U+FFFD; the observed effect is a failed lstat
+(the release stops), not a pass.

@@ -3241,3 +3241,8 @@ adversary: DEFECT. Under a UTF-8 locale the refused-config regex skipped a drive
 for every safe_git call and explicitly in gitIn (evm/ARB-FINDINGS.md F-35). Spec kept. verify: release-deploy + settings
 specs `44 passing (4s)`; CI on f870a48: 5/5 success.
 
+## A1 eighth adversary pass, on 86afb72 (the frozen r6 target): one defect, fixed on task/A1-r6-followups (2026-10-01)
+reviewed: n/a yet (86afb72 is under Codex review r6; this follow-up goes to the next round)
+adversary: DEFECT. The script's grep read git's raw path output in a UTF-8 locale and dropped a non-UTF-8 gitlink line.
+Fix: export LC_ALL=C after the environment seal; safe_git passes core.quotePath=true (evm/ARB-FINDINGS.md F-36). Spec kept.
+

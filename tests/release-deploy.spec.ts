@@ -452,7 +452,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*LC_ALL=C git --no-pager --no-replace-objects -c core\.fsmonitor=false/.test(l));
     assert.deepEqual(bare, [], "every git call goes through safe_git");
     const wrapper = script.slice(script.indexOf("safe_git() {"), script.indexOf("}", script.indexOf("safe_git() {")));
-    for (const c of ["LC_ALL=C git", "--no-pager", "--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null"]) {
+    for (const c of ["LC_ALL=C git", "--no-pager", "--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null", "core.quotePath=true"]) {
       assert.ok(wrapper.includes(c), `safe_git sets ${c}`);
     }
     // the whole release runs in an environment of only the listed variables (npm_config_*, GIT_*, NODE_* … dropped)
