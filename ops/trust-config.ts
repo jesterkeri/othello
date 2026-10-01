@@ -743,7 +743,13 @@ export function uncommittedPaths(root: string): string[] {
   // adversary pass on 4570ded): they are no build input, the sealed release's clone initialises its own from the
   // commit's gitlinks. "dirty", not "all": an added or removed gitlink is still reported (adversary pass on 1e196ff)
   const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all", "--ignore-submodules=dirty"]).split("\n").filter(Boolean).map((l) => l.slice(3));
-  return [...new Set([...status, ...sourceDrift(root)])].sort();
+  // a gitlink outside evm/lib/ (the contracts' pinned libraries) counts as a change wherever it is, in HEAD or the
+  // index: git answers for one from that repository's own config and treats one it cannot open as unchanged (adversary
+  // pass on d39ec27). Reading the tree and the index opens no submodule.
+  const links = [gitIn(root, ["ls-tree", "-r", "-z", "HEAD"]), gitIn(root, ["ls-files", "-s", "-z"])]
+    .flatMap((o) => o.split("\0")).filter((r) => r.startsWith("160000 ")).map((r) => r.slice(r.indexOf("\t") + 1))
+    .filter((path) => !path.startsWith("evm/lib/"));
+  return [...new Set([...status, ...links, ...sourceDrift(root)])].sort();
 }
 
 /** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */

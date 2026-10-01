@@ -668,3 +668,17 @@ with a staged nested repository, `dirty` printed `A  app/extra` and `all` printe
 the pager on every route, submodule configs on every other git call, a tracked file replaced by a nested repository
 (`T`), an untracked nested repository (`??`), a staged bump of evm/lib/* (no build input; the clone uses HEAD's gitlinks),
 `update=!cmd` in .gitmodules (git ignores it).
+
+## F-32. Fourth adversary pass, on d39ec27: a gitlink git cannot open reads as unchanged (low)
+
+With `--ignore-submodules=dirty`, git still opens each submodule to read its HEAD (reading, not running, its config),
+and treats one it cannot open (an unknown `extensions.*` in that submodule's config, a dangling .git file, an unborn
+branch) as unchanged: a root gitlink checked out away from its pin passed the clean check and the release deployed
+(deployed bytes still HEAD's: the clone builds HEAD; low; spec kept: tests/release-script-retargeted-gitlink-adversary.spec.ts).
+Rather than ask git about other repositories at all, a gitlink is now allowed only under evm/lib/ (the contracts' two
+pinned libraries, no build input here, which the clone initialises from HEAD's gitlinks): the script refuses any other
+gitlink in HEAD or the index (read from `ls-tree`/`ls-files`, which open no submodule), and uncommittedPaths reports
+each as a change. A failing `git status` now stops the script instead of reading as "clean" (the pass's suspicion).
+Passed (the report's list): every program-running key in a submodule's config under `dirty` (fsmonitor, filters,
+textconv, external diff, pager, hooksPath, sshCommand, askPass), status.submoduleSummary, staged/removed/type-changed
+gitlinks, `submodule.<name>.ignore`, a corrupt index.

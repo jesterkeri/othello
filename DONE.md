@@ -3213,3 +3213,10 @@ adversary: DEFECT. --ignore-submodules=all also hid a staged gitlink under app/,
 git 2.43.0 directly (evm/ARB-FINDINGS.md F-31). Spec kept. verify (on 1e196ff, before this fix): release unit specs
 `127 passing (2m)`.
 
+## A1 fourth adversary pass, on d39ec27: one low defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT (low). A root gitlink git could not open read as unchanged. Fix: gitlinks only under evm/lib/ (script
+refuses any other in HEAD or the index; uncommittedPaths reports them); a failing status stops the release
+(evm/ARB-FINDINGS.md F-32). Spec kept. verify (on d39ec27, before this fix): release unit specs `127 passing (3m)`;
+settings/git spec after it `12 passing (2s)`.
+

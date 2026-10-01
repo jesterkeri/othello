@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { dropPulledEnv, execPinnedCli, preflight, releaseTargetRefusals, VERCEL_SETTINGS_KEYS } from "../ops/release-deploy.ts";
-import { gitIn, gitProgramDrivers } from "../ops/trust-config.ts";
+import { gitIn, gitProgramDrivers, uncommittedPaths } from "../ops/trust-config.ts";
 import { commitTarget, fakePinnedCli } from "./fake-pinned-cli.ts";
 import { REVIEWED_ENGINES, REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
@@ -200,6 +200,27 @@ describe("git program drivers in the repository's config (adversary pass on ce04
     writeFileSync(inc, "[filter \"adv\"]\n\tclean = /bin/false\n");
     execFileSync("git", ["-C", root, "config", "include.path", inc]);
     assert.deepEqual(gitProgramDrivers(root), ["filter.adv.clean"]);
+  });
+});
+
+describe("gitlinks outside evm/lib/ (adversary pass on d39ec27)", () => {
+  it("a gitlink at the root or in app/, in HEAD or only in the index, counts as a change; evm/lib/ ones do not", () => {
+    const g = (cwd: string, ...a: string[]) => execFileSync("git", ["-C", cwd, "-c", "user.name=t", "-c", "user.email=t@t.invalid",
+      "-c", "commit.gpgsign=false", "-c", "protocol.file.allow=always", ...a], { stdio: "ignore" });
+    const sub = mkdtempSync(join(tmpdir(), "release-gitlink-sub-"));
+    g(sub, "init", "-q"); writeFileSync(join(sub, "a"), "a"); g(sub, "add", "a"); g(sub, "commit", "-q", "-m", "s");
+    const root = mkdtempSync(join(tmpdir(), "release-gitlink-"));
+    g(root, "init", "-q"); mkdirSync(join(root, "app")); writeFileSync(join(root, "app", "package.json"), "{}");
+    g(root, "add", "-A"); g(root, "commit", "-q", "-m", "base");
+    g(root, "submodule", "add", "-q", sub, "evm/lib/x"); g(root, "commit", "-q", "-m", "a pinned library");
+    assert.deepEqual(uncommittedPaths(root), [], "a library under evm/lib/ is no change");
+    g(root, "submodule", "add", "-q", sub, "app/nested"); // staged only
+    assert.ok(uncommittedPaths(root).includes("app/nested"), "a gitlink staged in app/");
+    g(root, "commit", "-q", "-m", "nested repo in app/");
+    g(root, "submodule", "add", "-q", sub, "extra"); g(root, "commit", "-q", "-m", "nested repo at the root");
+    const changed = uncommittedPaths(root);
+    assert.ok(changed.includes("extra") && changed.includes("app/nested"), `committed gitlinks outside evm/lib/ count too: ${changed}`);
+    assert.ok(!changed.some((p) => p.startsWith("evm/lib/")));
   });
 });
 

@@ -49,11 +49,17 @@ cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
 # ce04cd9). Reading config runs nothing.
 drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external)$' | cut -d' ' -f1 || true)"
 if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
+# a gitlink (another repository's commit) belongs only under evm/lib/, the contracts' pinned libraries, which are no
+# build input here (the fresh clone below initialises its own from the commit's gitlinks). git answers for a gitlink
+# from that repository's own config, and treats one it cannot open as unchanged (adversary pass on d39ec27), so none may
+# exist anywhere else, in HEAD or in the index. Reading the tree and the index opens no submodule.
+links="$( { safe_git ls-tree -r HEAD; safe_git ls-files -s; } | grep '^160000 ' | cut -f2- | grep -v '^evm/lib/' | sort -u || true)"
+if [ -n "$links" ]; then echo "release: a nested repository outside evm/lib/ ($(echo $links)); a release builds from this repository's own files" >&2; exit 1; fi
 # submodule work trees are not looked into: git would run a status inside each with that submodule's own config (its
-# filter drivers included; adversary pass on 4570ded), and they are no build input here (the fresh clone below
-# initialises its own from the commit's pinned gitlinks). "dirty", not "all": an added, removed or moved gitlink (a
-# nested repository staged under app/) is still reported (adversary pass on 1e196ff)
-if [ -n "$(safe_git status --porcelain --untracked-files=all --ignore-submodules=dirty)" ]; then
+# filter drivers included; adversary pass on 4570ded). "dirty", not "all": an added, removed or moved gitlink is still
+# reported (adversary pass on 1e196ff). A status that fails stops the release (its output is not read as "clean").
+status="$(safe_git status --porcelain --untracked-files=all --ignore-submodules=dirty)" || { echo "release: git status failed; the checkout cannot be checked" >&2; exit 1; }
+if [ -n "$status" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
   safe_git status --short --ignore-submodules=dirty >&2; exit 1
 fi
