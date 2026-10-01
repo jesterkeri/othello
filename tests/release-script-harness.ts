@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+
 export function sealedReleaseEnv(tmp: string, uploadedTo: string): NodeJS.ProcessEnv {
   const store = execFileSync("pnpm", ["store", "path"], { encoding: "utf8" }).trim(); // …/pnpm/store/v10
   const npmCache = execFileSync("npm", ["config", "get", "cache"], { encoding: "utf8" }).trim();
@@ -52,7 +54,8 @@ export function sealedReleaseEnv(tmp: string, uploadedTo: string): NodeJS.Proces
  * fresh clone carries it). Returns the commit.
  */
 export function commitTestReleaseTarget(repo: string, orgId = "ci-offline", projectId = "ci-offline"): string {
-  writeFileSync(join(repo, "ops", "release-target.json"), JSON.stringify({ vercelOrgId: orgId, vercelProjectId: projectId }) + "\n");
+  writeFileSync(join(repo, "ops", "release-target.json"),
+    JSON.stringify({ vercelOrgId: orgId, vercelProjectId: projectId, vercelSettings: REVIEWED_SETTINGS }) + "\n");
   const git = (...a: string[]) => execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t.invalid", ...a], { encoding: "utf8" });
   git("add", "ops/release-target.json");
   git("commit", "-q", "-m", "test: release target for the sealed spec");

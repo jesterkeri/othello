@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import { deployRecorded, releaseTargetRefusals, type Git, type Run } from "../ops/release-deploy.ts";
 import { commitTarget, fakePinnedCli } from "./fake-pinned-cli.ts";
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -27,9 +28,9 @@ describe("adversary: the deploy step itself does not enforce the reviewed Vercel
     const out = join(app, ".vercel", "output");
     mkdirSync(join(out, "static"), { recursive: true });
     // the reviewed target, committed (the release reads it from HEAD, adversary pass on 222e3fc)
-    commitTarget(root, { vercelOrgId: "team_A", vercelProjectId: "prj_A" });
+    commitTarget(root, { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS });
     // a stale link to a project the operator can also deploy to
-    writeFileSync(join(app, ".vercel", "project.json"), JSON.stringify({ orgId: "team_B", projectId: "prj_B", settings: {} }));
+    writeFileSync(join(app, ".vercel", "project.json"), JSON.stringify({ orgId: "team_B", projectId: "prj_B", settings: REVIEWED_SETTINGS }));
     writeFileSync(join(out, "config.json"), JSON.stringify({ version: 3 }));
     writeFileSync(join(out, "static", "chunk.js"), "console.log('client chunk')");
     // the preflight would refuse this link: the check exists, it is just not on the deploy path

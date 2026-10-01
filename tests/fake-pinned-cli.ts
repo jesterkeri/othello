@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { VERCEL_CLI } from "../ops/trust-config.ts";
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
 let made: string | undefined;
 
@@ -32,17 +33,18 @@ export function fakePinnedCli(): string {
  * release never passes one and reads the committed ops/release-target.json. A link without ids is left alone (the spec
  * means it to be refused).
  */
-export function reviewedTarget(root: string): { vercelOrgId: string; vercelProjectId: string } {
+export function reviewedTarget(root: string): { vercelOrgId: string; vercelProjectId: string; vercelSettings: Record<string, unknown> } {
   const pj = join(root, "app", ".vercel", "project.json");
   if (!existsSync(pj)) {
     mkdirSync(join(root, "app", ".vercel"), { recursive: true });
-    writeFileSync(pj, JSON.stringify({ projectId: "prj_TEST", orgId: "team_TEST", settings: {} }));
+    writeFileSync(pj, JSON.stringify({ projectId: "prj_TEST", orgId: "team_TEST", settings: REVIEWED_SETTINGS }));
   }
   let link: { orgId?: unknown; projectId?: unknown } = {};
   try { link = JSON.parse(readFileSync(pj, "utf8")); } catch { /* unreadable: the spec means it to be refused */ }
   return {
     vercelOrgId: typeof link.orgId === "string" ? link.orgId : "team_TEST",
     vercelProjectId: typeof link.projectId === "string" ? link.projectId : "prj_TEST",
+    vercelSettings: REVIEWED_SETTINGS,
   };
 }
 

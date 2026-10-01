@@ -32,11 +32,20 @@ fi
 # the flag is not trusted: the environment itself must hold nothing but the allowed variables (and bash's own)
 extra="$(env | cut -d= -f1 | grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|RELEASE_ENV_SEALED|PWD|OLDPWD|SHLVL|_" || true)"
 if [ -n "$extra" ]; then echo "release: the environment holds more than the release allows ($(echo $extra)); run it plainly" >&2; exit 1; fi
+# git, from its first call (Codex r5 F2): no system or global configuration (HOME's .gitconfig, XDG's git/config), no
+# replace refs, and the settings that run a program (core.fsmonitor, hooks) or change what status reports (the user's
+# ignore and attributes files, the untracked cache) overridden. Every git call below is safe_git; the Vercel CLI's own git
+# calls get the same variables (ops/release-deploy.ts deployEnv).
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1
+safe_git() {
+  git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
+    -c core.excludesFile=/dev/null -c core.attributesFile=/dev/null "$@"
+}
 # the repository the script belongs to, wherever it is run from
-cd "$(dirname "$SCRIPT")/.." && cd "$(git rev-parse --show-toplevel)"
-if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
+if [ -n "$(safe_git status --porcelain --untracked-files=all)" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
-  git status --short >&2; exit 1
+  safe_git status --short >&2; exit 1
 fi
 if [ -e .vercel ]; then echo "release: a .vercel folder at the repository root can move the Vercel CLI's project root; remove it" >&2; exit 1; fi
 for f in vercel.* now.* VERCEL.* Vercel.*; do
@@ -68,26 +77,26 @@ TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 [ "$(pnpm --version 2>/dev/null)" = "10.32.1" ] || { echo "release: needs pnpm 10.32.1 on PATH (npm install -g pnpm@10.32.1)" >&2; exit 1; }
 [ -f app/.vercel/project.json ] || { echo "release: link the Vercel project first (app/.vercel/project.json)" >&2; exit 1; }
-COMMIT="$(git rev-parse HEAD)"
+COMMIT="$(safe_git rev-parse HEAD)"
 
 # the fresh clone: only the commit's files, plus the project link (checked by --preflight inside the clone). git runs
-# with no system or global config, no clone templates and no hooks, so nothing outside the commit runs or rewrites it.
-export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
-git clone -q --no-local --template= -c core.hooksPath=/dev/null "$REPO" "$WORK/repo"
-git -C "$WORK/repo" -c core.hooksPath=/dev/null checkout -q --detach "$COMMIT"
+# with no system or global config, no clone templates and no hooks, so nothing outside the commit runs or rewrites it;
+# the clone keeps hooks and fsmonitor off in its own config for every later git call in it (the CLI's included).
+safe_git clone -q --no-local --template= -c core.hooksPath=/dev/null -c core.fsmonitor=false "$REPO" "$WORK/repo"
+safe_git -C "$WORK/repo" checkout -q --detach "$COMMIT"
 mkdir "$WORK/repo/app/.vercel" && cp app/.vercel/project.json "$WORK/repo/app/.vercel/project.json"
 cd "$WORK/repo"
 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 pnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 # the checks run with the clone's own tsx, started by node directly (npx would apply npm's node-options setting)
 TSX=(node "$WORK/repo/node_modules/tsx/dist/cli.mjs" --no-cache)
-"${TSX[@]}" ops/release-deploy.ts --preflight   # the reviewed target (ops/release-target.json), repo root, app/.vercel, the link
+"${TSX[@]}" ops/release-deploy.ts --preflight --before-pull   # the reviewed target and settings document, repo root, app/.vercel, the link
 # a set TRUSTED_FACTORY is verified against the reviewed contract's own build (trust-config reads evm/out): fetch the
 # libraries at the commits the repository pins and build them here from scratch (--force: no committed or cached
 # output is reused), never from the working checkout's evm/out. Whether it is set is asked of trust-config's own parser.
 CONFIG_STATE="$("${TSX[@]}" ops/trust-config.ts --config-state)"
 if [ "$CONFIG_STATE" != "null" ]; then
-  git -c core.hooksPath=/dev/null -c init.templateDir= submodule update --init --recursive -q
+  safe_git -c init.templateDir= submodule update --init --recursive -q
   (cd evm && forge build --force)
 fi
 mkdir "$WORK/cli"
@@ -95,7 +104,7 @@ VC="$("${TSX[@]}" ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- pull --yes --environment="$TARGET"
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- build --yes $PROD
-"${TSX[@]}" ops/release-deploy.ts --preflight   # again: pull and build changed nothing about the target or app/.vercel
+"${TSX[@]}" ops/release-deploy.ts --preflight   # again: the pulled settings are the reviewed ones; build changed nothing about the target or app/.vercel
 mkdir -p release
 "${TSX[@]}" ops/trust-config.ts --rpc "$RPC" --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json
 "${TSX[@]}" ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli "$VC" $PROD

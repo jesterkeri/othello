@@ -44,7 +44,9 @@ export const RETARGETING_ENV = ["VERCEL_ORG_ID", "VERCEL_PROJECT_ID", "VERCEL_TE
 const PASSED_ENV = ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "TMPDIR", "XDG_DATA_HOME", "XDG_CONFIG_HOME",
   "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "NVM_DIR", "NVM_BIN"];
 export function deployEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = { VERCEL_TELEMETRY_DISABLED: "1" };
+  // the CLI runs git itself (the deploy's `git status` and `git log` for its metadata): with no system or global
+  // configuration, so a program named by HOME's git config (core.fsmonitor) never runs (Codex r5 F2)
+  const out: NodeJS.ProcessEnv = { VERCEL_TELEMETRY_DISABLED: "1", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1" };
   for (const k of PASSED_ENV) if (env[k] !== undefined) out[k] = env[k];
   return out;
 }
@@ -128,7 +130,76 @@ export function ancestorRefusals(root: string): string[] {
  * The target is read from HEAD of the checkout whose top is `root`, and the working-tree copy must be that same text:
  * an uncommitted edit is not reviewed (adversary pass on 222e3fc).
  */
-export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown };
+export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown; vercelSettings?: unknown };
+
+/**
+ * The Vercel project's build settings are executable input, so they are reviewed like the target (Codex r5 F1).
+ * `vercel pull` writes them into app/.vercel/project.json, and the pinned CLI's `build` (59.11.7) runs
+ * `settings.installCommand` before compiling and hands buildCommand, outputDirectory, framework and nodeVersion to the
+ * builder, in a folder that by then holds the pulled env files. ops/release-target.json therefore carries the one
+ * accepted settings document (`vercelSettings`), and this accepts only a document that runs nothing of its own: no build,
+ * dev or output override, no root directory, the install step skipped (`""`: the dependencies are only the release's own
+ * frozen, --ignore-scripts install), directory listing off; only the Node.js version is the project's choice. After the
+ * pull, the link's settings must be exactly that document before the build starts, and again before the scan's
+ * preflight and the deploy. The keys are the ones the pinned CLI's pull writes (writeProjectSettings); any other
+ * (monorepoManager, which the build also reads) is refused. `createdAt` is the project's creation date (the builder
+ * reads it only to pick a package-manager default) and `analyticsId` appears only when Web Analytics is on, which
+ * would put its id into the build: refused.
+ */
+export const VERCEL_SETTINGS_KEYS = [
+  "framework", "devCommand", "installCommand", "buildCommand", "outputDirectory", "rootDirectory", "directoryListing", "nodeVersion",
+] as const;
+type VercelSettings = Record<(typeof VERCEL_SETTINGS_KEYS)[number], unknown>;
+const FIXED_SETTINGS: Partial<VercelSettings> = {
+  framework: "nextjs", devCommand: null, installCommand: "", buildCommand: null, outputDirectory: null, rootDirectory: null, directoryListing: false,
+};
+function reviewedSettings(s: unknown): { settings: VercelSettings } | { refusals: string[] } {
+  if (typeof s !== "object" || s === null || Array.isArray(s)) {
+    return { refusals: ["ops/release-target.json must name vercelSettings, the reviewed Vercel build settings"] };
+  }
+  const o = s as Record<string, unknown>;
+  const f: string[] = [];
+  for (const k of Object.keys(o)) {
+    if (!(VERCEL_SETTINGS_KEYS as readonly string[]).includes(k)) f.push(`ops/release-target.json vercelSettings.${k} is not a build setting the release accepts`);
+  }
+  for (const [k, v] of Object.entries(FIXED_SETTINGS)) {
+    if (!Object.hasOwn(o, k) || o[k] !== v) f.push(`ops/release-target.json vercelSettings.${k} must be ${JSON.stringify(v)}, not ${JSON.stringify(o[k])}`);
+  }
+  if (typeof o.nodeVersion !== "string" || !/^[0-9]{2}\.x$/.test(o.nodeVersion)) {
+    f.push(`ops/release-target.json vercelSettings.nodeVersion must be a Vercel Node.js version like "22.x", not ${JSON.stringify(o.nodeVersion)}`);
+  }
+  return f.length ? { refusals: f } : { settings: o as VercelSettings };
+}
+function pulledSettingsRefusals(link: Record<string, unknown>, want: VercelSettings): string[] {
+  const s = link.settings;
+  if (typeof s !== "object" || s === null || Array.isArray(s)) {
+    return [".vercel/project.json holds no build settings: the release's pull writes them, and the build would fetch its own"];
+  }
+  const o = s as Record<string, unknown>;
+  const fix = "set the project's Build and Deployment settings in Vercel to ops/release-target.json's vercelSettings, then release again";
+  const f: string[] = [];
+  for (const k of Object.keys(o)) {
+    if (k === "createdAt") {
+      if (typeof o[k] !== "number") f.push(`.vercel/project.json settings.createdAt is ${JSON.stringify(o[k])}, not a date`);
+    } else if (k === "analyticsId") {
+      f.push(".vercel/project.json settings.analyticsId: Web Analytics is on for the project and the build would carry its id; turn it off");
+    } else if (!(VERCEL_SETTINGS_KEYS as readonly string[]).includes(k)) {
+      f.push(`.vercel/project.json settings.${k} is not a reviewed build setting`);
+    }
+  }
+  for (const k of VERCEL_SETTINGS_KEYS) {
+    // a key the pull left out is unset, which the CLI reads exactly as null; anything else must be present and equal
+    const got = Object.hasOwn(o, k) ? o[k] : want[k] === null ? null : undefined;
+    if (got !== want[k]) f.push(`.vercel/project.json settings.${k} is ${JSON.stringify(got)}, not the reviewed ${JSON.stringify(want[k])}: ${fix}`);
+  }
+  return f;
+}
+
+/**
+ * Before the pull, the link may hold no settings, or a previous pull's (the pull replaces them): only the reviewed
+ * document itself is checked then. From the pull on, the link's settings must be that document.
+ */
+export type ReleaseStage = "before-pull" | "pulled";
 function committedTarget(root: string): { text: string } | { refusal: string } {
   const g = (a: string[]) => gitIn(root, a); // no caller GIT_* variables, no replace refs, no discovery above root
   let top: string;
@@ -145,7 +216,7 @@ function committedTarget(root: string): { text: string } | { refusal: string } {
   if (disk !== text) return { refusal: "ops/release-target.json differs from the committed copy at HEAD: only the committed (reviewed) target is used" };
   return { text };
 }
-export function releaseTargetRefusals(root: string, app: string, given?: ReleaseTarget): string[] {
+export function releaseTargetRefusals(root: string, app: string, given?: ReleaseTarget, stage: ReleaseStage = "pulled"): string[] {
   let target: ReleaseTarget;
   if (given) target = given;
   else {
@@ -172,6 +243,9 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
   const found: string[] = [];
   if (link.orgId !== org) found.push(`.vercel/project.json orgId ${JSON.stringify(link.orgId)} is not the reviewed target ${org}`);
   if (link.projectId !== project) found.push(`.vercel/project.json projectId ${JSON.stringify(link.projectId)} is not the reviewed target ${project}`);
+  const reviewed = reviewedSettings(target.vercelSettings);
+  if ("refusals" in reviewed) found.push(...reviewed.refusals);
+  else if (stage === "pulled") found.push(...pulledSettingsRefusals(link as Record<string, unknown>, reviewed.settings));
   return found;
 }
 
@@ -179,9 +253,9 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
  * The refusals that must hold before the release pulls or builds anything, and again before it scans: the reviewed
  * target, above the clone, its root, app/.vercel and the link.
  */
-export function preflight(root: string, target?: ReleaseTarget): string[] {
+export function preflight(root: string, target?: ReleaseTarget, stage: ReleaseStage = "pulled"): string[] {
   const app = join(root, "app");
-  return [...releaseTargetRefusals(root, app, target), ...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
+  return [...releaseTargetRefusals(root, app, target, stage), ...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
 }
 
 /**
@@ -209,7 +283,8 @@ export function execPinnedCli(
   if (!RUNNABLE.includes(JSON.stringify(args))) {
     throw new Error(`REFUSED: the runner starts only the release's pull or build (${RUNNABLE.join(" or ")}), not ${JSON.stringify(args)}; deploy through --record`);
   }
-  const refused = preflight(root, target);
+  // the pull writes the settings; the build runs them, so it starts only once they are the reviewed ones (Codex r5 F1)
+  const refused = preflight(root, target, args[0] === "pull" ? "before-pull" : "pulled");
   if (refused.length) throw new Error(`REFUSED before the CLI started:\n- ${refused.join("\n- ")}`);
   const cli = verifyPinnedCli(join(cliPath, "..", "..", "..", ".."));
   if (cli !== realpathSync(cliPath)) throw new Error(`${cliPath} is not that install's vc.js`);
@@ -341,7 +416,7 @@ export const gitFor = (root: string): Git => ({
 
 async function main() {
   if (process.argv.includes("--preflight")) {
-    const f = preflight(ROOT);
+    const f = preflight(ROOT, undefined, process.argv.includes("--before-pull") ? "before-pull" : "pulled");
     if (f.length) {
       console.error(`release-deploy REFUSED before the build:\n- ${f.join("\n- ")}`);
       process.exit(1);

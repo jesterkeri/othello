@@ -38,6 +38,7 @@ import { getAddress, keccak256, toHex } from "viem";
 
 import { installPinnedCli } from "../ops/release-deploy.ts";
 import { USDG, VERCEL_CLI, artifactDigest, scanTree, uploadSet } from "../ops/trust-config.ts";
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FOREIGN = getAddress(`0x${keccak256(toHex("unreviewed factory in an uploaded server file")).slice(26)}`);
@@ -134,7 +135,7 @@ describe("trust-config adversary: what `vercel deploy --prebuilt` uploads is wha
 
     // Exactly the CI job's offline Vercel build (.github/workflows/evm.yml, trust-config job).
     mkdirSync(join(app, ".vercel"));
-    writeFileSync(join(app, ".vercel/project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: { framework: "nextjs", installCommand: "true" } }));
+    writeFileSync(join(app, ".vercel/project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: REVIEWED_SETTINGS }));
     const vb = vercelBin();
     const build = spawnSync(vb.cmd, [...vb.args, "build", "--yes"], {
       cwd: app,

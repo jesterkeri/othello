@@ -578,3 +578,26 @@ path the deploy lets change, so a hand-written record could name an unreviewed s
 changed-file check. deployRecorded now requires the record to be a `.json` file and its file list to be exactly
 `<record>.files.txt` beside it (as writeRecord writes it), and refuses before the CLI starts otherwise (unit case with a
 record naming `app/src/app/unreviewed/page.tsx`).
+
+## F-27. The Vercel project's build settings are reviewed input; git is sealed from its first call (code review r5)
+
+Codex r5 on 5e78c4c (REVISE; r4 F1 RESOLVED: the destination is an authorised input). **F1 MAJOR:** `vercel pull`
+writes the project's settings into `app/.vercel/project.json`, and the pinned CLI's build (59.11.7) runs
+`settings.installCommand` and hands `buildCommand` and `outputDirectory` to the builder, in a folder that already holds
+the pulled env files; both preflights accepted any settings but `rootDirectory`, so a stale or changed setting on the
+right project ran unreviewed code before the scan, which then faithfully bound its output. `ops/release-target.json`
+now carries the reviewed settings document (`vercelSettings`); the code accepts only a document that runs nothing of its
+own (framework nextjs; no build, dev or output override; no root directory; the install step skipped, `""`, so the
+dependencies are only the release's frozen --ignore-scripts install; directory listing off; only `nodeVersion` is the
+project's), and from the pull on the link's settings must be exactly that document: the build runner refuses before the
+CLI starts, and the post-build preflight and the deploy refuse too. Keys the pull never writes (`monorepoManager`, which
+the build reads) and Web Analytics' `analyticsId` are refused. CI's offline build writes its link from that document.
+**F2 MINOR:** the script's first `git rev-parse` and both `git status` calls ran before global git configuration was
+turned off, so a `core.fsmonitor` program named by the preserved HOME's (or XDG_CONFIG_HOME's) config ran (confirmed:
+a plain `git status` runs it). The variables are now exported before the first git call and every call is `safe_git`
+(no replace refs, fsmonitor, untracked cache, hooks, user ignore or attributes file); the fresh clone keeps hooks and
+fsmonitor off in its own config; and the CLI's own git calls (the deploy's `git status`/`git log` for its metadata) run
+with no system or global configuration (`deployEnv`). Specs: tests/release-deploy-vercel-settings.spec.ts (unit), and
+two that run the real script sealed: tests/release-script-pulled-settings.spec.ts (the pinned CLI runs a planted install
+command; the release never starts the build on it) and tests/release-script-global-git-config.spec.ts (a planted
+fsmonitor in HOME and XDG config runs on a plain `git status` and never during the release).

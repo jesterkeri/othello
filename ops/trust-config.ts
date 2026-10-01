@@ -623,7 +623,9 @@ export async function usdgMatches(): Promise<string[]> {
 }
 
 /**
- * Every git call of the release goes through here (adversary passes on 9b44681 and 49ec527). The caller's GIT_*
+ * Every git call of the release's TypeScript entry points goes through here (adversary passes on 9b44681 and 49ec527);
+ * ops/release-robinhood.sh's go through its safe_git, sealed the same way from its first call, and the Vercel CLI's run
+ * with no system or global configuration either (deployEnv; Codex r5 F2). The caller's GIT_*
  * variables (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_CONFIG_COUNT …), system and global config, the user-global
  * ignore and attributes files under HOME/XDG_CONFIG_HOME, replace refs (`refs/replace/`), repository discovery above
  * `root`, and the repository's own `core.worktree`, `core.fsmonitor` (which runs a program) and untracked cache could

@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { commitTestReleaseTarget, sealedReleaseEnv } from "./release-script-harness.ts";
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SCRATCH = process.env.ADV_SCRATCH ?? tmpdir();
@@ -48,7 +49,7 @@ function checkout(tmp: string): string {
   execFileSync("git", ["clone", "--quiet", ROOT, repo]);
   const vercelDir = join(repo, "app", ".vercel");
   mkdirSync(vercelDir, { recursive: true });
-  writeFileSync(join(vercelDir, "project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: { framework: "nextjs", installCommand: "true" } }));
+  writeFileSync(join(vercelDir, "project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: REVIEWED_SETTINGS }));
   commitTestReleaseTarget(repo); // the release refuses any link but the reviewed target's (Codex r4 F1)
   assert.equal(execFileSync("git", ["-C", repo, "status", "--porcelain", "--untracked-files=all"], { encoding: "utf8" }), "",
     "precondition: the checkout is clean");

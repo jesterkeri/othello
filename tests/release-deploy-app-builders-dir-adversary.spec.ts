@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { commitTestReleaseTarget, sealedReleaseEnv } from "./release-script-harness.ts";
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -46,7 +47,7 @@ describe("release adversary: a builder left in app/.vercel/builders runs instead
     const vercelDir = join(app, ".vercel");
     mkdirSync(vercelDir, { recursive: true });
     // the same offline link CI's scanned-build job writes
-    writeFileSync(join(vercelDir, "project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: { framework: "nextjs", installCommand: "true" } }));
+    writeFileSync(join(vercelDir, "project.json"), JSON.stringify({ projectId: "ci-offline", orgId: "ci-offline", settings: REVIEWED_SETTINGS }));
     commitTestReleaseTarget(repo); // the release refuses any link but the reviewed target's (Codex r4 F1)
 
     // the planted builder: same name and version as the CLI's pin, not the locked package's code

@@ -2906,6 +2906,7 @@ verify (real output):
                           vector create-members-length-n3-2.
 
 ## A1 slice 1 adversary (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE (Codex code review r1, whose target 2a907ab contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 2a907ab
 adversary: NO DEFECT FOUND on staging..0d09dc3. 14 attack families (double claim, releasePot conservation,
 escrow left at Completed, underflow/panic, zero share denominator, deficit reachability, pause without
 default, queue order I23, grace boundary, check order per function, authority, hostile token/reentrancy,
@@ -2914,6 +2915,7 @@ circles, up to 7 defaults each): no violation. Independently confirmed ARB-FINDI
 unreachable) without reading it; notes the consent path is exercised only on forced states (disclosed in F-1).
 
 ## A1 slice 2: Robinhood page and adapter (viem, Joshua approved 2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE (Codex code review r1, whose target 2a907ab contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 2a907ab
 viem 2.56.8 exact (app, and root devDependency for the tests; 2.56.9 skipped as 4 days old).
 Built: app/src/lib/core/{profiles,adapter}.ts (ChainAdapter with no top-up; EvmUsdgAdapter {amount,
 expectedFill}; SolanaAdapter {amount}; exact-key argument check before any wallet call),
@@ -2939,6 +2941,7 @@ verify (real output):
   next build -> Compiled successfully; forge test -> 34 passed; export_abi --check -> matches.
 
 ## A1 slice 2 adversary + fixes (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE (Codex code review r1, whose target 2a907ab contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 2a907ab
 adversary on 0d09dc3..edb1fba: ONE DEFECT (low): an action refused after its approval confirmed (circle
 cancelled in between, or the user rejects the second prompt) left the approval on chain, 0 USDG moved.
 Proved by tests/robinhood-adapter-leftover-approval.spec.ts (kept as the regression test: "25000000n !== 0n").
@@ -2967,6 +2970,7 @@ verify: unittest OK; export_abi --check matches; forge 36 passed (+ fork 3 passe
 compiled; mocha 30 passing; trust-config CLI on null config passes; workflows clean; diff clean.
 
 ## A1 trust-config adversary + fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
 adversary on 2a907ab..f34eb46: DEFECT (gate fails open): parseConfig read config.ts as text, so a commented
 null line made a set TRUSTED_FACTORY read as null and the CLI printed "Nothing to verify" (exit 0); a commented
 reviewed address could be verified while the page trusted another. Kept as tests/trust-config-hostile-config.spec.ts
@@ -2978,6 +2982,7 @@ Fix: config.ts loaded as a module and shape-checked; single source of trust in a
 trust-config CLI on the committed null config passes; workflows clean.
 
 ## A1 trust-config, third adversary pass + structural fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
 adversary on f34eb46..4d0d5fd: DEFECTS: (1) a renamed import `checkTrusted as x` with a hard-coded factory passed the
 text scan while the config was null; (2) a config computed at run time showed Node and the browser different
 factories. Kept as tests/trust-config-trust-sources.spec.ts (re-aimed at the only function that still takes a
@@ -2991,6 +2996,7 @@ failing; tsc root/app; next build compiled; export_abi --check; trust-config CLI
 browser click-through (local anvil) full circle, all "done", untrusted address refused.
 
 ## A1 trust-config, fourth adversary pass + fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
 adversary on 4d0d5fd..33a8911: DEFECTS: (1) a config.js beside config.ts is what Next bundles (.js before .ts), so the
 gate checked a file the page did not load (proved with a real next build); (2) git's rename detection let
 `git mv X X.md` hide X's deletion. Suspicions acted on: extra usdg/factory fields passed through
@@ -3004,6 +3010,7 @@ verify: mocha 47 passing; mutations: shadow rule off -> shadow spec fails; sprea
 tsc root/app; next build compiled; export_abi --check; CLI passes on the null config; workflows clean.
 
 ## A1 trust-config, fifth adversary pass + build scan (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
 adversary on 33a8911..9ceaaae: DEFECTS proved with real next builds: (1) an extensionless `config` file beside
 config.ts is what the page loads; (2) a package.json "imports" alias lets a page reach adapter-core. Read, not built:
 (3) a module outside app/src re-exporting the core. Suspicion acted on: chain.ts USDG not compared with the pinned one.
@@ -3014,6 +3021,7 @@ zero, viem's placeholder and the trusted factory may appear. Today's build holds
 verify: trust specs 37 passing; mutation: bundle scan disabled -> 2 failing; CLI with --build app/.next passes.
 
 ## A1 trust-config, sixth adversary pass + fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
 adversary on 9ceaaae..64ab60b: DEFECTS proved with a real next build: (1) a spender inside a hard-coded approve
 calldata literal was invisible to the scan (no 0x before it); (2) app/public (fetched at run time) was not scanned.
 Suspicion acted on: Vercel builds with its own env -> env reads banned in trust/transaction code; deploy-from-CI-build
@@ -3022,6 +3030,7 @@ Fix (ARB-FINDINGS F-13). verify: trust specs 42 passing; mutations: padded detec
 off -> 2 failing; real build scan passes with no false alarms.
 
 ## A1 seventh adversary pass (on frozen fdcfdfe, while Codex review 2 runs) + fix on task/A1-r2-fixes (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
 adversary: DEFECTS (adapter): (1) a join cancelled in the wallet (same-nonce 0-value replacement) was reported
 "done" and left the approval open, because viem returns the replacement's receipt and send() did not compare hashes;
 (2) an approval whose receipt wait timed out and then mined was left open with no warning (previous allowance was
@@ -3033,6 +3042,7 @@ verify: adapter specs 14 passing, 5/5 repeat runs green; mutations: hash check o
 -> case 2 fails; tsc root/app.
 
 ## A1 live-demo readiness: create and list circles in the page (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
 Joshua: the judged demo is real people in separate browsers/wallets, each signing on the page (the script stays).
 Built: adapter-core createCircleWith (chain + pinned factory hash, simulate first, gas headroom, receipt hash must
 match, circle address from CircleCreated), listCirclesWith, TS peakNeed/leastGuarantee (the factory's rule);
@@ -3049,6 +3059,7 @@ grace passed, missed payment recorded, default settled, released, round 3 paid a
 no page or console errors.
 
 ## Split lab removed from the UI, kept in code; demo = success first, then failure (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
 Joshua: "remove split lab from the UI not the code...its not needed for colosseum either since we will actually use
 proper demos." Unlinked from: the landing nav, the Solana circle page, How it works ("Play the split"), the NFLXx
 asset page ("Open Split lab"). The /split-lab route and components stay (it builds; 57.8 kB). The How it works card
@@ -3061,6 +3072,7 @@ verify: next build compiled (/split-lab still built); trust-config --build passe
 href to /split-lab remains.
 
 ## A1 create/list adversary + fix (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
 adversary on 44e9538..b1eb00e: DEFECTS: (1) a wallet "Speed up" (repriced replacement) created the circle but the page
 said "no circle was created" (the same over-strict hash check in circle actions called a sped-up action "did not
 run"); (2) "My circles" read only the newest 40 circles, so anyone could hide a member's circle with 40 creates.
@@ -3086,6 +3098,7 @@ verify: specs 67 passing; mutation: scan skipping functions -> 1 failing; real v
 stable; next build; tsc; workflows clean.
 
 ## A1 prebuilt-release adversary + fix (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
 adversary on c7c6bf6..5f6c91a: DEFECTS (real offline vercel build): (1) the deploy uploads app/.next and node_modules
 files listed in functions' filePathMap, which scan and digest never read; (2) the gate refused real Vercel output (already
 fixed in f0e4c7c, CI green); (3) --record ignored untracked files. Suspicions acted on: digest not reproducible (per-file
@@ -3154,3 +3167,21 @@ the void-write fix queued from pass 24. verify: release specs 30 passing.
 without the target check (--record, then --run-cli); both now check it (F-18, F-19). The runner starts only the release's
 four pull/build argument lists, in app/, after the full preflight. verify: full CI list 139 passing (20m), both typechecks
 ok; CI run 36705263485 watching; adversary on 222e3fc running. Target IDs still othello's; Joshua to create othello-chains.
+
+## A1 release adversary passes on 222e3fc..975dc76, F-20 to F-26 (2026-09-30)
+reviewed: othello-design/reviews/arb-code-review-r5.md | verdict: REVISE (Codex code review r5 on 5e78c4c: F-18 to F-26 judged sound; its two findings are the next entry) | commit: 5e78c4c
+(Entry rewritten 2026-10-01: the one drafted on 09-30 was set aside for the frozen review and lost with the scratchpad.)
+Seven passes, each finding fixed with its spec kept (evm/ARB-FINDINGS.md F-20 to F-26): the target is read from HEAD
+(9b44681); every release git call ignores the caller's GIT_* and replace refs (49ec527); git gets no HOME and pins its
+repository and settings (647e485); the build's inputs are compared with HEAD by content (3b651eb); a linked worktree's
+.git file and the root node_modules are not build inputs (5ed06d3); git's changed paths are compared exactly (975dc76);
+the record's file list is pinned to the record's sibling (5e78c4c). verify: CI run 36760837041 on 5e78c4c, 5/5 jobs green.
+
+## A1 code review r5 (Codex, two-stage): REVISE, fixed (2026-10-01)
+reviewed: othello-design/reviews/arb-code-review-r5.md (cold: r5-cold.md sha c2042c8b…) | verdict: REVISE | commit: 5e78c4c
+F1 MAJOR: the Vercel project's build settings ran unreviewed code in the sealed build. F2 MINOR: the script's first git
+calls read the caller's global git config. Fix (evm/ARB-FINDINGS.md F-27): ops/release-target.json vercelSettings, the
+reviewed settings document, enforced after the pull before the build, scan and deploy; safe_git from the first call and
+git-sealed deployEnv for the CLI. Also: the 13 older A1 entries now name their review (scripts/check-reviews.sh: reviews
+ok). verify: release unit specs `120 passing (2m)` (tsc clean); sealed real-script specs below.
+

@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, gitFor, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { commitTarget, fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, gitIn, scanTree, sourceDrift, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
@@ -161,16 +162,16 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root);
       return f;
     };
-    const ok = withProject({ framework: "nextjs", rootDirectory: null });
+    const ok = withProject(REVIEWED_SETTINGS);
     assert.equal((await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(ok.root), root: ok.root, recordFile: ok.record, prod: false, run: spyRun().run, git: cleanGit() })).ok, true);
 
-    const rd = withProject({ framework: "nextjs", rootDirectory: "node_modules/x" });
+    const rd = withProject({ ...REVIEWED_SETTINGS, rootDirectory: "node_modules/x" });
     const spy = spyRun();
     const r1 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(rd.root), root: rd.root, recordFile: rd.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r1.ok ? r1.reason : "", /settings\.rootDirectory "node_modules\/x"/);
 
-    const changed = withProject({ framework: "nextjs", rootDirectory: null });
-    writeFileSync(join(changed.app, ".vercel", "project.json"), JSON.stringify({ projectId: "other", orgId: "o", settings: { framework: "nextjs" } }));
+    const changed = withProject(REVIEWED_SETTINGS);
+    writeFileSync(join(changed.app, ".vercel", "project.json"), JSON.stringify({ projectId: "other", orgId: "o", settings: REVIEWED_SETTINGS }));
     const r2 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(changed.root), root: changed.root, recordFile: changed.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r2.ok ? r2.reason : "", /changed after it was scanned[\s\S]*project:\.vercel\/project\.json/);
     assert.equal(spy.calls.length, 0);
@@ -216,7 +217,11 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       assert.equal(spy.calls.length, 0);
     }
     const env = deployEnv({ PATH: "/bin", HOME: "/h", VERCEL_USE_EXPERIMENTAL_SERVICES: "1", VERCEL_PROJECT_ID: "x", VERCEL_TOKEN: "t", SECRET: "s" });
-    assert.deepEqual(env, { VERCEL_TELEMETRY_DISABLED: "1", PATH: "/bin", HOME: "/h" });
+    assert.deepEqual(env, {
+      VERCEL_TELEMETRY_DISABLED: "1", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1", PATH: "/bin", HOME: "/h",
+    });
+    // the caller cannot turn the git settings back on: they are the release's, not passed through
+    assert.equal(deployEnv({ GIT_CONFIG_GLOBAL: "/home/x/.gitconfig", GIT_CONFIG_NOSYSTEM: "0" }).GIT_CONFIG_GLOBAL, "/dev/null");
     assert.match(readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8"), /for v in VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TEAM_ID/);
   });
 
@@ -434,7 +439,19 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.throws(() => execPinnedCli("/tmp/not-an-install/node_modules/vercel/dist/vc.js", ["build", "--yes"], root, () => 0, target), /not-an-install/);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the release builds from a fresh clone of the commit, installs from the lockfiles, and copies only the record back
-    assert.match(script, /export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=\/dev\/null\ngit clone -q --no-local --template= -c core\.hooksPath=\/dev\/null "\$REPO" "\$WORK\/repo"\ngit -C "\$WORK\/repo" -c core\.hooksPath=\/dev\/null checkout -q --detach "\$COMMIT"/);
+    assert.match(script, /\nsafe_git clone -q --no-local --template= -c core\.hooksPath=\/dev\/null -c core\.fsmonitor=false "\$REPO" "\$WORK\/repo"\nsafe_git -C "\$WORK\/repo" checkout -q --detach "\$COMMIT"\n/);
+    // git is sealed before its first call (Codex r5 F2): the variables are exported and safe_git defined before any git
+    // runs, and no line calls git except safe_git itself
+    const code = script.split("\n").filter((l) => !/^\s*#/.test(l));
+    const firstGit = code.findIndex((l) => /\bgit\b/.test(l.replace(/safe_git/g, "")) || /safe_git /.test(l));
+    const sealed = code.findIndex((l) => l === "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1");
+    assert.ok(sealed >= 0 && sealed < firstGit, "git's configuration is sealed before the first git call");
+    const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*git --no-replace-objects -c core\.fsmonitor=false/.test(l));
+    assert.deepEqual(bare, [], "every git call goes through safe_git");
+    const wrapper = script.slice(script.indexOf("safe_git() {"), script.indexOf("}", script.indexOf("safe_git() {")));
+    for (const c of ["--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null"]) {
+      assert.ok(wrapper.includes(c), `safe_git sets ${c}`);
+    }
     // the whole release runs in an environment of only the listed variables (npm_config_*, GIT_*, NODE_* … dropped)
     assert.match(script, /exec env -i "\$\{keep\[@\]\}" bash "\$SCRIPT" "\$@"/);
     assert.doesNotMatch(script.match(/ALLOWED_ENV=\([^)]*\)/)![0], /npm_config|NODE_|GIT_|VERCEL_|PNPM/);
@@ -497,15 +514,15 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       if (link) writeFileSync(join(root, "app", ".vercel", "project.json"), JSON.stringify(link));
       return releaseTargetRefusals(root, join(root, "app"));
     };
-    const target = { vercelOrgId: "team_A", vercelProjectId: "prj_A" };
-    assert.deepEqual(setup(target, { orgId: "team_A", projectId: "prj_A", settings: {} }), []);
+    const target = { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS };
+    assert.deepEqual(setup(target, { orgId: "team_A", projectId: "prj_A", settings: REVIEWED_SETTINGS }), []);
     assert.match(setup(target, { orgId: "team_B", projectId: "prj_A" }).join(), /orgId "team_B" is not the reviewed target team_A/);
     assert.match(setup(target, { orgId: "team_A", projectId: "prj_B" }).join(), /projectId "prj_B" is not the reviewed target prj_A/);
     assert.match(setup(null, { orgId: "team_A", projectId: "prj_A" }).join(), /no reviewed target/);
     assert.match(setup({ vercelOrgId: "team_A" }, { orgId: "team_A", projectId: "prj_A" }).join(), /must name vercelOrgId and vercelProjectId/);
     assert.match(setup(target, null).join(), /link the reviewed target project first/);
     // only the committed target counts: an uncommitted edit naming the link's project is refused (adversary pass on 222e3fc)
-    const other = { vercelOrgId: "team_B", vercelProjectId: "prj_B" };
+    const other = { vercelOrgId: "team_B", vercelProjectId: "prj_B", vercelSettings: REVIEWED_SETTINGS };
     assert.match(setup(target, { orgId: "team_B", projectId: "prj_B" }, other).join(), /differs from the committed copy at HEAD/);
     // a target file present but never committed is no reviewed target either
     const plain = mkdtempSync(join(tmpdir(), "release-target-plain-"));
@@ -535,7 +552,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     // and the deploy step refuses a link that is not the target it is given (the release reads the committed one)
     const f = fixture();
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: { vercelOrgId: "team_A", vercelProjectId: "prj_A" }, root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS }, root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /orgId "team_TEST" is not the reviewed target team_A[\s\S]*projectId "prj_TEST" is not the reviewed target prj_A/);
     assert.equal(spy.calls.length, 0, "the CLI never started");
     const noTarget = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });

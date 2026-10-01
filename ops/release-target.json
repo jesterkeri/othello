@@ -1,5 +1,15 @@
 {
   "vercelOrgId": "team_kXXQhD4pqG6KG2NfVVFlVOHi",
   "vercelProjectId": "prj_ZCQ6bP09jJeMX1wOwg7ErhJe8wB8",
-  "vercelProjectName": "othello"
+  "vercelProjectName": "othello",
+  "vercelSettings": {
+    "framework": "nextjs",
+    "devCommand": null,
+    "installCommand": "",
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "22.x"
+  }
 }
