@@ -391,9 +391,9 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(!again.ok ? again.reason : "", /started at .* and did not finish; check Vercel/);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the record comes back to the checkout on ANY exit, and the private TMPDIR is set before any tool (pnpm) runs
-    assert.match(script, /if \[ -f "\$r" \] && grep -q '"deployStartedAt": "' "\$r"; then/);
+    assert.match(script, /if \[ -f "\$r" \] && \/usr\/bin\/grep -q '"deployStartedAt": "' "\$r"; then/);
     // a failed copy-back keeps the folder that holds the record and fails the release
-    assert.match(script, /trap 'if bring_back; then rm -rf "\$WORK"; else echo "release: could not copy the record back; it is kept at \$WORK\/repo\/release\/robinhood-prebuilt\.json[^']*exit 1; fi' EXIT/);
+    assert.match(script, /trap 'if bring_back; then \/usr\/bin\/rm -rf "\$WORK"; else echo "release: could not copy the record back; it is kept at \$WORK\/repo\/release\/robinhood-prebuilt\.json[^']*exit 1; fi' EXIT/);
     // whether the contracts are built is asked of trust-config's parser, after --preflight, and the build is forced
     assert.match(script, /--preflight[\s\S]*CONFIG_STATE="\$\("\$\{TSX\[@\]\}" ops\/trust-config\.ts --config-state\)"\nif \[ "\$CONFIG_STATE" != "null" \]; then[\s\S]*forge build --force/);
     assert.doesNotMatch(script, /grep -qx 'export const TRUSTED_FACTORY/);
@@ -449,23 +449,23 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const firstGit = code.findIndex((l) => /\bgit\b/.test(l.replace(/safe_git/g, "")) || /safe_git /.test(l));
     const sealed = code.findIndex((l) => l === "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1");
     assert.ok(sealed >= 0 && sealed < firstGit, "git's configuration is sealed before the first git call");
-    const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*LC_ALL=C git --no-pager --no-replace-objects -c core\.fsmonitor=false/.test(l));
+    const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*LC_ALL=C \/usr\/bin\/git --no-pager --no-replace-objects -c core\.fsmonitor=false/.test(l));
     assert.deepEqual(bare, [], "every git call goes through safe_git");
     const wrapper = script.slice(script.indexOf("safe_git() {"), script.indexOf("}", script.indexOf("safe_git() {")));
-    for (const c of ["LC_ALL=C git", "--no-pager", "--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null", "core.quotePath=true"]) {
+    for (const c of ["LC_ALL=C /usr/bin/git", "--no-pager", "--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null", "core.quotePath=true"]) {
       assert.ok(wrapper.includes(c), `safe_git sets ${c}`);
     }
     // the whole release runs in an environment of only the listed variables (npm_config_*, GIT_*, NODE_* … dropped)
-    assert.match(script, /exec env -i "\$\{keep\[@\]\}" bash "\$SCRIPT" "\$@"/);
+    assert.match(script, /exec \/usr\/bin\/env -i "\$\{keep\[@\]\}" \/bin\/bash -p "\$SCRIPT" "\$@"/);
     assert.doesNotMatch(script.match(/ALLOWED_ENV=\([^)]*\)/)![0], /npm_config|NODE_|GIT_|VERCEL_|PNPM/);
     // the seal flag is not trusted: the environment is checked to hold only the allowed variables
-    assert.match(script, /extra="\$\(env \| cut -d= -f1 \| grep -vxE/);
+    assert.match(script, /extra="\$\(\/usr\/bin\/env \| \/usr\/bin\/cut -d= -f1 \| \/usr\/bin\/grep -vxE/);
     // the build folder is private, under HOME, never the shared /tmp
-    assert.match(script, /WORK="\$\(mktemp -d "\$HOME\/\.cache\/othello-release\/XXXXXXXX"\)"/);
+    assert.match(script, /WORK="\$\(\/usr\/bin\/mktemp -d "\$HOME\/\.cache\/othello-release\/XXXXXXXX"\)"/);
     // and every later step's temporary files (tsx's transform cache among them) live inside it; tsx caches nothing
-    assert.match(script, /export TMPDIR="\$WORK\/tmp"; mkdir -m 700 "\$TMPDIR"/);
+    assert.match(script, /export TMPDIR="\$WORK\/tmp"; \/usr\/bin\/mkdir -m 700 "\$TMPDIR"/);
     assert.match(script, /TSX=\(node "\$WORK\/repo\/node_modules\/tsx\/dist\/cli\.mjs" --no-cache\)/);
-    assert.match(script, /mkdir "\$WORK\/repo\/app\/\.vercel" && cp app\/\.vercel\/project\.json "\$WORK\/repo\/app\/\.vercel\/project\.json"\ncd "\$WORK\/repo"/);
+    assert.match(script, /\/usr\/bin\/mkdir "\$WORK\/repo\/app\/\.vercel" && \/usr\/bin\/cp app\/\.vercel\/project\.json "\$WORK\/repo\/app\/\.vercel\/project\.json"\ncd "\$WORK\/repo"/);
     assert.match(script, /cd "\$WORK\/repo"\npnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\npnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile\n/);
     const cmds = script.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n"); // comments are not commands
     assert.doesNotMatch(cmds, /\bnpx\b/, "no step of the release goes through npx");

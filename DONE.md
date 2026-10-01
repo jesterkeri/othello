@@ -3266,3 +3266,9 @@ deploy reads the variable names from Vercel right before and right after deployi
 evm/ARB-FINDINGS.md F-39. F1 HIGH (caller PATH): decision pending with Joshua. verify: release unit + CI-trigger specs
 `139 passing (2m)`.
 
+## A1 r6 F1: the release's own tools by absolute path; unsafe PATH entries dropped; trust boundary (2026-10-01)
+reviewed: n/a yet (goes to Codex in round 7)
+Joshua chose option A (harden + state the boundary). Absolute paths before the seal and for every system tool; PATH
+entries not the operator's own dropped before any lookup (evm/ARB-FINDINGS.md F-40). verify: release unit, CI-trigger
+and PATH specs `143 passing (2m)`; on this machine's real PATH 32 of 52 entries (the /mnt/c ones) are dropped.
+

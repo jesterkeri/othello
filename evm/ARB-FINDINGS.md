@@ -779,3 +779,25 @@ file changed during the upload (URL recorded as voided; remove it, or in product
 variable added and removed again inside the seconds between the two reads, by someone with edit access to the project,
 is not seen; Vercel exposes no environment revision to pin, so that account-level access is trusted for the window.
 **F1 HIGH (open):** a caller PATH that puts a program named env, bash, pnpm, node or git first runs it in the release.
+
+## F-40. Codex r6 F1 (HIGH): the caller's PATH; the trust boundary, stated
+
+Codex r6: a caller-chosen PATH let a program named env (at the re-run), pnpm or node stand in for the real one. The
+decision (Joshua, 2026-10-01): harden what the release itself runs, and state the trust boundary rather than
+authenticate the operator's own toolchain. The boundary: the operator's own account is trusted, because anything that
+runs as it already holds the Vercel login in HOME and could deploy without this script; the release cannot raise that
+bar, and does not claim to. Everything that is not the operator's is kept out:
+- before the environment seal the script runs only builtins and absolute system paths: `#!/bin/bash -p`,
+  `/usr/bin/readlink`, and the re-run `exec /usr/bin/env -i ... /bin/bash -p` (bash -p: no BASH_ENV, no functions from
+  the environment);
+- right after the seal, before any command is looked up on PATH, every PATH entry that is relative, empty, missing,
+  owned by another user, or writable by group or others (or under a folder they can write to without the sticky bit) is
+  dropped, and the count is printed (on WSL every /mnt/c folder is 0777: 32 of this machine's 52 entries are dropped,
+  the Linux toolchain under ~/.nvm, ~/.foundry and /usr/bin is kept);
+- every system tool the release itself uses (git, env, grep, cut, sort, mkdir, cp, rm, mktemp, chmod, dirname, readlink,
+  stat, id, bash) is run by absolute path, the environment check included (a PATH `env` that printed nothing made that
+  check pass on anything), so PATH only ever supplies the operator's own toolchain (node, pnpm, npm, forge).
+Spec: tests/release-script-path-trust.spec.ts (programs named like every tool the script uses, planted first on PATH in
+a folder others can write to, in the working folder through relative/empty entries, under a shared folder without the
+sticky bit: none runs; in the operator's own folder: the absolutely-pathed ones never run). Stated: the operator's own
+node, pnpm, npm and forge are trusted, as the operator's Vercel login is.

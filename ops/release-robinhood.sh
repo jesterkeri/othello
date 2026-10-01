@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # Release the Robinhood page as a PREBUILT artifact, and deploy exactly the bytes that were scanned (Codex code
 # review r2 MAJOR 2, r3 M1). Joshua runs this with his own Vercel login; nothing else deploys.
 #
@@ -21,20 +21,57 @@ for v in VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TEAM_ID; do
 done
 if [ -n "${NODE_OPTIONS:-}" ]; then echo "release: NODE_OPTIONS is set; it would change every node step of the release; unset it" >&2; exit 1; fi
 ALLOWED_ENV=(PATH HOME USER LOGNAME SHELL TERM LANG LC_ALL TMPDIR XDG_DATA_HOME XDG_CONFIG_HOME HTTPS_PROXY HTTP_PROXY NO_PROXY NVM_DIR NVM_BIN ROBINHOOD_RPC)
-SCRIPT="$(readlink -f "$0")"
+# before the seal below nothing is looked up on the caller's PATH: builtins and absolute system paths only, and bash -p
+# (no BASH_ENV, no functions taken from the environment) for the re-run (Codex r6 F1)
+SCRIPT="$(/usr/bin/readlink -f "$0")"
 if [ "${RELEASE_ENV_SEALED:-}" != 1 ]; then
   keep=(RELEASE_ENV_SEALED=1)
   for v in "${ALLOWED_ENV[@]}"; do
     if [ -n "${!v:-}" ]; then keep+=("$v=${!v}"); fi
   done
-  exec env -i "${keep[@]}" bash "$SCRIPT" "$@"
+  exec /usr/bin/env -i "${keep[@]}" /bin/bash -p "$SCRIPT" "$@"
 fi
+# PATH, before any command is looked up on it (Codex r6 F1). The trust boundary: the operator's own account is trusted,
+# because anything running as it already holds the Vercel login in HOME and could deploy without this script; so the
+# release does not authenticate the operator's own toolchain (node, pnpm, npm, forge found on PATH). What is not the
+# operator's is dropped from PATH before anything runs: a relative or empty entry (the working folder), a missing folder,
+# a folder owned by another user, and a folder that group or others can write to, or that sits under one they can write
+# to without the sticky bit (where another user could plant or swap a program; WSL's /mnt/c folders are all 0777). The
+# system tools the release itself uses (git, env, grep, cut, sort, mkdir, cp, rm, mktemp, chmod, dirname, readlink, stat,
+# id, bash) are run by absolute path, so PATH only ever supplies the operator's own toolchain. Builtins only here.
+me="$(/usr/bin/id -u)"
+safe_path=""
+dropped=0
+rest="$PATH"
+while :; do
+  d="${rest%%:*}"
+  keep=0
+  if [ "${d#/}" != "$d" ] && [ -d "$d" ]; then
+    read -r owner mode <<< "$(/usr/bin/stat -L -c '%u %a' -- "$d")"
+    if { [ "$owner" = "$me" ] || [ "$owner" = 0 ]; } && ! (( 8#$mode & 8#022 )); then
+      keep=1
+      up="$d"
+      while [ "$up" != / ]; do
+        up="${up%/*}"; [ -n "$up" ] || up=/
+        read -r umode <<< "$(/usr/bin/stat -L -c '%a' -- "$up")"
+        if (( 8#$umode & 8#022 )) && ! (( 8#$umode & 8#1000 )); then keep=0; break; fi
+      done
+    fi
+  fi
+  if [ "$keep" = 1 ]; then safe_path="${safe_path:+$safe_path:}$d"; else dropped=$((dropped + 1)); fi
+  [ "$rest" = "${rest#*:}" ] && break
+  rest="${rest#*:}"
+done
+if [ "$dropped" -gt 0 ]; then echo "release: $dropped PATH entries that are not the operator's own (relative, missing, another user's, or writable by others) are not used" >&2; fi
+[ -n "$safe_path" ] || { echo "release: no PATH folder is the operator's own; nothing can run" >&2; exit 1; }
+export PATH="$safe_path"
 # every tool from here on, the environment check included, matches and parses in the C locale: under a UTF-8 one grep
 # drops a line that is not valid UTF-8 (a path git printed raw, a variable name), so a check could pass what it should
 # refuse (adversary passes on 86afb72 and 7552f17). LC_ALL is on the allowed list.
 export LC_ALL=C
 # the flag is not trusted: the environment itself must hold nothing but the allowed variables (and bash's own)
-extra="$(env | cut -d= -f1 | grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|RELEASE_ENV_SEALED|PWD|OLDPWD|SHLVL|_" || true)"
+# (by absolute path: a PATH program named env that printed nothing would make this check pass on anything)
+extra="$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|RELEASE_ENV_SEALED|PWD|OLDPWD|SHLVL|_" || true)"
 if [ -n "$extra" ]; then echo "release: the environment holds more than the release allows ($(echo $extra)); run it plainly" >&2; exit 1; fi
 # git, from its first call (Codex r5 F2): no system or global configuration (HOME's .gitconfig, XDG's git/config), no
 # replace refs, no lazy fetch of a missing object (in a partial clone a tree read would start the configured
@@ -46,16 +83,16 @@ export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=
 safe_git() {
   # the C locale: under a UTF-8 one git's regex skips a name that is not valid UTF-8, so the refused-config check below
   # would miss a driver named with such a byte (adversary pass on cf03f94); gitIn runs in the C locale too (PATH only)
-  LC_ALL=C git --no-pager --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
+  LC_ALL=C /usr/bin/git --no-pager --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
     -c core.excludesFile=/dev/null -c core.attributesFile=/dev/null -c core.quotePath=true "$@"
 }
 # the repository the script belongs to, wherever it is run from
-cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
+cd "$(/usr/bin/dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
 # a repository's own config can name programs git starts while it compares files (a clean or process filter during
 # status, a diff or merge driver) or fetches (a partial clone's promisor remote, its upload-pack, an ssh command or
 # proxy), and no -c switch turns those off: refused before the first status (adversary passes on ce04cd9 and 12f1cb7).
 # A release checkout is an ordinary full clone. Reading config runs nothing.
-drivers="$(safe_git config --get-regexp '^(filter\..*\.(clean|smudge|process)|diff\..*\.(textconv|command)|merge\..*\.driver|diff\.external|remote\..*\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\.partialclone|core\.(sshcommand|gitproxy|askpass))$' | cut -d' ' -f1 || true)"
+drivers="$(safe_git config --get-regexp '^(filter\..*\.(clean|smudge|process)|diff\..*\.(textconv|command)|merge\..*\.driver|diff\.external|remote\..*\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\.partialclone|core\.(sshcommand|gitproxy|askpass))$' | /usr/bin/cut -d' ' -f1 || true)"
 if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
 # a gitlink (another repository's commit) belongs only under evm/lib/, the contracts' pinned libraries, which are no
 # build input here (the fresh clone below initialises its own from the commit's gitlinks). git answers for a gitlink
@@ -63,7 +100,7 @@ if [ -n "$drivers" ]; then echo "release: the repository's own config names prog
 # exist anywhere else, in HEAD or in the index. Reading the tree and the index opens no submodule.
 tree="$(safe_git ls-tree -r HEAD)" || { echo "release: HEAD's tree cannot be read; the checkout cannot be checked" >&2; exit 1; }
 index="$(safe_git ls-files -s)" || { echo "release: the index cannot be read; the checkout cannot be checked" >&2; exit 1; }
-links="$(printf '%s\n%s\n' "$tree" "$index" | grep '^160000 ' | cut -f2- | grep -v '^evm/lib/' | sort -u || true)"
+links="$(printf '%s\n%s\n' "$tree" "$index" | /usr/bin/grep '^160000 ' | /usr/bin/cut -f2- | /usr/bin/grep -v '^evm/lib/' | /usr/bin/sort -u || true)"
 if [ -n "$links" ]; then echo "release: a nested repository outside evm/lib/ ($(echo $links)); a release builds from this repository's own files" >&2; exit 1; fi
 # submodule work trees are not looked into: git would run a status inside each with that submodule's own config (its
 # filter drivers included; adversary pass on 4570ded). "dirty", not "all": an added, removed or moved gitlink is still
@@ -85,20 +122,20 @@ REPO="$(pwd)"
 # node_modules ABOVE the clone, so no other user may be able to write above it (--preflight also refuses such files).
 # It is made before any tool runs, and every temporary file from here on (node's compile cache, tsx's, npm's, pnpm's,
 # next's) lives in it: a shared /tmp would let another user plant or rewrite what a step runs.
-mkdir -p "$HOME/.cache/othello-release" && chmod 700 "$HOME/.cache/othello-release"
-WORK="$(mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"
+/usr/bin/mkdir -p "$HOME/.cache/othello-release" && /usr/bin/chmod 700 "$HOME/.cache/othello-release"
+WORK="$(/usr/bin/mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"
 # on ANY exit, a record that reached the deploy step (it carries deployStartedAt, written before Vercel is contacted)
 # comes back to the checkout before the folder goes, so an interrupted or failed deploy is never invisible; a record from
 # a run that stopped earlier never replaces the committed one. The copy cannot stop the clean-up.
 bring_back() {
   local r="$WORK/repo/release/robinhood-prebuilt.json"
-  if [ -f "$r" ] && grep -q '"deployStartedAt": "' "$r"; then
-    mkdir -p "$REPO/release" && cp "$r" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"
+  if [ -f "$r" ] && /usr/bin/grep -q '"deployStartedAt": "' "$r"; then
+    /usr/bin/mkdir -p "$REPO/release" && /usr/bin/cp "$r" "$WORK/repo/release/robinhood-prebuilt.files.txt" "$REPO/release/"
   fi
 }
 # if the record cannot be copied back, the folder that holds it is KEPT and the release fails, saying where it is
-trap 'if bring_back; then rm -rf "$WORK"; else echo "release: could not copy the record back; it is kept at $WORK/repo/release/robinhood-prebuilt.json and robinhood-prebuilt.files.txt (copy both into release/ yourself)" >&2; exit 1; fi' EXIT
-export TMPDIR="$WORK/tmp"; mkdir -m 700 "$TMPDIR"
+trap 'if bring_back; then /usr/bin/rm -rf "$WORK"; else echo "release: could not copy the record back; it is kept at $WORK/repo/release/robinhood-prebuilt.json and robinhood-prebuilt.files.txt (copy both into release/ yourself)" >&2; exit 1; fi' EXIT
+export TMPDIR="$WORK/tmp"; /usr/bin/mkdir -m 700 "$TMPDIR"
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 [ "$(pnpm --version 2>/dev/null)" = "10.32.1" ] || { echo "release: needs pnpm 10.32.1 on PATH (npm install -g pnpm@10.32.1)" >&2; exit 1; }
@@ -110,7 +147,7 @@ COMMIT="$(safe_git rev-parse HEAD)"
 # the clone keeps hooks and fsmonitor off in its own config for every later git call in it (the CLI's included).
 safe_git clone -q --no-local --template= -c core.hooksPath=/dev/null -c core.fsmonitor=false "$REPO" "$WORK/repo"
 safe_git -C "$WORK/repo" checkout -q --detach "$COMMIT"
-mkdir "$WORK/repo/app/.vercel" && cp app/.vercel/project.json "$WORK/repo/app/.vercel/project.json"
+/usr/bin/mkdir "$WORK/repo/app/.vercel" && /usr/bin/cp app/.vercel/project.json "$WORK/repo/app/.vercel/project.json"
 cd "$WORK/repo"
 pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
 pnpm -C app install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
@@ -125,7 +162,7 @@ if [ "$CONFIG_STATE" != "null" ]; then
   safe_git -c init.templateDir= submodule update --init --recursive -q
   (cd evm && forge build --force)
 fi
-mkdir "$WORK/cli"
+/usr/bin/mkdir "$WORK/cli"
 VC="$("${TSX[@]}" ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified vercel@59.11.7 vc.js
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- pull --yes --environment="$TARGET"
@@ -134,7 +171,7 @@ RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 "${TSX[@]}" ops/release-deploy.ts --drop-pulled-env
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- build --yes $PROD
 "${TSX[@]}" ops/release-deploy.ts --preflight   # again: the pulled settings are the reviewed ones; build changed nothing about the target or app/.vercel
-mkdir -p release
+/usr/bin/mkdir -p release
 "${TSX[@]}" ops/trust-config.ts --rpc "$RPC" --vercel-output app/.vercel/output --record release/robinhood-prebuilt.json
 "${TSX[@]}" ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli "$VC" $PROD
 echo
