@@ -218,7 +218,8 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     }
     const env = deployEnv({ PATH: "/bin", HOME: "/h", VERCEL_USE_EXPERIMENTAL_SERVICES: "1", VERCEL_PROJECT_ID: "x", VERCEL_TOKEN: "t", SECRET: "s" });
     assert.deepEqual(env, {
-      VERCEL_TELEMETRY_DISABLED: "1", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1", PATH: "/bin", HOME: "/h",
+      VERCEL_TELEMETRY_DISABLED: "1", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1", GIT_NO_LAZY_FETCH: "1",
+      PATH: "/bin", HOME: "/h",
     });
     // the caller cannot turn the git settings back on: they are the release's, not passed through
     assert.equal(deployEnv({ GIT_CONFIG_GLOBAL: "/home/x/.gitconfig", GIT_CONFIG_NOSYSTEM: "0" }).GIT_CONFIG_GLOBAL, "/dev/null");
@@ -446,7 +447,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     // runs, and no line calls git except safe_git itself
     const code = script.split("\n").filter((l) => !/^\s*#/.test(l));
     const firstGit = code.findIndex((l) => /\bgit\b/.test(l.replace(/safe_git/g, "")) || /safe_git /.test(l));
-    const sealed = code.findIndex((l) => l === "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1");
+    const sealed = code.findIndex((l) => l === "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1");
     assert.ok(sealed >= 0 && sealed < firstGit, "git's configuration is sealed before the first git call");
     const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*git --no-pager --no-replace-objects -c core\.fsmonitor=false/.test(l));
     assert.deepEqual(bare, [], "every git call goes through safe_git");

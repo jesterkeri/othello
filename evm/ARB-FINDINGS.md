@@ -682,3 +682,18 @@ each as a change. A failing `git status` now stops the script instead of reading
 Passed (the report's list): every program-running key in a submodule's config under `dirty` (fsmonitor, filters,
 textconv, external diff, pager, hooksPath, sshCommand, askPass), status.submoduleSummary, staged/removed/type-changed
 gitlinks, `submodule.<name>.ignore`, a corrupt index.
+
+## F-33. Fifth adversary pass, on 12f1cb7: a tree read lazily fetched through a configured upload-pack
+
+In a partial clone (a promisor remote, `extensions.partialClone`) missing a tree of HEAD, the new `ls-tree -r HEAD`
+asked the promisor remote for it, which started the program named by the repository's `remote.origin.uploadpack`; the
+release then deployed (deployed bytes HEAD's; spec kept: tests/release-script-lazy-fetch-adversary.spec.ts, which passes
+on d39ec27, where the clone stopped with lazy fetching disabled). Fix: `GIT_NO_LAZY_FETCH=1` for every git call (the
+script's export, gitIn's environment, deployEnv for the CLI's git; honoured by this git, 2.43.0-1ubuntu7.3), and the
+refused-config list now also names the fetch-time programs and a partial clone (`remote.<x>.uploadpack|receivepack|
+promisor|partialclonefilter`, `extensions.partialclone`, `core.sshcommand|gitproxy|askpass`): a release checkout is an
+ordinary full clone. Also (the pass's second item): the tree and index reads are captured on their own, so a failing
+one stops the release instead of being hidden by the pipeline's `|| true`. Passed (the report's list): quoted paths in
+non -z output (never match `^evm/lib/`; a quoted path under it is refused, costing only a release), `..` path parts
+(git refuses them), `status="$(...)" || {...}` under set -e, assume-unchanged/skip-worktree (noted before; the build
+uses the fresh clone).

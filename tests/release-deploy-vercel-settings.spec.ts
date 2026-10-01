@@ -186,7 +186,10 @@ describe("the app pins the reviewed Node.js version (adversary pass on ce04cd9)"
 
 describe("git program drivers in the repository's config (adversary pass on ce04cd9)", () => {
   it("a filter, diff or merge driver is refused by every TypeScript git call and by the preflight", () => {
-    for (const key of ["filter.adv.clean", "filter.adv.process", "filter.adv.smudge", "diff.adv.textconv", "diff.adv.command", "merge.adv.driver", "diff.external"]) {
+    for (const key of ["filter.adv.clean", "filter.adv.process", "filter.adv.smudge", "diff.adv.textconv", "diff.adv.command", "merge.adv.driver", "diff.external",
+      // fetch-time programs and a partial clone (adversary pass on 12f1cb7)
+      "remote.origin.uploadpack", "remote.origin.receivepack", "remote.origin.promisor", "remote.origin.partialclonefilter", "extensions.partialclone",
+      "core.sshcommand", "core.gitproxy", "core.askpass"]) {
       const root = checkout({ ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, REVIEWED_SETTINGS);
       assert.deepEqual(gitProgramDrivers(root), []);
       execFileSync("git", ["-C", root, "config", key, "/bin/false %f"]);

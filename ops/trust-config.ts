@@ -640,7 +640,7 @@ function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned
   const real = realpathSync(root);
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
-    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1",
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1", GIT_NO_LAZY_FETCH: "1",
     GIT_CEILING_DIRECTORIES: dirname(real),
   };
   const pinned = [
@@ -653,11 +653,13 @@ function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned
 }
 
 /**
- * The program drivers a repository's own config can name, which git starts while it compares files (a clean or process
- * filter on status, a textconv or external diff, a merge driver): no -c switch turns them off, so the release refuses
- * a repository that names any (adversary pass on ce04cd9). Reading config runs nothing; includes are followed.
+ * The programs a repository's own config can name, which git starts while it compares files (a clean or process filter
+ * on status, a textconv or external diff, a merge driver) or fetches (a partial clone's promisor remote and its
+ * upload-pack, an ssh command or proxy): no -c switch turns them off, so the release refuses a repository that names
+ * any (adversary passes on ce04cd9 and 12f1cb7); a release checkout is an ordinary full clone. Reading config runs
+ * nothing; includes are followed. Lazy fetching is also off (GIT_NO_LAZY_FETCH).
  */
-export const GIT_PROGRAM_DRIVERS = "^(filter\\..+\\.(clean|smudge|process)|diff\\..+\\.(textconv|command)|merge\\..+\\.driver|diff\\.external)$";
+export const GIT_PROGRAM_DRIVERS = "^(filter\\..+\\.(clean|smudge|process)|diff\\..+\\.(textconv|command)|merge\\..+\\.driver|diff\\.external|remote\\..+\\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\\.partialclone|core\\.(sshcommand|gitproxy|askpass))$";
 export function gitProgramDrivers(root: string): string[] {
   const { env, pinned } = sealedGit(root);
   const r = spawnSync("git", [...pinned, "config", "--get-regexp", GIT_PROGRAM_DRIVERS], { encoding: "utf8", env });

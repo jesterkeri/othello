@@ -33,11 +33,12 @@ fi
 extra="$(env | cut -d= -f1 | grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|RELEASE_ENV_SEALED|PWD|OLDPWD|SHLVL|_" || true)"
 if [ -n "$extra" ]; then echo "release: the environment holds more than the release allows ($(echo $extra)); run it plainly" >&2; exit 1; fi
 # git, from its first call (Codex r5 F2): no system or global configuration (HOME's .gitconfig, XDG's git/config), no
-# replace refs, and the settings that run a program (core.fsmonitor, hooks) or change what status reports (the user's
+# replace refs, no lazy fetch of a missing object (in a partial clone a tree read would start the configured
+# upload-pack; adversary pass on 12f1cb7), and the settings that run a program (core.fsmonitor, hooks) or change what status reports (the user's
 # ignore and attributes files, the untracked cache) overridden, and no pager (a repository's core.pager would run when a
 # refusal is printed on a terminal; adversary pass on 4570ded). Every git call below is safe_git; the Vercel CLI's own
 # git calls get the same variables (ops/release-deploy.ts deployEnv).
-export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1
 safe_git() {
   git --no-pager --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
     -c core.excludesFile=/dev/null -c core.attributesFile=/dev/null "$@"
@@ -45,20 +46,23 @@ safe_git() {
 # the repository the script belongs to, wherever it is run from
 cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
 # a repository's own config can name programs git starts while it compares files (a clean or process filter during
-# status, a diff or merge driver), and no -c switch turns those off: refused before the first status (adversary pass on
-# ce04cd9). Reading config runs nothing.
-drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external)$' | cut -d' ' -f1 || true)"
+# status, a diff or merge driver) or fetches (a partial clone's promisor remote, its upload-pack, an ssh command or
+# proxy), and no -c switch turns those off: refused before the first status (adversary passes on ce04cd9 and 12f1cb7).
+# A release checkout is an ordinary full clone. Reading config runs nothing.
+drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external|remote\..+\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\.partialclone|core\.(sshcommand|gitproxy|askpass))$' | cut -d' ' -f1 || true)"
 if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
 # a gitlink (another repository's commit) belongs only under evm/lib/, the contracts' pinned libraries, which are no
 # build input here (the fresh clone below initialises its own from the commit's gitlinks). git answers for a gitlink
 # from that repository's own config, and treats one it cannot open as unchanged (adversary pass on d39ec27), so none may
 # exist anywhere else, in HEAD or in the index. Reading the tree and the index opens no submodule.
-links="$( { safe_git ls-tree -r HEAD; safe_git ls-files -s; } | grep '^160000 ' | cut -f2- | grep -v '^evm/lib/' | sort -u || true)"
+tree="$(safe_git ls-tree -r HEAD)" || { echo "release: HEAD's tree cannot be read; the checkout cannot be checked" >&2; exit 1; }
+index="$(safe_git ls-files -s)" || { echo "release: the index cannot be read; the checkout cannot be checked" >&2; exit 1; }
+links="$(printf '%s\n%s\n' "$tree" "$index" | grep '^160000 ' | cut -f2- | grep -v '^evm/lib/' | sort -u || true)"
 if [ -n "$links" ]; then echo "release: a nested repository outside evm/lib/ ($(echo $links)); a release builds from this repository's own files" >&2; exit 1; fi
 # submodule work trees are not looked into: git would run a status inside each with that submodule's own config (its
 # filter drivers included; adversary pass on 4570ded). "dirty", not "all": an added, removed or moved gitlink is still
 # reported (adversary pass on 1e196ff). A status that fails stops the release (its output is not read as "clean").
-status="$(safe_git status --porcelain --untracked-files=all --ignore-submodules=dirty)" || { echo "release: git status failed; the checkout cannot be checked" >&2; exit 1; }
+status="$(safe_git status --porcelain --untracked-files=all --ignore-submodules=dirty)" || { echo "release: the status check failed; the checkout cannot be checked" >&2; exit 1; }
 if [ -n "$status" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
   safe_git status --short --ignore-submodules=dirty >&2; exit 1

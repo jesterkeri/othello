@@ -3220,3 +3220,11 @@ refuses any other in HEAD or the index; uncommittedPaths reports them); a failin
 (evm/ARB-FINDINGS.md F-32). Spec kept. verify (on d39ec27, before this fix): release unit specs `127 passing (3m)`;
 settings/git spec after it `12 passing (2s)`.
 
+## A1 fifth adversary pass, on 12f1cb7: one defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. In a partial clone, ls-tree lazily fetched and started the configured upload-pack. Fix:
+GIT_NO_LAZY_FETCH=1 everywhere; fetch-program and partial-clone keys refused; tree/index read failures stop the release
+(evm/ARB-FINDINGS.md F-33). Spec kept. verify: release-deploy + settings specs `44 passing (5s)`; real --preflight on
+the othello-chains link: no refusal. (On 12f1cb7 the fast list was `127 passing, 1 failing`: the safe_git test caught
+the word "git" in a new message, reworded here.)
+
