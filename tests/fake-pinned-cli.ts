@@ -68,4 +68,4 @@ export function commitTarget(root: string, target: object): void {
  * What Vercel answers, in the deploy's check right before and right after the deploy (Codex r6 F2), for a project that
  * holds only reviewed variables: the othello-chains project holds SWAP_BINDING_SECRET alone.
  */
-export const reviewedProjectEnv: ProjectEnv = async () => ({ names: ["SWAP_BINDING_SECRET"] });
+export const reviewedProjectEnv: ProjectEnv = async () => ({ names: ["SWAP_BINDING_SECRET"], fingerprint: "project\tenv_1\tSWAP_BINDING_SECRET\tpreview,production\t1790883400000" });

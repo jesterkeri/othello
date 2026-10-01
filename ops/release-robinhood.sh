@@ -13,6 +13,8 @@
 # 4. ops/release-deploy.ts rehashes the upload set, refuses on any difference, deploys with the same CLI, rehashes
 #    again, and writes the deployment URL into the record. Then commit the record and its file list.
 set -euo pipefail
+# GNU tools at fixed paths under /usr/bin are assumed below (stat -c, the absolute tool paths): Linux only
+[ "$(/usr/bin/uname -s 2>/dev/null)" = Linux ] || { echo "release: runs on Linux only (WSL included)" >&2; exit 1; }
 # Every variable that tools read as configuration (npm_config_*, NODE_OPTIONS, GIT_*, pnpm's, VERCEL_*) is dropped: the
 # script re-runs itself with an empty environment plus this list. What is refused below is refused first, so it is
 # reported rather than silently dropped.
@@ -46,7 +48,9 @@ rest="$PATH"
 while :; do
   d="${rest%%:*}"
   keep=0
-  if [ "${d#/}" != "$d" ] && [ -d "$d" ]; then
+  # judged and kept as the folder it resolves to, once: a link (or /proc/self/cwd) would otherwise be checked by its
+  # name and resolved again at every lookup, into a folder the checks never saw (adversary pass on 275f514)
+  if [ "${d#/}" != "$d" ] && d="$(/usr/bin/realpath -e -- "$d" 2>/dev/null)" && [ -d "$d" ]; then
     read -r owner mode <<< "$(/usr/bin/stat -L -c '%u %a' -- "$d")"
     if { [ "$owner" = "$me" ] || [ "$owner" = 0 ]; } && ! (( 8#$mode & 8#022 )); then
       keep=1

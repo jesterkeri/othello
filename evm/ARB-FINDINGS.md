@@ -801,3 +801,19 @@ Spec: tests/release-script-path-trust.spec.ts (programs named like every tool th
 a folder others can write to, in the working folder through relative/empty entries, under a shared folder without the
 sticky bit: none runs; in the operator's own folder: the absolutely-pathed ones never run). Stated: the operator's own
 node, pnpm, npm and forge are trusted, as the operator's Vercel login is.
+
+## F-41. Batched adversary pass on 86afb72..275f514: PATH by spelled name; gitIn's PATH git; F2 strengthened
+
+Two F1 defects (specs kept: tests/release-script-path-symlink-adversary.spec.ts, tests/release-script-gitin-path-adversary.spec.ts).
+(1) The PATH filter judged each entry by the name it was spelled with and kept that name, which is resolved again at
+every lookup: a link to a folder under a shared folder without the sticky bit, or `/proc/self/cwd` (the working folder
+by another name), passed. Each entry is now resolved once (`/usr/bin/realpath -e`), the folder it resolves to and that
+folder's parents are what is checked, and the resolved path is what goes on PATH. (2) gitIn and gitProgramDrivers in
+ops/trust-config.ts ran `git` from PATH; they now run /usr/bin/git. F2 held against every attack (the --record entry,
+4xx JSON bodies, unreadable or multiple documents, pagination, spawn errors, value leaks, teamId override, the after
+check). From the pass's suspicions, done: the variable check now reads both lists that reach the project's functions,
+the project's own (`/v10/projects/<id>/env`) and the team's shared variables linked to it (`/v1/env`; the team has 0
+today), refuses a project list that reports hidden production variables (`hiddenProductionEnvCount`, 0 today), and the
+check after the deploy compares a fingerprint of every record (source, id, name, targets, last change time; never a
+value), so an edit to a reviewed variable or a new record of one during the deploy voids it too. Also: the release now
+refuses to run anywhere but Linux (it relies on GNU tools at /usr/bin; macOS has neither /usr/bin/mkdir nor stat -c).

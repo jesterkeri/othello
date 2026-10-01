@@ -3272,3 +3272,10 @@ Joshua chose option A (harden + state the boundary). Absolute paths before the s
 entries not the operator's own dropped before any lookup (evm/ARB-FINDINGS.md F-40). verify: release unit, CI-trigger
 and PATH specs `143 passing (2m)`; on this machine's real PATH 32 of 52 entries (the /mnt/c ones) are dropped.
 
+## A1 batched adversary pass on 86afb72..275f514: two defects fixed, F2 strengthened (2026-10-02)
+reviewed: n/a yet (goes to Codex in round 7)
+adversary: DEFECTS. PATH entries judged by spelled name (a link, /proc/self/cwd); gitIn used PATH git. Fix: entries
+resolved with realpath -e and kept resolved; /usr/bin/git in gitIn. F2: both variable lists (project + team shared),
+hidden-count refusal, record fingerprint after the deploy; Linux-only guard (evm/ARB-FINDINGS.md F-41). Specs kept.
+verify: release-deploy + PATH specs `42 passing (1s)`; symlink spec `2 passing (215ms)`.
+

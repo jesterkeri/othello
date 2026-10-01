@@ -663,7 +663,7 @@ function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned
 export const GIT_PROGRAM_DRIVERS = "^(filter\\..*\\.(clean|smudge|process)|diff\\..*\\.(textconv|command)|merge\\..*\\.driver|diff\\.external|remote\\..*\\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\\.partialclone|core\\.(sshcommand|gitproxy|askpass))$";
 export function gitProgramDrivers(root: string): string[] {
   const { env, pinned } = sealedGit(root);
-  const r = spawnSync("git", [...pinned, "config", "--get-regexp", GIT_PROGRAM_DRIVERS], { encoding: "utf8", env });
+  const r = spawnSync("/usr/bin/git", [...pinned, "config", "--get-regexp", GIT_PROGRAM_DRIVERS], { encoding: "utf8", env });
   if (r.status === 1 && !r.stdout) return []; // no such key
   if (r.status !== 0) return [`(the repository's git config could not be read: exit ${r.status})`];
   return r.stdout.split("\n").filter(Boolean).map((l) => l.split(" ")[0]!);
@@ -673,7 +673,7 @@ export function gitIn(root: string, args: string[]): string {
   const { env, pinned } = sealedGit(root);
   const drivers = gitProgramDrivers(root);
   if (drivers.length) throw new Error(`REFUSED: the repository's git config names programs git would run (${drivers.join(", ")}); remove them`);
-  return execFileSync("git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("/usr/bin/git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
 }
 
 /**

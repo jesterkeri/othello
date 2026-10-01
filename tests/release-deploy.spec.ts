@@ -695,13 +695,14 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
 describe("the project's variables right before and right after the deploy (Codex r6 F2)", () => {
   const deploy = (f: ReturnType<typeof fixture>, spy: ReturnType<typeof spyRun>, projectEnv?: ProjectEnv, prod = false) =>
     deployRecorded({ projectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod, run: spy.run, git: cleanGit() });
+  const env = (names: string[], fingerprint = names.join("|")) => ({ names, fingerprint });
   const answers = (...a: Awaited<ReturnType<ProjectEnv>>[]): ProjectEnv => { let i = 0; return async () => a[Math.min(i++, a.length - 1)]!; };
 
   it("an unreviewed variable in the project stops the deploy before Vercel deploys anything", async () => {
     for (const names of [["NODE_OPTIONS", "SWAP_BINDING_SECRET"], ["NEXT_PUBLIC_SOLANA_RPC"], ["VERCEL_FIRST_DEPLOYMENT"], ["npm_config_registry"]]) {
       const f = fixture();
       const spy = spyRun();
-      const r = await deploy(f, spy, answers({ names }));
+      const r = await deploy(f, spy, answers(env(names)));
       assert.match(!r.ok ? r.reason : "", /the project holds variables the release does not accept: .*nothing was deployed/, names.join());
       assert.equal(spy.calls.length, 0, "vercel deploy never ran");
       assert.equal(read(f.record).deployStartedAt, null, "no deploy was started");
@@ -723,13 +724,21 @@ describe("the project's variables right before and right after the deploy (Codex
     assert.equal(spy2.calls.length, 0);
   });
 
-  it("variables that change while the deploy runs void it and name the deployment", async () => {
-    const afters: Awaited<ReturnType<ProjectEnv>>[] = [{ names: ["NODE_OPTIONS", "SWAP_BINDING_SECRET"] }, { names: [] }, { refusal: "the project's variables could not be read from Vercel (exit 1)" }];
+  it("any change to the variables while the deploy runs voids it and names the deployment, an edit to a reviewed one included", async () => {
+    const before = env(["SWAP_BINDING_SECRET"], "project\tenv_1\tSWAP_BINDING_SECRET\tproduction\t100");
+    const afters: Awaited<ReturnType<ProjectEnv>>[] = [
+      env(["NODE_OPTIONS", "SWAP_BINDING_SECRET"]),
+      env([]),
+      // same names, the reviewed record edited (its value changed) or a new record of it added
+      env(["SWAP_BINDING_SECRET"], "project\tenv_1\tSWAP_BINDING_SECRET\tproduction\t200"),
+      env(["SWAP_BINDING_SECRET"], "project\tenv_1\tSWAP_BINDING_SECRET\tproduction\t100\nproject\tenv_2\tSWAP_BINDING_SECRET\tpreview\t300"),
+      { refusal: "the project's variables could not be read from Vercel (exit 1)" },
+    ];
     for (const after of afters) {
       for (const prod of [false, true]) {
         const f = fixture();
         const spy = spyRun();
-        const r = await deploy(f, spy, answers({ names: ["SWAP_BINDING_SECRET"] }, after), prod);
+        const r = await deploy(f, spy, answers(before, after), prod);
         assert.equal(r.ok, false, JSON.stringify(after));
         assert.match(!r.ok ? r.reason : "", /changed while the deploy ran, so .* may not be the scanned artifact with the reviewed variables/);
         assert.match(!r.ok ? r.reason : "", "refusal" in after ? /could not be read again after the deploy/ : /the project's variables changed during the deploy/);
@@ -744,43 +753,62 @@ describe("the project's variables right before and right after the deploy (Codex
     const f = fixture();
     const spy = spyRun();
     let asked = 0;
-    const r = await deploy(f, spy, async () => { asked++; return { names: ["SWAP_BINDING_SECRET"] }; });
+    const r = await deploy(f, spy, async () => { asked++; return env(["SWAP_BINDING_SECRET"], "same"); });
     assert.equal(r.ok, true, !r.ok ? r.reason : "");
     assert.equal(asked, 2);
     assert.equal(read(f.record).deploymentUrl, DEPLOY_URL);
   });
 });
 
-describe("projectEnvFromCli: the names Vercel holds, never the values", () => {
+describe("projectEnvFromCli: the names and record fingerprints Vercel holds, never the values", () => {
   const SECRET = "ciphertext-or-value-that-must-never-be-kept-7c1e";
-  const quiet = (code: number, stdout: string) => {
+  const ids = { orgId: "team_kXXQhD4pqG6KG2NfVVFlVOHi", projectId: "prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki" };
+  const ownPath = `/v10/projects/${ids.projectId}/env?teamId=${ids.orgId}`;
+  const sharedPath = `/v1/env?teamId=${ids.orgId}`;
+  const vercel = (own: [number, string], shared: [number, string] = [0, JSON.stringify({ data: [], pagination: { next: null } })]) => {
     const calls: string[][] = [];
-    const run: Run = async (_cmd, args) => { calls.push(args); return { code, stdout }; };
+    const run: Run = async (_cmd, args) => {
+      calls.push(args);
+      const [code, stdout] = args[2] === ownPath ? own : args[2] === sharedPath ? shared : [9, ""];
+      return { code, stdout };
+    };
     return { run, calls };
   };
-  const ids = { orgId: "team_kXXQhD4pqG6KG2NfVVFlVOHi", projectId: "prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki" };
+  const rec = (id: string, key: string, target: string[], updatedAt: number) => ({ id, key, value: SECRET, target, updatedAt, type: "sensitive" });
+  const ownList = (envs: object[], extra: object = {}) => [0, JSON.stringify({ envs, hiddenProductionEnvCount: 0, ...extra })] as [number, string];
 
-  it("asks the project's env endpoint through the pinned CLI and keeps only the names", async () => {
-    const q = quiet(0, JSON.stringify({ envs: [{ key: "SWAP_BINDING_SECRET", value: SECRET, target: ["production"] }, { key: "SWAP_BINDING_SECRET", value: SECRET, target: ["preview"] }], pagination: { next: null } }));
-    const r = await projectEnvFromCli(q.run, "/x/vc.js", "/x/app", ids)();
-    assert.deepEqual(r, { names: ["SWAP_BINDING_SECRET"] });
-    assert.deepEqual(q.calls[0], ["/x/vc.js", "api", `/v10/projects/${ids.projectId}/env?teamId=${ids.orgId}`, "--raw"]);
-    assert.ok(!JSON.stringify(r).includes(SECRET));
+  it("reads the project's list and the team's shared list linked to it, keeping names and metadata only", async () => {
+    const v = vercel(ownList([rec("env_1", "SWAP_BINDING_SECRET", ["production"], 1), rec("env_2", "SWAP_BINDING_SECRET", ["preview"], 2)]),
+      [0, JSON.stringify({ data: [{ id: "sh_1", key: "MAINNET_RPC_URL", value: SECRET, projectId: [ids.projectId], target: ["production"], updatedAt: 3 },
+        { id: "sh_2", key: "NODE_OPTIONS", value: SECRET, projectId: ["prj_other"], target: ["production"], updatedAt: 4 }], pagination: { next: null } })]);
+    const r = await projectEnvFromCli(v.run, "/x/vc.js", "/x/app", ids)();
+    assert.ok("names" in r);
+    assert.deepEqual(r.names, ["MAINNET_RPC_URL", "SWAP_BINDING_SECRET"], "a shared variable linked to another project is not this project's");
+    assert.deepEqual(v.calls.map((c) => c.slice(1)), [["api", ownPath, "--raw"], ["api", sharedPath, "--raw"]]);
+    assert.ok(!JSON.stringify(r).includes(SECRET), "no value is kept");
+    // the fingerprint changes when a record is edited, even under the same name
+    const edited = await projectEnvFromCli(vercel(ownList([rec("env_1", "SWAP_BINDING_SECRET", ["production"], 9), rec("env_2", "SWAP_BINDING_SECRET", ["preview"], 2)]),
+      [0, JSON.stringify({ data: [{ id: "sh_1", key: "MAINNET_RPC_URL", projectId: [ids.projectId], target: ["production"], updatedAt: 3 }], pagination: null })]).run, "/x/vc.js", "/x/app", ids)();
+    assert.ok("fingerprint" in edited && edited.fingerprint !== r.fingerprint);
   });
 
-  it("refuses an error, an unreadable answer, a missing list, more pages, or a nameless record, without echoing values", async () => {
-    for (const [code, stdout, want] of [
-      [1, "", /could not be read from Vercel \(exit 1\)/],
-      [0, `not json ${SECRET}`, /is not readable/],
-      [0, JSON.stringify({ error: { message: SECRET } }), /names no project variables list/],
-      [0, JSON.stringify({ envs: [], pagination: { next: 123 } }), /more than one page/],
-      [0, JSON.stringify({ envs: [{ value: SECRET }] }), /has no name/],
-    ] as const) {
-      const r = await projectEnvFromCli(quiet(code, stdout).run, "/x/vc.js", "/x/app", ids)();
-      assert.ok("refusal" in r, stdout);
+  it("refuses an error, an unreadable answer, missing lists, hidden variables, more pages, or a nameless record, without echoing values", async () => {
+    const cases: [[number, string], [number, string] | undefined, RegExp][] = [
+      [[1, ""], undefined, /could not be read from Vercel \(exit 1\)/],
+      [[0, `not json ${SECRET}`], undefined, /is not readable/],
+      [[0, JSON.stringify({ error: { message: SECRET } })], undefined, /names no project variables list/],
+      [ownList([]), [0, JSON.stringify({ error: { message: SECRET } })], /names no shared variables list/],
+      [ownList([], { hiddenProductionEnvCount: 2 }), undefined, /hidden from this login; the list is incomplete/],
+      [ownList([], { pagination: { next: 123 } }), undefined, /more than one page/],
+      [ownList([]), [0, JSON.stringify({ data: [], pagination: { next: "abc" } })], /more than one page/],
+      [ownList([{ value: SECRET }]), undefined, /has no name/],
+      [ownList([]), [1, ""], /could not be read from Vercel \(exit 1\)/],
+    ];
+    for (const [own, shared, want] of cases) {
+      const r = await projectEnvFromCli(vercel(own, shared).run, "/x/vc.js", "/x/app", ids)();
+      assert.ok("refusal" in r, JSON.stringify(own));
       assert.match((r as { refusal: string }).refusal, want);
       assert.ok(!(r as { refusal: string }).refusal.includes(SECRET), "no value in a refusal");
     }
   });
 });
-

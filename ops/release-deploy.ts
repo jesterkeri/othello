@@ -26,18 +26,23 @@ import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitI
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 /**
- * The project's Environment Variable NAMES as Vercel holds them at this moment (Codex code review r6 F2), or why they
- * could not be read. Values are never kept: only each record's `key` is taken from the answer.
+ * The project's Environment Variables as Vercel holds them at this moment (Codex code review r6 F2), or why they could
+ * not be read: their NAMES, for the reviewed-names check, and a fingerprint of every record (source, id, name, targets,
+ * last change time; never a value), so the check after the deploy sees any change at all, a changed value or a new
+ * record of a reviewed name included (adversary pass on 275f514).
  */
-export type ProjectEnv = () => Promise<{ names: string[] } | { refusal: string }>;
+export type ProjectEnv = () => Promise<{ names: string[]; fingerprint: string } | { refusal: string }>;
+type EnvRecord = { id?: unknown; key?: unknown; target?: unknown; updatedAt?: unknown; createdAt?: unknown; projectId?: unknown };
 /**
- * Asks Vercel through the verified pinned CLI (`vercel api`, the operator's own login) for the project's variables, with
- * a runner that never echoes the answer. Any failure, an unreadable or paginated answer, or a record without a string
- * key is a refusal: the deploy fails closed.
+ * Asks Vercel through the verified pinned CLI (`vercel api`, the operator's own login), with a runner that never echoes
+ * the answer, for both lists that reach the project's functions: the project's own variables
+ * (`/v10/projects/<id>/env`) and the team's shared variables linked to it (`/v1/env`, records whose projectId names
+ * the project). Any failure, an unreadable answer, more than one page, a record without a string name, or a project
+ * list that reports hidden production variables (`hiddenProductionEnvCount` above 0: the list is incomplete) is a
+ * refusal: the deploy fails closed. Only each record's metadata is kept, never its value.
  */
 export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { orgId: string; projectId: string }): ProjectEnv {
-  return async () => {
-    const path = `/v10/projects/${encodeURIComponent(ids.projectId)}/env?teamId=${encodeURIComponent(ids.orgId)}`;
+  const ask = async (path: string): Promise<{ j: Record<string, unknown> } | { refusal: string }> => {
     let r: { code: number; stdout: string };
     try {
       r = await quiet(process.execPath, [cli, "api", path, "--raw"], app);
@@ -45,21 +50,44 @@ export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { o
       return { refusal: `the project's variables could not be read from Vercel (${e instanceof Error ? e.message : e})` };
     }
     if (r.code !== 0) return { refusal: `the project's variables could not be read from Vercel (exit ${r.code})` };
-    let j: { envs?: unknown; pagination?: { next?: unknown } };
     try {
-      j = JSON.parse(r.stdout.slice(r.stdout.indexOf("{")));
+      const j: unknown = JSON.parse(r.stdout.slice(r.stdout.indexOf("{")));
+      if (typeof j !== "object" || j === null) throw new Error("not an object");
+      return { j: j as Record<string, unknown> };
     } catch {
       return { refusal: "Vercel's answer about the project's variables is not readable" };
     }
-    if (!Array.isArray(j.envs)) return { refusal: "Vercel's answer names no project variables list" };
-    if (j.pagination?.next !== undefined && j.pagination.next !== null) return { refusal: "the project's variables span more than one page" };
+  };
+  return async () => {
+    const team = encodeURIComponent(ids.orgId);
+    const own = await ask(`/v10/projects/${encodeURIComponent(ids.projectId)}/env?teamId=${team}`);
+    if ("refusal" in own) return own;
+    const shared = await ask(`/v1/env?teamId=${team}`);
+    if ("refusal" in shared) return shared;
+    if (!Array.isArray(own.j.envs)) return { refusal: "Vercel's answer names no project variables list" };
+    if (!Array.isArray(shared.j.data)) return { refusal: "Vercel's answer names no shared variables list" };
+    const hidden = own.j.hiddenProductionEnvCount;
+    if (hidden !== undefined && hidden !== 0) return { refusal: "Vercel reports project variables hidden from this login; the list is incomplete" };
+    for (const j of [own.j, shared.j]) {
+      const next = (j.pagination as { next?: unknown } | null | undefined)?.next;
+      if (next !== undefined && next !== null) return { refusal: "the project's variables span more than one page" };
+    }
+    const records: { source: string; e: EnvRecord }[] = [
+      ...(own.j.envs as EnvRecord[]).map((e) => ({ source: "project", e })),
+      ...(shared.j.data as EnvRecord[])
+        .filter((e) => Array.isArray(e?.projectId) && (e.projectId as unknown[]).includes(ids.projectId))
+        .map((e) => ({ source: "shared", e })),
+    ];
     const names: string[] = [];
-    for (const e of j.envs) {
-      const key = (e as { key?: unknown })?.key;
+    const prints: string[] = [];
+    for (const { source, e } of records) {
+      const key = e?.key;
       if (typeof key !== "string" || key === "") return { refusal: "a project variable in Vercel's answer has no name" };
       names.push(key);
+      const targets = Array.isArray(e.target) ? [...(e.target as unknown[])].map(String).sort().join(",") : String(e.target ?? "");
+      prints.push([source, String(e.id ?? ""), key, targets, String(e.updatedAt ?? e.createdAt ?? "")].join("\t"));
     }
-    return { names: [...new Set(names)].sort() };
+    return { names: [...new Set(names)].sort(), fingerprint: prints.sort().join("\n") };
   };
 }
 export type Git = { head(): string; changed(): string[] };
@@ -532,8 +560,9 @@ export async function deployRecorded(d: {
   // the deployment (Codex r6 F2)
   const envAfter = await projectEnv();
   if ("refusal" in envAfter) problems.push(`the project's variables could not be read again after the deploy: ${envAfter.refusal}`);
-  else if (envAfter.names.join("\n") !== envBefore.names.join("\n")) {
-    problems.push(`the project's variables changed during the deploy: before ${envBefore.names.join(", ") || "(none)"}, after ${envAfter.names.join(", ") || "(none)"}`);
+  else if (envAfter.fingerprint !== envBefore.fingerprint) {
+    problems.push(`the project's variables changed during the deploy (a record added, removed or edited): before ${envBefore.names.join(", ") || "(none)"}, ` +
+      `after ${envAfter.names.join(", ") || "(none)"}`);
   }
   if (problems.length) {
     const undo = d.prod
