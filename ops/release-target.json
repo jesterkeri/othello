@@ -11,5 +11,10 @@
     "rootDirectory": null,
     "directoryListing": false,
     "nodeVersion": "22.x"
-  }
+  },
+  "vercelEnvNames": [
+    "DEVNET_RPC_URL",
+    "MAINNET_RPC_URL",
+    "SWAP_BINDING_SECRET"
+  ]
 }

@@ -617,3 +617,24 @@ add`, never displayed); MAINNET_RPC_URL and DEVNET_RPC_URL unset (the app falls 
 NEXT_PUBLIC_SOLANA_RPC unset (anything NEXT_PUBLIC_ is inlined into the bundle). Deployment protection as created:
 `ssoProtection.deploymentType = all_except_custom_domains` (Joshua decides the public policy before the release).
 ops/release-target.json now names this project; the spec pinning the committed ids follows.
+
+## F-29. Adversary pass on ce04cd9: the pulled project variables, git filter drivers, the Node.js pin
+
+Two defects, each proven against the real ops/release-robinhood.sh in the sealed harness (specs kept:
+tests/release-script-pulled-env-program-adversary.spec.ts, tests/release-script-repo-filter-adversary.spec.ts).
+**MAJOR:** `vercel pull` also writes the project's Environment Variables to `app/.vercel/.env.<target>.local`, and the
+pinned build loads that file into the environment of pnpm, next and every worker (build/index.js dotenv); a project
+variable `NODE_OPTIONS=--import=<module>` ran that module 49 times in one release with every pulled value in reach, and
+the release deployed. Fix: after the pull, `ops/release-deploy.ts --drop-pulled-env` runs the pulled-stage target and
+settings check, then reads each pulled file's variable NAMES only (values are never read into anything, printed or kept)
+and refuses any name that is neither in the reviewed `vercelEnvNames` (DEVNET_RPC_URL, MAINNET_RPC_URL,
+SWAP_BINDING_SECRET; the code refuses NODE_*, NEXT_PUBLIC_*, NPM_CONFIG_* and Vercel's own names there) nor one Vercel
+writes itself (VERCEL, VERCEL_*, TURBO_*, NX_DAEMON): the project would hand such a variable to the deployed functions
+too. Then it removes the files, so the build loads no project variable (none is needed: the server reads its variables
+at request time, Secret values are not even downloaded, a NEXT_PUBLIC_ value would be inlined). The build runner, the
+post-build preflight and any hand-run `--run-cli build` refuse while such a file exists. **MINOR:** a filter driver in
+the repository's own config (`filter.<x>.clean`, selected by .git/info/attributes) ran on the first `git status`; no -c
+switch turns drivers off. The script and every TypeScript git call (gitIn, and the preflight's message) now refuse a
+repository whose config (includes followed) names a filter, textconv/external diff or merge driver. **Suspicion
+confirmed:** app/package.json `engines.node ">=22"` outranks the project's Node.js setting (the release log said 24.x
+would be used); app/package.json now pins `"22.x"` and the preflight requires it to equal the reviewed nodeVersion.

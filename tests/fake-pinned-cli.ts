@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { VERCEL_CLI } from "../ops/trust-config.ts";
-import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+import { REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
 let made: string | undefined;
 
@@ -33,7 +33,7 @@ export function fakePinnedCli(): string {
  * release never passes one and reads the committed ops/release-target.json. A link without ids is left alone (the spec
  * means it to be refused).
  */
-export function reviewedTarget(root: string): { vercelOrgId: string; vercelProjectId: string; vercelSettings: Record<string, unknown> } {
+export function reviewedTarget(root: string): { vercelOrgId: string; vercelProjectId: string; vercelSettings: Record<string, unknown>; vercelEnvNames: string[] } {
   const pj = join(root, "app", ".vercel", "project.json");
   if (!existsSync(pj)) {
     mkdirSync(join(root, "app", ".vercel"), { recursive: true });
@@ -45,6 +45,7 @@ export function reviewedTarget(root: string): { vercelOrgId: string; vercelProje
     vercelOrgId: typeof link.orgId === "string" ? link.orgId : "team_TEST",
     vercelProjectId: typeof link.projectId === "string" ? link.projectId : "prj_TEST",
     vercelSettings: REVIEWED_SETTINGS,
+    vercelEnvNames: REVIEWED_ENV_NAMES,
   };
 }
 

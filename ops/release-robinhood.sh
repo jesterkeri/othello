@@ -43,6 +43,11 @@ safe_git() {
 }
 # the repository the script belongs to, wherever it is run from
 cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
+# a repository's own config can name programs git starts while it compares files (a clean or process filter during
+# status, a diff or merge driver), and no -c switch turns those off: refused before the first status (adversary pass on
+# ce04cd9). Reading config runs nothing.
+drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external)$' | cut -d' ' -f1 || true)"
+if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
 if [ -n "$(safe_git status --porcelain --untracked-files=all)" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
   safe_git status --short >&2; exit 1
@@ -103,6 +108,9 @@ mkdir "$WORK/cli"
 VC="$("${TSX[@]}" ops/release-deploy.ts --install-cli "$WORK/cli")"   # verified vercel@59.11.7 vc.js
 RPC="${ROBINHOOD_RPC:-https://rpc.testnet.chain.robinhood.com}"
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- pull --yes --environment="$TARGET"
+# the pulled project variables: checked by name only (never their values) against the reviewed list, then removed, so
+# the build loads none (adversary pass on ce04cd9: a pulled NODE_OPTIONS ran a program in the build)
+"${TSX[@]}" ops/release-deploy.ts --drop-pulled-env
 "${TSX[@]}" ops/release-deploy.ts --run-cli "$VC" --cwd app -- build --yes $PROD
 "${TSX[@]}" ops/release-deploy.ts --preflight   # again: the pulled settings are the reviewed ones; build changed nothing about the target or app/.vercel
 mkdir -p release

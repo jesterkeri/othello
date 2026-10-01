@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, gitFor, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
 import { commitTarget, fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
-import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+import { REVIEWED_ENGINES, REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, gitIn, scanTree, sourceDrift, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
@@ -426,6 +426,8 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     process.env.VERCEL_CLI_USE_NATIVE_BINARY = "1";
     const root = mkdtempSync(join(tmpdir(), "release-run-cli-"));
     const target = reviewedTarget(root);
+    // the app manifest pins the reviewed Node.js version, which the runner's preflight requires (adversary pass on ce04cd9)
+    writeFileSync(join(root, "app", "package.json"), JSON.stringify({ name: "fixture-app", engines: REVIEWED_ENGINES }));
     try {
       const code = execPinnedCli(fakePinnedCli(), ["build", "--yes"], root, (cmd, a, o) => { calls.push({ cmd, a, o }); return 0; }, target);
       assert.equal(code, 0);
@@ -477,6 +479,8 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
   it("the runner starts only the release's pull and build, and only for the reviewed target (adversary pass on be54588)", () => {
     const root = mkdtempSync(join(tmpdir(), "release-run-cli-"));
     const target = reviewedTarget(root);
+    // the app manifest pins the reviewed Node.js version, which the runner's preflight requires (adversary pass on ce04cd9)
+    writeFileSync(join(root, "app", "package.json"), JSON.stringify({ name: "fixture-app", engines: REVIEWED_ENGINES }));
     let started = 0;
     const spy = () => { started++; return 0; };
     for (const args of [["pull", "--yes", "--environment=preview"], ["pull", "--yes", "--environment=production"], ["build", "--yes"], ["build", "--yes", "--prod"]]) {
@@ -514,7 +518,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       if (link) writeFileSync(join(root, "app", ".vercel", "project.json"), JSON.stringify(link));
       return releaseTargetRefusals(root, join(root, "app"));
     };
-    const target = { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS };
+    const target = { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES };
     assert.deepEqual(setup(target, { orgId: "team_A", projectId: "prj_A", settings: REVIEWED_SETTINGS }), []);
     assert.match(setup(target, { orgId: "team_B", projectId: "prj_A" }).join(), /orgId "team_B" is not the reviewed target team_A/);
     assert.match(setup(target, { orgId: "team_A", projectId: "prj_B" }).join(), /projectId "prj_B" is not the reviewed target prj_A/);
@@ -522,7 +526,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.match(setup({ vercelOrgId: "team_A" }, { orgId: "team_A", projectId: "prj_A" }).join(), /must name vercelOrgId and vercelProjectId/);
     assert.match(setup(target, null).join(), /link the reviewed target project first/);
     // only the committed target counts: an uncommitted edit naming the link's project is refused (adversary pass on 222e3fc)
-    const other = { vercelOrgId: "team_B", vercelProjectId: "prj_B", vercelSettings: REVIEWED_SETTINGS };
+    const other = { vercelOrgId: "team_B", vercelProjectId: "prj_B", vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES };
     assert.match(setup(target, { orgId: "team_B", projectId: "prj_B" }, other).join(), /differs from the committed copy at HEAD/);
     // a target file present but never committed is no reviewed target either
     const plain = mkdtempSync(join(tmpdir(), "release-target-plain-"));
@@ -552,7 +556,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     // and the deploy step refuses a link that is not the target it is given (the release reads the committed one)
     const f = fixture();
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS }, root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ cli: fakePinnedCli(), target: { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /orgId "team_TEST" is not the reviewed target team_A[\s\S]*projectId "prj_TEST" is not the reviewed target prj_A/);
     assert.equal(spy.calls.length, 0, "the CLI never started");
     const noTarget = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });

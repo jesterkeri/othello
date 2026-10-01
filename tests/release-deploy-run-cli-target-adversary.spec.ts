@@ -34,6 +34,9 @@ function runCliPull(link: { orgId: string; projectId: string }) {
   for (const f of ["release-deploy.ts", "trust-config.ts", "release-target.json", "vercel-cli/package.json", "vercel-cli/package-lock.json"]) {
     copyFileSync(join(REPO, "ops", f), join(root, "ops", f));
   }
+  // the app manifest, which pins the reviewed Node.js version the preflight requires (adversary pass on ce04cd9)
+  mkdirSync(join(root, "app"), { recursive: true });
+  copyFileSync(join(REPO, "app", "package.json"), join(root, "app", "package.json"));
   // a committed checkout, since the release reads the reviewed target from HEAD (adversary pass on 222e3fc)
   writeFileSync(join(root, ".gitignore"), "node_modules\napp/.vercel\n");
   const git = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid",

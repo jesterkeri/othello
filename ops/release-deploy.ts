@@ -4,7 +4,8 @@
  * trust-config writes the record; Joshua runs that script with his own Vercel login.
  *
  *   npx tsx ops/release-deploy.ts --install-cli <empty dir>        prints the path of the verified pinned CLI
- *   npx tsx ops/release-deploy.ts --preflight                      the repo-root and app/.vercel refusals, before a build
+ *   npx tsx ops/release-deploy.ts --preflight [--before-pull]      the reviewed target, settings, repo root and app/.vercel
+ *   npx tsx ops/release-deploy.ts --drop-pulled-env                 after pull: the pulled variables checked by name, then removed
  *   npx tsx ops/release-deploy.ts --run-cli <vc.js> --cwd app -- pull|build …   the release's pull or build, checked (RUNNABLE)
  *   npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json --cli <that path> [--prod]
  *
@@ -17,11 +18,11 @@
  * then is the deployment URL written into the record, which is committed and reviewed with it.
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitIn, uncommittedPaths, uploadSet, type ReleaseRecord } from "./trust-config.ts";
+import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitIn, gitProgramDrivers, uncommittedPaths, uploadSet, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
 export type Git = { head(): string; changed(): string[] };
@@ -130,7 +131,7 @@ export function ancestorRefusals(root: string): string[] {
  * The target is read from HEAD of the checkout whose top is `root`, and the working-tree copy must be that same text:
  * an uncommitted edit is not reviewed (adversary pass on 222e3fc).
  */
-export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown; vercelSettings?: unknown };
+export type ReleaseTarget = { vercelOrgId?: unknown; vercelProjectId?: unknown; vercelSettings?: unknown; vercelEnvNames?: unknown };
 
 /**
  * The Vercel project's build settings are executable input, so they are reviewed like the target (Codex r5 F1).
@@ -196,6 +197,94 @@ function pulledSettingsRefusals(link: Record<string, unknown>, want: VercelSetti
 }
 
 /**
+ * The project's Environment Variables come down with the pull too (adversary pass on ce04cd9): the pinned CLI writes
+ * every record to app/.vercel/.env.<target>.local and its build loads that file into the environment of pnpm, next and
+ * every worker, so a project variable NODE_OPTIONS ran a program inside the sealed build with every pulled value in
+ * reach, and the project would hand the same variable to the deployed functions. So the variables are checked by NAME
+ * (their values are never read into anything, printed or kept) and then removed before the build: the build loads no
+ * project variable (none is needed: the app reads its server variables at request time, Secret-type values are not even
+ * downloaded, and a NEXT_PUBLIC_ value would be inlined into the bundle), and the build runner refuses while such a
+ * file exists. A name must be one the reviewed target lists (`vercelEnvNames`, the app's own server variables) or one
+ * Vercel writes itself (VERCEL, VERCEL_*, TURBO_*, NX_DAEMON); anything else, NODE_OPTIONS first, stops the release.
+ */
+const SYSTEM_ENV = /^(VERCEL|VERCEL_[A-Z0-9_]+|TURBO_[A-Z0-9_]+|NX_DAEMON)$/;
+const ENV_NAME = /^[A-Z][A-Z0-9_]*$/;
+function reviewedEnvNames(v: unknown): { names: Set<string> } | { refusals: string[] } {
+  if (!Array.isArray(v)) return { refusals: ["ops/release-target.json must name vercelEnvNames, the project variables the app reads"] };
+  const f: string[] = [];
+  for (const n of v) {
+    if (typeof n !== "string" || !ENV_NAME.test(n)) f.push(`ops/release-target.json vercelEnvNames: ${JSON.stringify(n)} is not a variable name`);
+    else if (/^(NODE_|NEXT_PUBLIC_|NPM_CONFIG_)/.test(n) || SYSTEM_ENV.test(n)) {
+      f.push(`ops/release-target.json vercelEnvNames: ${n} is not accepted (it changes node, is inlined into the bundle, configures npm, or is Vercel's own)`);
+    }
+  }
+  return f.length ? { refusals: f } : { names: new Set(v as string[]) };
+}
+const PULLED_ENV = /^\.env\.[a-z]+\.local$/;
+function pulledEnvFiles(app: string): string[] {
+  const d = join(app, ".vercel");
+  return existsSync(d) ? readdirSync(d).filter((n) => PULLED_ENV.test(n)).map((n) => join(d, n)) : [];
+}
+/** The variable names in a pulled env file (`NAME="value"` per line, as the pinned CLI writes it); values are skipped. */
+function pulledEnvNames(file: string): { names: string[] } | { refusal: string } {
+  const names: string[] = [];
+  const lines = readFileSync(file, "utf8").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]!;
+    if (l.trim() === "" || l.startsWith("#")) continue;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(l);
+    if (!m) return { refusal: `${relative(dirname(dirname(file)), file)} line ${i + 1} is not NAME=value as the CLI writes it` };
+    names.push(m[1]!);
+  }
+  return { names };
+}
+/**
+ * After the pull (the release's step between pull and build): the full pulled-stage check of the target and settings,
+ * then each pulled variable name against the reviewed list, then the files are removed. Returns the refusals; on any,
+ * nothing is removed and the release stops.
+ */
+export function dropPulledEnv(root: string, target?: ReleaseTarget): string[] {
+  const app = join(root, "app");
+  const t = resolveTarget(root, target);
+  if ("refusal" in t) return [t.refusal];
+  const refused = releaseTargetRefusals(root, app, t.target, "pulled");
+  const allowed = reviewedEnvNames(t.target.vercelEnvNames);
+  if ("refusals" in allowed) return [...refused, ...allowed.refusals];
+  const files = pulledEnvFiles(app);
+  for (const file of files) {
+    const r = pulledEnvNames(file);
+    if ("refusal" in r) { refused.push(r.refusal); continue; }
+    const unknown = r.names.filter((n) => !allowed.names.has(n) && !SYSTEM_ENV.test(n));
+    if (unknown.length) {
+      refused.push(`${relative(app, file)} holds project variables the release does not accept: ${unknown.join(", ")} (the project would also hand them to ` +
+        "the deployed functions; remove them in Vercel, or review them into ops/release-target.json vercelEnvNames)");
+    }
+  }
+  if (refused.length) return refused;
+  for (const file of files) rmSync(file);
+  return [];
+}
+/**
+ * The build writes the functions' runtime from app/package.json's engines, which outranks the project's Node.js setting
+ * (a range like ">=22" means the newest major Vercel has): the app must pin the reviewed version itself, or the deployed
+ * runtime moves with Vercel's releases (adversary pass on ce04cd9). Checked before the build, which fixes it in the output.
+ */
+function enginesRefusals(root: string, app: string, target?: ReleaseTarget): string[] {
+  const t = resolveTarget(root, target);
+  if ("refusal" in t) return []; // releaseTargetRefusals reports it
+  const reviewed = reviewedSettings(t.target.vercelSettings);
+  if ("refusals" in reviewed) return [];
+  let engines: unknown;
+  try { engines = (JSON.parse(readFileSync(join(app, "package.json"), "utf8")) as { engines?: { node?: unknown } }).engines?.node; } catch { /* below */ }
+  return engines === reviewed.settings.nodeVersion ? []
+    : [`app/package.json engines.node is ${JSON.stringify(engines)}, not the reviewed ${JSON.stringify(reviewed.settings.nodeVersion)}: the deployment would run another Node.js`];
+}
+function pulledEnvPresent(app: string): string[] {
+  return pulledEnvFiles(app).map((f) => `${relative(app, f)}: the build would load the project's variables; the release checks them by name ` +
+    "and removes them first (ops/release-deploy.ts --drop-pulled-env)");
+}
+
+/**
  * Before the pull, the link may hold no settings, or a previous pull's (the pull replaces them): only the reviewed
  * document itself is checked then. From the pull on, the link's settings must be that document.
  */
@@ -216,18 +305,20 @@ function committedTarget(root: string): { text: string } | { refusal: string } {
   if (disk !== text) return { refusal: "ops/release-target.json differs from the committed copy at HEAD: only the committed (reviewed) target is used" };
   return { text };
 }
-export function releaseTargetRefusals(root: string, app: string, given?: ReleaseTarget, stage: ReleaseStage = "pulled"): string[] {
-  let target: ReleaseTarget;
-  if (given) target = given;
-  else {
-    const c = committedTarget(root);
-    if ("refusal" in c) return [c.refusal];
-    try {
-      target = JSON.parse(c.text);
-    } catch {
-      return ["ops/release-target.json is not valid JSON: the release has no reviewed target"];
-    }
+function resolveTarget(root: string, given?: ReleaseTarget): { target: ReleaseTarget } | { refusal: string } {
+  if (given) return { target: given };
+  const c = committedTarget(root);
+  if ("refusal" in c) return { refusal: c.refusal };
+  try {
+    return { target: JSON.parse(c.text) };
+  } catch {
+    return { refusal: "ops/release-target.json is not valid JSON: the release has no reviewed target" };
   }
+}
+export function releaseTargetRefusals(root: string, app: string, given?: ReleaseTarget, stage: ReleaseStage = "pulled"): string[] {
+  const t = resolveTarget(root, given);
+  if ("refusal" in t) return [t.refusal];
+  const target = t.target;
   const org = target?.vercelOrgId;
   const project = target?.vercelProjectId;
   if (typeof org !== "string" || !org || typeof project !== "string" || !project) {
@@ -246,6 +337,8 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
   const reviewed = reviewedSettings(target.vercelSettings);
   if ("refusals" in reviewed) found.push(...reviewed.refusals);
   else if (stage === "pulled") found.push(...pulledSettingsRefusals(link as Record<string, unknown>, reviewed.settings));
+  const envNames = reviewedEnvNames(target.vercelEnvNames);
+  if ("refusals" in envNames) found.push(...envNames.refusals);
   return found;
 }
 
@@ -255,7 +348,12 @@ export function releaseTargetRefusals(root: string, app: string, given?: Release
  */
 export function preflight(root: string, target?: ReleaseTarget, stage: ReleaseStage = "pulled"): string[] {
   const app = join(root, "app");
-  return [...releaseTargetRefusals(root, app, target, stage), ...ancestorRefusals(root), ...repoRootRefusals(root, app), ...cliExtraUploads(app)];
+  const drivers = gitProgramDrivers(root);
+  return [
+    ...(drivers.length ? [`the repository's git config names programs git would run (${drivers.join(", ")}); remove them`] : []),
+    ...releaseTargetRefusals(root, app, target, stage), ...enginesRefusals(root, app, target), ...ancestorRefusals(root),
+    ...repoRootRefusals(root, app), ...cliExtraUploads(app), ...(stage === "pulled" ? pulledEnvPresent(app) : []),
+  ];
 }
 
 /**
@@ -419,6 +517,14 @@ async function main() {
     const f = preflight(ROOT, undefined, process.argv.includes("--before-pull") ? "before-pull" : "pulled");
     if (f.length) {
       console.error(`release-deploy REFUSED before the build:\n- ${f.join("\n- ")}`);
+      process.exit(1);
+    }
+    return;
+  }
+  if (process.argv.includes("--drop-pulled-env")) {
+    const f = dropPulledEnv(ROOT);
+    if (f.length) {
+      console.error(`release-deploy REFUSED after the pull:\n- ${f.join("\n- ")}`);
       process.exit(1);
     }
     return;

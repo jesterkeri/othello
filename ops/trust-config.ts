@@ -28,7 +28,7 @@
  *   npx tsx ops/trust-config.ts [--rpc https://rpc.testnet.chain.robinhood.com]
  */
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -636,7 +636,7 @@ export async function usdgMatches(): Promise<string[]> {
  * run by hand agree with it. (A repository's own `.git/info/exclude` or hooks need write access to the checkout, like
  * editing this file.)
  */
-export function gitIn(root: string, args: string[]): string {
+function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned: string[] } {
   const real = realpathSync(root);
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
@@ -649,6 +649,27 @@ export function gitIn(root: string, args: string[]): string {
     "-c", "core.untrackedCache=false", "-c", "core.hooksPath=/dev/null", "-c", "status.showUntrackedFiles=all",
     "-c", "core.trustctime=true", "-c", "core.checkStat=default", "-c", "core.ignoreCase=false",
   ];
+  return { real, env, pinned };
+}
+
+/**
+ * The program drivers a repository's own config can name, which git starts while it compares files (a clean or process
+ * filter on status, a textconv or external diff, a merge driver): no -c switch turns them off, so the release refuses
+ * a repository that names any (adversary pass on ce04cd9). Reading config runs nothing; includes are followed.
+ */
+export const GIT_PROGRAM_DRIVERS = "^(filter\\..+\\.(clean|smudge|process)|diff\\..+\\.(textconv|command)|merge\\..+\\.driver|diff\\.external)$";
+export function gitProgramDrivers(root: string): string[] {
+  const { env, pinned } = sealedGit(root);
+  const r = spawnSync("git", [...pinned, "config", "--get-regexp", GIT_PROGRAM_DRIVERS], { encoding: "utf8", env });
+  if (r.status === 1 && !r.stdout) return []; // no such key
+  if (r.status !== 0) return [`(the repository's git config could not be read: exit ${r.status})`];
+  return r.stdout.split("\n").filter(Boolean).map((l) => l.split(" ")[0]!);
+}
+
+export function gitIn(root: string, args: string[]): string {
+  const { env, pinned } = sealedGit(root);
+  const drivers = gitProgramDrivers(root);
+  if (drivers.length) throw new Error(`REFUSED: the repository's git config names programs git would run (${drivers.join(", ")}); remove them`);
   return execFileSync("git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
 }
 

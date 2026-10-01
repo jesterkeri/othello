@@ -3191,3 +3191,12 @@ Created through the Vercel API with the reviewed settings (evm/ARB-FINDINGS.md F
 release's own check on the pulled link with these ids and the committed vercelSettings: `the pulled othello-chains
 settings are exactly the reviewed document: no refusal`. ops/release-target.json now names prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki.
 
+## A1 adversary pass on the r5 fix (ce04cd9): two defects, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix and the othello-chains target in the next round)
+adversary: DEFECTS. (1) MAJOR a pulled project variable NODE_OPTIONS ran a program in the sealed build and the release
+deployed; (2) MINOR a repository filter driver ran on the first git status. Specs kept (evm/ARB-FINDINGS.md F-29). Fix:
+--drop-pulled-env (names only against vercelEnvNames + Vercel's own; files removed before the build; the build refuses
+while one exists); git program drivers refused by the script and by gitIn; app/package.json engines.node "22.x" required
+to equal the reviewed nodeVersion. verify: release unit specs 122 passing (two real-build specs failed once on Google
+Fonts ETIMEDOUT and passed on rerun: `7 passing (1m)`), tsc clean; sealed real-script specs below.
+

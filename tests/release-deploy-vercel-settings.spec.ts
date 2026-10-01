@@ -9,13 +9,15 @@
  *   npx mocha --import=tsx tests/release-deploy-vercel-settings.spec.ts
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { execPinnedCli, preflight, releaseTargetRefusals, VERCEL_SETTINGS_KEYS } from "../ops/release-deploy.ts";
+import { dropPulledEnv, execPinnedCli, preflight, releaseTargetRefusals, VERCEL_SETTINGS_KEYS } from "../ops/release-deploy.ts";
+import { gitIn, gitProgramDrivers } from "../ops/trust-config.ts";
 import { commitTarget, fakePinnedCli } from "./fake-pinned-cli.ts";
-import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+import { REVIEWED_ENGINES, REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
 const IDS = { vercelOrgId: "team_A", vercelProjectId: "prj_A" };
 
@@ -23,6 +25,7 @@ const IDS = { vercelOrgId: "team_A", vercelProjectId: "prj_A" };
 function checkout(target: object, settings: unknown): string {
   const root = mkdtempSync(join(tmpdir(), "release-settings-"));
   mkdirSync(join(root, "app", ".vercel"), { recursive: true });
+  writeFileSync(join(root, "app", "package.json"), JSON.stringify({ name: "fixture-app", private: true, engines: REVIEWED_ENGINES }));
   commitTarget(root, target);
   const link: Record<string, unknown> = { orgId: IDS.vercelOrgId, projectId: IDS.vercelProjectId };
   if (settings !== undefined) link.settings = settings;
@@ -38,7 +41,7 @@ describe("the reviewed Vercel settings (Codex r5 F1)", () => {
       framework: "nextjs", devCommand: null, installCommand: "", buildCommand: null, outputDirectory: null, rootDirectory: null,
       directoryListing: false, nodeVersion: "22.x",
     });
-    assert.deepEqual(refusals(checkout({ ...IDS, vercelSettings: REVIEWED_SETTINGS }, REVIEWED_SETTINGS)), []);
+    assert.deepEqual(refusals(checkout({ ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, REVIEWED_SETTINGS)), []);
   });
 
   it("a target without the document, or with one that runs or moves the build, is no reviewed target", () => {
@@ -62,7 +65,7 @@ describe("the reviewed Vercel settings (Codex r5 F1)", () => {
   });
 
   it("after the pull, the link's settings must be exactly the reviewed document", () => {
-    const target = { ...IDS, vercelSettings: REVIEWED_SETTINGS };
+    const target = { ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES };
     for (const [k, v] of [
       ["installCommand", "node -e \"require('fs').writeFileSync('x', process.env.SWAP_BINDING_SECRET)\""], ["installCommand", null],
       ["buildCommand", "pnpm run build && cp .vercel/.env.preview.local public/"], ["outputDirectory", "out"], ["devCommand", "next dev"],
@@ -88,7 +91,7 @@ describe("the reviewed Vercel settings (Codex r5 F1)", () => {
   });
 
   it("before the pull a stale link's settings are not judged (the pull replaces them); the build never starts on them", () => {
-    const target = { ...IDS, vercelSettings: REVIEWED_SETTINGS };
+    const target = { ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES };
     const sentinel = "touch /tmp/should-never-run";
     const root = checkout(target, { ...REVIEWED_SETTINGS, installCommand: sentinel });
     assert.deepEqual(preflight(root, undefined, "before-pull").filter((f) => /settings/.test(f)), []);
@@ -105,4 +108,98 @@ describe("the reviewed Vercel settings (Codex r5 F1)", () => {
     // and the scan's preflight refuses them as well
     assert.match(preflight(root).join(), /settings\.installCommand/);
   });
+
+  it("the target lists the project variables the app reads, and never one that changes node, is inlined, or is Vercel's own", () => {
+    const base = { ...IDS, vercelSettings: REVIEWED_SETTINGS };
+    assert.deepEqual(REVIEWED_ENV_NAMES, ["DEVNET_RPC_URL", "MAINNET_RPC_URL", "SWAP_BINDING_SECRET"]);
+    assert.match(refusals(checkout(base, REVIEWED_SETTINGS)).join(), /must name vercelEnvNames/);
+    for (const bad of ["NODE_OPTIONS", "NEXT_PUBLIC_SOLANA_RPC", "NPM_CONFIG_REGISTRY", "VERCEL_FIRST_DEPLOYMENT", "TURBO_TOKEN", "lower_case", "A B", 7]) {
+      assert.match(refusals(checkout({ ...base, vercelEnvNames: [...REVIEWED_ENV_NAMES, bad] }, REVIEWED_SETTINGS)).join(), /vercelEnvNames/, String(bad));
+    }
+  });
 });
+
+describe("the pulled project variables (adversary pass on ce04cd9)", () => {
+  const target = { ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES };
+  const SECRET = "value-that-must-never-be-printed-3f9a";
+  const pulled = (root: string, body: string, name = ".env.preview.local") => {
+    const f = join(root, "app", ".vercel", name);
+    writeFileSync(f, body);
+    return f;
+  };
+
+  it("reviewed and Vercel-written names pass, and the file is removed before the build", () => {
+    const root = checkout(target, REVIEWED_SETTINGS);
+    const f = pulled(root, `# Created by Vercel CLI\nNX_DAEMON="false"\nSWAP_BINDING_SECRET="${SECRET}"\nTURBO_CACHE="remote:rw"\n` +
+      `VERCEL="1"\nVERCEL_ENV="preview"\nVERCEL_GIT_COMMIT_SHA=""\nVERCEL_OIDC_TOKEN="${SECRET}"\nVERCEL_TARGET_ENV="preview"\nVERCEL_URL=""\n`);
+    // until it is removed, the build refuses to start on it
+    assert.match(preflight(root).join(), /\.vercel\/\.env\.preview\.local: the build would load the project's variables/);
+    assert.deepEqual(dropPulledEnv(root), []);
+    assert.equal(existsSync(f), false, "the pulled variables are removed");
+    assert.deepEqual(preflight(root).filter((r) => /variables/.test(r)), []);
+    // no pulled file at all (the pull wrote none) is fine too
+    assert.deepEqual(dropPulledEnv(root), []);
+  });
+
+  it("any other name stops the release, names only the name, and leaves the file for inspection", () => {
+    for (const name of ["NODE_OPTIONS", "NEXT_PUBLIC_SOLANA_RPC", "npm_config_registry", "ENABLE_EXPERIMENTAL_COREPACK", "LD_PRELOAD"]) {
+      const root = checkout(target, REVIEWED_SETTINGS);
+      const f = pulled(root, `# Created by Vercel CLI\n${name}="${SECRET}"\nSWAP_BINDING_SECRET="${SECRET}"\n`, ".env.production.local");
+      const r = dropPulledEnv(root).join("\n");
+      assert.match(r, new RegExp(`\\.env\\.production\\.local holds project variables the release does not accept: ${name}`), name);
+      assert.ok(!r.includes(SECRET), "a value never appears in a refusal");
+      assert.equal(existsSync(f), true);
+      assert.match(preflight(root).join(), /the build would load the project's variables/);
+    }
+  });
+
+  it("a line that is not NAME=value is refused without echoing it", () => {
+    const root = checkout(target, REVIEWED_SETTINGS);
+    pulled(root, `# Created by Vercel CLI\nSWAP_BINDING_SECRET="${SECRET}"\n export NODE_OPTIONS=${SECRET}\n`);
+    const r = dropPulledEnv(root).join("\n");
+    assert.match(r, /line 3 is not NAME=value/);
+    assert.ok(!r.includes(SECRET));
+  });
+
+  it("the pulled settings are checked again at this step", () => {
+    const root = checkout(target, { ...REVIEWED_SETTINGS, buildCommand: "node x.js" });
+    pulled(root, "# Created by Vercel CLI\nVERCEL=\"1\"\n");
+    assert.match(dropPulledEnv(root).join(), /settings\.buildCommand is "node x\.js"/);
+  });
+});
+
+describe("the app pins the reviewed Node.js version (adversary pass on ce04cd9)", () => {
+  it("app/package.json engines.node must be the reviewed nodeVersion, before pull and after", () => {
+    const target = { ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES };
+    for (const engines of [{ node: ">=22" }, { node: "24.x" }, {}, undefined]) {
+      const root = checkout(target, REVIEWED_SETTINGS);
+      writeFileSync(join(root, "app", "package.json"), JSON.stringify({ name: "fixture-app", engines }));
+      for (const stage of ["before-pull", "pulled"] as const) {
+        assert.match(preflight(root, undefined, stage).join(), /app\/package\.json engines\.node is .*, not the reviewed "22\.x"/, JSON.stringify(engines));
+      }
+    }
+    // the repository's own app pins it
+    const app = JSON.parse(readFileSync(new URL("../app/package.json", import.meta.url), "utf8"));
+    assert.equal(app.engines.node, REVIEWED_SETTINGS.nodeVersion);
+  });
+});
+
+describe("git program drivers in the repository's config (adversary pass on ce04cd9)", () => {
+  it("a filter, diff or merge driver is refused by every TypeScript git call and by the preflight", () => {
+    for (const key of ["filter.adv.clean", "filter.adv.process", "filter.adv.smudge", "diff.adv.textconv", "diff.adv.command", "merge.adv.driver", "diff.external"]) {
+      const root = checkout({ ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, REVIEWED_SETTINGS);
+      assert.deepEqual(gitProgramDrivers(root), []);
+      execFileSync("git", ["-C", root, "config", key, "/bin/false %f"]);
+      assert.deepEqual(gitProgramDrivers(root), [key]);
+      assert.throws(() => gitIn(root, ["status", "--porcelain"]), new RegExp(`names programs git would run \\(${key.replace(/\./g, "\\.")}\\)`));
+      assert.match(preflight(root, undefined, "before-pull").join(), new RegExp(`git config names programs git would run \\(${key.replace(/\./g, "\\.")}\\)`));
+    }
+    // an included config file is read too
+    const root = checkout({ ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, REVIEWED_SETTINGS);
+    const inc = join(root, "..", `inc-${Date.now()}.cfg`);
+    writeFileSync(inc, "[filter \"adv\"]\n\tclean = /bin/false\n");
+    execFileSync("git", ["-C", root, "config", "include.path", inc]);
+    assert.deepEqual(gitProgramDrivers(root), ["filter.adv.clean"]);
+  });
+});
+
