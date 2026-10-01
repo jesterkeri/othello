@@ -654,3 +654,17 @@ flags-definitions fetch, driver case/include tricks, the engines pin. Stated lim
 `--record` run on its own checks the target, settings and the recorded bytes, not the project's variables at that
 moment or the output's function runtime; the documented route runs it right after the build whose preflight did, and a
 variable added in Vercel after the pull is outside what any release check can see (a snapshot, like the settings).
+
+## F-31. Third adversary pass, on 1e196ff: `--ignore-submodules=all` hid a staged gitlink
+
+`all` also drops added and removed gitlink entries from git's HEAD-to-index comparison, so a nested repository staged
+under app/ (`A app/src/app/extra`) no longer stopped the release, which then ran to the end (the deployed bytes were
+still HEAD's, but the operator's staged page silently did not ship; spec kept:
+tests/release-script-staged-gitlink-adversary.spec.ts, which passes on 4570ded and failed on 1e196ff). Now `dirty`
+on the script's two status calls and in uncommittedPaths: it never starts a status inside a submodule's work tree (so
+no submodule config is read) and still reports added, removed and moved gitlinks. Checked directly on git 2.43.0: with
+a planted clean filter in a submodule's own config, a plain `git status` ran it and `--ignore-submodules=dirty` did not;
+with a staged nested repository, `dirty` printed `A  app/extra` and `all` printed nothing. Passed (the report's list):
+the pager on every route, submodule configs on every other git call, a tracked file replaced by a nested repository
+(`T`), an untracked nested repository (`??`), a staged bump of evm/lib/* (no build input; the clone uses HEAD's gitlinks),
+`update=!cmd` in .gitmodules (git ignores it).

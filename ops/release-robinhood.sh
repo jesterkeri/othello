@@ -49,12 +49,13 @@ cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
 # ce04cd9). Reading config runs nothing.
 drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external)$' | cut -d' ' -f1 || true)"
 if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
-# submodules are not looked into: git would run a status inside each with that submodule's own config (its filter
-# drivers included; adversary pass on 4570ded), and they are no build input here: the fresh clone below initialises its
-# own from the commit's pinned gitlinks
-if [ -n "$(safe_git status --porcelain --untracked-files=all --ignore-submodules=all)" ]; then
+# submodule work trees are not looked into: git would run a status inside each with that submodule's own config (its
+# filter drivers included; adversary pass on 4570ded), and they are no build input here (the fresh clone below
+# initialises its own from the commit's pinned gitlinks). "dirty", not "all": an added, removed or moved gitlink (a
+# nested repository staged under app/) is still reported (adversary pass on 1e196ff)
+if [ -n "$(safe_git status --porcelain --untracked-files=all --ignore-submodules=dirty)" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
-  safe_git status --short --ignore-submodules=all >&2; exit 1
+  safe_git status --short --ignore-submodules=dirty >&2; exit 1
 fi
 if [ -e .vercel ]; then echo "release: a .vercel folder at the repository root can move the Vercel CLI's project root; remove it" >&2; exit 1; fi
 for f in vercel.* now.* VERCEL.* Vercel.*; do

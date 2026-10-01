@@ -739,9 +739,10 @@ export function sourceDrift(root: string): string[] {
 
 /** Changed, untracked or drifted paths: git's status (every untracked file) together with sourceDrift. */
 export function uncommittedPaths(root: string): string[] {
-  // submodules are not looked into (a status inside one reads its own config, filter drivers included; adversary pass on
-  // 4570ded): they are no build input, the sealed release's clone initialises its own from the commit's gitlinks
-  const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all", "--ignore-submodules=all"]).split("\n").filter(Boolean).map((l) => l.slice(3));
+  // submodule work trees are not looked into (a status inside one reads its own config, filter drivers included;
+  // adversary pass on 4570ded): they are no build input, the sealed release's clone initialises its own from the
+  // commit's gitlinks. "dirty", not "all": an added or removed gitlink is still reported (adversary pass on 1e196ff)
+  const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all", "--ignore-submodules=dirty"]).split("\n").filter(Boolean).map((l) => l.slice(3));
   return [...new Set([...status, ...sourceDrift(root)])].sort();
 }
 

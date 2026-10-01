@@ -3206,3 +3206,10 @@ adversary: DEFECTS. (1) a submodule's own filter driver ran on the clean-checkou
 when a refusal was printed on a terminal. Fix: --ignore-submodules=all on the script's status calls and uncommittedPaths;
 --no-pager in safe_git and gitIn (evm/ARB-FINDINGS.md F-30). Specs kept.
 
+## A1 third adversary pass, on 1e196ff: one regression, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. --ignore-submodules=all also hid a staged gitlink under app/, so the clean check passed it. Fix:
+--ignore-submodules=dirty (no status inside a submodule, gitlink additions and removals still reported); verified on
+git 2.43.0 directly (evm/ARB-FINDINGS.md F-31). Spec kept. verify (on 1e196ff, before this fix): release unit specs
+`127 passing (2m)`.
+
