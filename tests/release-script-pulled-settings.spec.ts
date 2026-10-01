@@ -64,7 +64,8 @@ describe("release: the build never runs a project's own install or build command
     const tail = out.split("\n").filter(Boolean).slice(-30).join("\n");
     assert.equal(existsSync(ran), false, `the release ran the project's own command (exit ${r.status}):\n${tail}`);
     assert.notEqual(r.status, 0, `the release went on with unreviewed build settings:\n${tail}`);
-    assert.match(out, /REFUSED before the CLI started[\s\S]*settings\.installCommand is "node -e[\s\S]*settings\.buildCommand is "node -e/,
+    // the step right after the pull (--drop-pulled-env) already refuses the settings; the build runner would refuse them too
+    assert.match(out, /REFUSED (after the pull|before the CLI started)[\s\S]*settings\.installCommand is "node -e[\s\S]*settings\.buildCommand is "node -e/,
       `the release did not refuse naming the settings:\n${tail}`);
     // the pull step ran (stubbed) and the build runner never started the CLI
     assert.match(out, /shim: pull skipped/);

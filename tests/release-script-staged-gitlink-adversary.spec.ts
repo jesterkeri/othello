@@ -60,7 +60,9 @@ describe("release: a staged gitlink under app/ is an uncommitted change (adversa
     const r = spawnSync("bash", [join(repo, "ops", "release-robinhood.sh")], { cwd: repo, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
     const out = `${r.stdout}\n${r.stderr}`;
     const tail = out.split("\n").filter(Boolean).slice(-8).join("\n");
-    assert.match(out, /commit, discard or remove changes/,
+    // (Adapted after a76e46a: the release now refuses any gitlink outside evm/lib/ before its status check, with its own
+    // message; either refusal is the required one.)
+    assert.match(out, /commit, discard or remove changes|a nested repository outside evm\/lib\/ \(app\/src\/app\/extra\)/,
       `the release did not refuse a checkout whose index adds ${NESTED} (release exit ${r.status}, deployed ${existsSync(uploaded)}):\n${tail}`);
     assert.equal(existsSync(uploaded), false, "nothing is deployed from a checkout with an uncommitted change");
   });
