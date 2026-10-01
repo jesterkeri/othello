@@ -3253,3 +3253,9 @@ lockfile, tsconfig and .gitmodules. Fixed: the export moved above the check; tri
 that already exports functions or BASH_ENV (evm/ARB-FINDINGS.md F-37). Specs kept. verify: kept specs + release unit
 specs `47 passing (4s)`.
 
+## A1 tenth adversary pass, on 2dd59b2 (side branch): one defect fixed (2026-10-01)
+reviewed: n/a yet (follow-ups to the r6 target 86afb72; next Codex round)
+adversary: DEFECT. Root build configs next build reads (.browserslistrc, postcss.config.mjs) triggered no CI run. Fix:
+every root file triggers the release specs ("*", ".*"), evm/ARB-FINDINGS.md F-38. Spec kept. verify: both CI-trigger
+specs `5 passing (754ms)`; the locale fix held (the pass's own runs: the env-seal spec and a normal release passed).
+

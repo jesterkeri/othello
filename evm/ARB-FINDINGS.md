@@ -753,3 +753,14 @@ against a compromised shell, which no script it starts can defend against. Passe
 driver checks with forced quoting, the status and record greps, the locale reaching the CLI and git children, a normal
 release end to end under the forced C locale (59 s), and the built bytes (node's default Intl locale is en-US under C
 and C.UTF-8; nothing formats dates or numbers at build time).
+
+## F-38. Tenth adversary pass, on 2dd59b2: root build configs triggered no CI run
+
+next build reads build configs it finds above app/ (browserslist targets through getSupportedBrowsers' upward walk,
+PostCSS through findConfig/find-up; app/ has neither), so a root `.browserslistrc` or `postcss.config.mjs` changes what
+the release compiles, yet neither name was in the workflow's path triggers (spec kept, which asks Next's own functions:
+tests/release-ci-root-build-config-adversary.spec.ts). Rather than list names, every root file now triggers the release
+specs (`"*"` and `".*"` in both lists), matching trust-config's rule that every file at the repository root is a build
+input; root `.npmrc`, `pnpm-workspace.yaml` and `.gitignore` are covered by the same globs. Passed (the report's list):
+the locale export before the environment check (a non-UTF-8 name refused, LC_CTYPE refused, a normal release still runs
+end to end), newline-named variables, byte-level cut/grep anchoring under C, the specs' imports all covered.
