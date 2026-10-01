@@ -49,7 +49,7 @@ cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
 # status, a diff or merge driver) or fetches (a partial clone's promisor remote, its upload-pack, an ssh command or
 # proxy), and no -c switch turns those off: refused before the first status (adversary passes on ce04cd9 and 12f1cb7).
 # A release checkout is an ordinary full clone. Reading config runs nothing.
-drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external|remote\..+\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\.partialclone|core\.(sshcommand|gitproxy|askpass))$' | cut -d' ' -f1 || true)"
+drivers="$(safe_git config --get-regexp '^(filter\..*\.(clean|smudge|process)|diff\..*\.(textconv|command)|merge\..*\.driver|diff\.external|remote\..*\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\.partialclone|core\.(sshcommand|gitproxy|askpass))$' | cut -d' ' -f1 || true)"
 if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
 # a gitlink (another repository's commit) belongs only under evm/lib/, the contracts' pinned libraries, which are no
 # build input here (the fresh clone below initialises its own from the commit's gitlinks). git answers for a gitlink

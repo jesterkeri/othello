@@ -3228,3 +3228,10 @@ GIT_NO_LAZY_FETCH=1 everywhere; fetch-program and partial-clone keys refused; tr
 the othello-chains link: no refusal. (On 12f1cb7 the fast list was `127 passing, 1 failing`: the safe_git test caught
 the word "git" in a new message, reworded here.)
 
+## A1 sixth adversary pass, on a76e46a: one defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. An empty driver name (filter..clean) passed the refused-config pattern's `.+`. Fix: `.*` for every
+driver and remote name in both copies (evm/ARB-FINDINGS.md F-34). Specs kept (the defect, and a positive normal-clone
+release). verify: release-deploy + settings specs `44 passing (4s)`. On a76e46a/f870a48 before it: fast `128 passing (3m)`,
+sealed 18/18 (three needed a rerun: one Google Fonts ETIMEDOUT, two specs widened to the earlier refusal: `3 passing (2m)`).
+

@@ -697,3 +697,17 @@ one stops the release instead of being hidden by the pipeline's `|| true`. Passe
 non -z output (never match `^evm/lib/`; a quoted path under it is refused, costing only a release), `..` path parts
 (git refuses them), `status="$(...)" || {...}` under set -e, assume-unchanged/skip-worktree (noted before; the build
 uses the fresh clone).
+
+## F-34. Sixth adversary pass, on a76e46a: an empty driver name; a normal clone still releases
+
+A repository may name a driver "" (`[filter ""]`, listed as `filter..clean`, selected by an attribute `filter=`): the
+refused-config pattern required at least one character in the name (`.+`, from ce04cd9), so the release's first status
+ran the program (once the release still reached its deploy step). The pattern now matches `.*` for every driver and
+remote name, in the script and in GIT_PROGRAM_DRIVERS (spec kept: tests/release-script-empty-driver-name-adversary.spec.ts,
+release and gitIn cases; unit keys added: filter..clean, diff..textconv, merge..driver, remote..uploadpack). The pass
+also kept a positive spec, tests/release-script-normal-clone-adversary.spec.ts: an ordinary full clone with both
+evm/lib submodules initialised and GitHub URLs releases end to end (nothing fetched). Passed (the report's list): the
+clone --no-local source side (uploadpack.packObjectsHook, core.alternateRefsCommand with real alternates, sshCommand,
+gitProxy, credential.helper, gpg.program with log.showSignature, pager, editor, diff.external, fsmonitor, bundle URIs:
+nothing ran), lazy fetch, the Vercel CLI's git calls, the regex against this repository's real config (no match), and
+the tree and index reads failing.

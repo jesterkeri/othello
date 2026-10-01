@@ -189,7 +189,9 @@ describe("git program drivers in the repository's config (adversary pass on ce04
     for (const key of ["filter.adv.clean", "filter.adv.process", "filter.adv.smudge", "diff.adv.textconv", "diff.adv.command", "merge.adv.driver", "diff.external",
       // fetch-time programs and a partial clone (adversary pass on 12f1cb7)
       "remote.origin.uploadpack", "remote.origin.receivepack", "remote.origin.promisor", "remote.origin.partialclonefilter", "extensions.partialclone",
-      "core.sshcommand", "core.gitproxy", "core.askpass"]) {
+      "core.sshcommand", "core.gitproxy", "core.askpass",
+      // an empty driver or remote name (adversary pass on a76e46a)
+      "filter..clean", "diff..textconv", "merge..driver", "remote..uploadpack"]) {
       const root = checkout({ ...IDS, vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, REVIEWED_SETTINGS);
       assert.deepEqual(gitProgramDrivers(root), []);
       execFileSync("git", ["-C", root, "config", key, "/bin/false %f"]);

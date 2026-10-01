@@ -657,9 +657,10 @@ function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned
  * on status, a textconv or external diff, a merge driver) or fetches (a partial clone's promisor remote and its
  * upload-pack, an ssh command or proxy): no -c switch turns them off, so the release refuses a repository that names
  * any (adversary passes on ce04cd9 and 12f1cb7); a release checkout is an ordinary full clone. Reading config runs
- * nothing; includes are followed. Lazy fetching is also off (GIT_NO_LAZY_FETCH).
+ * nothing; includes are followed. A driver or remote may be named "" (`filter..clean`), so the names match `.*`
+ * (adversary pass on a76e46a). Lazy fetching is also off (GIT_NO_LAZY_FETCH).
  */
-export const GIT_PROGRAM_DRIVERS = "^(filter\\..+\\.(clean|smudge|process)|diff\\..+\\.(textconv|command)|merge\\..+\\.driver|diff\\.external|remote\\..+\\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\\.partialclone|core\\.(sshcommand|gitproxy|askpass))$";
+export const GIT_PROGRAM_DRIVERS = "^(filter\\..*\\.(clean|smudge|process)|diff\\..*\\.(textconv|command)|merge\\..*\\.driver|diff\\.external|remote\\..*\\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\\.partialclone|core\\.(sshcommand|gitproxy|askpass))$";
 export function gitProgramDrivers(root: string): string[] {
   const { env, pinned } = sealedGit(root);
   const r = spawnSync("git", [...pinned, "config", "--get-regexp", GIT_PROGRAM_DRIVERS], { encoding: "utf8", env });
