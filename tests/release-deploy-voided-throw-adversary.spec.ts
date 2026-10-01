@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedProjectEnv, reviewedTarget } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -37,7 +37,7 @@ describe("adversary: a deployment voided by a removed output folder", () => {
     };
     let reason = "";
     try {
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: true, run, git });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: true, run, git });
       reason = r.ok ? "ok" : r.reason;
     } catch (e) {
       reason = `threw: ${e instanceof Error ? e.message : e}`;

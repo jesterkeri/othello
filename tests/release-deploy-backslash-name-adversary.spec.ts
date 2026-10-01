@@ -24,7 +24,7 @@ import { join } from "node:path";
 
 import { deployRecorded, gitFor } from "../ops/release-deploy.ts";
 import { VERCEL_CLI, sourceDrift } from "../ops/trust-config.ts";
-import { commitTarget } from "./fake-pinned-cli.ts";
+import { commitTarget, reviewedProjectEnv } from "./fake-pinned-cli.ts";
 
 function git(root: string, ...a: string[]): void {
   execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false",
@@ -50,7 +50,7 @@ function recorded(): { root: string; recordFile: string } {
 const neverRun = async (): Promise<never> => { throw new Error("the runner was called: the deploy went past its checks"); };
 
 async function deploy(root: string, recordFile: string) {
-  return deployRecorded({ root, recordFile, prod: false, run: neverRun as never, git: gitFor(root), env: {},
+  return deployRecorded({ projectEnv: reviewedProjectEnv, root, recordFile, prod: false, run: neverRun as never, git: gitFor(root), env: {},
     target: { vercelOrgId: "team_A", vercelProjectId: "prj_A" } as never });
 }
 

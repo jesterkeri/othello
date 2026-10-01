@@ -3259,3 +3259,10 @@ adversary: DEFECT. Root build configs next build reads (.browserslistrc, postcss
 every root file triggers the release specs ("*", ".*"), evm/ARB-FINDINGS.md F-38. Spec kept. verify: both CI-trigger
 specs `5 passing (754ms)`; the locale fix held (the pass's own runs: the env-seal spec and a normal release passed).
 
+## A1 code review r6 (Codex, two-stage): REVISE; F2 fixed, F1 open (2026-10-01)
+reviewed: othello-design/reviews/arb-code-review-r6.md (cold: r6-cold.md sha 960d2ba7…) | verdict: REVISE | commit: 86afb72
+r5 F1, F2 RESOLVED; othello-chains confirmed. F2 MAJOR: the project's variables could change after the pull. Fix: the
+deploy reads the variable names from Vercel right before and right after deploying (fail closed before, void after),
+evm/ARB-FINDINGS.md F-39. F1 HIGH (caller PATH): decision pending with Joshua. verify: release unit + CI-trigger specs
+`139 passing (2m)`.
+

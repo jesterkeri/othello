@@ -77,7 +77,7 @@ const git = {
     .split("\\n").filter(Boolean).map((l) => l.slice(3)),
 };
 const run = async () => ({ code: 0, stdout: ${JSON.stringify(NEW_URL)} + "\\n" });
-const r = await deployRecorded({ root, recordFile: resolve(root, arg("--record")), prod: false, run, git, cli: arg("--cli"), env: process.env });
+const r = await deployRecorded({ projectEnv: async () => ({ names: ["SWAP_BINDING_SECRET"] }), root, recordFile: resolve(root, arg("--record")), prod: false, run, git, cli: arg("--cli"), env: process.env });
 console.error("stub deploy:", JSON.stringify(r));
 process.exit(r.ok ? 0 : 1);
 `);

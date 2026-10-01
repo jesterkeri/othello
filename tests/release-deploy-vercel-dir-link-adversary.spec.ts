@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedProjectEnv, reviewedTarget } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
@@ -92,7 +92,7 @@ describe("release deploy adversary: <project>/.vercel as a link", function () {
       calls.push(args);
       return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" };
     };
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) although the CLI uploads only the link .vercel, now with other text`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

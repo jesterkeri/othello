@@ -764,3 +764,18 @@ specs (`"*"` and `".*"` in both lists), matching trust-config's rule that every 
 input; root `.npmrc`, `pnpm-workspace.yaml` and `.gitignore` are covered by the same globs. Passed (the report's list):
 the locale export before the environment check (a non-UTF-8 name refused, LC_CTYPE refused, a normal release still runs
 end to end), newline-named variables, byte-level cut/grep anchoring under C, the specs' imports all covered.
+
+## F-39. Codex code review r6 (86afb72): REVISE. F2 fixed here; F1 is a decision
+
+Codex r6: r5 F1 and F2 RESOLVED; the othello-chains identity, settings, variable names and previews-only protection
+confirmed read-only. **F2 MAJOR (fixed):** `--drop-pulled-env` checked only the pull's snapshot, and Vercel applies the
+project's variables to the deployed functions at deployment time, so a NODE_OPTIONS added after the pull would have
+run in the deployment. The deploy step (deployRecorded) now asks Vercel for the project's variable NAMES right before it
+deploys, through the verified pinned CLI (`vercel api /v10/projects/<id>/env?teamId=<team> --raw`, run by a runner that
+echoes nothing; only each record's `key` is kept), and refuses unless every name is in the reviewed vercelEnvNames (which
+already refuses NODE_*, NEXT_PUBLIC_*, NPM_CONFIG_* and Vercel's own names); a failed, unreadable, paginated or
+nameless answer refuses too. It asks again right after the deploy: any change, or no answer, voids the deployment like a
+file changed during the upload (URL recorded as voided; remove it, or in production roll back). Stated residual: a
+variable added and removed again inside the seconds between the two reads, by someone with edit access to the project,
+is not seen; Vercel exposes no environment revision to pin, so that account-level access is trusted for the window.
+**F1 HIGH (open):** a caller PATH that puts a program named env, bash, pnpm, node or git first runs it in the release.

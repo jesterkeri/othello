@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedProjectEnv, reviewedTarget } from "./fake-pinned-cli.ts";
 import { USDG, VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 function pinnedCliChunk(): string {
@@ -90,7 +90,7 @@ describe("release deploy adversary: an absolute filePathMap source", function ()
       calls.push(args);
       return { code: 0, stdout: "https://othello-adv-test.vercel.app\n" };
     };
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: false, run, git });
     assert.equal(r.ok, false, `deployRecorded deployed (${JSON.stringify(r)}) although ${uploadedRel}, which the CLI uploads, changed after the record`);
     assert.equal(calls.length, 0, "vercel was never run");
   });

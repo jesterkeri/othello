@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, releaseTargetRefusals, type Git, type Run } from "../ops/release-deploy.ts";
-import { commitTarget, fakePinnedCli } from "./fake-pinned-cli.ts";
+import { commitTarget, fakePinnedCli, reviewedProjectEnv } from "./fake-pinned-cli.ts";
 import { REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
@@ -44,7 +44,7 @@ describe("adversary: the deploy step itself does not enforce the reviewed Vercel
       contacted = true;
       return { code: 0, stdout: `Vercel CLI ${VERCEL_CLI}\n${DEPLOY_URL}\n` };
     };
-    const r = await deployRecorded({ cli: fakePinnedCli(), root, recordFile: record, prod: true, run, git, env: {} });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), root, recordFile: record, prod: true, run, git, env: {} });
     assert.ok(!contacted && !r.ok,
       `the pinned CLI was started for a production deploy linked to team_B/prj_B, not the reviewed team_A/prj_A (deploy result: ${JSON.stringify(r)})`);
   });

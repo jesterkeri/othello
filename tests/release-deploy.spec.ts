@@ -13,8 +13,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, gitFor, installPinnedCli, preflight, releaseTargetRefusals, verifyPinnedCli, type Git, type Run } from "../ops/release-deploy.ts";
-import { commitTarget, fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { ancestorRefusals, deployEnv, deployRecorded, execPinnedCli, gitFor, installPinnedCli, preflight, projectEnvFromCli, releaseTargetRefusals, verifyPinnedCli, type Git, type ProjectEnv, type Run } from "../ops/release-deploy.ts";
+import { commitTarget, fakePinnedCli, reviewedProjectEnv, reviewedTarget } from "./fake-pinned-cli.ts";
 import { REVIEWED_ENGINES, REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, esc, gitIn, scanTree, sourceDrift, writeRecord, type ReleaseRecord } from "../ops/trust-config.ts";
 
@@ -65,7 +65,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const f = fixture();
     writeFileSync(f.server, "module.exports = 'server page with 0x1111111111111111111111111111111111111111'");
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.equal(r.ok, false);
     assert.match(!r.ok ? r.reason : "", /changed after it was scanned; nothing was deployed[\s\S]*upload:\.next\/server\/app\/robinhood\/page\.js/);
     assert.equal(spy.calls.length, 0, "vercel was never run");
@@ -76,7 +76,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const f = fixture();
     writeFileSync(join(f.out, "static", "extra.js"), "late");
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /\+ static\/extra\.js/);
     assert.equal(spy.calls.length, 0);
   });
@@ -84,7 +84,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
   it("an unchanged artifact deploys with the pinned CLI from app/, and the URL goes into the record", async () => {
     const f = fixture();
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.deepEqual(r, { ok: true, url: DEPLOY_URL });
     assert.deepEqual(spy.calls, [{ cmd: process.execPath, args: [fakePinnedCli(), "deploy", "--prebuilt"], cwd: f.app }]);
     const rec = read(f.record);
@@ -97,7 +97,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
   it("--prod passes --prod and records production", async () => {
     const f = fixture();
     const spy = spyRun();
-    await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.deepEqual(spy.calls[0]!.args.slice(-1), ["--prod"]);
     assert.equal(read(f.record).target, "production");
   });
@@ -105,9 +105,9 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
   it("a file changed during the upload voids the deployment: no URL recorded, told not to use it", async () => {
     const f = fixture();
     const spy = spyRun(() => writeFileSync(f.server, "rebuilt by next build during the upload"));
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.equal(r.ok, false);
-    assert.match(!r.ok ? r.reason : "", new RegExp(`changed while they were uploading, so ${DEPLOY_URL.replace(/\./g, "\\.")} may not be the scanned artifact; do not use or share it`));
+    assert.match(!r.ok ? r.reason : "", new RegExp(`changed while the deploy ran, so ${DEPLOY_URL.replace(/\./g, "\\.")} may not be the scanned artifact with the reviewed variables; do not use or share it`));
     assert.equal(read(f.record).deploymentUrl, null);
     assert.equal(read(f.record).voidedDeploymentUrl, DEPLOY_URL, "the voided deployment is named in the record, to remove it");
     assert.equal(existsSync(`${f.record}.writing`), false, "the record is replaced whole");
@@ -116,7 +116,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
   it("refuses a record already deployed, another commit, other changed files, or a record built with another CLI", async () => {
     const f = fixture();
     const spy = spyRun();
-    const go = (git: Git) => deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git });
+    const go = (git: Git) => deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git });
 
     assert.match(await go({ head: () => "f".repeat(40), changed: () => [] }).then((r) => (!r.ok ? r.reason : "")), /the checkout is f+, but the record was built from 0123/);
     assert.match(await go(cleanGit(["release/robinhood-prebuilt.json", "app/src/app/robinhood/page.tsx"])).then((r) => (!r.ok ? r.reason : "")),
@@ -147,7 +147,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       mkdirSync(join(f.app, rel, ".."), { recursive: true });
       writeFileSync(join(f.app, rel), body);
       const spy = spyRun();
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", new RegExp(`scan never covered[\\s\\S]*${rel.replace(/\./g, "\\.")}: vercel deploy --prebuilt`), rel);
       assert.equal(spy.calls.length, 0, `${rel}: vercel was never run`);
     }
@@ -163,16 +163,16 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       return f;
     };
     const ok = withProject(REVIEWED_SETTINGS);
-    assert.equal((await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(ok.root), root: ok.root, recordFile: ok.record, prod: false, run: spyRun().run, git: cleanGit() })).ok, true);
+    assert.equal((await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(ok.root), root: ok.root, recordFile: ok.record, prod: false, run: spyRun().run, git: cleanGit() })).ok, true);
 
     const rd = withProject({ ...REVIEWED_SETTINGS, rootDirectory: "node_modules/x" });
     const spy = spyRun();
-    const r1 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(rd.root), root: rd.root, recordFile: rd.record, prod: false, run: spy.run, git: cleanGit() });
+    const r1 = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(rd.root), root: rd.root, recordFile: rd.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r1.ok ? r1.reason : "", /settings\.rootDirectory "node_modules\/x"/);
 
     const changed = withProject(REVIEWED_SETTINGS);
     writeFileSync(join(changed.app, ".vercel", "project.json"), JSON.stringify({ projectId: "other", orgId: "o", settings: REVIEWED_SETTINGS }));
-    const r2 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(changed.root), root: changed.root, recordFile: changed.record, prod: false, run: spy.run, git: cleanGit() });
+    const r2 = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(changed.root), root: changed.root, recordFile: changed.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r2.ok ? r2.reason : "", /changed after it was scanned[\s\S]*project:\.vercel\/project\.json/);
     assert.equal(spy.calls.length, 0);
   });
@@ -181,7 +181,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     for (const prod of [false, true]) {
       const f = fixture();
       const spy = spyRun(() => writeFileSync(join(f.app, ".vercel", "routes.json"), "{}"));
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod, run: spy.run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod, run: spy.run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", prod ? /already live in production: roll back now/ : /do not use or share it/);
       assert.equal(read(f.record).deploymentUrl, null);
     }
@@ -190,19 +190,19 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
   it("only one https://<deployment>.vercel.app line on stdout is taken as the URL", async () => {
     for (const out of ["https://evil.example.com\n", `${DEPLOY_URL}\nhttps://othello-other-jesterkeri.vercel.app\n`, "https://othello.vercel.app/path\n"]) {
       const f = fixture();
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun(undefined, out).run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun(undefined, out).run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", /vercel deploy failed/, out);
       assert.equal(read(f.record).deploymentUrl, null);
     }
     const f = fixture();
-    const ok = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun(undefined, `Inspect: x\n${DEPLOY_URL}\n${DEPLOY_URL}\n`).run, git: cleanGit() });
+    const ok = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun(undefined, `Inspect: x\n${DEPLOY_URL}\n${DEPLOY_URL}\n`).run, git: cleanGit() });
     assert.deepEqual(ok, { ok: true, url: DEPLOY_URL });
   });
 
   it("a failed deploy or one that prints no URL leaves the record unchanged", async () => {
     for (const spy of [spyRun(undefined, "", 1), spyRun(undefined, "Error: not logged in\n", 0)]) {
       const f = fixture();
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", /vercel deploy failed/);
       assert.equal(read(f.record).deploymentUrl, null);
     }
@@ -212,7 +212,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     for (const k of ["VERCEL_ORG_ID", "VERCEL_PROJECT_ID", "VERCEL_TEAM_ID"]) {
       const f = fixture();
       const spy = spyRun();
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit(), env: { [k]: "prj_other" } });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit(), env: { [k]: "prj_other" } });
       assert.match(!r.ok ? r.reason : "", new RegExp(`${k} set in the environment would deploy to another project`));
       assert.equal(spy.calls.length, 0);
     }
@@ -239,7 +239,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     rmSync(f.server);
     symlinkSync("page-b.js", f.server);
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*-> page-b\.js/);
     assert.equal(spy.calls.length, 0);
   });
@@ -256,7 +256,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     rmSync(join(f.app, ".next", "server", "app", "page-link.js"));
     symlinkSync("./page.js", join(f.app, ".next", "server", "app", "page-link.js")); // same target, other text
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*upload:b\.js/);
     assert.equal(spy.calls.length, 0);
   });
@@ -266,7 +266,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     execFileSync("mkfifo", [join(f.out, "static", "pipe")]);
     assert.match(scanTree(f.out, null, f.app).join("\n"), /static\/pipe: not a regular file/);
     assert.ok(artifactDigest(f.out, f.app).lines.some((l) => /^static\/pipe\tspecial 1\d+$/.test(l)), "listed, not read (no hang)");
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /changed after it was scanned[\s\S]*static\/pipe/);
   });
 
@@ -277,7 +277,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     rmSync(f.out, { recursive: true });
     symlinkSync(copy, f.out);
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /\.vercel\/output \(a link, not a folder\)/);
     assert.equal(spy.calls.length, 0);
   });
@@ -287,13 +287,13 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const moved = join(f.root, "vercel-real");
     execFileSync("mv", [join(f.app, ".vercel"), moved]);
     symlinkSync(moved, join(f.app, ".vercel"));
-    const r1 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+    const r1 = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
     assert.match(!r1.ok ? r1.reason : "", /\.vercel \(a link, not a folder\)/);
 
     const g = fixture();
     writeFileSync(join(g.out, "static", "a\tb.js"), "x");
     const spy = spyRun();
-    const r2 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(g.root), root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
+    const r2 = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(g.root), root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r2.ok ? r2.reason : "", /a tab or line break in a name/);
     assert.equal(spy.calls.length, 0);
   });
@@ -323,14 +323,14 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       reviewedTarget(f.root); // a reviewed link before the record (Codex r4 F1)
       writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root); // present when recorded
       const spy = spyRun();
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", new RegExp(`project\\.json key "${Object.keys(extra)[0]}"`));
       assert.equal(spy.calls.length, 0);
     }
     const g = fixture();
     mkdirSync(join(g.root, ".vercel"));
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(g.root), root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(g.root), root: g.root, recordFile: g.record, prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /\.vercel at the repository root/);
     assert.equal(spy.calls.length, 0);
     assert.match(readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8"), /if \[ -e \.vercel \]/);
@@ -341,7 +341,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     writeFileSync(join(f.app, ".vercel", "project.json"), JSON.stringify({ settings: { framework: "nextjs" } }));
     reviewedTarget(f.root); // a reviewed link before the record (Codex r4 F1)
     writeRecord(f.record, artifactDigest(f.out, f.app), COMMIT, null, f.root);
-    const r1 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+    const r1 = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
     assert.match(!r1.ok ? r1.reason : "", /project\.json without projectId[\s\S]*project\.json without orgId/);
 
     const g = fixture();
@@ -352,7 +352,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     mkdirSync(join(parent, ".vercel"));
     writeFileSync(join(parent, ".vercel", "repo.json"), JSON.stringify({ orgId: "o", projects: [{ id: "p", name: "x", directory: "." }] }));
     const spy = spyRun();
-    const r2 = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(nested), root: nested, recordFile: join(nested, "release", "robinhood-prebuilt.json"), prod: false, run: spy.run, git: cleanGit() });
+    const r2 = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(nested), root: nested, recordFile: join(nested, "release", "robinhood-prebuilt.json"), prod: false, run: spy.run, git: cleanGit() });
     assert.match(!r2.ok ? r2.reason : "", /repo\.json \(a repo link above the project\)/);
     assert.equal(spy.calls.length, 0);
   });
@@ -362,14 +362,14 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
       const f = fixture();
       writeFileSync(join(f.root, rel), body);
       const spy = spyRun();
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", new RegExp(`${rel.replace(".", "\\.")} at the repository root`), rel);
       assert.equal(spy.calls.length, 0);
     }
     for (const rel of ["node_modules/vercel", "app/node_modules/.bin/vercel"]) {
       const f = fixture();
       mkdirSync(join(f.root, rel), { recursive: true });
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spyRun().run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", /a local Vercel CLI that npx would run/, rel);
     }
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
@@ -381,13 +381,13 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const f = fixture();
     let seen: ReleaseRecord | undefined;
     const spy = spyRun(() => { seen = read(f.record); }, "", 1); // the CLI dies without a URL
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.equal(r.ok, false);
     assert.ok(seen?.deployStartedAt, "written before the CLI ran");
     assert.equal(seen?.target, "production");
     assert.equal(seen?.deploymentUrl, null);
     assert.ok(read(f.record).deployStartedAt, "an interrupted deploy stays visible in the record");
-    const again = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: true, run: spyRun().run, git: cleanGit() });
+    const again = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: true, run: spyRun().run, git: cleanGit() });
     assert.match(!again.ok ? again.reason : "", /started at .* and did not finish; check Vercel/);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     // the record comes back to the checkout on ANY exit, and the private TMPDIR is set before any tool (pnpm) runs
@@ -557,10 +557,10 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     // and the deploy step refuses a link that is not the target it is given (the release reads the committed one)
     const f = fixture();
     const spy = spyRun();
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: { vercelOrgId: "team_A", vercelProjectId: "prj_A", vercelSettings: REVIEWED_SETTINGS, vercelEnvNames: REVIEWED_ENV_NAMES }, root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.match(!r.ok ? r.reason : "", /orgId "team_TEST" is not the reviewed target team_A[\s\S]*projectId "prj_TEST" is not the reviewed target prj_A/);
     assert.equal(spy.calls.length, 0, "the CLI never started");
-    const noTarget = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
+    const noTarget = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.match(!noTarget.ok ? noTarget.reason : "", /no reviewed target/, "without a committed ops/release-target.json the deploy refuses");
     // the committed target is the othello-chains project (Joshua 2026-09-30: a new project with a blank Root Directory,
     // no Git link; "othello" stays frozen for Stocklana and its Root Directory "app" would be refused anyway), and the
@@ -647,7 +647,7 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     writeFileSync(f.record, JSON.stringify({ ...rec, fileList: page }, null, 2) + "\n");
     const spy = spyRun();
     const git: Git = { head: () => rec.commit, changed: () => ["release/robinhood-prebuilt.json", page] };
-    const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git });
+    const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git });
     assert.match(!r.ok ? r.reason : "", /file list must be release\/robinhood-prebuilt\.files\.txt, beside the record, not app\/src\/app\/unreviewed\/page\.tsx/);
     assert.equal(spy.calls.length, 0, "the CLI never started");
   });
@@ -685,9 +685,102 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const f = fixture();
     for (const cli of [undefined, join(f.root, "vc.js")]) {
       const spy = spyRun();
-      const r = await deployRecorded({ cli: cli as string, target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: cli as string, target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod: false, run: spy.run, git: cleanGit() });
       assert.match(!r.ok ? r.reason : "", /runs only the verified pinned CLI/);
       assert.equal(spy.calls.length, 0);
     }
   });
 });
+
+describe("the project's variables right before and right after the deploy (Codex r6 F2)", () => {
+  const deploy = (f: ReturnType<typeof fixture>, spy: ReturnType<typeof spyRun>, projectEnv?: ProjectEnv, prod = false) =>
+    deployRecorded({ projectEnv, cli: fakePinnedCli(), target: reviewedTarget(f.root), root: f.root, recordFile: f.record, prod, run: spy.run, git: cleanGit() });
+  const answers = (...a: Awaited<ReturnType<ProjectEnv>>[]): ProjectEnv => { let i = 0; return async () => a[Math.min(i++, a.length - 1)]!; };
+
+  it("an unreviewed variable in the project stops the deploy before Vercel deploys anything", async () => {
+    for (const names of [["NODE_OPTIONS", "SWAP_BINDING_SECRET"], ["NEXT_PUBLIC_SOLANA_RPC"], ["VERCEL_FIRST_DEPLOYMENT"], ["npm_config_registry"]]) {
+      const f = fixture();
+      const spy = spyRun();
+      const r = await deploy(f, spy, answers({ names }));
+      assert.match(!r.ok ? r.reason : "", /the project holds variables the release does not accept: .*nothing was deployed/, names.join());
+      assert.equal(spy.calls.length, 0, "vercel deploy never ran");
+      assert.equal(read(f.record).deployStartedAt, null, "no deploy was started");
+    }
+  });
+
+  it("an unreadable answer stops the deploy (fail closed), and so does no answer from the pinned CLI", async () => {
+    const f = fixture();
+    const spy = spyRun();
+    const r = await deploy(f, spy, answers({ refusal: "the project's variables could not be read from Vercel (exit 1)" }));
+    assert.match(!r.ok ? r.reason : "", /could not be read from Vercel \(exit 1\); nothing was deployed/);
+    assert.equal(spy.calls.length, 0);
+    // without a projectEnv the deploy asks the pinned CLI itself (here a stand-in that prints nothing): no readable
+    // answer, so nothing is deployed
+    const g = fixture();
+    const spy2 = spyRun();
+    const r2 = await deploy(g, spy2);
+    assert.match(!r2.ok ? r2.reason : "", /answer about the project's variables is not readable; nothing was deployed/);
+    assert.equal(spy2.calls.length, 0);
+  });
+
+  it("variables that change while the deploy runs void it and name the deployment", async () => {
+    const afters: Awaited<ReturnType<ProjectEnv>>[] = [{ names: ["NODE_OPTIONS", "SWAP_BINDING_SECRET"] }, { names: [] }, { refusal: "the project's variables could not be read from Vercel (exit 1)" }];
+    for (const after of afters) {
+      for (const prod of [false, true]) {
+        const f = fixture();
+        const spy = spyRun();
+        const r = await deploy(f, spy, answers({ names: ["SWAP_BINDING_SECRET"] }, after), prod);
+        assert.equal(r.ok, false, JSON.stringify(after));
+        assert.match(!r.ok ? r.reason : "", /changed while the deploy ran, so .* may not be the scanned artifact with the reviewed variables/);
+        assert.match(!r.ok ? r.reason : "", "refusal" in after ? /could not be read again after the deploy/ : /the project's variables changed during the deploy/);
+        assert.match(!r.ok ? r.reason : "", prod ? /roll back now/ : /do not use or share it/);
+        assert.equal(read(f.record).voidedDeploymentUrl, DEPLOY_URL);
+        assert.equal(read(f.record).deploymentUrl, null);
+      }
+    }
+  });
+
+  it("unchanged reviewed variables deploy, and the check asks Vercel twice", async () => {
+    const f = fixture();
+    const spy = spyRun();
+    let asked = 0;
+    const r = await deploy(f, spy, async () => { asked++; return { names: ["SWAP_BINDING_SECRET"] }; });
+    assert.equal(r.ok, true, !r.ok ? r.reason : "");
+    assert.equal(asked, 2);
+    assert.equal(read(f.record).deploymentUrl, DEPLOY_URL);
+  });
+});
+
+describe("projectEnvFromCli: the names Vercel holds, never the values", () => {
+  const SECRET = "ciphertext-or-value-that-must-never-be-kept-7c1e";
+  const quiet = (code: number, stdout: string) => {
+    const calls: string[][] = [];
+    const run: Run = async (_cmd, args) => { calls.push(args); return { code, stdout }; };
+    return { run, calls };
+  };
+  const ids = { orgId: "team_kXXQhD4pqG6KG2NfVVFlVOHi", projectId: "prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki" };
+
+  it("asks the project's env endpoint through the pinned CLI and keeps only the names", async () => {
+    const q = quiet(0, JSON.stringify({ envs: [{ key: "SWAP_BINDING_SECRET", value: SECRET, target: ["production"] }, { key: "SWAP_BINDING_SECRET", value: SECRET, target: ["preview"] }], pagination: { next: null } }));
+    const r = await projectEnvFromCli(q.run, "/x/vc.js", "/x/app", ids)();
+    assert.deepEqual(r, { names: ["SWAP_BINDING_SECRET"] });
+    assert.deepEqual(q.calls[0], ["/x/vc.js", "api", `/v10/projects/${ids.projectId}/env?teamId=${ids.orgId}`, "--raw"]);
+    assert.ok(!JSON.stringify(r).includes(SECRET));
+  });
+
+  it("refuses an error, an unreadable answer, a missing list, more pages, or a nameless record, without echoing values", async () => {
+    for (const [code, stdout, want] of [
+      [1, "", /could not be read from Vercel \(exit 1\)/],
+      [0, `not json ${SECRET}`, /is not readable/],
+      [0, JSON.stringify({ error: { message: SECRET } }), /names no project variables list/],
+      [0, JSON.stringify({ envs: [], pagination: { next: 123 } }), /more than one page/],
+      [0, JSON.stringify({ envs: [{ value: SECRET }] }), /has no name/],
+    ] as const) {
+      const r = await projectEnvFromCli(quiet(code, stdout).run, "/x/vc.js", "/x/app", ids)();
+      assert.ok("refusal" in r, stdout);
+      assert.match((r as { refusal: string }).refusal, want);
+      assert.ok(!(r as { refusal: string }).refusal.includes(SECRET), "no value in a refusal");
+    }
+  });
+});
+

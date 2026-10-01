@@ -25,6 +25,43 @@ import { fileURLToPath } from "node:url";
 import { VERCEL_CLI, VERCEL_CLI_INTEGRITY, artifactDigest, cliExtraUploads, gitIn, gitProgramDrivers, uncommittedPaths, uploadSet, type ReleaseRecord } from "./trust-config.ts";
 
 export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: number; stdout: string }>;
+/**
+ * The project's Environment Variable NAMES as Vercel holds them at this moment (Codex code review r6 F2), or why they
+ * could not be read. Values are never kept: only each record's `key` is taken from the answer.
+ */
+export type ProjectEnv = () => Promise<{ names: string[] } | { refusal: string }>;
+/**
+ * Asks Vercel through the verified pinned CLI (`vercel api`, the operator's own login) for the project's variables, with
+ * a runner that never echoes the answer. Any failure, an unreadable or paginated answer, or a record without a string
+ * key is a refusal: the deploy fails closed.
+ */
+export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { orgId: string; projectId: string }): ProjectEnv {
+  return async () => {
+    const path = `/v10/projects/${encodeURIComponent(ids.projectId)}/env?teamId=${encodeURIComponent(ids.orgId)}`;
+    let r: { code: number; stdout: string };
+    try {
+      r = await quiet(process.execPath, [cli, "api", path, "--raw"], app);
+    } catch (e) {
+      return { refusal: `the project's variables could not be read from Vercel (${e instanceof Error ? e.message : e})` };
+    }
+    if (r.code !== 0) return { refusal: `the project's variables could not be read from Vercel (exit ${r.code})` };
+    let j: { envs?: unknown; pagination?: { next?: unknown } };
+    try {
+      j = JSON.parse(r.stdout.slice(r.stdout.indexOf("{")));
+    } catch {
+      return { refusal: "Vercel's answer about the project's variables is not readable" };
+    }
+    if (!Array.isArray(j.envs)) return { refusal: "Vercel's answer names no project variables list" };
+    if (j.pagination?.next !== undefined && j.pagination.next !== null) return { refusal: "the project's variables span more than one page" };
+    const names: string[] = [];
+    for (const e of j.envs) {
+      const key = (e as { key?: unknown })?.key;
+      if (typeof key !== "string" || key === "") return { refusal: "a project variable in Vercel's answer has no name" };
+      names.push(key);
+    }
+    return { names: [...new Set(names)].sort() };
+  };
+}
 export type Git = { head(): string; changed(): string[] };
 export type DeployResult = { ok: true; url: string } | { ok: false; reason: string };
 
@@ -404,6 +441,11 @@ export async function deployRecorded(d: {
   cli?: string;
   /** The reviewed target; the release (main) never passes it, so it is read from the committed ops/release-target.json. */
   target?: ReleaseTarget;
+  /**
+   * How the project's variable names are read before and after the deploy. The release (main) never passes it: the
+   * deploy then asks Vercel through the verified pinned CLI with a runner that echoes nothing. Specs pass their own.
+   */
+  projectEnv?: ProjectEnv;
 }): Promise<DeployResult> {
   const fail = (reason: string): DeployResult => ({ ok: false, reason });
   const retarget = RETARGETING_ENV.filter((k) => (d.env ?? process.env)[k]);
@@ -451,6 +493,20 @@ export async function deployRecorded(d: {
   } catch (e) {
     return fail(`the deploy runs only the verified pinned CLI (ops/release-deploy.ts --install-cli): ${e instanceof Error ? e.message : e}`);
   }
+  // the project's variables reach the deployed functions at deployment time, so the names Vercel holds right now must be
+  // reviewed ones (Codex r6 F2); a NODE_OPTIONS added after the pull would otherwise run in production
+  const t = resolveTarget(d.root, d.target);
+  if ("refusal" in t) return fail(t.refusal);
+  const reviewedNames = reviewedEnvNames(t.target.vercelEnvNames);
+  if ("refusals" in reviewedNames) return fail(reviewedNames.refusals.join("; "));
+  const projectEnv = d.projectEnv ?? projectEnvFromCli(quietRun, cli, app, { orgId: String(t.target.vercelOrgId), projectId: String(t.target.vercelProjectId) });
+  const envBefore = await projectEnv();
+  if ("refusal" in envBefore) return fail(`${envBefore.refusal}; nothing was deployed`);
+  const unreviewed = envBefore.names.filter((n) => !reviewedNames.names.has(n));
+  if (unreviewed.length) {
+    return fail(`the project holds variables the release does not accept: ${unreviewed.join(", ")} (they would reach the deployed functions); ` +
+      "remove them in Vercel, or review them into ops/release-target.json vercelEnvNames; nothing was deployed");
+  }
   // written before Vercel is contacted, so an interrupted deploy still leaves a record that says one may have happened
   const started: ReleaseRecord = { ...rec, deployStartedAt: new Date().toISOString(), target: d.prod ? "production" : "preview" };
   writeRecordAtomically(d.recordFile, started);
@@ -472,6 +528,13 @@ export async function deployRecorded(d: {
   } catch (e) {
     problems = [`the check after the upload could not run: ${e instanceof Error ? e.message : e}`];
   }
+  // and the project's variables must still be the ones checked before the deploy: a change while it ran may have reached
+  // the deployment (Codex r6 F2)
+  const envAfter = await projectEnv();
+  if ("refusal" in envAfter) problems.push(`the project's variables could not be read again after the deploy: ${envAfter.refusal}`);
+  else if (envAfter.names.join("\n") !== envBefore.names.join("\n")) {
+    problems.push(`the project's variables changed during the deploy: before ${envBefore.names.join(", ") || "(none)"}, after ${envAfter.names.join(", ") || "(none)"}`);
+  }
   if (problems.length) {
     const undo = d.prod
       ? `it is already live in production: roll back now (node ${cli} rollback) and release again`
@@ -484,7 +547,8 @@ export async function deployRecorded(d: {
       unrecorded = ` (the record could not be updated: ${e instanceof Error ? e.message : e}; note this URL yourself)`;
     }
     return fail(
-      `files changed while they were uploading, so ${url} may not be the scanned artifact; ${undo}${unrecorded}.\n` +
+      `files or the project's variables changed while the deploy ran, so ${url} may not be the scanned artifact with the reviewed ` +
+        `variables; ${undo}${unrecorded}.\n` +
         problems.slice(0, 20).join("\n"),
     );
   }
@@ -502,6 +566,16 @@ const run: Run = (cmd, args, cwd) =>
       stdout += b.toString();
       process.stdout.write(b);
     });
+    p.on("error", reject);
+    p.on("close", (code) => done({ code: code ?? 1, stdout }));
+  });
+
+/** Like run, but nothing the command prints is echoed: Vercel's answer about the project's variables stays in the process. */
+const quietRun: Run = (cmd, args, cwd) =>
+  new Promise((done, reject) => {
+    const p = spawn(cmd, args, { cwd, env: deployEnv(process.env), stdio: ["ignore", "pipe", "ignore"] });
+    let stdout = "";
+    p.stdout.on("data", (b: Buffer) => { stdout += b.toString(); });
     p.on("error", reject);
     p.on("close", (code) => done({ code: code ?? 1, stdout }));
   });

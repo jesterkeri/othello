@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { ProjectEnv } from "../ops/release-deploy.ts";
 import { VERCEL_CLI } from "../ops/trust-config.ts";
 import { REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
 
@@ -62,3 +63,9 @@ export function commitTarget(root: string, target: object): void {
   git("add", "ops/release-target.json");
   git("commit", "-q", "-m", "reviewed target");
 }
+
+/**
+ * What Vercel answers, in the deploy's check right before and right after the deploy (Codex r6 F2), for a project that
+ * holds only reviewed variables: the othello-chains project holds SWAP_BINDING_SECRET alone.
+ */
+export const reviewedProjectEnv: ProjectEnv = async () => ({ names: ["SWAP_BINDING_SECRET"] });

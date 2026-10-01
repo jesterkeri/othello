@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { deployRecorded, type Git, type Run } from "../ops/release-deploy.ts";
-import { fakePinnedCli, reviewedTarget } from "./fake-pinned-cli.ts";
+import { fakePinnedCli, reviewedProjectEnv, reviewedTarget } from "./fake-pinned-cli.ts";
 import { VERCEL_CLI, artifactDigest, writeRecord } from "../ops/trust-config.ts";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";
@@ -39,7 +39,7 @@ describe("adversary: a voided deployment whose record cannot be written", () => 
     };
     let reason: string;
     try {
-      const r = await deployRecorded({ cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: true, run, git });
+      const r = await deployRecorded({ projectEnv: reviewedProjectEnv, cli: fakePinnedCli(), target: reviewedTarget(root), root, recordFile: record, prod: true, run, git });
       reason = r.ok ? `ok: recorded as deployed ${r.url}` : r.reason;
     } catch (e) {
       reason = `threw: ${e instanceof Error ? e.message : e}`;
