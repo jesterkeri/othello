@@ -711,3 +711,13 @@ clone --no-local source side (uploadpack.packObjectsHook, core.alternateRefsComm
 gitProxy, credential.helper, gpg.program with log.showSignature, pager, editor, diff.external, fsmonitor, bundle URIs:
 nothing ran), lazy fetch, the Vercel CLI's git calls, the regex against this repository's real config (no match), and
 the tree and index reads failing.
+
+## F-35. Seventh adversary pass, on cf03f94: the locale hid a driver name
+
+The script keeps LANG/LC_ALL (Ubuntu's default C.UTF-8), and under a UTF-8 locale git's regex `.` matches no byte that
+is not valid UTF-8, so `config --get-regexp` did not list `filter.\xff.clean`; the first status ran it and the release
+deployed. gitIn (PATH only, so the C locale) did list it: the two copies disagreed (spec kept:
+tests/release-script-non-utf8-driver-name-adversary.spec.ts). Every safe_git call now runs with `LC_ALL=C`, and gitIn's
+environment names `LC_ALL=C` explicitly. Passed (the report's list): empty, dot, space, quote, case and valid unicode
+names; no false positive on an ordinary clone; the two widened specs are not vacuous (each refusal message is printed
+only on a refusal, and each spec also asserts the exit, the sentinel and the upload).

@@ -639,7 +639,7 @@ export async function usdgMatches(): Promise<string[]> {
 function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned: string[] } {
   const real = realpathSync(root);
   const env: NodeJS.ProcessEnv = {
-    PATH: process.env.PATH,
+    PATH: process.env.PATH, LC_ALL: "C", // the C locale: git's regex then matches any byte in a name (adversary pass on cf03f94)
     GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1", GIT_NO_LAZY_FETCH: "1",
     GIT_CEILING_DIRECTORIES: dirname(real),
   };

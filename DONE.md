@@ -3235,3 +3235,9 @@ driver and remote name in both copies (evm/ARB-FINDINGS.md F-34). Specs kept (th
 release). verify: release-deploy + settings specs `44 passing (4s)`. On a76e46a/f870a48 before it: fast `128 passing (3m)`,
 sealed 18/18 (three needed a rerun: one Google Fonts ETIMEDOUT, two specs widened to the earlier refusal: `3 passing (2m)`).
 
+## A1 seventh adversary pass, on cf03f94: one defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. Under a UTF-8 locale the refused-config regex skipped a driver name with a non-UTF-8 byte. Fix: LC_ALL=C
+for every safe_git call and explicitly in gitIn (evm/ARB-FINDINGS.md F-35). Spec kept. verify: release-deploy + settings
+specs `44 passing (4s)`; CI on f870a48: 5/5 success.
+

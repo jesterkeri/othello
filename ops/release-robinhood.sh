@@ -40,7 +40,9 @@ if [ -n "$extra" ]; then echo "release: the environment holds more than the rele
 # git calls get the same variables (ops/release-deploy.ts deployEnv).
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1 GIT_NO_LAZY_FETCH=1
 safe_git() {
-  git --no-pager --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
+  # the C locale: under a UTF-8 one git's regex skips a name that is not valid UTF-8, so the refused-config check below
+  # would miss a driver named with such a byte (adversary pass on cf03f94); gitIn runs in the C locale too (PATH only)
+  LC_ALL=C git --no-pager --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
     -c core.excludesFile=/dev/null -c core.attributesFile=/dev/null "$@"
 }
 # the repository the script belongs to, wherever it is run from
