@@ -3200,3 +3200,9 @@ while one exists); git program drivers refused by the script and by gitIn; app/p
 to equal the reviewed nodeVersion. verify: release unit specs 122 passing (two real-build specs failed once on Google
 Fonts ETIMEDOUT and passed on rerun: `7 passing (1m)`), tsc clean; sealed real-script specs below.
 
+## A1 second adversary pass, on 4570ded: two defects, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECTS. (1) a submodule's own filter driver ran on the clean-checkout status; (2) a repository core.pager ran
+when a refusal was printed on a terminal. Fix: --ignore-submodules=all on the script's status calls and uncommittedPaths;
+--no-pager in safe_git and gitIn (evm/ARB-FINDINGS.md F-30). Specs kept.
+

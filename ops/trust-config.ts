@@ -644,7 +644,7 @@ function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned
     GIT_CEILING_DIRECTORIES: dirname(real),
   };
   const pinned = [
-    "--no-replace-objects", "-C", real, `--git-dir=${join(real, ".git")}`, `--work-tree=${real}`,
+    "--no-pager", "--no-replace-objects", "-C", real, `--git-dir=${join(real, ".git")}`, `--work-tree=${real}`,
     "-c", "core.excludesFile=/dev/null", "-c", "core.attributesFile=/dev/null", "-c", "core.fsmonitor=false",
     "-c", "core.untrackedCache=false", "-c", "core.hooksPath=/dev/null", "-c", "status.showUntrackedFiles=all",
     "-c", "core.trustctime=true", "-c", "core.checkStat=default", "-c", "core.ignoreCase=false",
@@ -739,7 +739,9 @@ export function sourceDrift(root: string): string[] {
 
 /** Changed, untracked or drifted paths: git's status (every untracked file) together with sourceDrift. */
 export function uncommittedPaths(root: string): string[] {
-  const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all"]).split("\n").filter(Boolean).map((l) => l.slice(3));
+  // submodules are not looked into (a status inside one reads its own config, filter drivers included; adversary pass on
+  // 4570ded): they are no build input, the sealed release's clone initialises its own from the commit's gitlinks
+  const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all", "--ignore-submodules=all"]).split("\n").filter(Boolean).map((l) => l.slice(3));
   return [...new Set([...status, ...sourceDrift(root)])].sort();
 }
 

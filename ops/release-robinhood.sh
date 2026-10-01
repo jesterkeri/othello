@@ -34,11 +34,12 @@ extra="$(env | cut -d= -f1 | grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|REL
 if [ -n "$extra" ]; then echo "release: the environment holds more than the release allows ($(echo $extra)); run it plainly" >&2; exit 1; fi
 # git, from its first call (Codex r5 F2): no system or global configuration (HOME's .gitconfig, XDG's git/config), no
 # replace refs, and the settings that run a program (core.fsmonitor, hooks) or change what status reports (the user's
-# ignore and attributes files, the untracked cache) overridden. Every git call below is safe_git; the Vercel CLI's own git
-# calls get the same variables (ops/release-deploy.ts deployEnv).
+# ignore and attributes files, the untracked cache) overridden, and no pager (a repository's core.pager would run when a
+# refusal is printed on a terminal; adversary pass on 4570ded). Every git call below is safe_git; the Vercel CLI's own
+# git calls get the same variables (ops/release-deploy.ts deployEnv).
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1
 safe_git() {
-  git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
+  git --no-pager --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false -c core.hooksPath=/dev/null \
     -c core.excludesFile=/dev/null -c core.attributesFile=/dev/null "$@"
 }
 # the repository the script belongs to, wherever it is run from
@@ -48,9 +49,12 @@ cd "$(dirname "$SCRIPT")/.." && cd "$(safe_git rev-parse --show-toplevel)"
 # ce04cd9). Reading config runs nothing.
 drivers="$(safe_git config --get-regexp '^(filter\..+\.(clean|smudge|process)|diff\..+\.(textconv|command)|merge\..+\.driver|diff\.external)$' | cut -d' ' -f1 || true)"
 if [ -n "$drivers" ]; then echo "release: the repository's own config names programs that would run during its checks ($(echo $drivers)); remove them" >&2; exit 1; fi
-if [ -n "$(safe_git status --porcelain --untracked-files=all)" ]; then
+# submodules are not looked into: git would run a status inside each with that submodule's own config (its filter
+# drivers included; adversary pass on 4570ded), and they are no build input here: the fresh clone below initialises its
+# own from the commit's pinned gitlinks
+if [ -n "$(safe_git status --porcelain --untracked-files=all --ignore-submodules=all)" ]; then
   echo "release: commit, discard or remove changes and untracked files first; a release is built from a commit" >&2
-  safe_git status --short >&2; exit 1
+  safe_git status --short --ignore-submodules=all >&2; exit 1
 fi
 if [ -e .vercel ]; then echo "release: a .vercel folder at the repository root can move the Vercel CLI's project root; remove it" >&2; exit 1; fi
 for f in vercel.* now.* VERCEL.* Vercel.*; do

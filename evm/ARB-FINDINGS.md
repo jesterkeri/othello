@@ -638,3 +638,19 @@ switch turns drivers off. The script and every TypeScript git call (gitIn, and t
 repository whose config (includes followed) names a filter, textconv/external diff or merge driver. **Suspicion
 confirmed:** app/package.json `engines.node ">=22"` outranks the project's Node.js setting (the release log said 24.x
 would be used); app/package.json now pins `"22.x"` and the preflight requires it to equal the reviewed nodeVersion.
+
+## F-30. Second adversary pass, on 4570ded: a submodule's own filter driver; a repository pager
+
+Both proven against the real script in the sealed harness (specs kept: tests/release-script-submodule-filter-adversary.spec.ts,
+tests/release-script-repo-pager-adversary.spec.ts). (1) The clean-checkout `git status` ran a status inside every
+initialised submodule, which reads that submodule's own config (`.git/modules/<path>/config`): a filter driver planted
+there ran, and F-29's driver check reads only the superproject's config. Submodules are no build input here (the fresh
+clone initialises its own from the commit's pinned gitlinks; an index-only gitlink change is not in HEAD, which is what
+is cloned), so the script's two status calls and `uncommittedPaths` now pass `--ignore-submodules=all` and never look
+into one. (2) `safe_git status --short >&2` on a terminal started the pager named by the repository's `core.pager`
+(`pager.status=true`): safe_git and gitIn now pass `--no-pager`. Passed (the report's list): every pulled env file name
+and value-parsing trick, the pull's key merge, a write between the drop and the build, extra settings keys, the
+flags-definitions fetch, driver case/include tricks, the engines pin. Stated limit (the pass's unproven suspicion):
+`--record` run on its own checks the target, settings and the recorded bytes, not the project's variables at that
+moment or the output's function runtime; the documented route runs it right after the build whose preflight did, and a
+variable added in Vercel after the pull is outside what any release check can see (a snapshot, like the settings).

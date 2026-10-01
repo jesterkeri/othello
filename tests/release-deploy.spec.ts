@@ -448,10 +448,10 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     const firstGit = code.findIndex((l) => /\bgit\b/.test(l.replace(/safe_git/g, "")) || /safe_git /.test(l));
     const sealed = code.findIndex((l) => l === "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_NO_REPLACE_OBJECTS=1");
     assert.ok(sealed >= 0 && sealed < firstGit, "git's configuration is sealed before the first git call");
-    const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*git --no-replace-objects -c core\.fsmonitor=false/.test(l));
+    const bare = code.filter((l) => /(^|[\s;&|(`$])git\s/.test(l) && !/^\s*git --no-pager --no-replace-objects -c core\.fsmonitor=false/.test(l));
     assert.deepEqual(bare, [], "every git call goes through safe_git");
     const wrapper = script.slice(script.indexOf("safe_git() {"), script.indexOf("}", script.indexOf("safe_git() {")));
-    for (const c of ["--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null"]) {
+    for (const c of ["--no-pager", "--no-replace-objects", "core.fsmonitor=false", "core.untrackedCache=false", "core.hooksPath=/dev/null", "core.excludesFile=/dev/null", "core.attributesFile=/dev/null"]) {
       assert.ok(wrapper.includes(c), `safe_git sets ${c}`);
     }
     // the whole release runs in an environment of only the listed variables (npm_config_*, GIT_*, NODE_* … dropped)
