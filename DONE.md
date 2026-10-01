@@ -3246,3 +3246,10 @@ reviewed: n/a yet (86afb72 is under Codex review r6; this follow-up goes to the 
 adversary: DEFECT. The script's grep read git's raw path output in a UTF-8 locale and dropped a non-UTF-8 gitlink line.
 Fix: export LC_ALL=C after the environment seal; safe_git passes core.quotePath=true (evm/ARB-FINDINGS.md F-36). Spec kept.
 
+## A1 ninth adversary pass, on 7552f17 (side branch): two defects fixed, one stated limit (2026-10-01)
+reviewed: n/a yet (follow-ups to the r6 target 86afb72; next Codex round)
+adversary: DEFECTS. The environment check's grep ran before LC_ALL=C; the CI triggers missed the root package.json,
+lockfile, tsconfig and .gitmodules. Fixed: the export moved above the check; triggers added. Stated limit: a caller shell
+that already exports functions or BASH_ENV (evm/ARB-FINDINGS.md F-37). Specs kept. verify: kept specs + release unit
+specs `47 passing (4s)`.
+

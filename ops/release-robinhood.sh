@@ -29,13 +29,13 @@ if [ "${RELEASE_ENV_SEALED:-}" != 1 ]; then
   done
   exec env -i "${keep[@]}" bash "$SCRIPT" "$@"
 fi
+# every tool from here on, the environment check included, matches and parses in the C locale: under a UTF-8 one grep
+# drops a line that is not valid UTF-8 (a path git printed raw, a variable name), so a check could pass what it should
+# refuse (adversary passes on 86afb72 and 7552f17). LC_ALL is on the allowed list.
+export LC_ALL=C
 # the flag is not trusted: the environment itself must hold nothing but the allowed variables (and bash's own)
 extra="$(env | cut -d= -f1 | grep -vxE "$(IFS='|'; echo "${ALLOWED_ENV[*]}")|RELEASE_ENV_SEALED|PWD|OLDPWD|SHLVL|_" || true)"
 if [ -n "$extra" ]; then echo "release: the environment holds more than the release allows ($(echo $extra)); run it plainly" >&2; exit 1; fi
-# every tool from here on matches and parses in the C locale: under a UTF-8 one grep drops an output line that is not
-# valid UTF-8 (a path git printed raw), so a check reading git's output could pass what it should refuse (adversary
-# pass on 86afb72)
-export LC_ALL=C
 # git, from its first call (Codex r5 F2): no system or global configuration (HOME's .gitconfig, XDG's git/config), no
 # replace refs, no lazy fetch of a missing object (in a partial clone a tree read would start the configured
 # upload-pack; adversary pass on 12f1cb7), and the settings that run a program (core.fsmonitor, hooks) or change what status reports (the user's

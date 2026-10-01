@@ -736,3 +736,20 @@ LC_ALL=C; NUL and newline in a driver name (git refuses or never reaches them); 
 call outside safe_git or gitIn. Stated limit (the pass's unproven suspicion): trust-config decodes git's `-z` output
 and directory names as UTF-8, so a path that is not valid UTF-8 becomes U+FFFD; the observed effect is a failed lstat
 (the release stops), not a pass.
+
+## F-37. Ninth adversary pass, on 7552f17: the environment check's locale; CI triggers; a stated limit
+
+(1) `export LC_ALL=C` came after the environment check, whose grep ran in the caller's locale: under C.UTF-8 an extra
+variable whose name is not valid UTF-8 was dropped by grep and passed the check it fails under C (spec kept:
+tests/release-script-locale-env-seal-adversary.spec.ts). The export now comes before that check (LC_ALL is on the
+allowed list). (2) The CI path triggers missed root inputs of the release (package.json, pnpm-lock.yaml, tsconfig.json,
+.gitmodules: the clone's root install, tsx's config, the submodule list), so a lockfile-only change ran no release spec;
+they are listed now (spec kept: tests/release-ci-path-triggers-adversary.spec.ts, which parses the workflow's lists).
+(3) Stated limit, not fixed (the pass's unproven item, older than this diff): a caller whose own environment already
+exports bash functions (BASH_FUNC_*) or a BASH_ENV file, and who sets RELEASE_ENV_SEALED=1 to skip the re-exec, runs code
+before or inside the script's checks. That is code already running as the operator in the operator's shell; the
+script's environment seal guards against accidental configuration variables (npm_config_*, NODE_OPTIONS, GIT_*), not
+against a compromised shell, which no script it starts can defend against. Passed (the report's list): the gitlink and
+driver checks with forced quoting, the status and record greps, the locale reaching the CLI and git children, a normal
+release end to end under the forced C locale (59 s), and the built bytes (node's default Intl locale is en-US under C
+and C.UTF-8; nothing formats dates or numbers at build time).
