@@ -601,3 +601,19 @@ with no system or global configuration (`deployEnv`). Specs: tests/release-deplo
 two that run the real script sealed: tests/release-script-pulled-settings.spec.ts (the pinned CLI runs a planted install
 command; the release never starts the build on it) and tests/release-script-global-git-config.spec.ts (a planted
 fsmonitor in HOME and XDG config runs on a plain `git status` and never during the release).
+
+## F-28. The release target is the othello-chains project (the target change r5 asked to review after F1)
+
+Joshua's decision (2026-09-30): a new Vercel project `othello-chains` in the same team (`team_kXXQhD4pqG6KG2NfVVFlVOHi`),
+no Git connection, blank Root Directory, env values set only in Vercel, a fresh SWAP_BINDING_SECRET; `othello` stays
+frozen for Stocklana (and its Root Directory `app` would be refused by the release anyway). Created 2026-10-01 through
+the Vercel API with the logged-in CLI (`vercel api`, no token handled): `prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki`, framework
+nextjs, install command `""` (set by PATCH: the create call stores `""` as null), no build/output/dev override, no root
+directory, directory listing off, Node 22.x, Web Analytics off. `vercel link` in app/ wrote the ids; `vercel pull
+--environment=preview` wrote the settings, and releaseTargetRefusals with these ids and the committed vercelSettings
+returns no refusal (the pulled document is the reviewed one exactly, including `installCommand: ""`). Env: only
+SWAP_BINDING_SECRET (Secret type, Production and Preview, each a fresh `openssl rand -hex 32` piped into `vercel env
+add`, never displayed); MAINNET_RPC_URL and DEVNET_RPC_URL unset (the app falls back to the public endpoints);
+NEXT_PUBLIC_SOLANA_RPC unset (anything NEXT_PUBLIC_ is inlined into the bundle). Deployment protection as created:
+`ssoProtection.deploymentType = all_except_custom_domains` (Joshua decides the public policy before the release).
+ops/release-target.json now names this project; the spec pinning the committed ids follows.

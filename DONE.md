@@ -3185,3 +3185,9 @@ reviewed settings document, enforced after the pull before the build, scan and d
 git-sealed deployEnv for the CLI. Also: the 13 older A1 entries now name their review (scripts/check-reviews.sh: reviews
 ok). verify: release unit specs `120 passing (2m)` (tsc clean); sealed real-script specs below.
 
+## A1 release target: the othello-chains Vercel project (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in the next round; r5 named what this change must show)
+Created through the Vercel API with the reviewed settings (evm/ARB-FINDINGS.md F-28), linked and pulled in app/; the
+release's own check on the pulled link with these ids and the committed vercelSettings: `the pulled othello-chains
+settings are exactly the reviewed document: no refusal`. ops/release-target.json now names prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki.
+

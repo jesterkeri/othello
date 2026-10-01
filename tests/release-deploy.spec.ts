@@ -557,9 +557,12 @@ describe("release deploy: only the recorded bytes, with the pinned CLI", () => {
     assert.equal(spy.calls.length, 0, "the CLI never started");
     const noTarget = await deployRecorded({ cli: fakePinnedCli(), root: f.root, recordFile: f.record, prod: true, run: spy.run, git: cleanGit() });
     assert.match(!noTarget.ok ? noTarget.reason : "", /no reviewed target/, "without a committed ops/release-target.json the deploy refuses");
-    // the committed target is the othello project, and the script checks it before pull and again after build
+    // the committed target is the othello-chains project (Joshua 2026-09-30: a new project with a blank Root Directory,
+    // no Git link; "othello" stays frozen for Stocklana and its Root Directory "app" would be refused anyway), and the
+    // script checks it before pull and again after build
     const committed = JSON.parse(readFileSync(join(REPO, "ops/release-target.json"), "utf8"));
-    assert.deepEqual([committed.vercelOrgId, committed.vercelProjectId], ["team_kXXQhD4pqG6KG2NfVVFlVOHi", "prj_ZCQ6bP09jJeMX1wOwg7ErhJe8wB8"]);
+    assert.deepEqual([committed.vercelOrgId, committed.vercelProjectId, committed.vercelProjectName],
+      ["team_kXXQhD4pqG6KG2NfVVFlVOHi", "prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki", "othello-chains"]);
     const script = readFileSync(join(REPO, "ops/release-robinhood.sh"), "utf8");
     assert.match(script, /--preflight[^\n]*\n[\s\S]*-- pull [\s\S]*-- build [^\n]*\n"\$\{TSX\[@\]\}" ops\/release-deploy\.ts --preflight[\s\S]*--record release/);
   });
