@@ -44,7 +44,7 @@ describe("trust-config (ops/trust-config.ts)", function () {
 
   const receipt = (address: Address, args: string[] = [USDG], chainId = 46630) => ({
     chain: chainId,
-    commit: "abc1234",
+    commit: "3429255",
     transactions: [{ hash: address === factory ? deployTx : deployTxOther, transactionType: "CREATE", contractName: "OthelloFactory", contractAddress: address, arguments: args }],
     receipts: [{ contractAddress: address, status: "0x1" }],
   });
@@ -118,6 +118,19 @@ describe("trust-config (ops/trust-config.ts)", function () {
     const i = good();
     i.receipt = receipt(other);
     assert.match(verify(i).join(), /receipt deployed .* config says/);
+  });
+
+  it("fails when the receipt names a commit other than the pinned deployed one (adversary pass on 3803cdd)", () => {
+    for (const c of ["abc1234", "3429256", "", "3429255c44fb3d20a194ca1186b7af6b7a17b96x", undefined]) {
+      const i = good();
+      (i.receipt as { commit?: string }).commit = c;
+      assert.match(verify(i).join(), /is not the reviewed deployed commit 3429255c44fb3d20a194ca1186b7af6b7a17b962/, String(c));
+    }
+    for (const c of ["3429255", "3429255c44fb3d20a194ca1186b7af6b7a17b962"]) {
+      const i = good();
+      (i.receipt as { commit?: string }).commit = c;
+      assert.deepEqual(verify(i), [], c);
+    }
   });
 
   it("fails when the receipt is for another chain", () => {

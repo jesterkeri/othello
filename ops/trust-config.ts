@@ -6,7 +6,8 @@
  *   1. the committed broadcast receipt (evm/broadcast/DeployFactory.s.sol/46630/run-latest.json) is for chain
  *      46630, has one successful CREATE of OthelloFactory with constructor argument USDG, and its
  *      contractAddress equals the config address;
- *   2. the receipt's commit (the reviewed commit Joshua deployed from) is an ancestor of HEAD, and since it nothing
+ *   2. the receipt's commit is DEPLOYED_COMMIT (pinned here: the reviewed commit Joshua deployed from), which is an
+ *      ancestor of HEAD, and since it nothing
  *      in the contract bundle or what builds it changed (CONTRACT_BUNDLE: evm/src, evm/script, evm/test, core/, the
  *      pinned libraries and the Foundry config). ARB-DESIGN r11 §8: the contracts are fixed by G-D1 and the deploy;
  *      the page bundle (the app, its trust config, the release tooling and this gate) may change after the deploy,
@@ -46,6 +47,17 @@ export const VERCEL_CLI = "59.11.7";
 /** Its registry integrity; ops/vercel-cli/package-lock.json pins it and the whole dependency tree for `npm ci`. */
 export const VERCEL_CLI_INTEGRITY = "sha512-C+L/JKmlGDypKGcTU/atckydeK/AKa/7fKwUbvcwveguV1QPlY8beiIGgbwkdbb80bbIpPFHRQYrhi5XPAmCBA==";
 export const USDG: Address = "0x7E955252E15c84f5768B83c41a71F9eba181802F";
+/**
+ * The reviewed commit the factory was deployed from (code review r7: G-D1 SHIP, deployed 2026-10-02 by
+ * DeployFactory.s.sol). Rule 2 measures the contract-bundle freeze from here, never from the receipt's own "commit"
+ * field, which a later commit could rewrite to point past a bundle change (adversary pass on 3803cdd); the receipt
+ * must name this commit. A new deploy needs a new G-D1, and this pin changes with it, in a reviewed commit.
+ */
+export const DEPLOYED_COMMIT = "3429255c44fb3d20a194ca1186b7af6b7a17b962";
+
+/** The receipt names the pinned deployed commit (Foundry records it abbreviated). */
+export const receiptCommitIsDeployed = (c: unknown): boolean =>
+  typeof c === "string" && /^[0-9a-f]{7,40}$/.test(c) && DEPLOYED_COMMIT.startsWith(c);
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const PATHS = {
   config: `${ROOT}app/src/lib/robinhood/config.ts`,
@@ -847,6 +859,7 @@ export function verify(i: Inputs): string[] {
   const r = i.receipt;
   if (!r) return ["TRUSTED_FACTORY is set but the broadcast receipt is missing"];
   if (r.chain !== ROBINHOOD_TESTNET_ID) f.push(`receipt chain is ${r.chain}, not ${ROBINHOOD_TESTNET_ID}`);
+  if (!receiptCommitIsDeployed(r.commit)) f.push(`receipt commit ${r.commit ?? "(none)"} is not the reviewed deployed commit ${DEPLOYED_COMMIT}`);
   const creates = (r.transactions ?? []).filter((t) => t.transactionType === "CREATE" && t.contractName === "OthelloFactory");
   if (creates.length !== 1) f.push(`receipt has ${creates.length} OthelloFactory CREATEs, need exactly 1`);
   const tx = creates[0];
@@ -972,7 +985,7 @@ async function main() {
   }
   const failures = verify({
     config, receipt, artifact, chainCode, chainId, chainDeployTx, chainDeployReceipt, trustSources,
-    changedSinceReceipt: changedSince(receipt?.commit),
+    changedSinceReceipt: changedSince(DEPLOYED_COMMIT),
   });
   if (failures.length) {
     console.error("trust-config FAILED:\n- " + failures.join("\n- "));
