@@ -3279,3 +3279,11 @@ resolved with realpath -e and kept resolved; /usr/bin/git in gitIn. F2: both var
 hidden-count refusal, record fingerprint after the deploy; Linux-only guard (evm/ARB-FINDINGS.md F-41). Specs kept.
 verify: release-deploy + PATH specs `42 passing (1s)`; symlink spec `2 passing (215ms)`.
 
+## A1 adversary pass on 7afd45e (r7 target): three defects fixed on task/A1-r7-followups; CI tool cache (2026-10-02)
+reviewed: n/a yet (7afd45e is under Codex review r7; these go to the next round)
+adversary: DEFECTS. Program links into writable folders; parent owners; a missing hidden count. Fix: per-program link
+walk, own_dir with owners, hidden count required, wider fingerprint (evm/ARB-FINDINGS.md F-42). CI on 7afd45e: the
+release-script specs failed because the hosted runner's tool cache is writable by others; the CI job now tightens it and
+the release names each dropped PATH entry. verify: 7afd45e locally: fast `145 passing (2m)`, sealed `24 passing (11m)`;
+this branch: fast `148 passing (2m)`, PATH specs `8 passing`.
+

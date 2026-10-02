@@ -817,3 +817,22 @@ today), refuses a project list that reports hidden production variables (`hidden
 check after the deploy compares a fingerprint of every record (source, id, name, targets, last change time; never a
 value), so an edit to a reviewed variable or a new record of one during the deploy voids it too. Also: the release now
 refuses to run anywhere but Linux (it relies on GNU tools at /usr/bin; macOS has neither /usr/bin/mkdir nor stat -c).
+
+## F-42. Adversary pass on 7afd45e (the r7 target): program links, parent owners, the hidden count; CI's tool cache
+
+Three defects (specs kept: tests/release-script-path-program-link-adversary.spec.ts,
+tests/release-script-path-parent-owner-adversary.spec.ts, tests/release-deploy-hidden-count-adversary.spec.ts). (1) The
+PATH filter checked folders, never the program a lookup finds: the operator's own 755 folder holding `pnpm -> <a 0777
+folder>/pnpm` was kept and the planted pnpm ran. Each program the release takes from PATH (node, npm, pnpm, forge) is
+now followed link by link: every folder a hop lives in must be an own folder, and the file it ends at must belong to
+the operator or root and not be writable by group or others; otherwise the release stops. (2) Parent folders were
+judged by mode only: one owned by another user (755, or 1777 sticky) passed, though its owner can always swap the folder
+below. One check (own_dir) now requires the folder and every folder above it to belong to the operator or root, the
+folder to be unwritable by group/others, and a folder above to be writable by them only with the sticky bit. (3) A
+project list without `hiddenProductionEnvCount` was taken as complete: the count must now be reported and be 0. From the
+pass's suspicion: the record fingerprint also covers type, gitBranch, customEnvironmentIds, comment and configurationId.
+Also: CI on 7afd45e failed only in the release-script specs, because GitHub's hosted runner keeps node and the globally
+installed pnpm under /opt/hostedtoolcache, which other users can write, so the release (correctly) dropped those PATH
+folders and found no pnpm (local: 24 sealed specs passing on 7afd45e). The release now names each PATH entry it drops and
+why, and the CI job prints its PATH folders' owners and modes and removes group/other write from the tool cache before
+the release specs run. The real toolchain here passes: node, npm and pnpm under ~/.nvm and forge under ~/.foundry.

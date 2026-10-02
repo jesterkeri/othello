@@ -42,33 +42,69 @@ fi
 # system tools the release itself uses (git, env, grep, cut, sort, mkdir, cp, rm, mktemp, chmod, dirname, readlink, stat,
 # id, bash) are run by absolute path, so PATH only ever supplies the operator's own toolchain. Builtins only here.
 me="$(/usr/bin/id -u)"
+# a folder is the operator's own when it and every folder above it belong to the operator or root, it cannot be written
+# by group or others, and a folder above can be only with the sticky bit (which stops others, not that folder's owner:
+# hence the owner rule for every folder above too; adversary pass on 7afd45e)
+own_dir() {
+  local d="$1" o m first=1
+  while :; do
+    read -r o m <<< "$(/usr/bin/stat -L -c '%u %a' -- "$d" 2>/dev/null)" || return 1
+    [ -n "$m" ] || return 1
+    { [ "$o" = "$me" ] || [ "$o" = 0 ]; } || return 1
+    if (( 8#$m & 8#022 )); then
+      [ "$first" = 1 ] && return 1
+      (( 8#$m & 8#1000 )) || return 1
+    fi
+    first=0
+    [ "$d" = / ] && return 0
+    d="${d%/*}"; [ -n "$d" ] || d=/
+  done
+}
 safe_path=""
 dropped=0
 rest="$PATH"
 while :; do
   d="${rest%%:*}"
-  keep=0
   # judged and kept as the folder it resolves to, once: a link (or /proc/self/cwd) would otherwise be checked by its
   # name and resolved again at every lookup, into a folder the checks never saw (adversary pass on 275f514)
-  if [ "${d#/}" != "$d" ] && d="$(/usr/bin/realpath -e -- "$d" 2>/dev/null)" && [ -d "$d" ]; then
-    read -r owner mode <<< "$(/usr/bin/stat -L -c '%u %a' -- "$d")"
-    if { [ "$owner" = "$me" ] || [ "$owner" = 0 ]; } && ! (( 8#$mode & 8#022 )); then
-      keep=1
-      up="$d"
-      while [ "$up" != / ]; do
-        up="${up%/*}"; [ -n "$up" ] || up=/
-        read -r umode <<< "$(/usr/bin/stat -L -c '%a' -- "$up")"
-        if (( 8#$umode & 8#022 )) && ! (( 8#$umode & 8#1000 )); then keep=0; break; fi
-      done
-    fi
+  why=""
+  if [ "${d#/}" = "$d" ]; then why="relative or empty"
+  elif ! r="$(/usr/bin/realpath -e -- "$d" 2>/dev/null)" || [ ! -d "$r" ]; then why="missing"
+  elif ! own_dir "$r"; then why="another user's, or it or a folder above it writable by others"
   fi
-  if [ "$keep" = 1 ]; then safe_path="${safe_path:+$safe_path:}$d"; else dropped=$((dropped + 1)); fi
+  if [ -z "$why" ]; then
+    safe_path="${safe_path:+$safe_path:}$r"
+  else
+    dropped=$((dropped + 1))
+    echo "release: not using PATH entry \"$d\" ($why)" >&2
+  fi
   [ "$rest" = "${rest#*:}" ] && break
   rest="${rest#*:}"
 done
 if [ "$dropped" -gt 0 ]; then echo "release: $dropped PATH entries that are not the operator's own (relative, missing, another user's, or writable by others) are not used" >&2; fi
 [ -n "$safe_path" ] || { echo "release: no PATH folder is the operator's own; nothing can run" >&2; exit 1; }
 export PATH="$safe_path"
+# the operator's toolchain that the release takes from PATH must itself be the operator's: each program is followed link
+# by link, every folder a hop lives in must be an own folder, and the file it ends at must belong to the operator or root
+# and not be writable by group or others (a kept folder can hold a link into one others can write to; adversary pass on
+# 7afd45e). Builtins and absolute paths only.
+for tool in node npm pnpm forge; do
+  cur="$(type -P "$tool" || true)"
+  [ -n "$cur" ] || continue
+  hops=0
+  while :; do
+    dir="$(/usr/bin/realpath -e -- "${cur%/*}/" 2>/dev/null)" && own_dir "$dir" || { echo "release: $tool on PATH runs from $cur, which is not in a folder of the operator's own; fix PATH" >&2; exit 1; }
+    cur="$dir/${cur##*/}"
+    [ -L "$cur" ] || break
+    hops=$((hops + 1)); [ "$hops" -le 40 ] || { echo "release: $tool on PATH is a link loop" >&2; exit 1; }
+    t="$(/usr/bin/readlink -- "$cur")"
+    case "$t" in /*) cur="$t" ;; *) cur="$dir/$t" ;; esac
+  done
+  read -r o m <<< "$(/usr/bin/stat -c '%u %a' -- "$cur" 2>/dev/null)" || m=""
+  if [ -z "$m" ] || [ ! -f "$cur" ] || { [ "$o" != "$me" ] && [ "$o" != 0 ]; } || (( 8#$m & 8#022 )); then
+    echo "release: $tool on PATH is $cur, which is not the operator's own file (another user's, or writable by others); fix PATH" >&2; exit 1
+  fi
+done
 # every tool from here on, the environment check included, matches and parses in the C locale: under a UTF-8 one grep
 # drops a line that is not valid UTF-8 (a path git printed raw, a variable name), so a check could pass what it should
 # refuse (adversary passes on 86afb72 and 7552f17). LC_ALL is on the allowed list.

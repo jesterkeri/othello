@@ -798,7 +798,7 @@ describe("projectEnvFromCli: the names and record fingerprints Vercel holds, nev
       [[0, `not json ${SECRET}`], undefined, /is not readable/],
       [[0, JSON.stringify({ error: { message: SECRET } })], undefined, /names no project variables list/],
       [ownList([]), [0, JSON.stringify({ error: { message: SECRET } })], /names no shared variables list/],
-      [ownList([], { hiddenProductionEnvCount: 2 }), undefined, /hidden from this login; the list is incomplete/],
+      [ownList([], { hiddenProductionEnvCount: 2 }), undefined, /hiddenProductionEnvCount is not 0\); the list is incomplete/],
       [ownList([], { pagination: { next: 123 } }), undefined, /more than one page/],
       [ownList([]), [0, JSON.stringify({ data: [], pagination: { next: "abc" } })], /more than one page/],
       [ownList([{ value: SECRET }]), undefined, /has no name/],

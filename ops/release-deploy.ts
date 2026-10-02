@@ -32,13 +32,16 @@ export type Run = (cmd: string, args: string[], cwd: string) => Promise<{ code: 
  * record of a reviewed name included (adversary pass on 275f514).
  */
 export type ProjectEnv = () => Promise<{ names: string[]; fingerprint: string } | { refusal: string }>;
-type EnvRecord = { id?: unknown; key?: unknown; target?: unknown; updatedAt?: unknown; createdAt?: unknown; projectId?: unknown };
+type EnvRecord = {
+  id?: unknown; key?: unknown; target?: unknown; updatedAt?: unknown; createdAt?: unknown; projectId?: unknown;
+  type?: unknown; gitBranch?: unknown; customEnvironmentIds?: unknown; comment?: unknown; configurationId?: unknown;
+};
 /**
  * Asks Vercel through the verified pinned CLI (`vercel api`, the operator's own login), with a runner that never echoes
  * the answer, for both lists that reach the project's functions: the project's own variables
  * (`/v10/projects/<id>/env`) and the team's shared variables linked to it (`/v1/env`, records whose projectId names
  * the project). Any failure, an unreadable answer, more than one page, a record without a string name, or a project
- * list that reports hidden production variables (`hiddenProductionEnvCount` above 0: the list is incomplete) is a
+ * list that does not report hiddenProductionEnvCount as 0 (variables hidden from this login, or not said: incomplete) is a
  * refusal: the deploy fails closed. Only each record's metadata is kept, never its value.
  */
 export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { orgId: string; projectId: string }): ProjectEnv {
@@ -66,8 +69,10 @@ export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { o
     if ("refusal" in shared) return shared;
     if (!Array.isArray(own.j.envs)) return { refusal: "Vercel's answer names no project variables list" };
     if (!Array.isArray(shared.j.data)) return { refusal: "Vercel's answer names no shared variables list" };
+    // the count must be reported and be 0: an answer that leaves it out does not say the list is complete (adversary
+    // pass on 7afd45e)
     const hidden = own.j.hiddenProductionEnvCount;
-    if (hidden !== undefined && hidden !== 0) return { refusal: "Vercel reports project variables hidden from this login; the list is incomplete" };
+    if (hidden !== 0) return { refusal: "Vercel does not report every project variable to this login (hiddenProductionEnvCount is not 0); the list is incomplete" };
     for (const j of [own.j, shared.j]) {
       const next = (j.pagination as { next?: unknown } | null | undefined)?.next;
       if (next !== undefined && next !== null) return { refusal: "the project's variables span more than one page" };
@@ -85,7 +90,10 @@ export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { o
       if (typeof key !== "string" || key === "") return { refusal: "a project variable in Vercel's answer has no name" };
       names.push(key);
       const targets = Array.isArray(e.target) ? [...(e.target as unknown[])].map(String).sort().join(",") : String(e.target ?? "");
-      prints.push([source, String(e.id ?? ""), key, targets, String(e.updatedAt ?? e.createdAt ?? "")].join("\t"));
+      // every metadata field that decides where the variable applies or what it is, never the value (a change to any of
+      // them during the deploy voids it even if Vercel did not move updatedAt; adversary pass on 7afd45e)
+      const meta = JSON.stringify([e.type ?? null, e.gitBranch ?? null, e.customEnvironmentIds ?? null, e.comment ?? null, e.configurationId ?? null]);
+      prints.push([source, String(e.id ?? ""), key, targets, String(e.updatedAt ?? ""), String(e.createdAt ?? ""), meta].join("\t"));
     }
     return { names: [...new Set(names)].sort(), fingerprint: prints.sort().join("\n") };
   };
