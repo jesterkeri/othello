@@ -12,4 +12,7 @@ import type { Address, Hex } from "viem";
 
 export type TrustedFactory = { address: Address; codeHash: Hex };
 
-export const TRUSTED_FACTORY: TrustedFactory | null = null;
+export const TRUSTED_FACTORY: TrustedFactory | null = Object.freeze({
+  address: "0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5",
+  codeHash: "0xd1c2e7bdc2288ded409ca2c870b6aab888dcea607bc8f573b928f38bb6a472f1",
+});
