@@ -763,13 +763,20 @@ export function uncommittedPaths(root: string): string[] {
 export function changedSince(commit: string | undefined): string[] | null {
   if (!commit || !/^[0-9a-f]{7,40}$/.test(commit)) return null;
   try {
-    gitIn(ROOT, ["merge-base", "--is-ancestor", commit, "HEAD"]);
+    // the receipt holds the commit abbreviated ("3429255"); git resolves a name that is also a branch or tag to that
+    // ref, so a ref named like it would point the diff at HEAD itself (adversary pass on c1fc27e). Resolve it among
+    // objects only: exactly one commit must carry that prefix, and from here on only its full hash is used.
+    const commits = gitIn(ROOT, ["rev-parse", `--disambiguate=${commit}`]).split("\n").filter(Boolean)
+      .filter((o) => /^[0-9a-f]{40}$/.test(o) && o.startsWith(commit) && gitIn(ROOT, ["cat-file", "-t", o]).trim() === "commit");
+    const full = commits.length === 1 ? commits[0] : undefined;
+    if (!full) return null;
+    gitIn(ROOT, ["merge-base", "--is-ancestor", full, "HEAD"]);
     // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
     // -z: names exactly as stored, NUL-separated; without it git C-quotes a name holding a tab, a quote, a backslash or
     // a non-ASCII byte ("evm/src/Fa\303\247ade.sol"), which no path rule matches (adversary pass on b9e3509)
     // --ignore-submodules=none: a gitlink bump under evm/lib is always listed, whatever the repository's
     // diff.ignoreSubmodules or submodule.<name>.ignore says (adversary pass on 9a1fa97)
-    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", "--ignore-submodules=none", commit, "HEAD"]);
+    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", "--ignore-submodules=none", full, "HEAD"]);
     return out.split("\0").filter(Boolean);
   } catch {
     return null;
