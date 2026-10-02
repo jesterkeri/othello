@@ -24,7 +24,10 @@ export type { GatedLabel };
 export const SETTLE_MS = 1200;
 
 /** What the gate says it is waiting for, per menu label. */
-const WHAT: Record<GatedLabel, string> = { Circles: 'your circles', Portfolio: 'your portfolio', Assets: 'the assets for your chain' };
+const WHAT: Record<GatedLabel, string> = { Circles: 'your circles', Portfolio: 'your portfolio', Assets: 'the assets for your chain', Create: 'where to start a circle' };
+
+/** The menu item a gated page sits under (starting a circle is under Circles). */
+const NAV_OF = (l: GatedLabel) => (l === 'Create' ? 'Circles' : l);
 
 /** What to connect, for a page of one chain or (null) for the neutral entry that serves both. */
 const ASK: Record<ChainSide | 'any', string> = {
@@ -36,10 +39,10 @@ const ASK: Record<ChainSide | 'any', string> = {
 export function ConnectGate({ label, side = null }: { label: GatedLabel; side?: ChainSide | null }) {
   const ui = useWalletUi();
   return (
-    <Shell active={label} side={side ?? undefined}>
+    <Shell active={NAV_OF(label)} side={side ?? undefined}>
       <div className={s.page}>
         <header className={s.head}>
-          <h1 className={s.title}>{label}</h1>
+          <h1 className={s.title}>{label === 'Create' ? 'Start a circle' : label}</h1>
           <p className={s.sub}>
             Connect a wallet to see {WHAT[label]}. {ASK[side ?? 'any']} Connecting shares your address only; nothing is
             sent without your approval.
@@ -69,7 +72,7 @@ export default function SideGate({ side, label, children }: { side: ChainSide; l
   if (d.show === 'page') return <>{children}</>;
   if (d.show === 'redirect') {
     return (
-      <Shell active={label}>
+      <Shell active={NAV_OF(label)}>
         <div className={s.page}><p className={s.muted} role="status">Opening {WHAT[label]} on {side === 'solana' ? 'Robinhood Chain' : 'Solana'}…</p></div>
       </Shell>
     );

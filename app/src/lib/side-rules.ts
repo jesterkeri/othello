@@ -7,7 +7,7 @@ import type { ChainSide } from "./chains";
 import { hrefFor } from "./nav";
 
 export type Connected = { solana: boolean; robinhood: boolean };
-export type GatedLabel = "Circles" | "Portfolio" | "Assets";
+export type GatedLabel = "Circles" | "Portfolio" | "Assets" | "Create";
 
 /** The side the site shows: the only connected wallet's; with both, the page's own; with none, null (neutral). */
 export function activeSide(connected: Connected, routeSide: ChainSide): ChainSide | null {
@@ -33,5 +33,7 @@ export function gateDecision(page: ChainSide, label: GatedLabel, connected: Conn
 export function labelOf(pathname: string): GatedLabel {
   if (pathname === "/assets" || pathname.startsWith("/assets/") || pathname === "/robinhood/assets" || pathname.startsWith("/robinhood/assets/")) return "Assets";
   if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return "Portfolio";
+  // each side's page to start a circle: sent to the other side's create page, not its circles home (adversary on 1ea71fe)
+  if (pathname === "/circle/new" || pathname === "/robinhood/new") return "Create";
   return "Circles";
 }

@@ -19,11 +19,12 @@ export const NAV_HREF: Record<string, string> = {
   Portfolio: "/portfolio",
   "Split lab": "/split-lab",
   "How it works": "/how-it-works",
+  Create: "/circles",
 };
 
 const SIDE_HREF: Record<ChainSide, Record<string, string>> = {
-  solana: { Circles: "/circle/demo", Portfolio: "/portfolio", Assets: "/assets", xStocks: "/assets", Stocks: "/assets" },
-  robinhood: { Circles: "/robinhood", Portfolio: "/robinhood", Assets: "/robinhood/assets", xStocks: "/robinhood/assets", Stocks: "/robinhood/assets" },
+  solana: { Create: "/circle/new", Circles: "/circle/demo", Portfolio: "/portfolio", Assets: "/assets", xStocks: "/assets", Stocks: "/assets" },
+  robinhood: { Create: "/robinhood/new", Circles: "/robinhood", Portfolio: "/robinhood", Assets: "/robinhood/assets", xStocks: "/robinhood/assets", Stocks: "/robinhood/assets" },
 };
 
 /** The labels that lead somewhere real today. */
