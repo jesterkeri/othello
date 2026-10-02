@@ -957,3 +957,17 @@ properties of null (reading '1')"), a network flake. The adapter job now checks 
 the trust-config job does), and the prebuilt-upload spec's scratch tree pins its config to null (it tests the scan
 and the upload set; the set factory is checked on the real build by the trust-config job). Locally: that spec
 `5 passing (40s)`.
+
+## F-54. The first page release (2026-10-02): Vercel made it production; two release-tool gaps
+
+Code review r8 follow-up (reviews/arb-code-review-r8-followup.md, sha256 9918d24e…): SHIP, G-D2 at d9c59e9. Joshua ran
+`ops/release-robinhood.sh` (no --prod) from a clean checkout of d9c59e9: trust-config verified the factory against the
+receipt, the chain's deployment, its live code and the reviewed source; the artifact (1073 files, sha256 6b9dc4a6…)
+held only allowed addresses; the deploy was recorded and not voided. Two gaps, to fix in a reviewed follow-up:
+(1) **The deployment is production, not preview.** Vercel assigns a project's first deployment to production whatever
+the CLI asked ("This is your project's first deployment, so it was assigned to production"); `vercel api
+/v13/deployments/...` reports target production, aliased othello-chains.vercel.app. The release did not read back the
+deployment's target, so release/robinhood-prebuilt.json says "target": "preview". The record is committed as written;
+this entry is the correction. The release must compare the deployment's real target with the one it asked for.
+(2) **The pinned CLI asked "Would you like to upgrade now? (Y/n)"** after the build, defaulting to yes; Joshua answered
+no. The release must switch the CLI's update check off so no prompt can change the reviewed CLI mid-release.
