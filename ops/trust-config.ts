@@ -767,7 +767,9 @@ export function changedSince(commit: string | undefined): string[] | null {
     // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
     // -z: names exactly as stored, NUL-separated; without it git C-quotes a name holding a tab, a quote, a backslash or
     // a non-ASCII byte ("evm/src/Fa\303\247ade.sol"), which no path rule matches (adversary pass on b9e3509)
-    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", commit, "HEAD"]);
+    // --ignore-submodules=none: a gitlink bump under evm/lib is always listed, whatever the repository's
+    // diff.ignoreSubmodules or submodule.<name>.ignore says (adversary pass on 9a1fa97)
+    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", "--ignore-submodules=none", commit, "HEAD"]);
     return out.split("\0").filter(Boolean);
   } catch {
     return null;
