@@ -937,3 +937,11 @@ The limit is now 256 MiB. Specs kept: tests/trust-config-forged-tree-object-adve
 tests/trust-config-long-names-adversary.spec.ts. Stated limit (all of F-47 to F-51): the gate is in the page bundle
 and trusts the machine it runs on; a deliberate change to it, or an attacker who controls the runner, is the G-D2
 review's and the account boundary's (F-40) to catch, not the gate's.
+
+## F-52. Adversary pass on dec7f58: fsck read every worktree's index
+
+With no objects named, `git fsck` also reads the index of every worktree of the repository; a sibling worktree on a new
+orphan branch (its index names the empty tree, which git never writes) made it exit 2, so the gate failed for a correct
+developer checkout. fsck now starts from the deployed commit and HEAD only (`--no-reflogs <deployed> HEAD`) and still
+re-hashes every object it reads (the forged-tree spec still fails closed). Spec kept:
+tests/trust-config-orphan-worktree-fsck-adversary.spec.ts.

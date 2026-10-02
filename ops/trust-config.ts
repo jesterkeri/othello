@@ -789,8 +789,10 @@ export function changedSince(commit: string | undefined): string[] | null {
     if (!full) return null;
     // git checks a commit's own hash when it reads it, not the trees and files under it: a loose object rewritten
     // in .git could give the deployed commit's core/ HEAD's tree (adversary pass on 55a2452). fsck re-hashes every
-    // object and fails on any mismatch, so a forged object store fails closed (about half a second here).
-    gitIn(ROOT, ["fsck", "--no-dangling", "--no-progress"]);
+    // object and fails on any mismatch, so a forged object store fails closed (about half a second here). Started
+    // from the two commits only: with no objects named, fsck also reads every worktree's index, and a sibling worktree
+    // on a new orphan branch (an index naming the empty tree, never written) failed it (adversary pass on dec7f58).
+    gitIn(ROOT, ["fsck", "--no-dangling", "--no-progress", "--no-reflogs", full, "HEAD"]);
     gitIn(ROOT, ["merge-base", "--is-ancestor", full, "HEAD"]);
     // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
     // -z: names exactly as stored, NUL-separated; without it git C-quotes a name holding a tab, a quote, a backslash or
