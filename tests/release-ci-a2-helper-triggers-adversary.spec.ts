@@ -78,7 +78,8 @@ describe("CI: evm.yml's path triggers cover the helpers its specs import (advers
       for (const covered of ["tests/release-script-harness.ts", "tests/reviewed-settings.ts", "tests/fake-pinned-cli.ts", "tests/a2-modal-render-adversary.spec.ts"]) {
         assert.ok(globs.some((g) => g.test(covered)), `precondition: ${covered} is matched by the ${event} triggers`);
       }
-      assert.equal(a2Specs.length, 9, "precondition: evm.yml runs the six A2 wallet specs, chain-switch and the two EVM specs");
+      // at least the six A2 wallet specs, chain-switch and the two EVM specs (more are added as findings are fixed)
+      assert.ok(a2Specs.length >= 9, `precondition: evm.yml runs the A2 wallet specs, chain-switch and the EVM specs (found ${a2Specs.length})`);
       const missed = [...localImports(a2Specs)].filter((f) => !globs.some((g) => g.test(f))).sort();
       assert.deepEqual(missed, [], `${event}: these modules imported by the A2 specs evm.yml runs trigger no run: ${missed.join(", ")}`);
     });

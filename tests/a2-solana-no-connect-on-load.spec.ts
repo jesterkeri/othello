@@ -4,11 +4,14 @@
  * `handleAutoConnectRequest` whenever the adapter is set (WalletProvider.js, the effect on [autoConnect, adapter]),
  * and that calls `adapter.autoConnect()` unless `autoConnect` is a function answering false; the base adapter's
  * `autoConnect()` is `connect()` for many wallets. app/src/lib/wallet.tsx now passes a function that answers yes only
- * after a pick in this visit.
+ * after a pick in this visit, and on a load only for a Wallet Standard adapter, whose autoConnect is
+ * `connect({ silent: true })` (wallet-standard-wallet-adapter-base 1.1.6): returning visitors stay connected without a
+ * prompt (Joshua: no forced sign-out), and nothing else connects on a load.
  *
  * Here lib/wallet.tsx is rendered for real (its React hooks, next/navigation and the wallet libraries stubbed, as in
  * tests/a2-modal-search-adversary.spec.ts), and WalletProvider is replaced by a model of exactly that library effect:
- * whenever the selected adapter changes, it asks the `autoConnect` it was given, and connects only on yes.
+ * whenever the selected adapter changes, it asks the `autoConnect` it was given (passing the adapter), and on yes calls
+ * `adapter.connect()` if the person selected a wallet (`hasUserSelectedAWallet`) and `adapter.autoConnect()` if not.
  *
  *   npx mocha --import=tsx tests/a2-solana-no-connect-on-load.spec.ts   (installs loader hooks: run it in its own process)
  */
@@ -82,8 +85,12 @@ registerHooks({
 
 type Ui = { pick(name: string): void };
 
-/** lib/wallet.tsx with a Solana wallet remembered from an earlier visit (the library restores the selection). */
-async function mount(remembered: "Phantom" | null) {
+/**
+ * lib/wallet.tsx with a Solana wallet remembered from an earlier visit (the library restores the selection).
+ * Phantom and Solflare come through the Wallet Standard (`standard: true`, a silent autoConnect); "Mobile Wallet
+ * Adapter" does not.
+ */
+async function mount(remembered: "Phantom" | "Mobile Wallet Adapter" | null) {
   g.React = appRequire("react");
   const { WalletProviders } = await import(pathToFileURL(WALLET_TSX).href);
 
@@ -93,13 +100,15 @@ async function mount(remembered: "Phantom" | null) {
   let autoConnect: unknown;
   let lastAdapter: string | null = null;
 
-  const names = ["Phantom", "Solflare"];
+  const names = ["Phantom", "Solflare", "Mobile Wallet Adapter"];
+  const standard = (name: string) => name !== "Mobile Wallet Adapter";
+  let userSelected = false; // WalletProvider's hasUserSelectedAWallet: set by select(), never by a restore
   const w = () => ({
     connected: false,
     publicKey: null,
     wallet: selected ? { adapter: { name: selected } } : null,
     wallets: names.map((name) => ({ readyState: "Installed", adapter: { name, icon: "data:image/png;base64,AA==" } })),
-    select: (name: string) => { selected = name; },
+    select: (name: string) => { userSelected = true; selected = name; },
     connect: async () => { if (selected) connected.push(`${selected}:connect`); },
     disconnect: async () => { selected = null; },
   });
@@ -147,13 +156,15 @@ async function mount(remembered: "Phantom" | null) {
     while (node.type !== "Provider") node = (node.type as (p: unknown) => unknown)(node.props) as typeof node;
     ui = node.props.value!;
     for (const e of queued) e();
-    // WalletProvider 0.15.40: when the selected adapter changes, ask autoConnect; connect only on true (or on `true`).
+    // WalletProvider 0.15.40 handleAutoConnectRequest: when the selected adapter changes, ask autoConnect with the
+    // adapter; on yes, connect() after a user selection, else the adapter's autoConnect() (silent for a standard one).
     if (selected !== lastAdapter) {
       lastAdapter = selected;
       if (selected && autoConnect) {
-        const answer = autoConnect === true || (typeof autoConnect === "function" && (await (autoConnect as (a: unknown) => Promise<boolean>)({ name: selected })) === true);
+        const adapter = { name: selected, ...(standard(selected) ? { standard: true } : {}) };
+        const answer = autoConnect === true || (typeof autoConnect === "function" && (await (autoConnect as (a: unknown) => Promise<boolean>)(adapter)) === true);
         asked.push({ name: selected, answer });
-        if (answer) connected.push(`${selected}:auto`);
+        if (answer) connected.push(userSelected ? `${selected}:connect` : standard(selected) ? `${selected}:silent` : `${selected}:autoConnect`);
       }
     }
   }
@@ -161,29 +172,34 @@ async function mount(remembered: "Phantom" | null) {
   return { asked, connected, autoConnect: () => autoConnect, pick: async (n: string) => { ui.pick(n); await render(); } };
 }
 
-describe("A2: no Solana wallet request without a click (Codex r9 MAJOR)", function () {
+describe("A2: no Solana wallet request without a click, and no forced sign-out (Codex r9 MAJOR; Joshua)", function () {
   this.timeout(60_000);
 
-  it("a page load with a remembered Solana wallet asks autoConnect and gets no: nothing connects", async () => {
+  it("a page load with a remembered standard wallet restores it silently: no prompting connect", async () => {
     const m = await mount("Phantom");
-    assert.notEqual(m.autoConnect(), true, "autoConnect is a plain `true`: the library connects the remembered wallet on load");
+    assert.notEqual(m.autoConnect(), true, "autoConnect is a plain `true`: the library would also auto-connect non-standard adapters on load");
     assert.equal(typeof m.autoConnect(), "function");
-    assert.deepEqual(m.asked, [{ name: "Phantom", answer: false }], "the library asked once, for the remembered wallet, and was told no");
-    assert.deepEqual(m.connected, [], `a wallet was asked to connect on page load: ${m.connected.join(", ")}`);
+    assert.deepEqual(m.asked, [{ name: "Phantom", answer: true }], "the returning visitor is restored");
+    assert.deepEqual(m.connected, ["Phantom:silent"], "restored with the adapter's silent autoConnect, never a prompting connect");
   });
 
-  it("after a pick, the library may connect the picked wallet (a pick is still what connects)", async () => {
+  it("a page load with a remembered non-standard adapter (the mobile wallet adapter) connects nothing", async () => {
+    const m = await mount("Mobile Wallet Adapter");
+    assert.deepEqual(m.asked, [{ name: "Mobile Wallet Adapter", answer: false }]);
+    assert.deepEqual(m.connected, [], `a non-standard adapter was connected on page load: ${m.connected.join(", ")}`);
+  });
+
+  it("after a pick, the library connects the picked wallet (a pick is still what connects)", async () => {
     const m = await mount(null);
     assert.deepEqual(m.connected, []);
     await m.pick("Solflare");
     assert.deepEqual(m.asked, [{ name: "Solflare", answer: true }]);
-    assert.deepEqual(m.connected, ["Solflare:auto"]);
+    assert.deepEqual(m.connected, ["Solflare:connect"]);
   });
 
-  it("picking the remembered wallet itself connects it directly, once", async () => {
-    const m = await mount("Phantom");
-    assert.deepEqual(m.connected, []);
-    await m.pick("Phantom");
-    assert.deepEqual(m.connected, ["Phantom:connect"]);
+  it("after a pick, a non-standard adapter connects too", async () => {
+    const m = await mount(null);
+    await m.pick("Mobile Wallet Adapter");
+    assert.deepEqual(m.connected, ["Mobile Wallet Adapter:connect"]);
   });
 });

@@ -8,15 +8,20 @@
  * holds a key: connecting shares an address, and every transaction will open in
  * the person's own wallet to be approved there.
  *
- * autoConnect is a question the library asks before it connects, and the answer
- * is yes only after the person has picked a Solana wallet in this visit. So a
- * pick is still what calls connect (its result arrives through onError or
- * through `connected`, both handled here, rather than through a promise this
- * file would have to race), but a page load never connects a remembered wallet:
- * no wallet request without a click (Codex code review r9, MAJOR: the library's
- * autoConnect calls the adapter's autoConnect, which for many adapters is
- * connect). A Solana wallet is therefore not restored on a reload; the person
- * connects it again, as with any first visit.
+ * autoConnect is a question the library asks before it connects the selected
+ * wallet. After a pick in this visit the answer is yes, so a pick is still what
+ * calls connect (its result arrives through onError or through `connected`,
+ * both handled here, rather than through a promise this file would have to
+ * race). On a page load the library would call the remembered adapter's
+ * autoConnect, which for some adapters is a plain connect (Codex code review r9,
+ * MAJOR: no wallet request without a click). So on a load the answer is yes only
+ * for a Wallet Standard adapter, whose autoConnect is `connect({ silent: true })`
+ * (wallet-standard-wallet-adapter-base 1.1.6): the standard asks the wallet not
+ * to prompt and to return only accounts this site was already given. Someone who
+ * connected before stays connected across a reload (Joshua: no forced sign-out),
+ * and nobody is prompted on a load. Stated limit: the standard calls `silent` a
+ * request, so a wallet that ignored it could still prompt. Any other adapter (the
+ * mobile wallet adapter) connects only after a pick.
  *
  * The same modal lists EVM wallets for Robinhood Chain (lib/robinhood/wallet.ts)
  * beside the Solana ones, and the wallet a person picks decides the chain: after
@@ -26,7 +31,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, createContext, useContext, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
-import { WalletReadyState, type WalletError, type WalletName } from '@solana/wallet-adapter-base';
+import { WalletReadyState, type Adapter, type WalletError, type WalletName } from '@solana/wallet-adapter-base';
 import { clusterApiUrl } from '@solana/web3.js';
 
 import { destinationAfterConnect, type ChainSide } from '@/lib/chains';
@@ -257,9 +262,10 @@ function Ui({ children, errorRef, picked }: { children: ReactNode; errorRef: { c
 export function WalletProviders({ children }: { children: ReactNode }) {
   const errorRef = useRef<((e: WalletError) => void) | null>(null);
   const onError = useCallback((e: WalletError) => { errorRef.current?.(e); }, []);
-  // Asked by the library before it connects the selected wallet; yes only after a pick in this visit (see the header).
+  // Asked by the library before it connects the selected wallet: yes after a pick in this visit, and on a load only
+  // for a Wallet Standard adapter, whose autoConnect is silent (see the header).
   const picked = useRef(false);
-  const autoConnect = useCallback(async () => picked.current, []);
+  const autoConnect = useCallback(async (adapter: Adapter) => picked.current || (adapter as { standard?: unknown }).standard === true, []);
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
       <WalletProvider wallets={[]} autoConnect={autoConnect} onError={onError}>

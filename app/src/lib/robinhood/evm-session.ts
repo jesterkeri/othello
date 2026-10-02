@@ -86,6 +86,9 @@ export function createEvmSession(d: { discovery: Discovery; remembered: Remember
   };
   /** Bumped whenever the chosen wallet changes; an answer carrying an older number is dropped. */
   let generation = 0;
+  // each network switch asked; only the latest may report, so a late answer to an older switch cannot overwrite a
+  // newer one (adversary pass on d99a70c: a refused older re-switch replaced a newer switch that had succeeded)
+  let switchSeq = 0;
   /** Bumped by every connect, disconnect and stop: a connect whose wallet answers after a later one began is dropped. */
   let attempt = 0;
   let detach: (() => void) | null = null;
@@ -150,11 +153,13 @@ export function createEvmSession(d: { discovery: Discovery; remembered: Remember
     const w = s.chosen;
     if (!w) return false;
     const g = generation;
+    const mine = ++switchSeq;
+    const current = () => g === generation && mine === switchSeq;
     try {
       await w.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ROBINHOOD_HEX_ID }] });
     } catch (e) {
       if ((e as { code?: unknown })?.code !== 4902) {
-        if (g === generation) emit({ error: `${w.info.name} did not switch to Robinhood Chain testnet: ${message(e)}` });
+        if (current()) emit({ error: `${w.info.name} did not switch to Robinhood Chain testnet: ${message(e)}` });
         return false;
       }
       try {
@@ -169,20 +174,20 @@ export function createEvmSession(d: { discovery: Discovery; remembered: Remember
           }],
         });
       } catch (e2) {
-        if (g === generation) emit({ error: `${w.info.name} did not add Robinhood Chain testnet: ${message(e2)}` });
+        if (current()) emit({ error: `${w.info.name} did not add Robinhood Chain testnet: ${message(e2)}` });
         return false;
       }
       // EIP-3085: adding a network need not select it; ask for the switch again (Codex code review r9, LOW)
       try {
         await w.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ROBINHOOD_HEX_ID }] });
       } catch (e3) {
-        if (g === generation) emit({ error: `${w.info.name} added Robinhood Chain testnet but did not switch to it: ${message(e3)}` });
+        if (current()) emit({ error: `${w.info.name} added Robinhood Chain testnet but did not switch to it: ${message(e3)}` });
         return false;
       }
     }
     // a switch that resolved means the active chain was switched (EIP-3326); readChain then shows it, without making
     // the connect wait on a read the wallet may answer late (adversary search on this change)
-    if (g === generation) {
+    if (current()) {
       emit({ error: null });
       readChain();
     }
