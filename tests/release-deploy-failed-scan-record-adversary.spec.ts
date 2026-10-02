@@ -51,7 +51,7 @@ describe("release adversary: a failed trust-config run replaces the committed re
     writeFileSync(cfg, replaceTrustedFactory(readFileSync(cfg, "utf8"),
       `export const TRUSTED_FACTORY: TrustedFactory | null = Object.freeze({ address: "${FACTORY}", codeHash: "${CODE_HASH}" });`));
     const recordFile = join(repo, "release", "robinhood-prebuilt.json");
-    mkdirSync(join(repo, "release"));
+    mkdirSync(join(repo, "release"), { recursive: true }); // the committed record of the first real release may already be there
     const prevCommit = git("rev-parse", "HEAD").trim();
     writeRecord(recordFile, { sha256: "ab".repeat(32), files: 1, lines: [`${"ab".repeat(32)}  100644  1  config.json`] }, prevCommit, null, repo);
     const prev = JSON.parse(readFileSync(recordFile, "utf8"));

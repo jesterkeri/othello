@@ -50,7 +50,7 @@ describe("release adversary: a failed copy-back loses a completed deploy's recor
     // the previous release, recorded, deployed and committed (TRUSTED_FACTORY stays null: the run needs no network)
     const recordFile = join(repo, "release", "robinhood-prebuilt.json");
     const listFile = join(repo, "release", "robinhood-prebuilt.files.txt");
-    mkdirSync(join(repo, "release"));
+    mkdirSync(join(repo, "release"), { recursive: true }); // the committed record of the first real release may already be there
     const prevCommit = git("rev-parse", "HEAD").trim();
     writeRecord(recordFile, { sha256: "ab".repeat(32), files: 1, lines: [`${"ab".repeat(32)}  100644  1  config.json`] }, prevCommit, null, repo);
     const prev = JSON.parse(readFileSync(recordFile, "utf8"));
