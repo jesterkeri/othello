@@ -664,6 +664,9 @@ function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned
     "-c", "core.excludesFile=/dev/null", "-c", "core.attributesFile=/dev/null", "-c", "core.fsmonitor=false",
     "-c", "core.untrackedCache=false", "-c", "core.hooksPath=/dev/null", "-c", "status.showUntrackedFiles=all",
     "-c", "core.trustctime=true", "-c", "core.checkStat=default", "-c", "core.ignoreCase=false",
+    // commits are read from their objects, never from .git/objects/info/commit-graph, which can be rewritten to give
+    // a commit another tree (adversary pass on 84043b3; the same class as replace refs, refused above)
+    "-c", "core.commitGraph=false",
   ];
   return { real, env, pinned };
 }
@@ -788,7 +791,9 @@ export function changedSince(commit: string | undefined): string[] | null {
     // a non-ASCII byte ("evm/src/Fa\303\247ade.sol"), which no path rule matches (adversary pass on b9e3509)
     // --ignore-submodules=none: a gitlink bump under evm/lib is always listed, whatever the repository's
     // diff.ignoreSubmodules or submodule.<name>.ignore says (adversary pass on 9a1fa97)
-    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", "--ignore-submodules=none", full, "HEAD"]);
+    // "--": both names are commits, so a committed file named HEAD (or like the hash) is never taken for a path
+    // (adversary pass on 84043b3: git stopped with "ambiguous argument" and the gate failed for a correct state)
+    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", "--ignore-submodules=none", full, "HEAD", "--"]);
     return out.split("\0").filter(Boolean);
   } catch {
     return null;
