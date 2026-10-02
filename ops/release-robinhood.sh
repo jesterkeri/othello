@@ -45,8 +45,10 @@ me="$(/usr/bin/id -u)"
 # a folder is the operator's own when it and every folder above it belong to the operator or root, it cannot be written
 # by group or others, and a folder above can be only with the sticky bit (which stops others, not that folder's owner:
 # hence the owner rule for every folder above too; adversary pass on 7afd45e)
+declare -A own_ok=()
 own_dir() {
   local d="$1" o m first=1
+  [ -n "${own_ok[$1]:-}" ] && return 0
   while :; do
     read -r o m <<< "$(/usr/bin/stat -L -c '%u %a' -- "$d" 2>/dev/null)" || return 1
     [ -n "$m" ] || return 1
@@ -56,7 +58,7 @@ own_dir() {
       (( 8#$m & 8#1000 )) || return 1
     fi
     first=0
-    [ "$d" = / ] && return 0
+    if [ "$d" = / ]; then own_ok[$1]=1; return 0; fi
     d="${d%/*}"; [ -n "$d" ] || d=/
   done
 }
@@ -84,27 +86,31 @@ done
 if [ "$dropped" -gt 0 ]; then echo "release: $dropped PATH entries that are not the operator's own (relative, missing, another user's, or writable by others) are not used" >&2; fi
 [ -n "$safe_path" ] || { echo "release: no PATH folder is the operator's own; nothing can run" >&2; exit 1; }
 export PATH="$safe_path"
-# the operator's toolchain that the release takes from PATH must itself be the operator's: each program is followed link
-# by link, every folder a hop lives in must be an own folder, and the file it ends at must belong to the operator or root
-# and not be writable by group or others (a kept folder can hold a link into one others can write to; adversary pass on
-# 7afd45e). Builtins and absolute paths only.
-for tool in node npm pnpm forge; do
-  cur="$(type -P "$tool" || true)"
-  [ -n "$cur" ] || continue
-  hops=0
+# every program a lookup can find in a kept folder must itself be the operator's: the release's own tools look up others
+# by name on this PATH (pnpm runs sh, next's shim sed and dirname, the build uname and getconf, the Vercel CLI git), so
+# no list of names is enough (adversary passes on 7afd45e and aed6598). Each kept folder's files must belong to the
+# operator or root and be unwritable by group or others; each link is followed hop by hop, every folder a hop lives in
+# (the one a dangling link points into included) must be an own folder, and the file it ends at must pass the same
+# rule. The release then runs with a PATH of one private folder ($WORK/bin, built below) holding a link to the final
+# file of every program that passes, in PATH order (the first of a name wins, as a lookup would): a program that does
+# not pass (on WSL, Docker Desktop's links into /mnt/wsl) is simply absent, and nothing found later can be swapped.
+own_program() {
+  local cur="$1" dir t o m hops=0
   while :; do
-    dir="$(/usr/bin/realpath -e -- "${cur%/*}/" 2>/dev/null)" && own_dir "$dir" || { echo "release: $tool on PATH runs from $cur, which is not in a folder of the operator's own; fix PATH" >&2; exit 1; }
+    dir="$(/usr/bin/realpath -e -- "${cur%/*}/" 2>/dev/null)" && own_dir "$dir" || return 1
     cur="$dir/${cur##*/}"
     [ -L "$cur" ] || break
-    hops=$((hops + 1)); [ "$hops" -le 40 ] || { echo "release: $tool on PATH is a link loop" >&2; exit 1; }
+    hops=$((hops + 1)); [ "$hops" -le 40 ] || return 1
     t="$(/usr/bin/readlink -- "$cur")"
     case "$t" in /*) cur="$t" ;; *) cur="$dir/$t" ;; esac
   done
-  read -r o m <<< "$(/usr/bin/stat -c '%u %a' -- "$cur" 2>/dev/null)" || m=""
-  if [ -z "$m" ] || [ ! -f "$cur" ] || { [ "$o" != "$me" ] && [ "$o" != 0 ]; } || (( 8#$m & 8#022 )); then
-    echo "release: $tool on PATH is $cur, which is not the operator's own file (another user's, or writable by others); fix PATH" >&2; exit 1
-  fi
-done
+  own_target="$cur"
+  [ -e "$cur" ] || return 0
+  [ -d "$cur" ] && return 0
+  read -r o m <<< "$(/usr/bin/stat -c '%u %a' -- "$cur" 2>/dev/null)" || return 1
+  [ -n "$m" ] || return 1
+  { [ "$o" = "$me" ] || [ "$o" = 0 ]; } && ! (( 8#$m & 8#022 ))
+}
 # every tool from here on, the environment check included, matches and parses in the C locale: under a UTF-8 one grep
 # drops a line that is not valid UTF-8 (a path git printed raw, a variable name), so a check could pass what it should
 # refuse (adversary passes on 86afb72 and 7552f17). LC_ALL is on the allowed list.
@@ -176,6 +182,39 @@ bring_back() {
 # if the record cannot be copied back, the folder that holds it is KEPT and the release fails, saying where it is
 trap 'if bring_back; then /usr/bin/rm -rf "$WORK"; else echo "release: could not copy the record back; it is kept at $WORK/repo/release/robinhood-prebuilt.json and robinhood-prebuilt.files.txt (copy both into release/ yourself)" >&2; exit 1; fi' EXIT
 export TMPDIR="$WORK/tmp"; /usr/bin/mkdir -m 700 "$TMPDIR"
+/usr/bin/mkdir -m 700 "$WORK/bin"
+declare -A seen=() unsafe=()
+skipped=()
+rest="$PATH"
+while :; do
+  d="${rest%%:*}"
+  unsafe=()
+  while IFS= read -r -d '' f; do unsafe[${f##*/}]=1; done \
+    < <(/usr/bin/find "$d" -mindepth 1 -maxdepth 1 -type f \( ! -uid "$me" ! -uid 0 -o -perm /022 \) -print0 2>/dev/null)
+  files=()
+  for f in "$d"/* "$d"/.[!.]*; do
+    n="${f##*/}"
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    [ -n "${seen[$n]:-}" ] && continue
+    # like a lookup: an entry that cannot run (a folder, a dangling link, not executable) is passed over; one that is not
+    # the operator's own is passed over too and named; the first that passes wins its name
+    own_target=""
+    if [ -L "$f" ]; then
+      if own_program "$f"; then
+        if [ -f "$own_target" ] && [ -x "$own_target" ]; then /usr/bin/ln -s -- "$own_target" "$WORK/bin/$n"; seen[$n]=1; fi
+      else
+        skipped+=("$f")
+      fi
+    elif [ -f "$f" ] && [ -x "$f" ]; then
+      if [ -n "${unsafe[$n]:-}" ]; then skipped+=("$f"); else files+=("$f"); seen[$n]=1; fi
+    fi
+  done
+  [ "${#files[@]}" -eq 0 ] || /usr/bin/ln -s -t "$WORK/bin" -- "${files[@]}"
+  [ "$rest" = "${rest#*:}" ] && break
+  rest="${rest#*:}"
+done
+if [ "${#skipped[@]}" -gt 0 ]; then echo "release: not using ${#skipped[@]} program(s) that are not the operator's own: ${skipped[*]}" >&2; fi
+export PATH="$WORK/bin"
 TARGET="preview"; PROD=""
 if [ "${1:-}" = "--prod" ]; then TARGET="production"; PROD="--prod"; fi
 [ "$(pnpm --version 2>/dev/null)" = "10.32.1" ] || { echo "release: needs pnpm 10.32.1 on PATH (npm install -g pnpm@10.32.1)" >&2; exit 1; }

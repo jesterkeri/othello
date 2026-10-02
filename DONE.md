@@ -3287,3 +3287,10 @@ release-script specs failed because the hosted runner's tool cache is writable b
 the release names each dropped PATH entry. verify: 7afd45e locally: fast `145 passing (2m)`, sealed `24 passing (11m)`;
 this branch: fast `148 passing (2m)`, PATH specs `8 passing`.
 
+## A1 adversary pass on aed6598: lookups by any name; curated PATH; shared-variable shapes (2026-10-02)
+reviewed: n/a yet (next Codex round)
+adversary: DEFECTS. Programs other than the four checked were looked up by name; a shared variable with an odd projectId
+shape was skipped. Fix: a private curated bin folder as the whole PATH (every program checked, final files linked);
+odd shapes refused (evm/ARB-FINDINGS.md F-43). CI: /opt and /usr/local/bin tightened on the hosted runner. verify: the
+real PATH here builds 1186 links in 2.5 s, 9 Docker Desktop links skipped; PATH and variable specs `9 passing (8s)`.
+

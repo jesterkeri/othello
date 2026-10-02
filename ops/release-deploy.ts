@@ -77,6 +77,14 @@ export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { o
       const next = (j.pagination as { next?: unknown } | null | undefined)?.next;
       if (next !== undefined && next !== null) return { refusal: "the project's variables span more than one page" };
     }
+    // a shared variable must say which projects it applies to as a list of ids; any other shape is not read as "not this
+    // project" but refused (adversary pass on aed6598)
+    for (const e of shared.j.data as EnvRecord[]) {
+      const pid = e?.projectId;
+      if (!Array.isArray(pid) || pid.some((x) => typeof x !== "string")) {
+        return { refusal: "a shared variable in Vercel's answer does not list the projects it applies to" };
+      }
+    }
     const records: { source: string; e: EnvRecord }[] = [
       ...(own.j.envs as EnvRecord[]).map((e) => ({ source: "project", e })),
       ...(shared.j.data as EnvRecord[])

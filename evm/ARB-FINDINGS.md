@@ -836,3 +836,22 @@ installed pnpm under /opt/hostedtoolcache, which other users can write, so the r
 folders and found no pnpm (local: 24 sealed specs passing on 7afd45e). The release now names each PATH entry it drops and
 why, and the CI job prints its PATH folders' owners and modes and removes group/other write from the tool cache before
 the release specs run. The real toolchain here passes: node, npm and pnpm under ~/.nvm and forge under ~/.foundry.
+
+## F-43. Adversary pass on aed6598: every program a lookup can reach; a curated PATH; shared-variable shapes
+
+(1) Only node, npm, pnpm and forge were followed, but the release's tools look up others by name on the same PATH (pnpm
+runs sh, next's shim sed and dirname, the build uname and getconf, the Vercel CLI's deploy git): a link to any of them
+in a kept folder, into a folder others can write to, ran (spec kept: tests/release-script-path-child-program-link-adversary.spec.ts).
+Refusing or dropping a folder for one such program does not work in practice: on this machine Docker Desktop's WSL
+integration puts links into /mnt/wsl (root 1777) in /usr/local/bin and /usr/bin itself. So the release now builds a
+private folder, $WORK/bin (0700), right after its temporary folder exists and before its first PATH lookup, and runs
+with that folder as its whole PATH: in the order of the kept PATH folders, each entry that can run is linked there by
+its name to the final file it resolves to, if every folder its link chain passes through is an own folder and the file
+belongs to the operator or root and is unwritable by group/others; an entry that cannot run is passed over, as a lookup
+would; one that is not the operator's own is passed over and named (the first that passes wins its name). On this
+machine: 1186 programs linked in 2.5 s; 9 skipped (docker, docker-compose, hub-tool, kubectl and others linking into
+/mnt/wsl); node, npm, pnpm, forge, sh, sed, git, dirname, uname and getconf all point at verified files. Because each
+link points at the final file, nothing reached later can be swapped. (2) A shared variable whose projectId was not a
+list of ids (a string, null, missing) was silently treated as another project's; any such shape is now a refusal
+(spec kept: tests/release-deploy-shared-projectid-shape-adversary.spec.ts). Also from the CI diagnostics: GitHub's
+hosted runner leaves /opt, /usr/local/bin and the tool cache 777; the CI job tightens them before the release specs.
