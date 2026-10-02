@@ -13,7 +13,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Shell from '@/components/othello/Shell';
 import s from '@/components/robinhood/Robinhood.module.css';
 import { useActiveSide } from '@/lib/active-side';
-import { sideOf, type ChainSide } from '@/lib/chains';
+import { sideName, sideOf, type ChainSide } from '@/lib/chains';
 import { useWalletUi } from '@/lib/wallet';
 
 import { gateDecision, labelOf, type GatedLabel } from '@/lib/side-rules';
@@ -44,7 +44,7 @@ export function ConnectGate({ label, side = null }: { label: GatedLabel; side?: 
         <header className={s.head}>
           <h1 className={s.title}>{label === 'Create' ? 'Start a circle' : label}</h1>
           <p className={s.sub}>
-            Connect a wallet to see {WHAT[label]}. {ASK[side ?? 'any']} Connecting shares your address only; nothing is
+            {label === 'Split lab' ? 'Connect a wallet to continue.' : `Connect a wallet to see ${WHAT[label]}.`} {ASK[side ?? 'any']} Connecting shares your address only; nothing is
             sent without your approval.
           </p>
           <div>
@@ -73,7 +73,8 @@ export default function SideGate({ side, label, children }: { side: ChainSide; l
   if (d.show === 'redirect') {
     return (
       <Shell active={NAV_OF(label)}>
-        <div className={s.page}><p className={s.muted} role="status">Opening {WHAT[label]} on {side === 'solana' ? 'Robinhood Chain' : 'Solana'}…</p></div>
+        {/* the chain only: the other side may have no page of this kind (the split lab; adversary on cefd1ab) */}
+        <div className={s.page}><p className={s.muted} role="status">Opening {sideName(side === 'solana' ? 'robinhood' : 'solana')}, the chain of your connected wallet…</p></div>
       </Shell>
     );
   }
