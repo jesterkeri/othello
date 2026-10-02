@@ -765,8 +765,10 @@ export function changedSince(commit: string | undefined): string[] | null {
   try {
     gitIn(ROOT, ["merge-base", "--is-ancestor", commit, "HEAD"]);
     // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
-    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", commit, "HEAD"]);
-    return out.split("\n").filter(Boolean);
+    // -z: names exactly as stored, NUL-separated; without it git C-quotes a name holding a tab, a quote, a backslash or
+    // a non-ASCII byte ("evm/src/Fa\303\247ade.sol"), which no path rule matches (adversary pass on b9e3509)
+    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", commit, "HEAD"]);
+    return out.split("\0").filter(Boolean);
   } catch {
     return null;
   }
