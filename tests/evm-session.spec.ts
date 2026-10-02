@@ -136,7 +136,12 @@ describe("EVM session: connecting", () => {
   it("a wallet that does not know the network is asked to add it", async () => {
     const mm = approving(A1, 1);
     let added: unknown = null;
-    mm.answers.wallet_switchEthereumChain = () => { throw Object.assign(new Error("Unrecognized chain"), { code: 4902 }); };
+    // the wallet does not know the network until it is added; after that a switch selects it (EIP-3085, EIP-3326)
+    const switchTo = mm.answers.wallet_switchEthereumChain!;
+    mm.answers.wallet_switchEthereumChain = (p) => {
+      if (!added) throw Object.assign(new Error("Unrecognized chain"), { code: 4902 });
+      return switchTo(p);
+    };
     mm.answers.wallet_addEthereumChain = (p) => { added = p; return null; };
     const s = createEvmSession({ discovery: discovery([wallet("u1", "MetaMask", "io.metamask", mm)]), remembered: memory() });
     await s.connectWith("u1");
@@ -144,6 +149,21 @@ describe("EVM session: connecting", () => {
     assert.equal(params.chainId, ROBINHOOD_HEX_ID);
     assert.ok(params.rpcUrls.length > 0);
     assert.equal(s.getSnapshot().error, null);
+    assert.deepEqual(mm.calls.filter((c) => c.startsWith("wallet_")), ["wallet_switchEthereumChain", "wallet_addEthereumChain", "wallet_switchEthereumChain"],
+      "after adding the network the wallet is asked to switch to it again (adding need not select it)");
+  });
+
+  it("a wallet that adds the network but will not switch to it is not reported as switched (Codex r9 LOW)", async () => {
+    const mm = approving(A1, 1);
+    mm.answers.wallet_switchEthereumChain = () => { throw Object.assign(new Error("Unrecognized chain"), { code: 4902 }); };
+    mm.answers.wallet_addEthereumChain = () => null;
+    const s = createEvmSession({ discovery: discovery([wallet("u1", "MetaMask", "io.metamask", mm)]), remembered: memory() });
+    assert.equal(await s.switchToRobinhood(), false, "no wallet chosen yet");
+    await s.connectWith("u1");
+    await settle();
+    assert.equal(s.getSnapshot().address, A1, "still connected, on its own network");
+    assert.match(s.getSnapshot().error ?? "", /MetaMask added Robinhood Chain testnet but did not switch to it/);
+    assert.equal(await s.switchToRobinhood(), false);
   });
 
   it("a refused network switch leaves the wallet connected on its own network, with the reason", async () => {

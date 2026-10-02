@@ -172,7 +172,16 @@ export function createEvmSession(d: { discovery: Discovery; remembered: Remember
         if (g === generation) emit({ error: `${w.info.name} did not add Robinhood Chain testnet: ${message(e2)}` });
         return false;
       }
+      // EIP-3085: adding a network need not select it; ask for the switch again (Codex code review r9, LOW)
+      try {
+        await w.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ROBINHOOD_HEX_ID }] });
+      } catch (e3) {
+        if (g === generation) emit({ error: `${w.info.name} added Robinhood Chain testnet but did not switch to it: ${message(e3)}` });
+        return false;
+      }
     }
+    // a switch that resolved means the active chain was switched (EIP-3326); readChain then shows it, without making
+    // the connect wait on a read the wallet may answer late (adversary search on this change)
     if (g === generation) {
       emit({ error: null });
       readChain();

@@ -8,10 +8,15 @@
  * holds a key: connecting shares an address, and every transaction will open in
  * the person's own wallet to be approved there.
  *
- * autoConnect is on for two reasons. It restores the last wallet on a reload,
- * and when someone picks a wallet it is what calls connect, so the result of
- * that attempt arrives through onError or through `connected`, both handled
- * here, rather than through a promise this file would have to race.
+ * autoConnect is a question the library asks before it connects, and the answer
+ * is yes only after the person has picked a Solana wallet in this visit. So a
+ * pick is still what calls connect (its result arrives through onError or
+ * through `connected`, both handled here, rather than through a promise this
+ * file would have to race), but a page load never connects a remembered wallet:
+ * no wallet request without a click (Codex code review r9, MAJOR: the library's
+ * autoConnect calls the adapter's autoConnect, which for many adapters is
+ * connect). A Solana wallet is therefore not restored on a reload; the person
+ * connects it again, as with any first visit.
  *
  * The same modal lists EVM wallets for Robinhood Chain (lib/robinhood/wallet.ts)
  * beside the Solana ones, and the wallet a person picks decides the chain: after
@@ -91,7 +96,7 @@ function isRejection(e: WalletError): boolean {
   return /reject|declin|denied|cancel/i.test(`${e.message} ${inner?.message ?? ''}`);
 }
 
-function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: ((e: WalletError) => void) | null } }) {
+function Ui({ children, errorRef, picked }: { children: ReactNode; errorRef: { current: ((e: WalletError) => void) | null }; picked: { current: boolean } }) {
   const w = useWallet();
   const evm = useEvmWallet();
   const router = useRouter();
@@ -179,6 +184,8 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
     setPendingKind('solana');
     setPendingUuid(null);
     setStage('connecting');
+    // From here the library may connect: autoConnect answers yes after a pick.
+    picked.current = true;
     // Picking the wallet that is already selected does not re-trigger
     // autoConnect, so it is asked directly; the outcome still arrives through
     // onError or `connected`.
@@ -250,10 +257,13 @@ function Ui({ children, errorRef }: { children: ReactNode; errorRef: { current: 
 export function WalletProviders({ children }: { children: ReactNode }) {
   const errorRef = useRef<((e: WalletError) => void) | null>(null);
   const onError = useCallback((e: WalletError) => { errorRef.current?.(e); }, []);
+  // Asked by the library before it connects the selected wallet; yes only after a pick in this visit (see the header).
+  const picked = useRef(false);
+  const autoConnect = useCallback(async () => picked.current, []);
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
-      <WalletProvider wallets={[]} autoConnect onError={onError}>
-        <Ui errorRef={errorRef}>{children}</Ui>
+      <WalletProvider wallets={[]} autoConnect={autoConnect} onError={onError}>
+        <Ui errorRef={errorRef} picked={picked}>{children}</Ui>
       </WalletProvider>
     </ConnectionProvider>
   );
