@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { commitTestReleaseTarget, sealedReleaseEnv } from "./release-script-harness.ts";
 import { writeRecord } from "../ops/trust-config.ts";
 import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+import { replaceTrustedFactory } from "./config-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FACTORY = "0x1111111111111111111111111111111111111111";
@@ -47,8 +48,7 @@ describe("release adversary: a failed trust-config run replaces the committed re
 
     // the config commit: a set factory, as after DeployFactory; the release of the previous commit is recorded and deployed
     const cfg = join(repo, "app", "src", "lib", "robinhood", "config.ts");
-    writeFileSync(cfg, readFileSync(cfg, "utf8").replace(
-      "export const TRUSTED_FACTORY: TrustedFactory | null = null;",
+    writeFileSync(cfg, replaceTrustedFactory(readFileSync(cfg, "utf8"),
       `export const TRUSTED_FACTORY: TrustedFactory | null = Object.freeze({ address: "${FACTORY}", codeHash: "${CODE_HASH}" });`));
     const recordFile = join(repo, "release", "robinhood-prebuilt.json");
     mkdirSync(join(repo, "release"));

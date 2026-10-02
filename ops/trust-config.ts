@@ -6,8 +6,11 @@
  *   1. the committed broadcast receipt (evm/broadcast/DeployFactory.s.sol/46630/run-latest.json) is for chain
  *      46630, has one successful CREATE of OthelloFactory with constructor argument USDG, and its
  *      contractAddress equals the config address;
- *   2. the receipt's commit (the reviewed commit Joshua deployed from) is an ancestor of HEAD, and since it the
- *      ONLY files changed are config.ts, the receipt and Markdown notes (no code, build config or dependency);
+ *   2. the receipt's commit (the reviewed commit Joshua deployed from) is an ancestor of HEAD, and since it nothing
+ *      in the contract bundle or what builds it changed (CONTRACT_BUNDLE: evm/src, evm/script, evm/test, core/, the
+ *      pinned libraries and the Foundry config). ARB-DESIGN r11 §8: the contracts are fixed by G-D1 and the deploy;
+ *      the page bundle (the app, its trust config, the release tooling and this gate) may change after the deploy,
+ *      and every such change is reviewed under G-D2 before a release from it;
  *   3. keccak256(eth_getCode(address)) on the chain equals the config codeHash;
  *   4. the reviewed source's compiled runtime (evm/out, immutables filled with USDG) hashes to that same value,
  *      which ties the live code to this exact compiler, source and constructor argument;
@@ -23,7 +26,8 @@
  * string literals, nothing computed), its imported value equals that literal, and in app/src only
  * lib/robinhood/adapter.ts may import ./config or ./adapter-core (the only modules that take or hold a factory).
  * Limit: a static gate cannot prove that code written to deceive it is harmless; that is the reviews' job. It
- * catches mistakes and any change made after the review-2 SHIP.
+ * catches mistakes and any change to the contract bundle after the deploy; a change to the page bundle (this gate
+ * included) is the G-D2 review's to judge.
  *
  *   npx tsx ops/trust-config.ts [--rpc https://rpc.testnet.chain.robinhood.com]
  */
@@ -768,10 +772,14 @@ export function changedSince(commit: string | undefined): string[] | null {
   }
 }
 
-/** After the reviewed deploy, only the config, the receipt and Markdown notes may change. */
-export const CONFIG_COMMIT_ALLOWS = (p: string) =>
-  p === "app/src/lib/robinhood/config.ts" || p === "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json" ||
-  p === "release/robinhood-prebuilt.json" || p === "release/robinhood-prebuilt.files.txt" || /\.md$/.test(p);
+/**
+ * The contract bundle (ARB-DESIGN r11 §8, G-D1) and everything that shapes its bytecode: after the reviewed deploy
+ * none of it may change, since a change needs a new G-D1 and a new deploy. Everything else is the page bundle, which
+ * changes only under a G-D2 review (ARB-DESIGN r11: "A change to the page bundle needs a new G-D2 only").
+ */
+export const CONTRACT_BUNDLE = (p: string) =>
+  /^(evm\/(src|script|test|lib)|core)\//.test(p) || p === "evm/lib" ||
+  ["evm/foundry.toml", "evm/foundry.lock", "evm/remappings.txt", ".gitmodules"].includes(p);
 
 /** The factory's runtime bytecode as the reviewed source compiles it, with its immutables filled. */
 export function expectedRuntime(artifact: {
@@ -842,8 +850,8 @@ export function verify(i: Inputs): string[] {
   }
   if (i.changedSinceReceipt === null) f.push(`receipt commit ${r.commit ?? "(none)"} is not an ancestor of HEAD`);
   else {
-    const extra = i.changedSinceReceipt.filter((p) => !CONFIG_COMMIT_ALLOWS(p));
-    if (extra.length) f.push(`since the deployed commit, files other than the config, receipt and notes changed: ${extra.join(", ")}`);
+    const frozen = i.changedSinceReceipt.filter(CONTRACT_BUNDLE);
+    if (frozen.length) f.push(`since the deployed commit, the contract bundle changed (a new G-D1 and deploy are needed): ${frozen.join(", ")}`);
   }
   if (i.chainId !== ROBINHOOD_TESTNET_ID) f.push(`RPC chain id is ${i.chainId}, not ${ROBINHOOD_TESTNET_ID}`);
   // The receipt file is only a pointer: the chain must confirm the deployment itself. Identical runtime code with

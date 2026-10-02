@@ -93,13 +93,25 @@ describe("trust-config adversary: where the page's factory really comes from (op
     if (gate.state === "set") assert.equal(gate.address, page?.address, "the gate verifies a different address than the page trusts");
   });
 
-  it("the app's checkTrusted ignores any factory passed to it and uses TRUSTED_FACTORY (null: not deployed)", async () => {
+  it("the app's checkTrusted ignores any factory passed to it and uses TRUSTED_FACTORY (null or the deployed one)", async () => {
+    // the smuggled factory has its own address, distinct from the circle's, so which code was read tells them apart
+    const SMUGGLED = getAddress(`0x${keccak256(toHex("a smuggled factory")).slice(26)}`);
+    const codeAt: string[] = [];
     const client = {
-      getCode: async () => "0x6000" as const,
-      readContract: async () => { throw new Error("must not read: the trusted factory is null"); },
+      getCode: async ({ address }: { address: string }) => (codeAt.push(address.toLowerCase()), "0x6000" as const),
+      readContract: async () => { throw new Error("must not read: the factory's code is not the trusted runtime"); },
     };
     const call = checkTrusted as unknown as (...a: unknown[]) => Promise<unknown>;
-    assert.deepEqual(await call(client, UNREVIEWED, { address: UNREVIEWED, codeHash: UNREVIEWED_HASH }), { ok: false, reason: "not-deployed" });
+    const got = await call(client, UNREVIEWED, { address: SMUGGLED, codeHash: keccak256("0x6000") });
+    const trusted = await loadConfig();
+    if (trusted.state === "null") assert.deepEqual(got, { ok: false, reason: "not-deployed" });
+    else {
+      assert.equal(trusted.state, "set");
+      // 0x6000 is not the trusted runtime: refused on the code check, and it is the trusted factory's code that was read
+      assert.deepEqual(got, { ok: false, reason: "factory-code" });
+      if (trusted.state === "set") assert.ok(codeAt.includes(trusted.address.toLowerCase()), `read: ${codeAt.join(", ")}`);
+    }
+    assert.ok(!codeAt.includes(SMUGGLED.toLowerCase()), "the smuggled factory's code is never read");
   });
 });
 

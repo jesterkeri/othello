@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { getAddress, keccak256, toHex } from "viem";
 
 import { PATHS, loadConfig } from "../ops/trust-config.ts";
+import { replaceTrustedFactory } from "./config-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const UNREVIEWED = getAddress(`0x${keccak256(toHex("not the reviewed factory")).slice(26)}`);
@@ -21,8 +22,8 @@ const UNREVIEWED_HASH = keccak256(toHex("not the reviewed runtime"));
 
 /** The committed config.ts with the null line kept as a comment, and the canonical set assignment below it. */
 const hostile = () =>
-  readFileSync(PATHS.config, "utf8").replace(
-    "export const TRUSTED_FACTORY: TrustedFactory | null = null;",
+  replaceTrustedFactory(
+    readFileSync(PATHS.config, "utf8"),
     [
       "// Before the deploy this read:",
       "// export const TRUSTED_FACTORY: TrustedFactory | null = null;",
@@ -50,8 +51,8 @@ describe("trust-config adversary (ops/trust-config.ts)", function () {
 
   it("the gate never reports a set address other than the one the file exports", async () => {
     const REVIEWED = getAddress(`0x${keccak256(toHex("stands in for the reviewed factory")).slice(26)}`);
-    const src = readFileSync(PATHS.config, "utf8").replace(
-      "export const TRUSTED_FACTORY: TrustedFactory | null = null;",
+    const src = replaceTrustedFactory(
+      readFileSync(PATHS.config, "utf8"),
       [
         `/* export const TRUSTED_FACTORY: TrustedFactory | null = { address: "${REVIEWED}", codeHash: "${UNREVIEWED_HASH}" }; */`,
         `export const TRUSTED_FACTORY: TrustedFactory | null = { address: "${UNREVIEWED}", codeHash: "${UNREVIEWED_HASH}" } as TrustedFactory;`,

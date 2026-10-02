@@ -97,9 +97,10 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.deepEqual(verify(good()), []);
   });
 
-  it("passes while TRUSTED_FACTORY is null (page read-only), and the committed config is null", async () => {
+  it("passes while TRUSTED_FACTORY is null (page read-only), and the committed config is readable", async () => {
     assert.deepEqual(verify({ ...good(), config: checkConfigValue(null) }), []);
-    assert.equal((await loadConfig()).state, "null");
+    // null before the deploy, the deployed factory after it (c959260); never unreadable
+    assert.notEqual((await loadConfig()).state, "unreadable");
   });
 
   it("fails on a config it cannot read", () => {
@@ -127,15 +128,23 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.match(verify({ ...good(), receipt: receipt(factory, [other]) }).join(), /constructor argument/);
   });
 
-  it("fails unless the deployed commit is an ancestor and only config, receipt and notes changed since", () => {
+  it("fails unless the deployed commit is an ancestor and the contract bundle is unchanged since (ARB-DESIGN r11 §8)", () => {
     assert.match(verify({ ...good(), changedSinceReceipt: null }).join(), /not an ancestor of HEAD/);
-    for (const p of ["app/src/components/robinhood/trust.ts", "app/next.config.mjs", "app/tsconfig.json", "evm/src/OthelloCircle.sol", "app/package.json"]) {
-      assert.match(verify({ ...good(), changedSinceReceipt: [p] }).join(), /files other than the config/, p);
+    // the contract bundle and what builds it: a change needs a new G-D1 and deploy
+    for (const p of ["evm/src/OthelloCircle.sol", "evm/src/OthelloFactory.sol", "evm/script/DeployFactory.s.sol", "evm/test/Base.t.sol",
+      "core/model.py", "evm/lib/forge-std", "evm/lib/openzeppelin-contracts", "evm/foundry.toml", "evm/foundry.lock",
+      "evm/remappings.txt", ".gitmodules"]) {
+      assert.match(verify({ ...good(), changedSinceReceipt: [p] }).join(), /the contract bundle changed .*G-D1/, p);
     }
+    // the page bundle: changes are the G-D2 review's to judge, not a reason for this gate to fail
     assert.deepEqual(verify({ ...good(), changedSinceReceipt: [
       "app/src/lib/robinhood/config.ts", "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json", "DONE.md",
-      "release/robinhood-prebuilt.json"] }), []);
-    assert.match(verify({ ...good(), changedSinceReceipt: ["release/other.json"] }).join(), /files other than the config/);
+      "release/robinhood-prebuilt.json", "app/src/components/robinhood/RobinhoodHome.tsx", "app/next.config.mjs",
+      "app/package.json", "ops/trust-config.ts", "ops/release-robinhood.sh", "tests/trust-config.spec.ts",
+      ".github/workflows/evm.yml", "evm/ARB-FINDINGS.md", "evm/srcx/Not.sol", "coreutils.txt"] }), []);
+    // reported together, not just the first
+    assert.match(verify({ ...good(), changedSinceReceipt: ["app/x.ts", "evm/src/A.sol", "core/B.py"] }).join(),
+      /contract bundle changed .*: evm\/src\/A\.sol, core\/B\.py$/);
   });
 
   it("fails when the config hash is not the live code's hash", () => {
@@ -266,8 +275,9 @@ describe("trust-config (ops/trust-config.ts)", function () {
 
   it("the app's createRobinhoodAdapter ignores a smuggled factory or USDG", async () => {
     const reads: { address: string; functionName: string }[] = [];
+    const codeAt: string[] = [];
     const client = {
-      getCode: async () => "0x6000",
+      getCode: async ({ address }: { address: string }) => (codeAt.push(address.toLowerCase()), "0x6000"),
       getBlock: async () => ({ timestamp: 0n }),
       readContract: async ({ address, functionName }: { address: string; functionName: string }) => {
         reads.push({ address, functionName });
@@ -281,7 +291,17 @@ describe("trust-config (ops/trust-config.ts)", function () {
     const evil = "0x000000000000000000000000000000000000dEaD";
     const deps = { publicClient: client, walletClient: {}, account: evil, circle: factory, factory: { address: evil, codeHash: keccak256("0x00") }, usdg: evil };
     const ad = createRobinhoodAdapter(deps as never);
-    assert.deepEqual(await ad.trust(), { ok: false, reason: "not-deployed" }, "the trusted factory (null) is used, not the smuggled one");
+    const trusted = await loadConfig();
+    if (trusted.state === "null") {
+      assert.deepEqual(await ad.trust(), { ok: false, reason: "not-deployed" }, "the trusted factory (null) is used, not the smuggled one");
+    } else {
+      // set (after the deploy): the trusted factory's code is what gets checked, never the smuggled address; its code
+      // here is not the trusted runtime, so trust fails on the code check
+      assert.equal(trusted.state, "set");
+      assert.deepEqual(await ad.trust(), { ok: false, reason: "factory-code" });
+      assert.ok(codeAt.includes(trusted.address.toLowerCase()), `the trusted factory's code is the one checked (read: ${codeAt.join(", ")})`);
+    }
+    assert.ok(!codeAt.includes(evil.toLowerCase()), "the smuggled factory is never read");
     await ad.readCircle("");
     const bal = reads.find((r) => r.functionName === "balanceOf");
     assert.equal(bal?.address.toLowerCase(), USDG.toLowerCase(), "the real USDG is read, not the smuggled token");
@@ -429,8 +449,24 @@ describe("trust-config (ops/trust-config.ts)", function () {
     assert.deepEqual(await usdgMatches(), []);
   });
 
-  it("the CLI passes on the committed (null) config", () => {
-    const out = execFileSync("npx", ["tsx", "ops/trust-config.ts", "--rpc", RPC], { encoding: "utf8" });
-    assert.match(out, /TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it/);
+  it("the CLI on the committed config: passes while null; once set, refuses a chain without the deployment", async () => {
+    if ((await loadConfig()).state === "null") {
+      const out = execFileSync("npx", ["tsx", "ops/trust-config.ts", "--rpc", RPC], { encoding: "utf8" });
+      assert.match(out, /TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it/);
+      return;
+    }
+    // set: this local chain has chain id 46630 but not the real deployment, so the CLI must fail on exactly the
+    // chain checks (the CI job `trust-config` runs it against the real RPC, where it must pass)
+    let out = "";
+    try {
+      execFileSync("npx", ["tsx", "ops/trust-config.ts", "--rpc", RPC], { encoding: "utf8", stdio: "pipe" });
+      assert.fail("the CLI passed against a chain that does not hold the deployment");
+    } catch (e) {
+      out = `${(e as { stdout?: string }).stdout ?? ""}${(e as { stderr?: string }).stderr ?? ""}`;
+    }
+    assert.match(out, /trust-config FAILED/);
+    assert.match(out, /the chain has no deployment transaction for the receipt's hash/);
+    assert.doesNotMatch(out, /receipt deployed|contract bundle changed|not an ancestor|neither null nor|reviewed source compiles/,
+      "the receipt, the config and the reviewed build all agree; only the chain is missing");
   });
 });

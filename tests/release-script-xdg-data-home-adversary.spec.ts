@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import { commitTestReleaseTarget, sealedReleaseEnv } from "./release-script-harness.ts";
 import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+import { replaceTrustedFactory } from "./config-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SOLC = "0.8.30"; // evm/foundry.toml solc_version
@@ -46,7 +47,7 @@ describe("release: XDG_DATA_HOME in a folder others can write to (adversary pass
       "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...a], { stdio: "ignore" });
     const config = join(repo, "app", "src", "lib", "robinhood", "config.ts");
     const src = readFileSync(config, "utf8");
-    const set = src.replace("export const TRUSTED_FACTORY: TrustedFactory | null = null;",
+    const set = replaceTrustedFactory(src,
       `export const TRUSTED_FACTORY: TrustedFactory | null = Object.freeze({ address: "0x000000000000000000000000000000000000dead", codeHash: "0x${"ab".repeat(32)}" });`);
     assert.notEqual(set, src, "config.ts no longer has the expected null line");
     writeFileSync(config, set);
