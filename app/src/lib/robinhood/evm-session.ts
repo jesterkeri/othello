@@ -158,6 +158,13 @@ export function createEvmSession(d: { discovery: Discovery; remembered: Remember
     try {
       await w.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ROBINHOOD_HEX_ID }] });
     } catch (e) {
+      // -32002 (EIP-1193): a request is already pending, the earlier prompt still open. That is not a refusal and must
+      // not take the latest place from it: hand it back, so the open prompt's answer is the one that reports
+      // (adversary pass on 0553f0e: a double click hid an approved switch behind "did not switch")
+      if ((e as { code?: unknown })?.code === -32002) {
+        if (mine === switchSeq) switchSeq = mine - 1;
+        return false;
+      }
       if ((e as { code?: unknown })?.code !== 4902) {
         if (current()) emit({ error: `${w.info.name} did not switch to Robinhood Chain testnet: ${message(e)}` });
         return false;

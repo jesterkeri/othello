@@ -27,14 +27,14 @@ export type LandingProps = {
 // Split lab is kept in the code (/split-lab) but no longer linked from the UI (Joshua, 2026-09-29).
 const NAV = ['Home', 'Circles', 'xStocks', 'Portfolio', 'How it works'];
 const TABS = ['Pay in', 'Get the pot', 'If someone stops'];
-const PHRASES = ['Nobody has to trust anybody', 'You still own it', 'You get it back when the circle ends', 'Locked assets pay for anyone who stops'];
+const PHRASES = ['Nobody has to trust anybody', 'You still own it', 'You get it back when the circle ends', 'Locked assets cover anyone who takes the pot and stops'];
 const TAPE_HUES = ['var(--clay)', 'var(--acid)', 'var(--teal)', 'var(--cream)'];
 const SWATCH_HUES = [8, 26, 44, 66, 96, 140, 168, 192, 212, 236, 268, 302];
 
 const STEPS = [
   { tag: 'Every round', text: 'Everyone pays in every round', slot: 'clay' },
   { tag: 'In turn', text: 'Each member receives the whole pot once, in turn', slot: 'acid' },
-  { tag: 'The promise', text: 'Locked assets pay for anyone who stops', slot: 'sky' },
+  { tag: 'The promise', text: 'Locked assets cover anyone who takes the pot and stops', slot: 'sky' },
 ] as const;
 
 function tiltMove(e: MouseEvent<HTMLElement>) {
@@ -303,7 +303,7 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
             <span className={s.dotRun}>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>
             <span className={s.micro}>Solana devnet demo</span>
           </span>
-          <p className={s.devnetText}>The demo trades labelled mirrors of these shares, not the real xStocks.</p>
+          <p className={s.devnetText}>The Solana demo trades labelled mirrors of xStocks, not the real ones.</p>
         </div>
 
         <section className={s.hero}>

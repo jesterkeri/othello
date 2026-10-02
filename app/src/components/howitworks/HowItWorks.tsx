@@ -54,7 +54,7 @@ export default function HowItWorks() {
           {/* Codex T18c r1/r2: state the limits (KNOWN-LIMITS L3, L7, L10) rather than promise a trustless, automatic outcome. */}
           <p className={s.note}>
             What it does not remove: a member who stops paying before their turn can stall the circle,
-            because in this version it waits for them; the stock&apos;s issuer can freeze, pause or move its tokens; and every
+            because in this version it waits for them; the locked asset&apos;s issuer can freeze, pause or move its tokens; and every
             step (paying out a pot, declaring a default, topping up) happens when someone sends the transaction. Nothing runs by
             itself.
           </p>
