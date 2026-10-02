@@ -74,7 +74,13 @@ export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { o
     const hidden = own.j.hiddenProductionEnvCount;
     if (hidden !== 0) return { refusal: "Vercel does not report every project variable to this login (hiddenProductionEnvCount is not 0); the list is incomplete" };
     for (const j of [own.j, shared.j]) {
-      const next = (j.pagination as { next?: unknown } | null | undefined)?.next;
+      // a pagination marker of any other shape (a string, a list) says nothing readable about further pages: refused
+      // (adversary pass on 4d9fcdd)
+      const p = j.pagination;
+      if (p !== undefined && p !== null && (typeof p !== "object" || Array.isArray(p))) {
+        return { refusal: "Vercel's answer about the project's variables has an unreadable page marker" };
+      }
+      const next = (p as { next?: unknown } | null | undefined)?.next;
       if (next !== undefined && next !== null) return { refusal: "the project's variables span more than one page" };
     }
     // a shared variable must say which projects it applies to as a list of ids; any other shape is not read as "not this
