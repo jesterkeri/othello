@@ -803,6 +803,8 @@ describe("projectEnvFromCli: the names and record fingerprints Vercel holds, nev
       [ownList([]), [0, JSON.stringify({ data: [], pagination: { next: "abc" } })], /more than one page/],
       [ownList([{ value: SECRET }]), undefined, /has no name/],
       [ownList([]), [1, ""], /could not be read from Vercel \(exit 1\)/],
+      // a shared variable listing no project: "none" or "every" is not stated, so it is refused (adversary pass on 3429255)
+      [ownList([]), [0, JSON.stringify({ data: [{ id: "sh_1", key: "NODE_OPTIONS", value: SECRET, projectId: [] }], pagination: { next: null } })], /does not list the projects it applies to/],
     ];
     for (const [own, shared, want] of cases) {
       const r = await projectEnvFromCli(vercel(own, shared).run, "/x/vc.js", "/x/app", ids)();

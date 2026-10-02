@@ -3294,3 +3294,9 @@ shape was skipped. Fix: a private curated bin folder as the whole PATH (every pr
 odd shapes refused (evm/ARB-FINDINGS.md F-43). CI: /opt and /usr/local/bin tightened on the hosted runner. verify: the
 real PATH here builds 1186 links in 2.5 s, 9 Docker Desktop links skipped; PATH and variable specs `9 passing (8s)`.
 
+## A1 adversary pass on 3429255 (r7 target): fixed on task/A1-r8-followups (2026-10-02)
+reviewed: n/a yet (3429255 is under Codex review r7; this goes to the next round)
+adversary: DEFECT. A colon in a kept folder's real path split it into unchecked pieces. Fix: such paths dropped, pieces
+must be absolute, the build folder must be own all the way up, an empty shared project list refused (evm/ARB-FINDINGS.md
+F-44). Spec kept. verify: targeted specs `10 passing (17s)`; fast `150 passing (3m)`.
+
