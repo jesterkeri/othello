@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
-import { SIDE_HOME, sideName } from '@/lib/chains';
+import { SIDE_HOME, sideName, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
@@ -17,15 +17,15 @@ export type LandingState = 'ready' | 'loading' | 'resetting';
 
 export type LandingProps = {
   state?: LandingState;
+  /** The side the connected wallet decides (lib/active-side.ts); null with no wallet: the landing is then neutral. */
+  side?: ChainSide | null;
   walletConnected?: boolean;
-  onOpenDemo?: () => void;
-  onCreateCircle?: () => void;
   onConnectWallet?: () => void;
   onRetry?: () => void;
 };
 
 // Split lab is kept in the code (/split-lab) but no longer linked from the UI (Joshua, 2026-09-29).
-const NAV = ['Home', 'Circles', 'xStocks', 'Portfolio', 'How it works'];
+const NAV = ['Home', 'Circles', 'Assets', 'Portfolio', 'How it works'];
 const TABS = ['Pay in', 'Get the pot', 'If someone stops'];
 const PHRASES = ['Nobody has to trust anybody', 'You still own it', 'You get it back when the circle ends', 'Locked assets cover anyone who takes the pot and stops'];
 const TAPE_HUES = ['var(--clay)', 'var(--acid)', 'var(--teal)', 'var(--cream)'];
@@ -89,7 +89,7 @@ function Thumb({ p, dark }: { p: Profile; dark: boolean }) {
   );
 }
 
-export default function Landing({ state = 'ready', walletConnected = false, onOpenDemo, onCreateCircle, onConnectWallet, onRetry }: LandingProps) {
+export default function Landing({ state = 'ready', side = null, walletConnected = side !== null, onConnectWallet, onRetry }: LandingProps) {
   const [mode, setMode] = useState<ThemeMode>('light');
   const [choice, setChoice] = useState('r0');
   const [custom, setCustom] = useState<CustomProfile[]>([]);
@@ -141,10 +141,10 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
 
   const loading = state === 'loading';
   const resetting = state === 'resetting';
-  const primaryLabel = loading ? 'Opening demo circle' : 'Open demo circle';
-  const secondaryNote = walletConnected
-    ? 'Creating a circle: you name every member and the order they get paid. 3 to 8 members.'
-    : 'Creating a circle needs a wallet. You name every member and the order they get paid. 3 to 8 members.';
+  // Joshua (2026-10-03): with no wallet the one action is Connect wallet; with one, the circles of that wallet's chain.
+  const circlesHref = hrefFor('Circles', side);
+  const primaryLabel = side ? 'Your circles' : 'Connect wallet';
+  const onPrimary = () => (side ? window.location.assign(circlesHref) : onConnectWallet?.());
 
   function pick(next: string) { setChoice(next); setPanel(false); }
 
@@ -182,7 +182,7 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
             {NAV.map((label, i) => (
               <a
                 key={label}
-                href={hrefFor(label)}
+                href={hrefFor(label, side)}
                 className={`${s.navItem} ${i === 0 ? s.navItemActive : ''}`}
                 aria-current={i === 0 ? 'page' : undefined}
               >
@@ -293,18 +293,21 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
             {/* Connected: the shared address pill, whose menu is where you
                 disconnect. A plain "Connected" label here left no way out. */}
             {walletConnected
-              ? <span style={walletVars}><WalletControl /></span>
+              ? <span style={walletVars}><WalletControl side={side ?? undefined} /></span>
               : <button className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}
           </div>
         </header>
 
+        {/* the xStock mirrors note is the Solana side's: shown only with a Solana wallet (Joshua: a neutral base) */}
+        {side === 'solana' && (
         <div className={s.devnet}>
-          <span className={s.devnetPill}>
-            <span className={s.dotRun}>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>
-            <span className={s.micro}>Solana devnet demo</span>
-          </span>
-          <p className={s.devnetText}>The Solana demo trades labelled mirrors of xStocks, not the real ones.</p>
-        </div>
+            <span className={s.devnetPill}>
+              <span className={s.dotRun}>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>
+              <span className={s.micro}>Solana devnet demo</span>
+            </span>
+            <p className={s.devnetText}>The Solana demo trades labelled mirrors of xStocks, not the real ones.</p>
+          </div>
+        )}
 
         <section className={s.hero}>
           <span className={`${s.deco} ${s.decoDisc}`} />
@@ -337,33 +340,35 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
           ) : (
             <div className={s.actions}>
               <div className={s.actionRow}>
-                <button className={s.primary} onClick={onOpenDemo} disabled={loading} aria-busy={loading}>
+                <button className={s.primary} onClick={onPrimary} disabled={loading} aria-busy={loading}>
                   <span>{primaryLabel}</span><Arrow />
                 </button>
-                <button className={s.secondary} onClick={onCreateCircle}>Create a circle</button>
               </div>
-              <span className={s.sticker}>One click, no wallet, nothing to sign</span>
-              <p className={s.note}>{secondaryNote}</p>
+              <p className={s.note}>{side ? `Showing ${sideName(side)}, the chain of your connected wallet.` : 'An EVM wallet such as MetaMask opens Robinhood Chain testnet; a Solana wallet opens Solana devnet.'}</p>
             </div>
           )}
         </section>
 
         {/* Both chains from the first screen (A2-SWITCH): a judge sees there are two, and neither needs a wallet to look. */}
-        <section className={s.tryOn} aria-labelledby="try-on">
-          <span id="try-on" className={s.micro}>Try it on</span>
-          <div className={s.tryRow}>
-            <a className={s.tryCard} href={hrefFor('Circles')} style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
-              <span className={`${s.display} ${s.tryTitle}`}>{sideName('solana')}</span>
-              <span className={s.tryBody}>Savings circles backed by stock, traded as labelled test mirrors of xStocks.</span>
-              <Arrow size={20} />
-            </a>
-            <a className={s.tryCard} href={SIDE_HOME.robinhood} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
-              <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
-              <span className={s.tryBody}>Savings circles in USDG. Test USDG only; it has no value.</span>
-              <Arrow size={20} />
-            </a>
-          </div>
-        </section>
+        {/* Both chains from the first screen, but only while no wallet is connected: a connected wallet decides the side,
+            and the other chain is then not shown (Joshua, 2026-10-03). Robinhood Chain first. */}
+        {side === null && (
+          <section className={s.tryOn} aria-labelledby="try-on">
+            <span id="try-on" className={s.micro}>Try it on</span>
+            <div className={s.tryRow}>
+              <a className={s.tryCard} href={SIDE_HOME.robinhood} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
+                <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
+                <span className={s.tryBody}>Savings circles in USDG. Test USDG only; it has no value.</span>
+                <Arrow size={20} />
+              </a>
+              <a className={s.tryCard} href={hrefFor('Circles', 'solana')} style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
+                <span className={`${s.display} ${s.tryTitle}`}>{sideName('solana')}</span>
+                <span className={s.tryBody}>Savings circles backed by stock, traded as labelled test mirrors of xStocks.</span>
+                <Arrow size={20} />
+              </a>
+            </div>
+          </section>
+        )}
 
         <div className={s.tabsWrap}>
           <div className={s.tabs} role="tablist">
@@ -457,7 +462,7 @@ export default function Landing({ state = 'ready', walletConnected = false, onOp
               <span className={s.ajoSquare} />
               <p className={s.ajoText}>It&apos;s an ajo where everyone locks an asset as a promise, so if someone takes the pot and disappears, their locked asset pays for them.</p>
               {!resetting && (
-                <button className={s.ajoBtn} onClick={onOpenDemo} disabled={loading}>
+                <button className={s.ajoBtn} onClick={onPrimary} disabled={loading}>
                   <span>{primaryLabel}</span><Arrow size={16} />
                 </button>
               )}

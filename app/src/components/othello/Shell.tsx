@@ -10,6 +10,7 @@ import StockSearch from './StockSearch';
 import { WalletControl } from './WalletConnect';
 import { SIDE_HOME, SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
+import { showsChainSwitch, useActiveSide } from '@/lib/active-side';
 import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
 /** The builder's hue choices, as on Landing. */
@@ -101,6 +102,12 @@ function ChainSwitch({ current }: { current: ChainSide }) {
 export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, chainSwitch = true, side, children }: ShellProps) {
   const pathname = usePathname();
   const current = side ?? sideOf(pathname);
+  // The connected wallet decides the side (lib/active-side.ts): with one wallet connected the other chain is not shown
+  // anywhere in the frame (Joshua: a judge with MetaMask must never see Solana), so the switch is shown only while no
+  // wallet, or both, are connected; the menu follows that side.
+  const { side: shown, connected } = useActiveSide();
+  const navSide = shown;
+  const frameSide: ChainSide | null = side ?? shown;
   const t = useTheme();
   // Which colours menu is open: the rail's (desktop) or the top bar's (phone). One state, two places.
   const [menu, setMenu] = useState<'rail' | 'top' | null>(null);
@@ -212,7 +219,7 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
           {NAV.map((n) => (
             <button key={n.label} type="button" aria-label={n.label} aria-current={n.label === active ? 'page' : undefined}
               className={`${s.railBtn} ${n.label === active ? s.railOn : ''}`}
-              onClick={() => (onNavigate ? onNavigate(n.label) : window.location.assign(hrefFor(n.label)))}>
+              onClick={() => (onNavigate ? onNavigate(n.label) : window.location.assign(hrefFor(n.label, navSide)))}>
               <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={n.d} /></svg>
               {n.label === active && <span className={s.railLabel}>{n.label}</span>}
               {/* Circle.dc.html: a coloured flag beside the rail on hover or focus (desktop). */}
@@ -233,15 +240,21 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
       <main className={`${s.panel} ${surface === 'gutter' ? s.panelGutter : ''}`}>
         <div className={s.topbar}>
           <span className={s.logoTop} aria-hidden>O</span>
-          {chainSwitch ? (
+          {chainSwitch && showsChainSwitch(connected) ? (
             <ChainSwitch current={current} />
+          ) : chainSwitch ? (
+            <span className={s.devnet}>{sideName(shown ?? current)}</span>
           ) : network ? (
             <span className={s.devnet}>{network.chip}</span>
           ) : (
             <span className={s.devnet}><span className={s.dots} aria-hidden>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>Devnet<span className={s.devnetFull}>&nbsp;demo</span></span>
           )}
-          <StockSearch />
-          <p className={s.devnetText}>{network ? network.note : 'The demo trades labelled mirrors of these shares, not the real xStocks.'}</p>
+          {/* the xStocks search and its note are the Solana side's: never shown for Robinhood Chain or with no wallet */}
+          {frameSide === 'solana' && <StockSearch />}
+          <p className={s.devnetText}>{network ? network.note
+            : frameSide === 'solana' ? 'The Solana demo trades labelled mirrors of xStocks, not the real ones.'
+            : frameSide === 'robinhood' ? 'Robinhood Chain testnet. Test USDG only; it has no value.'
+            : 'Test networks only. Nothing here has real value.'}</p>
           <span className={s.actions}>
             <button type="button" className={s.palette} aria-label="Colours and mode" aria-expanded={menu === 'top'} onClick={() => setMenu(menu === 'top' ? null : 'top')}>
               {paletteIcon}

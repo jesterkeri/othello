@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
-import HowItWorks from "@/components/howitworks/HowItWorks";
+import HowItWorksBySide from "@/components/howitworks/HowItWorksBySide";
 
 export const metadata: Metadata = { title: "How it works · Othello" };
 
-/** The judge's path: six steps with live figures from the demo circle, each linking into the app. */
+/** Neutral, or Robinhood Chain's, or (with a Solana wallet) the live Solana demo walkthrough: the wallet decides. */
 export default function HowItWorksPage() {
-  return <HowItWorks />;
+  return <HowItWorksBySide />;
 }
