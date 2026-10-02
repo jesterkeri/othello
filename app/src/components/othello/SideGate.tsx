@@ -24,10 +24,10 @@ export type { GatedLabel };
 export const SETTLE_MS = 1200;
 
 /** What the gate says it is waiting for, per menu label. */
-const WHAT: Record<GatedLabel, string> = { Circles: 'your circles', Portfolio: 'your portfolio', Assets: 'the assets for your chain', Create: 'where to start a circle' };
+const WHAT: Record<GatedLabel, string> = { Circles: 'your circles', Portfolio: 'your portfolio', Assets: 'the assets for your chain', Create: 'where to start a circle', 'Split lab': 'the split lab' };
 
 /** The menu item a gated page sits under (starting a circle is under Circles). */
-const NAV_OF = (l: GatedLabel) => (l === 'Create' ? 'Circles' : l);
+const NAV_OF = (l: GatedLabel) => (l === 'Create' ? 'Circles' : l === 'Split lab' ? 'How it works' : l);
 
 /** What to connect, for a page of one chain or (null) for the neutral entry that serves both. */
 const ASK: Record<ChainSide | 'any', string> = {

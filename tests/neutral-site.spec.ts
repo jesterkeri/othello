@@ -86,7 +86,9 @@ describe("neutral site: the connected wallet decides the side", () => {
     assert.ok(routes.includes("assets") && routes.includes("robinhood"), `not vacuous: found ${routes.join(", ")}`);
     const ungated = routes.filter((d) => !NEUTRAL.has(d)).filter((d) => {
       const layout = join(appDir, d, "layout.tsx");
-      // the gate must be what the layout returns, not a mention in a comment
+      // the gate must be what the layout returns, not a mention in a comment. Stated limit (adversary on 856f0d8): this
+      // catches a forgotten gate, not one written to deceive (a matching line in a block comment or an unused helper);
+      // every layout is reviewed
       return !existsSync(layout) || !/^\s*return <RouteGate>\{children\}<\/RouteGate>;\s*$/m.test(readFileSync(layout, "utf8"));
     });
     assert.deepEqual(ungated, [], `route folders with no RouteGate layout: ${ungated.join(", ")}`);

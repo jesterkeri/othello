@@ -7,7 +7,7 @@ import type { ChainSide } from "./chains";
 import { hrefFor } from "./nav";
 
 export type Connected = { solana: boolean; robinhood: boolean };
-export type GatedLabel = "Circles" | "Portfolio" | "Assets" | "Create";
+export type GatedLabel = "Circles" | "Portfolio" | "Assets" | "Create" | "Split lab";
 
 /** The side the site shows: the only connected wallet's; with both, the page's own; with none, null (neutral). */
 export function activeSide(connected: Connected, routeSide: ChainSide): ChainSide | null {
@@ -35,5 +35,8 @@ export function labelOf(pathname: string): GatedLabel {
   if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return "Portfolio";
   // each side's page to start a circle: sent to the other side's create page, not its circles home (adversary on 1ea71fe)
   if (pathname === "/circle/new" || pathname === "/robinhood/new") return "Create";
+  // the Solana split lab sits under How it works in the menu; it has no Robinhood Chain equivalent, so an EVM-only
+  // visitor goes to the Robinhood circles (adversary passes on 8e93a30 and 856f0d8)
+  if (pathname === "/split-lab" || pathname.startsWith("/split-lab/")) return "Split lab";
   return "Circles";
 }
