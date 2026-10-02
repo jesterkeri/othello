@@ -70,7 +70,7 @@ describe("release: XDG_DATA_HOME in a folder others can write to (adversary pass
     symlinkSync(dirname(store), join(shared, "pnpm", "store"));
     chmodSync(shared, 0o777);
 
-    const env = { ...sealedReleaseEnv(tmp, join(tmp, "uploaded-output")), XDG_DATA_HOME: shared };
+    const env: NodeJS.ProcessEnv = { ...sealedReleaseEnv(tmp, join(tmp, "uploaded-output")), XDG_DATA_HOME: shared };
     const r = spawnSync("bash", [join(repo, "ops", "release-robinhood.sh")], { cwd: repo, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
     const out = `${r.stdout}\n${r.stderr}`;
     const tail = out.split("\n").filter(Boolean).slice(-15).join("\n");
