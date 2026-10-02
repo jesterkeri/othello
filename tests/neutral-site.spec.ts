@@ -6,6 +6,9 @@
  *   npx mocha --import=tsx tests/neutral-site.spec.ts
  */
 import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { hrefFor } from "../app/src/lib/nav.ts";
 import { activeSide, gateDecision, labelOf, showsChainSwitch } from "../app/src/lib/side-rules.ts";
@@ -71,4 +74,18 @@ describe("neutral site: the connected wallet decides the side", () => {
     assert.equal(labelOf("/circle/rh:0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5"), "Circles");
     assert.equal(labelOf("/assetsx"), "Circles", "only the assets routes themselves");
   });
+
+  it("every route folder is gated by its layout, except the neutral ones (adversary pass on 8e93a30: /split-lab was not)", () => {
+    const appDir = fileURLToPath(new URL("../app/src/app/", import.meta.url));
+    // neutral for everyone: the circles entry, How it works (it picks its content by side), and the API
+    const NEUTRAL = new Set(["circles", "how-it-works", "api"]);
+    const routes = readdirSync(appDir).filter((d) => statSync(join(appDir, d)).isDirectory());
+    assert.ok(routes.includes("assets") && routes.includes("robinhood"), `not vacuous: found ${routes.join(", ")}`);
+    const ungated = routes.filter((d) => !NEUTRAL.has(d)).filter((d) => {
+      const layout = join(appDir, d, "layout.tsx");
+      return !existsSync(layout) || !/<RouteGate>/.test(readFileSync(layout, "utf8"));
+    });
+    assert.deepEqual(ungated, [], `route folders with no RouteGate layout: ${ungated.join(", ")}`);
+  });
 });
+

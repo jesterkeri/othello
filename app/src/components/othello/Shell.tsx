@@ -260,7 +260,9 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
               {paletteIcon}
             </button>
             {menu === 'top' && colours('top')}
-            {wallet ?? <WalletControl side={current} />}
+            {/* the wallet control follows the side the connected wallet decides, not only the URL (an unknown URL reads as
+                Solana): a MetaMask user on a 404 sees their Robinhood wallet (adversary pass on 8e93a30) */}
+            {wallet ?? <WalletControl side={frameSide ?? current} />}
           </span>
         </div>
         {children}
