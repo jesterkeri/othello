@@ -24,7 +24,7 @@ export type { GatedLabel };
 export const SETTLE_MS = 1200;
 
 /** What the gate says it is waiting for, per menu label. */
-const WHAT: Record<GatedLabel, string> = { Circles: 'your circles', Portfolio: 'your portfolio', Assets: 'the assets for your chain', Create: 'where to start a circle', 'Split lab': 'the split lab' };
+const WHAT: Record<GatedLabel, string> = { Circles: 'your circles', Portfolio: 'what you hold in your circles', Assets: 'the assets for your chain', Create: 'where to start a circle', 'Split lab': 'the split lab' };
 
 /** The menu item a gated page sits under (starting a circle is under Circles). */
 const NAV_OF = (l: GatedLabel) => (l === 'Create' ? 'Circles' : l === 'Split lab' ? 'How it works' : l);
