@@ -39,6 +39,7 @@ import { getAddress, keccak256, toHex } from "viem";
 import { installPinnedCli } from "../ops/release-deploy.ts";
 import { USDG, VERCEL_CLI, artifactDigest, scanTree, uploadSet } from "../ops/trust-config.ts";
 import { REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+import { replaceTrustedFactory } from "./config-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FOREIGN = getAddress(`0x${keccak256(toHex("unreviewed factory in an uploaded server file")).slice(26)}`);
@@ -116,6 +117,10 @@ describe("trust-config adversary: what `vercel deploy --prebuilt` uploads is wha
     mkdirSync(app);
     cpSync(join(ROOT, "ops/trust-config.ts"), join(tree, "ops/trust-config.ts"));
     cpSync(join(ROOT, "app/src"), join(app, "src"), { recursive: true });
+    // This spec is about what the build scan and the upload set cover, so its scratch tree (no receipt, no evm/out, no
+    // history) runs the gate before a factory is set; CI's trust-config job checks the set factory on the real build.
+    const cfg = join(app, "src/lib/robinhood/config.ts");
+    writeFileSync(cfg, replaceTrustedFactory(readFileSync(cfg, "utf8"), "export const TRUSTED_FACTORY: TrustedFactory | null = null;"));
     for (const f of ["package.json", "next.config.mjs", "tsconfig.json"]) cpSync(join(ROOT, "app", f), join(app, f));
     symlinkSync(join(ROOT, "node_modules"), join(tree, "node_modules"));
     symlinkSync(join(ROOT, "app/node_modules"), join(app, "node_modules"));

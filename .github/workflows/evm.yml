@@ -55,7 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { persist-credentials: false, submodules: recursive }
+        # full history: with the factory set, the release and gate specs need the deployed commit (3429255) in it
+        with: { persist-credentials: false, submodules: recursive, fetch-depth: 0 }
       - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with: { version: v1.8.1 }
       - uses: actions/setup-node@v4

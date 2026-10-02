@@ -945,3 +945,15 @@ orphan branch (its index names the empty tree, which git never writes) made it e
 developer checkout. fsck now starts from the deployed commit and HEAD only (`--no-reflogs <deployed> HEAD`) and still
 re-hashes every object it reads (the forged-tree spec still fails closed). Spec kept:
 tests/trust-config-orphan-worktree-fsck-adversary.spec.ts.
+
+## F-53. Code review r8 (2fcf23f): REVISE only for the unfinished CI job; that job's failures
+
+Codex code review r8 (reviews/arb-code-review-r8.md, sha256 c0c0eb5d…): G-D1 COMPLETE; no code defect; G-D2 REVISE
+pending the adapter job of run 37033760750. That job then failed (216 passing, 8 failing): its checkout was shallow,
+so with the factory set the release and gate specs (which clone the checkout) could not find the deployed commit
+("receipt commit 3429255 is not an ancestor of HEAD"); the prebuilt-upload spec runs the gate on a scratch tree with
+no receipt, evm/out or history; and one release spec's next build hit a Google Fonts error (`next/font`: "Cannot read
+properties of null (reading '1')"), a network flake. The adapter job now checks out full history (fetch-depth 0, as
+the trust-config job does), and the prebuilt-upload spec's scratch tree pins its config to null (it tests the scan
+and the upload set; the set factory is checked on the real build by the trust-config job). Locally: that spec
+`5 passing (40s)`.
