@@ -62,6 +62,16 @@ own_dir() {
     d="${d%/*}"; [ -n "$d" ] || d=/
   done
 }
+# the folders the kept variables name are where the toolchain loads programs and settings from (forge's solc under
+# XDG_DATA_HOME/svm or HOME, pnpm's and npm's rc under XDG_CONFIG_HOME or HOME, node under NVM_DIR): each must be the
+# operator's own like a PATH folder, or the release stops (adversary pass on 4d9fcdd: a planted solc ran at forge build)
+for v in HOME XDG_DATA_HOME XDG_CONFIG_HOME NVM_DIR; do
+  [ "$v" = HOME ] || [ -n "${!v:-}" ] || continue
+  if ! r="$(/usr/bin/realpath -e -- "${!v:-}" 2>/dev/null)" || [ ! -d "$r" ] || ! own_dir "$r"; then
+    echo "release: $v (${!v:-unset}) is not a folder of the operator's own (it and every folder above must belong to the operator or root, and only the operator may write to it); fix or unset it" >&2
+    exit 1
+  fi
+done
 safe_path=""
 dropped=0
 rest="$PATH"

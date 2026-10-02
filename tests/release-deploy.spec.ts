@@ -801,6 +801,9 @@ describe("projectEnvFromCli: the names and record fingerprints Vercel holds, nev
       [ownList([], { hiddenProductionEnvCount: 2 }), undefined, /hiddenProductionEnvCount is not 0\); the list is incomplete/],
       [ownList([], { pagination: { next: 123 } }), undefined, /more than one page/],
       [ownList([]), [0, JSON.stringify({ data: [], pagination: { next: "abc" } })], /more than one page/],
+      // a page marker that is not an object says nothing readable about further pages (adversary pass on 4d9fcdd)
+      [ownList([], { pagination: "next" }), undefined, /unreadable page marker/],
+      [ownList([]), [0, JSON.stringify({ data: [], pagination: ["abc"] })], /unreadable page marker/],
       [ownList([{ value: SECRET }]), undefined, /has no name/],
       [ownList([]), [1, ""], /could not be read from Vercel \(exit 1\)/],
       // a shared variable listing no project: "none" or "every" is not stated, so it is refused (adversary pass on 3429255)
