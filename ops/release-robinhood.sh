@@ -72,6 +72,8 @@ while :; do
   why=""
   if [ "${d#/}" = "$d" ]; then why="relative or empty"
   elif ! r="$(/usr/bin/realpath -e -- "$d" 2>/dev/null)" || [ ! -d "$r" ]; then why="missing"
+  # a real path holding a colon would come back as unchecked pieces wherever PATH is split again (adversary pass on 3429255)
+  elif [ "${r#*:}" != "$r" ]; then why="its real path contains a colon"
   elif ! own_dir "$r"; then why="another user's, or it or a folder above it writable by others"
   fi
   if [ -z "$why" ]; then
@@ -170,6 +172,9 @@ REPO="$(pwd)"
 # next's) lives in it: a shared /tmp would let another user plant or rewrite what a step runs.
 /usr/bin/mkdir -p "$HOME/.cache/othello-release" && /usr/bin/chmod 700 "$HOME/.cache/othello-release"
 WORK="$(/usr/bin/mktemp -d "$HOME/.cache/othello-release/XXXXXXXX")"
+# the build folder holds the release's whole PATH ($WORK/bin, below): it must be an own folder all the way up, so no
+# other user can swap it or a folder above it (HOME/.cache as a link into a shared folder; adversary pass on 3429255)
+WORK="$(/usr/bin/realpath -e -- "$WORK")" && own_dir "$WORK" || { echo "release: the build folder $WORK is not in folders of the operator's own; check $HOME/.cache" >&2; exit 1; }
 # on ANY exit, a record that reached the deploy step (it carries deployStartedAt, written before Vercel is contacted)
 # comes back to the checkout before the folder goes, so an interrupted or failed deploy is never invisible; a record from
 # a run that stopped earlier never replaces the committed one. The copy cannot stop the clean-up.
@@ -188,6 +193,7 @@ skipped=()
 rest="$PATH"
 while :; do
   d="${rest%%:*}"
+  case "$d" in /*) ;; *) echo "release: PATH piece \"$d\" is not an absolute folder" >&2; exit 1 ;; esac
   unsafe=()
   while IFS= read -r -d '' f; do unsafe[${f##*/}]=1; done \
     < <(/usr/bin/find "$d" -mindepth 1 -maxdepth 1 -type f \( ! -uid "$me" ! -uid 0 -o -perm /022 \) -print0 2>/dev/null)

@@ -81,7 +81,8 @@ export function projectEnvFromCli(quiet: Run, cli: string, app: string, ids: { o
     // project" but refused (adversary pass on aed6598)
     for (const e of shared.j.data as EnvRecord[]) {
       const pid = e?.projectId;
-      if (!Array.isArray(pid) || pid.some((x) => typeof x !== "string")) {
+      // an empty list is refused too: whether it means no project or every project is not stated anywhere this reads
+      if (!Array.isArray(pid) || pid.length === 0 || pid.some((x) => typeof x !== "string")) {
         return { refusal: "a shared variable in Vercel's answer does not list the projects it applies to" };
       }
     }

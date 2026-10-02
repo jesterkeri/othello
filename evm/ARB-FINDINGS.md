@@ -855,3 +855,15 @@ link points at the final file, nothing reached later can be swapped. (2) A share
 list of ids (a string, null, missing) was silently treated as another project's; any such shape is now a refusal
 (spec kept: tests/release-deploy-shared-projectid-shape-adversary.spec.ts). Also from the CI diagnostics: GitHub's
 hosted runner leaves /opt, /usr/local/bin and the tool cache 777; the CI job tightens them before the release specs.
+
+## F-44. Adversary pass on 3429255 (the r7 target): a folder name holding a colon; the build folder's owners
+
+(1) The PATH filter kept a folder's real path whole, but $WORK/bin's step split the joined PATH on `:` again, so an own
+folder whose real name held a colon (`x:<a shared folder>`) came back as unchecked pieces whose files were linked, and a
+piece beginning with `-` reached `find` as an option (`x:-delete` deleted top-level files of the checkout). Low
+likelihood (only the operator or root can make such an own folder) but real (spec kept:
+tests/release-script-path-colon-folder-adversary.spec.ts). A real path containing a colon is now dropped (named), and the
+step refuses any piece that is not an absolute folder. (2) From the pass's suspicion: $WORK (which holds the release's
+whole PATH) lived under $HOME/.cache unchecked; the build folder is now resolved and must pass own_dir all the way up,
+or the release stops before building anything. (3) A shared variable whose project list is empty is refused: whether it
+means no project or every project is not stated anywhere the release reads.
