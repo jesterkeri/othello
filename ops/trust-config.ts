@@ -692,7 +692,9 @@ export function gitIn(root: string, args: string[]): string {
   const { env, pinned } = sealedGit(root);
   const drivers = gitProgramDrivers(root);
   if (drivers.length) throw new Error(`REFUSED: the repository's git config names programs git would run (${drivers.join(", ")}); remove them`);
-  return execFileSync("/usr/bin/git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+  // maxBuffer: a long list of changed names must not cut git's answer short (Node's default is 1 MiB; adversary pass
+  // on 55a2452: 1.1 MB of page-bundle names made the gate fail a correct state)
+  return execFileSync("/usr/bin/git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024 });
 }
 
 /**
@@ -785,6 +787,10 @@ export function changedSince(commit: string | undefined): string[] | null {
       .filter((o) => /^[0-9a-f]{40}$/.test(o) && o.startsWith(commit) && gitIn(ROOT, ["cat-file", "-t", o]).trim() === "commit");
     const full = commits.length === 1 ? commits[0] : undefined;
     if (!full) return null;
+    // git checks a commit's own hash when it reads it, not the trees and files under it: a loose object rewritten
+    // in .git could give the deployed commit's core/ HEAD's tree (adversary pass on 55a2452). fsck re-hashes every
+    // object and fails on any mismatch, so a forged object store fails closed (about half a second here).
+    gitIn(ROOT, ["fsck", "--no-dangling", "--no-progress"]);
     gitIn(ROOT, ["merge-base", "--is-ancestor", full, "HEAD"]);
     // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
     // -z: names exactly as stored, NUL-separated; without it git C-quotes a name holding a tab, a quote, a backslash or

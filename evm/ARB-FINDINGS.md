@@ -867,3 +867,73 @@ step refuses any piece that is not an absolute folder. (2) From the pass's suspi
 whole PATH) lived under $HOME/.cache unchecked; the build folder is now resolved and must pass own_dir all the way up,
 or the release stops before building anything. (3) A shared variable whose project list is empty is refused: whether it
 means no project or every project is not stated anywhere the release reads.
+
+## F-45. Code review r7 (3429255): SHIP; the factory deployed and verified; the config commit
+
+Codex code review r7 (reviews/arb-code-review-r7.md, sha256 59bf3a10…): VERDICT SHIP, G-D1 and G-D2 SHIP at 3429255,
+no findings; deploy through DeployFactory.s.sol. On 2026-10-02 Joshua deployed it from a clean checkout of 3429255 with
+his own key (othello-design/arb/deploy-factory.sh: hidden key prompt, dry run, explicit "yes"): factory
+0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5, tx 0x4d5c1da89db5cda4b7f326a6ef9dc0c32ce745bff71f94ea38851770b5581acd
+(block 127656060, status 1), from 0xDCA915e9F833002c978e162610E3e88eD159a1Ff at nonce 0. The live runtime equals the
+build of 3429255 byte for byte (19175 bytes; its two immutables are USDG); keccak256 0xd1c2e7bd…a472f1. Source verified
+on the explorer (Blockscout: OthelloFactory, v0.8.30, optimizer 200, cancun, fully verified). Config commit c959260
+changes only config.ts and the receipt; the CI job trust-config is green on it.
+
+## F-46. Adversary pass on 4d9fcdd: XDG_DATA_HOME's folder; a page marker that is not an object
+
+(1) The release judged every PATH folder but kept XDG_DATA_HOME through the seal unjudged, and forge loads solc from
+$XDG_DATA_HOME/svm; a solc planted in a folder others can write to ran at the release's forge build. Each folder that
+HOME, XDG_DATA_HOME, XDG_CONFIG_HOME and NVM_DIR name (HOME always, the others when set) must now pass own_dir, or the
+release stops before any tool runs (spec kept: tests/release-script-xdg-data-home-adversary.spec.ts). (2) A Vercel
+pagination marker that is a string or a list is refused as unreadable instead of read as one page.
+
+## F-47. Adversary pass on c959260 (the config commit): tests that assumed no factory; the gate aligned with r11
+
+Eight tests assumed TRUSTED_FACTORY is null and failed once the deployed factory was committed (and three hostile-config
+style specs built their input by replacing the literal `= null;` line, which then silently matched nothing). The gate's
+rule "since the deployed commit only config.ts, the receipt and notes may change" forbade fixing them without a new
+deploy, which contradicts ARB-DESIGN r11 §8 ("A change to the page bundle needs a new G-D2 only"). Joshua chose to keep
+the factory and align the gate: rule 2 now freezes only CONTRACT_BUNDLE (evm/src, evm/script, evm/test, evm/lib, core/,
+evm/foundry.toml, evm/foundry.lock, evm/remappings.txt, .gitmodules) since the deployed commit; everything else is the
+page bundle, judged by the G-D2 review (the gate included: a deliberate change to it is the review's to catch, as its
+header's Limit says). Tests now hold for a null and a set factory; the smuggled-factory tests give the smuggled factory
+its own address and check whose code is read (mutation: an adapter that takes the passed factory fails them);
+tests/config-fixture.ts replaces the TRUSTED_FACTORY declaration whatever its value and throws when it is missing.
+
+## F-48. Adversary passes on b9e3509, 9a1fa97 and c1fc27e: what git lists as changed
+
+(1) `git diff --name-only` C-quotes a name holding a tab, a quote, a backslash or a non-ASCII byte, so
+`"evm/src/Fa\303\247ade.sol"` matched no bundle prefix; names are now read with -z. (2) diff.ignoreSubmodules=all or
+submodule.<name>.ignore=all in the repository's config hid an evm/lib gitlink bump; the diff passes
+--ignore-submodules=none. (3) The receipt holds the commit abbreviated ("3429255"); a branch or tag of that name won over
+the commit and made the diff empty; the abbreviation is resolved among commit objects only (rev-parse --disambiguate,
+exactly one), and only the full hash is used. Specs kept: tests/trust-config-quoted-path-adversary.spec.ts,
+tests/trust-config-ignored-gitlink-adversary.spec.ts, tests/trust-config-ref-named-commit-adversary.spec.ts.
+
+## F-49. Adversary pass on 3803cdd: the receipt's commit field could be moved past a bundle change
+
+Rule 2 measured the freeze from the receipt's own "commit" field, which is outside the bundle; a later commit could
+rewrite it to point past a core/ (or evm/test, evm/script, Foundry config) change, which rules 1, 3, 4 and 5 do not see.
+The gate now pins DEPLOYED_COMMIT = 3429255c44fb3d20a194ca1186b7af6b7a17b962 like its other pinned inputs: the receipt
+must name it and rule 2 diffs from it. A new deploy needs a new G-D1 and changes the pin in a reviewed commit. Spec kept:
+tests/trust-config-moved-receipt-commit-adversary.spec.ts; refusal cases in tests/trust-config.spec.ts.
+
+## F-50. Adversary pass on 84043b3: a file named HEAD; a forged commit-graph
+
+(1) A committed file named HEAD made `git diff <deployed> HEAD` stop with "ambiguous argument", so the gate failed for
+the real, correct state (blocking releases, never passing a bad factory); the revisions now end with "--". (2) A
+rewritten .git/objects/info/commit-graph could give the deployed commit HEAD's tree and hide a core/ change (needs write
+access to .git, like replace refs); sealedGit pins core.commitGraph=false. Specs kept:
+tests/trust-config-head-named-file-adversary.spec.ts, tests/trust-config-forged-commit-graph-adversary.spec.ts.
+
+## F-51. Adversary pass on 55a2452: a forged tree object; a long list of names
+
+(1) git checks a commit object's hash when it reads it, not the trees and files under it; a loose object rewritten in
+.git could give the deployed commit's core/ HEAD's tree and empty rule 2's diff (hand runs only: CI checks out fresh,
+and the release's `git clone --no-local` refused the forged repository). changedSince now runs `git fsck
+--no-dangling` first (about 0.5 s), which re-hashes every object and fails on any mismatch, so a forged object store
+fails closed. (2) gitIn kept Node's 1 MiB output limit; 1.1 MB of page-bundle names made rule 2 fail a correct state.
+The limit is now 256 MiB. Specs kept: tests/trust-config-forged-tree-object-adversary.spec.ts,
+tests/trust-config-long-names-adversary.spec.ts. Stated limit (all of F-47 to F-51): the gate is in the page bundle
+and trusts the machine it runs on; a deliberate change to it, or an attacker who controls the runner, is the G-D2
+review's and the account boundary's (F-40) to catch, not the gate's.

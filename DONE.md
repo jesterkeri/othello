@@ -3300,3 +3300,17 @@ adversary: DEFECT. A colon in a kept folder's real path split it into unchecked 
 must be absolute, the build folder must be own all the way up, an empty shared project list refused (evm/ARB-FINDINGS.md
 F-44). Spec kept. verify: targeted specs `10 passing (17s)`; fast `150 passing (3m)`.
 
+
+## A1 r7 SHIP, the factory deployed, the config commit, and the gate aligned with ARB-DESIGN r11 (2026-10-02)
+reviewed: Codex code review r7 SHIP (G-D1 and G-D2 at 3429255; reviews/arb-code-review-r7.md sha256 59bf3a10…). The
+config commit and everything after it go to Codex code review r8.
+deployed: OthelloFactory 0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5 on Robinhood Chain testnet (tx 0x4d5c1da8…81acd,
+block 127656060), from 3429255 by Joshua; runtime equals the build of 3429255 byte for byte; source verified on the
+explorer. Config commit c959260 (config.ts + receipt only).
+adversary: DEFECTS in seven passes, all fixed with specs kept (evm/ARB-FINDINGS.md F-46 to F-51): XDG folders; tests
+that assumed no factory (gate aligned with r11: only the contract bundle is frozen after the deploy); quoted names;
+ignored submodules; a ref named like the commit; a movable receipt commit (DEPLOYED_COMMIT pinned); a file named HEAD;
+a forged commit-graph and tree object; a long list of names.
+verify: trust-config, its adversary specs and release-deploy `91 passing (8s)`; real chain: "trust-config:
+0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5 verified against the receipt, the chain's deployment, its live code and the
+reviewed source." The specs that run next build or vercel build are verified in CI (Google Fonts times out here).
