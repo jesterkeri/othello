@@ -113,9 +113,10 @@ export default function RobinhoodHome() {
         <section className={`${s.banner} ${s.neutral}`} aria-labelledby="mainnet-plan">
           <h2 id="mainnet-plan" className={s.bannerTitle}>Planned for mainnet: interest on idle USDG</h2>
           <p className={s.bannerText}>
-            On Robinhood Chain mainnet, USDG in your wallet or locked in a circle could earn interest from borrowers
-            through a USDG lending vault on Morpho, already live there. The rate moves with demand and nothing is
-            promised. Not built yet: nothing on this testnet earns.
+            On Robinhood Chain mainnet, USDG in your wallet could earn interest from borrowers through a USDG lending
+            vault on Morpho, already live there. The rate moves with demand and nothing is promised. Lending carries
+            risk: money can be lost, and a withdrawal can wait while the vault&apos;s USDG is lent out. Circle money
+            stays out of it. Not built yet: nothing on this testnet earns.
           </p>
         </section>
       </main>
