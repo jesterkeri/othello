@@ -212,6 +212,12 @@
   .tryRow { grid-template-columns: 1fr; }
   .tabs { flex-wrap: wrap; justify-content: center; border-radius: 26px; overflow-x: visible; }
   .tab { padding: 10px 12px; }
+  /* The menu pills take their own full-width row, so the top row keeps the logo, the active chain's mark and the
+     wallet pill inside a 360px screen (adversary pass on bc6abad: the pill ran off the edge) */
+  .pillGroup { grid-column: 1 / -1; grid-row: 2; }
+  .navActions { gap: 5px; }
+  .iconBtn { width: 40px; height: 40px; }
+  .markSlot > span { width: 36px; height: 36px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

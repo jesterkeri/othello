@@ -294,7 +294,7 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
             {/* Connected: the shared address pill, whose menu is where you
                 disconnect. A plain "Connected" label here left no way out. */}
             {/* the active chain's mark, as in every other page's top bar; none with no wallet */}
-            {side && <span style={walletVars}><ChainMarkSlot side={side} mode={mode} /></span>}
+            {side && <span className={s.markSlot} style={walletVars}><ChainMarkSlot side={side} mode={mode} /></span>}
             {walletConnected
               ? <span style={walletVars}><WalletControl side={side ?? undefined} /></span>
               : <button className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}
