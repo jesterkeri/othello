@@ -212,6 +212,8 @@
    cut to "…" in a narrow middle column (adversary pass on 238d644: 760-900px) */
 @media (max-width: 1023px) {
   .pillGroup { grid-column: 1 / -1; grid-row: 2; }
+  /* the actions keep the right-hand column, not the emptied middle one (adversary pass on cf8e9b5) */
+  .navActions { grid-column: 3; grid-row: 1; justify-self: end; }
 }
 
 /* Phone: the tab row wraps instead of hiding tabs off the right edge. */
