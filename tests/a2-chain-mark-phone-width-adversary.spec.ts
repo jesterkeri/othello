@@ -130,7 +130,7 @@ function layout(markup: string, width: number): Layout {
       pill: box(header.querySelector('.WalletConnect_pill')), mark: box(header.querySelector('.ChainMark_chainMark')),
       markInBar: !!header.querySelector('.ChainMark_chainMark'), nav: box(header.querySelector('nav.Landing_pillGroup')) };
     const pre = parent.document.createElement('pre'); pre.id = 'layout-out'; pre.textContent = JSON.stringify(out); parent.document.body.appendChild(pre);`;
-  const inner = `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head>` +
+  const inner = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head>` +
     `<body>${markup}<script>${probe}</script></body></html>`;
   const outer = `<!doctype html><html><body style="margin:0"><iframe width="${width}" height="844" style="border:0;display:block" ` +
     `srcdoc="${inner.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe></body></html>`;

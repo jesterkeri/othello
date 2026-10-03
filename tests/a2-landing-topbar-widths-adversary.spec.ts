@@ -149,7 +149,7 @@ function layouts(markup: string, widths: number[], font: Buffer | null): Layout[
     const out = { width: ${w}, inner: window.innerWidth, frameRight: document.querySelector('.Landing_frame').getBoundingClientRect().right, jakarta, parts };
     const pre = parent.document.createElement('pre'); pre.className = 'layout-out'; pre.textContent = JSON.stringify(out); parent.document.body.appendChild(pre);`;
   const frames = widths.map((w) => {
-    const inner = `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head>` +
+    const inner = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head>` +
       `<body>${markup}<script>document.fonts.ready.then(() => { ${probe(w)} });</script></body></html>`;
     return `<iframe width="${w}" height="400" style="border:0;display:block" srcdoc="${inner.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe>`;
   });

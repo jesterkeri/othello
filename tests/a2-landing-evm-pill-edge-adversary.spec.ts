@@ -1,24 +1,31 @@
 /**
- * Adversary, A2 chain logos (Joshua, 2026-10-03), pass on cf8e9b5. The spec, rule 3: "Layout must not break at any width
- * from 360px through desktop (including 759/760/761 and 1023/1024/1025px), in every wallet state ..., on every page
- * (landing, ...): ... the landing page's first screen still showing its main content and its primary action without
- * awkward gaps."
+ * Adversary, A2 chain logos (Joshua, 2026-10-03), pass on 9f9fd26. The spec, rule 3: "Layout must not break at any
+ * width from 360px through desktop ..., in every wallet state, on every page, with the site's real font: nothing
+ * squeezed, nothing overflowing, ..., the landing top bar's actions at its right edge"; rule 2: "on a wrong EVM network
+ * the pill says so and offers the switch".
  *
- * The landing top bar is a grid, `auto minmax(0, 1fr) auto`: the logo, the menu pills, then the actions (the colours
- * button, the chain mark, the wallet pill or Connect wallet) in the last column, against the bar's right edge. cf8e9b5
- * (Landing.module.css, `@media (max-width: 1023px) { .pillGroup { grid-column: 1 / -1; grid-row: 2; } }`, widening
- * 8df6d80's phone-only rule) gives the menu its own row but leaves the actions auto-placed: with the menu out of row one
- * they fall into the middle `1fr` column, packed to its start. So below 1024px the colours button, the mark and the
- * wallet pill sit against the logo, with the rest of the row empty (about 700px of it at 1023px with no wallet), and at
- * 1024px the whole group jumps to the right edge. On de78a6f, before the feature, the actions end at the bar's right
- * edge at every width, as they still do here from 1024px.
+ * 9f9fd26 (Landing.module.css, under 1024px: `.navActions { grid-column: 3; grid-row: 1; justify-self: end; }`) puts
+ * the actions in the bar's last grid column, `auto`, sized by its content. Before it (cf8e9b5) they sat in the
+ * `minmax(0, 1fr)` middle column, which could shrink. At 360px the top row (logo, colours button, the feature's chain
+ * mark, the wallet pill) is now wider than the bar for an EVM wallet: the grid's tracks overrun its content box, so the
+ * pill runs into the bar's right padding, and with "Switch network" (an EVM wallet on another network) onto the
+ * frame's 5px border, with the menu row under it pushed out too.
  *
- * Harness: tests/a2-landing-menu-labels.spec.ts's (the real app/src/app/page.tsx over stubbed wallet contexts, the real
- * globals.css and the Landing, ChainMark and WalletConnect modules, a real Chromium, one iframe per width as its
- * viewport, Plus Jakarta Sans fetched read-only from Google Fonts). The probe records where the top row's last control
- * ends against the bar's content edge (its right edge less its padding and border).
+ * tests/a2-landing-actions-alignment-adversary.spec.ts measures the same edge (the header's right edge less its padding
+ * and border) but fails only when the last control stops short of it, never when it runs past; tests/a2-landing-
+ * topbar-widths-adversary.spec.ts checks only the frame's outer edge, 17px further right.
  *
- *   npx mocha --import=tsx --timeout 300000 tests/a2-landing-actions-alignment-adversary.spec.ts
+ * Fixtures: the EOA that deployed the factory on Robinhood Chain testnet (chain 46630), read from
+ * evm/broadcast/DeployFactory.s.sol/46630/run-latest.json in before(), checksummed with the app's viem as the EVM
+ * session holds it. Controls: no wallet, and a Solana wallet (the System Program id, as the earlier specs use).
+ * Run against cf8e9b5 the deployer case passes and the wrong-network pill ends 4.9px past the edge (the menu inside);
+ * against de78a6f the deployer case passes (the wrong-network pill did not exist yet).
+ *
+ * Same harness as tests/a2-landing-topbar-widths-adversary.spec.ts (the real app/src/app/page.tsx over stubbed wallet
+ * contexts, the real globals.css and the Landing, ChainMark and WalletConnect modules, a real Chromium, one iframe per
+ * width as the viewport, Plus Jakarta Sans fetched read-only from Google Fonts), with the charset declared.
+ *
+ *   npx mocha --import=tsx --timeout 300000 tests/a2-landing-evm-pill-edge-adversary.spec.ts
  *
  * Needs the network for the font. Installs module loader hooks: run in its own mocha process.
  */
@@ -119,7 +126,7 @@ function fileUrl(path: string, windows: boolean): string {
 
 type Box = { left: number; right: number; width: number };
 type Layout = {
-  width: number; inner: number; jakarta: string; contentRight: number; actions: Box; last: Box & { what: string }; menuTop: number; barTop: number;
+  width: number; inner: number; frameRight: number; contentRight: number; shortText: string | null; jakarta: string; parts: Record<string, Box | null>;
 };
 
 const FONT_CSS = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap";
@@ -142,29 +149,33 @@ function layouts(markup: string, widths: number[], font: Buffer | null): Layout[
   const face = font ? "@font-face { font-family: 'Plus Jakarta Sans'; font-weight: 200 800; src: url(jakarta.woff2) format('woff2'); }\n" : "";
   const css = face + ":root { --font-jakarta: 'Plus Jakarta Sans'; --font-archivo: Archivo; }\n" +
     readFileSync(resolve(SRC, "app/globals.css"), "utf8") + "\n" +
+    // ChainMark.module.css is new in this feature: missing when this spec is run on de78a6f, the commit before it
     Object.entries(CSS_FILES).filter(([, f]) => existsSync(f)).map(([m, f]) => scoped(m, readFileSync(f, "utf8"))).join("\n");
   const probe = (w: number) => `
-    const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: r.width }; };
+    const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: r.width }; };
     const header = document.querySelector('header.Landing_nav');
-    const hb = header.getBoundingClientRect();
-    const actions = header.querySelector('.Landing_navActions');
-    // the top row's last control: the wallet pill, the wallet's own Connect button, or the landing page's Connect wallet
-    const lastEl = [...actions.querySelectorAll('.WalletConnect_pill, .WalletConnect_connect, .Landing_connect')].pop();
+    const q = (sel) => box(header.querySelector(sel));
+    const parts = { logo: q('.Landing_logo'), colours: q('.Landing_iconBtn'), mark: q('.ChainMark_chainMark'),
+      walletPill: q('.WalletConnect_pill'), connect: q('.Landing_connect, .WalletConnect_connect') };
+    [...header.querySelectorAll('nav.Landing_pillGroup a')].forEach((a) => { parts['menu ' + a.textContent] = box(a); });
     const jakarta = [...document.fonts].filter((f) => f.family.includes('Jakarta')).map((f) => f.status).join(',') || 'not declared';
-    const out = { width: ${w}, inner: window.innerWidth, jakarta,
-      contentRight: hb.right - parseFloat(getComputedStyle(header).paddingRight) - parseFloat(getComputedStyle(header).borderRightWidth),
-      actions: box(actions), last: { ...box(lastEl), what: lastEl.textContent }, menuTop: header.querySelector('nav.Landing_pillGroup').getBoundingClientRect().top,
-      barTop: header.querySelector('.Landing_logo').getBoundingClientRect().top };
+    const hs = getComputedStyle(header);
+    const short = header.querySelector('.WalletConnect_short');
+    const out = { width: ${w}, inner: window.innerWidth, frameRight: document.querySelector('.Landing_frame').getBoundingClientRect().right,
+      contentRight: header.getBoundingClientRect().right - parseFloat(hs.paddingRight) - parseFloat(hs.borderRightWidth),
+      shortText: short ? short.textContent : null, shortVisible: short ? short.innerText : null, jakarta, parts };
     const pre = parent.document.createElement('pre'); pre.className = 'layout-out'; pre.textContent = JSON.stringify(out); parent.document.body.appendChild(pre);`;
   const frames = widths.map((w) => {
+    // the charset is declared: without it Chromium sometimes reads the srcdoc as windows-1252 and the pill's "…" turns
+    // into three characters, about 13px wider (seen while writing this spec)
     const inner = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head>` +
       `<body>${markup}<script>document.fonts.ready.then(() => { ${probe(w)} });</script></body></html>`;
-    return `<iframe width="${w}" height="500" style="border:0;display:block" srcdoc="${inner.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe>`;
+    return `<iframe width="${w}" height="400" style="border:0;display:block" srcdoc="${inner.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe>`;
   });
-  const outer = `<!doctype html><html><body style="margin:0">${frames.join("")}</body></html>`;
+  const outer = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">${frames.join("")}</body></html>`;
   const errors: string[] = [];
   for (const b of browsers()) {
-    const dir = mkdtempSync(join(REPO, ".a2-landing-actions-"));
+    const dir = mkdtempSync(join(REPO, ".a2-evm-pill-edge-"));
     try {
       const file = join(dir, "landing.html");
       writeFileSync(file, outer);
@@ -185,59 +196,76 @@ function layouts(markup: string, widths: number[], font: Buffer | null): Layout[
   throw new Error(`no Chromium laid the page out; set CHROME to a chrome or chrome-headless-shell binary.\n${errors.join("\n")}`);
 }
 
+/** Every top-bar part that ends past the bar's content edge (its right edge less its padding and border), as "part ends at Xpx". */
+function pastEdge(l: Layout): string[] {
+  return Object.entries(l.parts)
+    .filter(([, b]) => b && b.right > l.contentRight + 0.5)
+    .map(([k, b]) => `${k} ends at ${b!.right.toFixed(1)}px${b!.right > l.frameRight + 0.5 ? " (past the frame)" : ""}`);
+}
+
 const noop = () => {};
 const noUi = { address: null, walletName: null, stage: "closed", openConnect: noop, disconnect: noop };
 const noEvm = { address: null, onRobinhood: false, walletName: null, disconnect: noop, switchToRobinhood: noop };
-// the same wallets as tests/a2-landing-menu-labels.spec.ts
-const EVM = { address: "0x1111111111111111111111111111111111111111", onRobinhood: true, walletName: "MetaMask", disconnect: noop, switchToRobinhood: noop };
-const SOL = { ...noUi, address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", walletName: "Phantom" };
-const STATES: [string, Ctx][] = [
+// The EOA that deployed the factory on Robinhood Chain testnet (chain 46630): the "from" of
+// evm/broadcast/DeployFactory.s.sol/46630/run-latest.json, lower case there; the EVM session holds it checksummed
+// (lib/robinhood/evm-session.ts firstAccount: viem getAddress), so the pill reads "0xDCA9…a1Ff".
+const DEPLOYER = "0xDCA915e9F833002c978e162610E3e88eD159a1Ff";
+const EVM = { address: DEPLOYER, onRobinhood: true, walletName: "MetaMask", disconnect: noop, switchToRobinhood: noop };
+// Solana's System Program id, as tests/a2-landing-topbar-widths-adversary.spec.ts uses it
+const SOL = { ...noUi, address: "11111111111111111111111111111111", walletName: "Phantom" };
+const CONTROLS: [string, Ctx][] = [
   ["no wallet", { path: "/", ui: noUi, evm: noEvm }],
-  ["EVM wallet on Robinhood Chain", { path: "/", ui: noUi, evm: EVM }],
-  ["EVM wallet on another network", { path: "/", ui: noUi, evm: { ...EVM, onRobinhood: false } }],
   ["Solana wallet", { path: "/", ui: SOL, evm: noEvm }],
-  ["both wallets", { path: "/", ui: SOL, evm: EVM }],
 ];
-const DESKTOP = [1024, 1025, 1280];
-const BELOW = [360, 414, 600, 759, 760, 761, 900, 1023];
+const WIDTHS = [360, 362, 364, 366, 368, 370, 372, 374, 375];
 
-/** How far the top row's last control stops short of the bar's content edge, or null when it reaches it. */
-function shortOfEdge(l: Layout): string | null {
-  const gap = l.contentRight - l.last.right;
-  if (gap <= 2) return null;
-  return `${l.width}px: "${l.last.what}" ends at ${l.last.right.toFixed(1)}px, ${gap.toFixed(1)}px short of the bar's edge ` +
-    `(${l.contentRight.toFixed(1)}px); the actions start at ${l.actions.left.toFixed(1)}px`;
-}
-
-describe("A2 adversary (cf8e9b5): the landing top bar's actions keep to its right edge below 1024px", () => {
+describe("A2 adversary (9f9fd26): the landing top bar at 360px with a real EVM wallet", () => {
   let font: { url: string; bytes: Buffer };
-  const markups: Record<string, string> = {};
   before(async () => {
+    const broadcast = JSON.parse(readFileSync(resolve(REPO, "evm/broadcast/DeployFactory.s.sol/46630/run-latest.json"), "utf8"));
+    assert.equal(broadcast.transactions[0].transaction.from, DEPLOYER.toLowerCase(), "precondition: the fixture is the factory deployer");
+    const { getAddress } = appRequire("viem");
+    assert.equal(getAddress(DEPLOYER.toLowerCase()), DEPLOYER, "precondition: the address as the EVM session holds it (checksummed)");
     font = await jakartaLatin();
     console.log(`      font: ${font.url} (${font.bytes.length} bytes)`);
-    for (const [name, ctx] of STATES) markups[name] = await render(ctx);
   });
 
-  it(`control: at ${DESKTOP.join(", ")}px the wallet control ends at the bar's right edge in every wallet state`, () => {
-    for (const [name] of STATES) {
-      for (const l of layouts(markups[name]!, DESKTOP, font.bytes)) {
+  for (const [name, ctx] of CONTROLS) {
+    it(`control, ${name}: every top-bar part ends inside the bar at 360 to 375px`, async () => {
+      for (const l of layouts(await render(ctx), WIDTHS, font.bytes)) {
         assert.equal(l.inner, l.width, "precondition: the viewport is the iframe's width");
         assert.match(l.jakarta, /^loaded/, `precondition: Plus Jakarta Sans is loaded (${l.jakarta})`);
-        assert.equal(shortOfEdge(l), null, `control, ${name}`);
+        assert.deepEqual(pastEdge(l), [], `control, ${name}, ${l.width}px`);
       }
-    }
-  });
-
-  for (const [name] of STATES) {
-    it(`${name}, ${BELOW.join(", ")}px: the wallet control ends at the bar's right edge, not beside the logo`, () => {
-      const bad: string[] = [];
-      for (const l of layouts(markups[name]!, BELOW, font.bytes)) {
-        assert.equal(l.inner, l.width, "precondition: the viewport is the iframe's width");
-        assert.match(l.jakarta, /^loaded/, `precondition: Plus Jakarta Sans is loaded (${l.jakarta})`);
-        const s = shortOfEdge(l);
-        if (s) bad.push(s);
-      }
-      assert.deepEqual(bad, [], `${name}: the landing top bar's actions are packed against the logo, the row's right side empty`);
     });
   }
+
+  it("EVM wallet (the factory deployer), 360 to 375px: the wallet pill ends inside the bar", async () => {
+    const bad: string[] = [];
+    for (const l of layouts(await render({ path: "/", ui: noUi, evm: EVM }), WIDTHS, font.bytes)) {
+      assert.equal(l.inner, l.width, "precondition: the viewport is the iframe's width");
+      assert.match(l.jakarta, /^loaded/, `precondition: Plus Jakarta Sans is loaded (${l.jakarta})`);
+      assert.equal(l.shortText, "0xDCA9…a1Ff", "precondition: the pill shows the address, its ellipsis read as UTF-8");
+      // the feature's chain mark (absent when this spec is run on de78a6f, the commit before the feature)
+      if (readFileSync(resolve(SRC, "components/landing/Landing.tsx"), "utf8").includes("ChainMarkSlot")) assert.ok(l.parts.mark, "precondition: the chain mark is in the top bar");
+      const past = pastEdge(l);
+      if (past.length) bad.push(`${l.width}px: the bar's content edge at ${l.contentRight.toFixed(1)}px (frame ${l.frameRight.toFixed(1)}px): ${past.join(", ")}`);
+    }
+    assert.deepEqual(bad, [], "the landing top row is wider than the bar: the wallet pill runs past the bar's right edge into its padding");
+  });
+
+  // Spec rule 2: "on a wrong EVM network the pill says so and offers the switch". The pill then reads "Switch network"
+  // (WalletConnect.tsx AddressPill), wider than any address, whatever the address.
+  it("EVM wallet on another network, 360 to 375px: the Switch network pill ends inside the bar", async () => {
+    const bad: string[] = [];
+    for (const l of layouts(await render({ path: "/", ui: noUi, evm: { ...EVM, onRobinhood: false } }), WIDTHS, font.bytes)) {
+      assert.equal(l.inner, l.width, "precondition: the viewport is the iframe's width");
+      assert.match(l.jakarta, /^loaded/, `precondition: Plus Jakarta Sans is loaded (${l.jakarta})`);
+      // fix pass: on phones the pill's visible label is the short "Switch" (its full "Switch network" is hidden there)
+      assert.match(String((l as { shortVisible?: string | null }).shortVisible), /^Switch( network)?$/, "precondition: the pill says the wallet is on another network");
+      const past = pastEdge(l);
+      if (past.length) bad.push(`${l.width}px: the bar's content edge at ${l.contentRight.toFixed(1)}px (frame ${l.frameRight.toFixed(1)}px): ${past.join(", ")}`);
+    }
+    assert.deepEqual(bad, [], "the landing top row is wider than the bar: the pill runs past its right edge, the menu row with it");
+  });
 });

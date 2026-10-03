@@ -136,7 +136,9 @@ function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, o
       <button type="button" className={s.pill} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}
         aria-label={wrongNetwork ? `Wallet ${short}, on another network` : `Wallet ${short}`} title={wrongNetwork?.error}>
         <span className={s.letter}>{name[0]}</span>
-        <span className={s.short}>{wrongNetwork ? 'Switch network' : short}</span>
+        {wrongNetwork
+          ? <span className={`${s.short} ${s.wrong}`}><span className={s.full}>Switch network</span><span className={s.compact}>Switch</span></span>
+          : <span className={s.short}>{short}</span>}
         <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className={`${s.chevron} ${open ? s.chevronOpen : ''}`} aria-hidden><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (

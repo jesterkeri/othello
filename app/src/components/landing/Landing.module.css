@@ -213,7 +213,10 @@
 @media (max-width: 1023px) {
   .pillGroup { grid-column: 1 / -1; grid-row: 2; }
   /* the actions keep the right-hand column, not the emptied middle one (adversary pass on cf8e9b5) */
-  .navActions { grid-column: 3; grid-row: 1; justify-self: end; }
+  .navActions { grid-column: 3; grid-row: 1; justify-self: end; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  /* the actions' column may shrink, and the actions then wrap, so no wallet pill can run past the bar (adversary
+     pass on 9f9fd26) */
+  .nav { grid-template-columns: auto minmax(0, 1fr) minmax(0, auto); }
 }
 
 /* Phone: the tab row wraps instead of hiding tabs off the right edge. */
