@@ -141,4 +141,5 @@
 .chainMark svg { display: block; }
 /* Robinhood Chain's feather is black on light and white on dark, as its two official files are */
 .feather { fill: #000000; }
-:global([data-theme="dark"]) .feather { fill: #FFFFFF; }
+/* The Shell's own mode (data-mode on .root), not <html data-theme>, which only Landing writes */
+.root[data-mode='dark'] .feather { fill: #FFFFFF; }
