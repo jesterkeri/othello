@@ -94,23 +94,22 @@ function EvmControl() {
   const evm = useEvmWallet();
   const other = useOtherNetwork('robinhood');
   if (!evm.address) return <ConnectButton onClick={ui.openConnect} />;
-  if (!evm.onRobinhood) {
-    return (
-      <button type="button" className={s.connect} onClick={() => void evm.switchToRobinhood()} title={evm.error ?? undefined}>
-        <span className={s.connectIcon}><Icon d={WALLET_ICON} size={15} width={2.6} /></span>Switch network
-      </button>
-    );
-  }
   const name = evm.walletName ?? 'your wallet';
+  // On another network the pill says so and its menu leads with the switch, so "Use another network" and Disconnect
+  // stay reachable there too (adversary pass on 8df6d80; the wrong-network pattern of RainbowKit's account button)
+  const wrong = evm.onRobinhood ? undefined : { onSwitch: () => void evm.switchToRobinhood(), error: evm.error ?? undefined };
   return (
-    <AddressPill name={name} address={evm.address} short={`${evm.address.slice(0, 6)}…${evm.address.slice(-4)}`} chip="Robinhood testnet"
-      explorerHref={explorerAddress(evm.address)} onDisconnect={evm.disconnect} onOtherNetwork={other} />
+    <AddressPill name={name} address={evm.address} short={`${evm.address.slice(0, 6)}…${evm.address.slice(-4)}`}
+      chip={wrong ? 'Other network' : 'Robinhood testnet'} explorerHref={explorerAddress(evm.address)}
+      onDisconnect={evm.disconnect} onOtherNetwork={other} wrongNetwork={wrong} />
   );
 }
 
 /** The connected wallet: address pill and its menu (copy, explorer, disconnect). */
-function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, onOtherNetwork }: {
+function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, onOtherNetwork, wrongNetwork }: {
   name: string; address: string; short: string; chip: string; explorerHref: string; onDisconnect: () => void; onOtherNetwork: () => void;
+  /** The EVM wallet is on another network: the pill reads "Switch network" and its menu leads with the switch. */
+  wrongNetwork?: { onSwitch: () => void; error?: string };
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -136,9 +135,10 @@ function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, o
 
   return (
     <span className={s.wrap} ref={ref}>
-      <button type="button" className={s.pill} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label={`Wallet ${short}`}>
+      <button type="button" className={s.pill} onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open}
+        aria-label={wrongNetwork ? `Wallet ${short}, on another network` : `Wallet ${short}`} title={wrongNetwork?.error}>
         <span className={s.letter}>{name[0]}</span>
-        <span className={s.short}>{short}</span>
+        <span className={s.short}>{wrongNetwork ? 'Switch network' : short}</span>
         <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className={`${s.chevron} ${open ? s.chevronOpen : ''}`} aria-hidden><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (
@@ -151,6 +151,9 @@ function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, o
             </span>
             <span className={s.devnetChip}>{chip}</span>
           </div>
+          {wrongNetwork && (
+            <button type="button" role="menuitem" className={s.item} onClick={() => { setOpen(false); wrongNetwork.onSwitch(); }}><Icon d={WALLET_ICON} />Switch to Robinhood Chain testnet</button>
+          )}
           <button type="button" role="menuitem" className={s.item} onClick={copy}><Icon d={copied ? CHECK : COPY} />{copied ? 'Copied' : 'Copy address'}</button>
           <a role="menuitem" className={s.item} href={explorerHref} target="_blank" rel="noopener noreferrer"><Icon d={OUT} />View on explorer</a>
           <button type="button" role="menuitem" className={s.item} onClick={() => { setOpen(false); onOtherNetwork(); }}><Icon d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" />Use another network</button>
