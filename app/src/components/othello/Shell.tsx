@@ -10,7 +10,8 @@ import StockSearch from './StockSearch';
 import { WalletControl } from './WalletConnect';
 import { SIDE_HOME, SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
-import { showsChainSwitch, useActiveSide } from '@/lib/active-side';
+import { useActiveSide } from '@/lib/active-side';
+import ChainMark from './ChainMark';
 import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
 /** The builder's hue choices, as on Landing. */
@@ -83,29 +84,20 @@ export function useTheme() {
 }
 
 /**
- * The two chains, as links: the route decides which one is current (lib/chains.ts), so the switch, the wallet button
- * and the page always agree. Nothing here needs a wallet; a judge can look at both sides without connecting.
+ * The active chain's mark (Joshua, 2026-10-03): one logo, only while a wallet is connected, so the bar stays neutral
+ * without one and does not grow as chains are added. Changing chain is in the wallet menu ("Use another network").
  */
-function ChainSwitch({ current }: { current: ChainSide }) {
-  return (
-    <nav className={s.chainSwitch} aria-label="Chain">
-      {(['solana', 'robinhood'] as ChainSide[]).map((k) => (
-        <a key={k} href={SIDE_HOME[k]} className={`${s.chainOpt} ${k === current ? s.chainOn : ''}`} aria-current={k === current ? 'true' : undefined} aria-label={sideName(k)}>
-          <span className={s.chainName}>{SIDE_LABEL[k].chain}</span>
-          <span className={s.chainNet}>{SIDE_LABEL[k].network}</span>
-        </a>
-      ))}
-    </nav>
-  );
+function ChainMarkSlot({ side }: { side: ChainSide }) {
+  return <span className={s.chainMark} role="img" aria-label={sideName(side)} title={sideName(side)}><ChainMark side={side} /></span>;
 }
 
 export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, chainSwitch = true, side, children }: ShellProps) {
   const pathname = usePathname();
   const current = side ?? sideOf(pathname);
   // The connected wallet decides the side (lib/active-side.ts): with one wallet connected the other chain is not shown
-  // anywhere in the frame (Joshua: a judge with MetaMask must never see Solana), so the switch is shown only while no
-  // wallet, or both, are connected; the menu follows that side.
-  const { side: shown, connected } = useActiveSide();
+  // anywhere in the frame (Joshua: a judge with MetaMask must never see Solana); the bar shows the active chain's mark,
+  // nothing with no wallet, and the menu follows that side.
+  const { side: shown } = useActiveSide();
   const navSide = shown;
   const frameSide: ChainSide | null = side ?? shown;
   const t = useTheme();
@@ -240,10 +232,8 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
       <main className={`${s.panel} ${surface === 'gutter' ? s.panelGutter : ''}`}>
         <div className={s.topbar}>
           <span className={s.logoTop} aria-hidden>O</span>
-          {chainSwitch && showsChainSwitch(connected) ? (
-            <ChainSwitch current={current} />
-          ) : chainSwitch ? (
-            <span className={s.devnet}>{sideName(shown ?? current)}</span>
+          {chainSwitch ? (
+            shown ? <ChainMarkSlot side={shown} /> : null
           ) : network ? (
             <span className={s.devnet}>{network.chip}</span>
           ) : (

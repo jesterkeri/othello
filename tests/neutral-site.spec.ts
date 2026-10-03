@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { hrefFor } from "../app/src/lib/nav.ts";
-import { activeSide, gateDecision, labelOf, pageNetwork, showsChainSwitch } from "../app/src/lib/side-rules.ts";
+import { activeSide, gateDecision, labelOf, otherNetwork, pageNetwork } from "../app/src/lib/side-rules.ts";
 
 const none = { solana: false, robinhood: false };
 const evm = { solana: false, robinhood: true };
@@ -28,11 +28,18 @@ describe("neutral site: the connected wallet decides the side", () => {
     }
   });
 
-  it("the chain switch shows only with no wallet or both", () => {
-    assert.equal(showsChainSwitch(none), true);
-    assert.equal(showsChainSwitch(both), true);
-    assert.equal(showsChainSwitch(evm), false, "with only MetaMask, no Solana link in the frame");
-    assert.equal(showsChainSwitch(sol), false);
+  it("the top bar's chain mark is the active side's: none with no wallet (Joshua, 2026-10-03)", () => {
+    // Shell shows ChainMark for activeSide(...) and nothing when it is null
+    assert.equal(activeSide(none, "robinhood"), null, "no wallet, even on a Robinhood page: no mark");
+    assert.equal(activeSide(evm, "solana"), "robinhood", "only MetaMask: the Robinhood mark, on any page");
+    assert.equal(activeSide(both, "solana"), "solana", "both: the page's chain");
+  });
+
+  it("'Use another network' goes to the other chain when its wallet is connected, else asks for the network", () => {
+    assert.deepEqual(otherNetwork("robinhood", evm), { choose: true }, "only MetaMask: the window opens at the network choice");
+    assert.deepEqual(otherNetwork("solana", sol), { choose: true });
+    assert.deepEqual(otherNetwork("robinhood", both), { go: "/" }, "both: straight to Solana's home");
+    assert.deepEqual(otherNetwork("solana", both), { go: "/robinhood" });
   });
 
   it("menu links: neutral with no wallet, that chain's pages with one", () => {

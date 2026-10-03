@@ -5,7 +5,7 @@
  */
 import type { ChainSide } from "./chains";
 import { CIRCLE_STATES } from "../fixtures/circles";
-import { sideOf } from "./chains";
+import { SIDE_HOME, sideOf } from "./chains";
 import { hrefFor } from "./nav";
 import { TRADABLE_XSTOCKS } from "./xstocks";
 
@@ -20,8 +20,6 @@ export function activeSide(connected: Connected, routeSide: ChainSide): ChainSid
   return null;
 }
 
-/** The chain switch (both sides as links) is shown only while no wallet, or both wallets, are connected. */
-export const showsChainSwitch = (c: Connected) => c.solana === c.robinhood;
 
 /** A page of one chain: shown with that chain's wallet; sent to the other side's page of the same kind; or a gate. */
 export function gateDecision(page: ChainSide, label: GatedLabel, connected: Connected):
@@ -88,4 +86,14 @@ function seatRenders(id: string, seat: string): boolean {
   if (!Number.isInteger(n) || n < 1) return false;
   if (id === "demo") return n <= 5;
   return isState(id) && n <= CIRCLE_STATES[id].n;
+}
+
+/**
+ * The wallet menu's "Use another network" (Joshua, 2026-10-03: the chain is changed from the wallet menu, not the bar):
+ * with the other chain's wallet already connected, go to that chain's home; otherwise open the connect window at the
+ * network choice.
+ */
+export function otherNetwork(current: ChainSide, connected: Connected): { go: string } | { choose: true } {
+  const other: ChainSide = current === "robinhood" ? "solana" : "robinhood";
+  return connected[other] ? { go: SIDE_HOME[other] } : { choose: true };
 }

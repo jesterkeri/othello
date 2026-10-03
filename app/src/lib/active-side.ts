@@ -13,7 +13,7 @@ import { activeSide, type Connected } from '@/lib/side-rules';
 import { useEvmWallet } from '@/lib/robinhood/wallet';
 import { useWalletUi } from '@/lib/wallet';
 
-export { activeSide, showsChainSwitch, type Connected } from '@/lib/side-rules';
+export { activeSide, type Connected } from '@/lib/side-rules';
 
 export function useConnected(): Connected {
   const sol = useWalletUi();

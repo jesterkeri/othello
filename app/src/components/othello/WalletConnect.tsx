@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
 import s from './WalletConnect.module.css';
 import { useTheme } from './Shell';
 import { SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
-import { pageNetwork } from '@/lib/side-rules';
+import { otherNetwork, pageNetwork } from '@/lib/side-rules';
 import { explorerAddress } from '@/lib/robinhood/chain';
 import { useEvmWallet } from '@/lib/robinhood/wallet';
 import { shortAddress, useWalletUi } from '@/lib/wallet';
@@ -48,6 +48,23 @@ function Icon({ d, size = 19, width = 2.3 }: { d: string; size?: number; width?:
  * the EVM wallet on Robinhood Chain pages. Either way, "Connect wallet" opens
  * the one modal, where the wallet picked decides the chain.
  */
+/**
+ * "Use another network" (Joshua, 2026-10-03: the chain is changed from the wallet menu): with the other chain's wallet
+ * already connected it goes to that chain; otherwise it opens the connect window at the network choice, even on a
+ * chain's page (where the window would otherwise open at that chain's wallets). A one-shot flag read by ModalBody.
+ */
+let openAtNetworkChoice = false;
+function useOtherNetwork(current: ChainSide): () => void {
+  const ui = useWalletUi();
+  const evm = useEvmWallet();
+  return () => {
+    const next = otherNetwork(current, { solana: !!ui.address, robinhood: !!evm.address });
+    if ('go' in next) { window.location.assign(next.go); return; }
+    openAtNetworkChoice = true;
+    ui.openConnect();
+  };
+}
+
 export function WalletControl({ side }: { side?: ChainSide } = {}) {
   const pathname = usePathname();
   return (side ?? sideOf(pathname)) === 'robinhood' ? <EvmControl /> : <SolanaControl />;
@@ -63,17 +80,19 @@ function ConnectButton({ onClick }: { onClick: () => void }) {
 
 function SolanaControl() {
   const w = useWalletUi();
+  const other = useOtherNetwork('solana');
   if (!w.address) return <ConnectButton onClick={w.openConnect} />;
   const name = w.walletName ?? 'your wallet';
   return (
     <AddressPill name={name} address={w.address} short={shortAddress(w.address)} chip="Devnet"
-      explorerHref={`https://explorer.solana.com/address/${w.address}?cluster=devnet`} onDisconnect={w.disconnect} />
+      explorerHref={`https://explorer.solana.com/address/${w.address}?cluster=devnet`} onDisconnect={w.disconnect} onOtherNetwork={other} />
   );
 }
 
 function EvmControl() {
   const ui = useWalletUi();
   const evm = useEvmWallet();
+  const other = useOtherNetwork('robinhood');
   if (!evm.address) return <ConnectButton onClick={ui.openConnect} />;
   if (!evm.onRobinhood) {
     return (
@@ -85,13 +104,13 @@ function EvmControl() {
   const name = evm.walletName ?? 'your wallet';
   return (
     <AddressPill name={name} address={evm.address} short={`${evm.address.slice(0, 6)}…${evm.address.slice(-4)}`} chip="Robinhood testnet"
-      explorerHref={explorerAddress(evm.address)} onDisconnect={evm.disconnect} />
+      explorerHref={explorerAddress(evm.address)} onDisconnect={evm.disconnect} onOtherNetwork={other} />
   );
 }
 
 /** The connected wallet: address pill and its menu (copy, explorer, disconnect). */
-function AddressPill({ name, address, short, chip, explorerHref, onDisconnect }: {
-  name: string; address: string; short: string; chip: string; explorerHref: string; onDisconnect: () => void;
+function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, onOtherNetwork }: {
+  name: string; address: string; short: string; chip: string; explorerHref: string; onDisconnect: () => void; onOtherNetwork: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -134,6 +153,7 @@ function AddressPill({ name, address, short, chip, explorerHref, onDisconnect }:
           </div>
           <button type="button" role="menuitem" className={s.item} onClick={copy}><Icon d={copied ? CHECK : COPY} />{copied ? 'Copied' : 'Copy address'}</button>
           <a role="menuitem" className={s.item} href={explorerHref} target="_blank" rel="noopener noreferrer"><Icon d={OUT} />View on explorer</a>
+          <button type="button" role="menuitem" className={s.item} onClick={() => { setOpen(false); onOtherNetwork(); }}><Icon d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" />Use another network</button>
           <button type="button" role="menuitem" className={s.item} onClick={() => { setOpen(false); onDisconnect(); }}><Icon d="M12 3.5v8M7 6.5a7 7 0 1 0 10 0" />Disconnect</button>
           <p className={s.menuNote}>Othello never holds your keys. Every transaction opens in {name} for you to approve.</p>
         </div>
@@ -185,7 +205,8 @@ function ModalBody() {
   // on a neutral page it starts with the network choice, Robinhood Chain first. A view choice only: picking, cancelling
   // and the wallets' answers are lib/wallet.tsx's, unchanged.
   const pathname = usePathname();
-  const [network, setNetwork] = useState<ChainSide | null>(() => pageNetwork(pathname));
+  const [network, setNetwork] = useState<ChainSide | null>(() => (openAtNetworkChoice ? null : pageNetwork(pathname)));
+  useEffect(() => { openAtNetworkChoice = false; }, []);
 
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
