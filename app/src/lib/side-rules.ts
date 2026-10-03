@@ -4,7 +4,10 @@
  * apply them.
  */
 import type { ChainSide } from "./chains";
+import { STATE_KEYS } from "../fixtures/circles";
+import { sideOf } from "./chains";
 import { hrefFor } from "./nav";
+import { TRADABLE_XSTOCKS } from "./xstocks";
 
 export type Connected = { solana: boolean; robinhood: boolean };
 export type GatedLabel = "Circles" | "Portfolio" | "Assets" | "Create" | "Split lab";
@@ -41,14 +44,31 @@ export function labelOf(pathname: string): GatedLabel {
   return "Circles";
 }
 
+/** The routes that exist on each chain (app/src/app): anything else is the 404, which is neutral. */
+const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/assets"]);
+const SOLANA_ROUTES = new Set(["/portfolio", "/split-lab", "/circle/new", "/assets"]);
+const SOLANA_CIRCLES = new Set<string>([...STATE_KEYS, "demo", "stale"]);
+const XSTOCK_SYMBOLS = new Set(TRADABLE_XSTOCKS.map((x) => x.symbol));
+const decodeOnce = (s: string): string | null => { try { return decodeURIComponent(s); } catch { return null; } };
+
 /**
  * The network a page belongs to, for the connect window (Joshua, 2026-10-03: choose the network first, then the
  * wallet; a page of one chain opens straight at that chain's wallets). Null for the neutral pages (home, How it works,
- * the circles entry, anything unknown), where the window starts with the network choice.
+ * the circles entry) and for any route that does not exist, which renders the 404 (adversary pass on b47a8ac). A
+ * circle page is decided by lib/chains.ts sideOf, which decodes its id exactly as the page does, so an encoded
+ * Robinhood circle address (/circle/rh%3A0x…) is Robinhood's.
  */
 export function pageNetwork(pathname: string | null | undefined): "robinhood" | "solana" | null {
   const p = pathname || "/";
-  if (p === "/robinhood" || p.startsWith("/robinhood/") || p.startsWith("/circle/rh:")) return "robinhood";
-  if (/^\/(assets|portfolio|split-lab)(\/|$)/.test(p) || p.startsWith("/circle/")) return "solana";
+  if (ROBINHOOD_ROUTES.has(p)) return "robinhood";
+  if (SOLANA_ROUTES.has(p)) return "solana";
+  const asset = /^\/assets\/([^/]+)$/.exec(p);
+  if (asset) return XSTOCK_SYMBOLS.has(decodeOnce(asset[1]!) ?? "") ? "solana" : null;
+  const circle = /^\/circle\/([^/]+)(?:\/(join|position)\/([^/]+))?$/.exec(p);
+  if (circle) {
+    if (!circle[2] && sideOf(p) === "robinhood") return "robinhood";
+    const id = decodeOnce(circle[1]!);
+    if (id !== null && SOLANA_CIRCLES.has(id) && (!circle[2] || /^[1-5]$/.test(circle[3]!))) return "solana";
+  }
   return null;
 }
