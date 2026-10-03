@@ -207,14 +207,22 @@
 @keyframes sheen { from { background-position: -140% 0; } to { background-position: 240% 0; } }
 @keyframes tick { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 
+/* Below 1024px the menu pills take their own full-width row: the top row keeps the logo, the active chain's mark and
+   the wallet pill on screen (adversary pass on bc6abad: the pill ran off a 360px screen), and the menu labels are not
+   cut to "…" in a narrow middle column (adversary pass on 238d644: 760-900px) */
+@media (max-width: 1023px) {
+  .pillGroup { grid-column: 1 / -1; grid-row: 2; }
+}
+
 /* Phone: the tab row wraps instead of hiding tabs off the right edge. */
 @media (max-width: 759px) {
   .tryRow { grid-template-columns: 1fr; }
   .tabs { flex-wrap: wrap; justify-content: center; border-radius: 26px; overflow-x: visible; }
   .tab { padding: 10px 12px; }
-  /* The menu pills take their own full-width row, so the top row keeps the logo, the active chain's mark and the
-     wallet pill inside a 360px screen (adversary pass on bc6abad: the pill ran off the edge) */
-  .pillGroup { grid-column: 1 / -1; grid-row: 2; }
+  /* Phone: each menu label is as wide as its words and the row wraps, so no label is cut to "…" (adversary pass on
+     238d644: Circles, Assets, Portfolio, How it works cut at 360-600px) */
+  .pillGroup { flex-wrap: wrap; justify-content: center; border-radius: 24px; }
+  .navItem { flex: 1 1 auto; }
   .navActions { gap: 4px; }
   .logo { width: 40px; height: 40px; font-size: 18px; }
   .iconBtn { width: 40px; height: 40px; flex: 0 0 auto; }

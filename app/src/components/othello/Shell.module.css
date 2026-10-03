@@ -117,10 +117,9 @@
   /* Row one: logo and the buttons. Row two: the network chip and its note, side by side. */
   .actions { order: 2; }
   .devnet { order: 3; }
-  .devnetText { order: 4; flex: 1 1 0; }
-  /* With no chip (the chain switch is gone, adversary pass on f5315b1) nothing wide sits on row two, and a
-     0-basis note fits beside the wallet pill at 10px wide: give it the whole of row two */
-  .topbar:not(:has(.devnet)) .devnetText { flex-basis: 100%; }
+  /* The note always takes a row of its own under 760px: with a 0 basis it fitted beside the wallet pill at 10px wide
+     (adversary passes on f5315b1 and 238d644: app pages at 360-414px, the asset pages at 548-759px) */
+  .devnetText { order: 4; flex: 1 1 100%; }
   .topbar { gap: 8px; }
   .dots { display: none; }
   .devnet { padding: 6px 11px; }
