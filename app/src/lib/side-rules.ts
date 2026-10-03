@@ -4,10 +4,8 @@
  * apply them.
  */
 import type { ChainSide } from "./chains";
-import { CIRCLE_STATES } from "../fixtures/circles";
-import { SIDE_HOME, sideOf } from "./chains";
+import { SIDE_HOME } from "./chains";
 import { hrefFor } from "./nav";
-import { TRADABLE_XSTOCKS } from "./xstocks";
 
 export type Connected = { solana: boolean; robinhood: boolean };
 export type GatedLabel = "Circles" | "Portfolio" | "Assets" | "Create" | "Split lab";
@@ -40,52 +38,6 @@ export function labelOf(pathname: string): GatedLabel {
   // visitor goes to the Robinhood circles (adversary passes on 8e93a30 and 856f0d8)
   if (pathname === "/split-lab" || pathname.startsWith("/split-lab/")) return "Split lab";
   return "Circles";
-}
-
-/** The routes that exist on each chain (app/src/app): anything else is the 404, which is neutral. */
-const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/assets"]);
-const SOLANA_ROUTES = new Set(["/portfolio", "/split-lab", "/circle/new", "/assets"]);
-const XSTOCK_SYMBOLS = new Set(TRADABLE_XSTOCKS.map((x) => x.symbol));
-const decodeOnce = (s: string): string | null => { try { return decodeURIComponent(s); } catch { return null; } };
-
-/**
- * The network a page belongs to, for the connect window (Joshua, 2026-10-03: choose the network first, then the
- * wallet; a page of one chain opens straight at that chain's wallets). Null for the neutral pages (home, How it works,
- * the circles entry) and for any route that does not exist, which renders the 404 (adversary pass on b47a8ac). A
- * circle page is decided by lib/chains.ts sideOf, which decodes its id exactly as the page does, so an encoded
- * Robinhood circle address (/circle/rh%3A0x…) is Robinhood's.
- */
-export function pageNetwork(pathname: string | null | undefined): "robinhood" | "solana" | null {
-  const p = pathname || "/";
-  if (ROBINHOOD_ROUTES.has(p)) return "robinhood";
-  if (SOLANA_ROUTES.has(p)) return "solana";
-  const asset = /^\/assets\/([^/]+)$/.exec(p);
-  if (asset) return XSTOCK_SYMBOLS.has(decodeOnce(asset[1]!) ?? "") ? "solana" : null;
-  const circle = /^\/circle\/([^/]+)(?:\/(join|position)\/([^/]+))?$/.exec(p);
-  if (circle) {
-    if (!circle[2] && sideOf(p) === "robinhood") return "robinhood";
-    const id = decodeOnce(circle[1]!);
-    if (id === null) return null;
-    if (!circle[2]) return id === "demo" || id === "stale" || isState(id) ? "solana" : null;
-    const seat = decodeOnce(circle[3]!);
-    return seat !== null && seatRenders(id, seat) ? "solana" : null;
-  }
-  return null;
-}
-
-/** A circle state the fixtures define (own keys only: /circle/constructor is not one). */
-const isState = (id: string): id is keyof typeof CIRCLE_STATES => Object.prototype.hasOwnProperty.call(CIRCLE_STATES, id);
-
-/**
- * The join and position pages' own rule (app/src/app/circle/[id]/{join,position}/[seat]/page.tsx): "demo" takes seats
- * 1 to 5 and a fixture state seats 1 to its size, read with Number() (so "01" is seat 1); anything else, "stale"
- * included, is the 404 (adversary pass on b21087a).
- */
-function seatRenders(id: string, seat: string): boolean {
-  const n = Number(seat);
-  if (!Number.isInteger(n) || n < 1) return false;
-  if (id === "demo") return n <= 5;
-  return isState(id) && n <= CIRCLE_STATES[id].n;
 }
 
 /**

@@ -64,12 +64,15 @@ function baseUi(over: Record<string, unknown>): Record<string, unknown> {
 }
 const baseEvm = (over: Record<string, unknown> = {}) => ({ address: null, onRobinhood: false, walletName: null, error: null, switchToRobinhood: async () => false, disconnect: noop, ...over });
 
-async function render(ctx: Ctx, which: "modal" | "control"): Promise<string> {
+// "solana" / "robinhood": that network's wallet rows (WalletConnect.tsx NetworkWallets), as the window shows them once the
+// network is chosen; since 2026-10-03 (Joshua: "chain select first") the window itself always opens at the choice
+async function render(ctx: Ctx, which: "modal" | "control" | "solana" | "robinhood"): Promise<string> {
   const React = appRequire("react");
   g.React = React;
   const { renderToStaticMarkup } = appRequire("react-dom/server");
   const mod = await import(pathToFileURL(WALLET_CONNECT).href);
   g.__a2r = ctx;
+  if (which === "solana" || which === "robinhood") return renderToStaticMarkup(React.createElement(mod.NetworkWallets, { network: which }));
   return renderToStaticMarkup(React.createElement(which === "modal" ? mod.WalletModal : mod.WalletControl, {}));
 }
 
@@ -83,11 +86,10 @@ const SOLFLARE = { name: "Solflare", icon: "data:image/png;base64,AA==" };
 
 describe("A2 adversary (1768597): the rendered connect modal", () => {
   it("while a Solana request is open: the note is shown, every Solana row is disabled, EVM rows are not", async () => {
-    // network first (Joshua, 2026-10-03): each network's rows are shown on their own; a Solana page opens at Solana's,
-    // /robinhood at Robinhood Chain's
+    // network first (Joshua, 2026-10-03): each network's rows are shown on their own, once that network is chosen
     const ui = baseUi({ walletName: "Phantom", solanaBusy: true, detected: [PHANTOM, SOLFLARE], evmDetected: [{ uuid: "u1", name: "Rabby", icon: null }] });
-    const sol = await render({ path: "/portfolio", ui, evm: baseEvm() }, "modal");
-    const rh = await render({ path: "/robinhood", ui, evm: baseEvm() }, "modal");
+    const sol = await render({ path: "/portfolio", ui, evm: baseEvm() }, "solana");
+    const rh = await render({ path: "/robinhood", ui, evm: baseEvm() }, "robinhood");
     assert.match(sol, /Phantom is still asking in its own window\. Answer or close it there, then pick a Solana wallet again\./);
     const rows = [...buttons(sol), ...buttons(rh)].filter((b) => /Detected in this browser|EVM wallet, detected/.test(b.text));
     assert.equal(rows.length, 3);
@@ -95,7 +97,7 @@ describe("A2 adversary (1768597): the rendered connect modal", () => {
       const evm = r.text.includes("EVM wallet");
       assert.equal(/\sdisabled=""/.test(r.tag), !evm, `row "${r.text}" disabled=${!evm ? "missing" : "present"}`);
     }
-    const html = sol;
+    const html = await render({ path: "/portfolio", ui, evm: baseEvm() }, "modal");
     // The Close control stays usable (a way out of the modal).
     assert.ok(buttons(html).some((b) => /aria-label="Close"/.test(b.tag) && !/disabled/.test(b.tag)));
   });
@@ -105,7 +107,7 @@ describe("A2 adversary (1768597): the rendered connect modal", () => {
       path: "/portfolio",
       ui: baseUi({ address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", walletName: "Phantom", detected: [PHANTOM, SOLFLARE] }),
       evm: baseEvm(),
-    }, "modal");
+    }, "solana");
     const rows = buttons(html).filter((b) => b.text.includes("Phantom") || b.text.includes("Solflare"));
     assert.equal(rows.length, 1);
     assert.match(rows[0]!.text, /Connected\. Go to the Solana side/);
@@ -116,7 +118,7 @@ describe("A2 adversary (1768597): the rendered connect modal", () => {
 
   it("no Solana wallet and no EVM wallet listed: install rows for both groups; the EVM group's is MetaMask", async () => {
     const none = baseUi({ detected: [], evmDetected: [] });
-    const html = (await render({ path: "/portfolio", ui: none, evm: baseEvm() }, "modal")) + (await render({ path: "/robinhood", ui: none, evm: baseEvm() }, "modal"));
+    const html = (await render({ path: "/portfolio", ui: none, evm: baseEvm() }, "solana")) + (await render({ path: "/robinhood", ui: none, evm: baseEvm() }, "robinhood"));
     assert.match(html, /No Solana wallet in this browser\. Get Phantom/);
     assert.match(html, /No EVM wallet in this browser\. Get MetaMask/);
     assert.match(html, /href="https:\/\/metamask\.io"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
@@ -130,7 +132,7 @@ describe("A2 adversary (1768597): the rendered connect modal", () => {
     ].map((info) => parseAnnouncement({ info, provider: { request: async () => null } }));
     assert.ok(hostile.every((w) => w !== null), "all three have the standard's shape");
     const evmDetected = hostile.map((w) => ({ uuid: w!.info.uuid, name: w!.info.name, icon: w!.info.icon }));
-    const html = await render({ path: "/robinhood", ui: baseUi({ evmDetected }), evm: baseEvm() }, "modal");
+    const html = await render({ path: "/robinhood", ui: baseUi({ evmDetected }), evm: baseEvm() }, "robinhood");
     assert.ok(!/<script/i.test(html), "a <script> reached the markup");
     assert.ok(!/<img src=x/i.test(html), "the name's markup reached the markup");
     // Attribute names of every tag, with quoted values blanked first (React quotes and escapes every value).
@@ -142,9 +144,11 @@ describe("A2 adversary (1768597): the rendered connect modal", () => {
     assert.ok(imgs[0]!.startsWith("data:image/svg+xml,"));
   });
 
-  it("network first: a neutral page asks for the network (Robinhood Chain first) and lists no wallet; a chain's page opens at its wallets", async () => {
+  it("network first: every page asks for the network (Robinhood Chain first) and lists no wallet; the chosen network lists only its own", async () => {
+    // Joshua, 2026-10-03: "clicking connect wallet starts with solana ... its supposed to be chain select first" (it
+    // opened at Solana's wallets on /assets with no wallet); the window now opens at the choice on every page
     const ui = baseUi({ detected: [PHANTOM, SOLFLARE], evmDetected: [{ uuid: "u1", name: "Rabby", icon: null }] });
-    for (const path of ["/", "/how-it-works", "/circles", "/no-such-page"]) {
+    for (const path of ["/", "/how-it-works", "/circles", "/no-such-page", "/assets", "/assets/TSLAx", "/portfolio", "/circle/new", "/split-lab", "/circle/demo", "/robinhood", "/robinhood/assets", "/robinhood/new"]) {
       const html = await render({ path, ui, evm: baseEvm() }, "modal");
       assert.match(html, /Choose a network/, path);
       assert.deepEqual(buttons(html).filter((b) => /Detected in this browser|EVM wallet, detected/.test(b.text)), [], `${path}: wallet rows before a network is chosen`);
@@ -152,10 +156,10 @@ describe("A2 adversary (1768597): the rendered connect modal", () => {
       const so = html.indexOf("Solana devnet");
       assert.ok(rh > -1 && so > -1 && rh < so, `${path}: Robinhood Chain is listed first`);
     }
-    const onRh = await render({ path: "/robinhood/assets", ui, evm: baseEvm() }, "modal");
-    assert.ok(/EVM wallet, detected/.test(onRh) && !/Phantom|Solflare|Solana devnet/.test(onRh), "a Robinhood page opens at Robinhood Chain's wallets, nothing of Solana");
-    const onSol = await render({ path: "/circle/demo", ui, evm: baseEvm() }, "modal");
-    assert.ok(/Phantom/.test(onSol) && !/Rabby|Robinhood Chain testnet/.test(onSol), "a Solana page opens at Solana's wallets, nothing of Robinhood Chain");
+    const onRh = await render({ path: "/robinhood/assets", ui, evm: baseEvm() }, "robinhood");
+    assert.ok(/EVM wallet, detected/.test(onRh) && !/Phantom|Solflare|Solana devnet/.test(onRh), "Robinhood Chain's list shows nothing of Solana");
+    const onSol = await render({ path: "/circle/demo", ui, evm: baseEvm() }, "solana");
+    assert.ok(/Phantom/.test(onSol) && !/Rabby|Robinhood Chain testnet/.test(onSol), "Solana's list shows nothing of Robinhood Chain");
   });
 
   it("top bar on the Robinhood side: Connect, Switch network, then the pill, following the EVM wallet only", async () => {

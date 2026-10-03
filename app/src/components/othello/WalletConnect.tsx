@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
 import s from './WalletConnect.module.css';
 import { useTheme } from './Shell';
 import { SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
-import { otherNetwork, pageNetwork } from '@/lib/side-rules';
+import { otherNetwork } from '@/lib/side-rules';
 import { explorerAddress } from '@/lib/robinhood/chain';
 import { useEvmWallet } from '@/lib/robinhood/wallet';
 import { shortAddress, useWalletUi } from '@/lib/wallet';
@@ -50,17 +50,15 @@ function Icon({ d, size = 19, width = 2.3 }: { d: string; size?: number; width?:
  */
 /**
  * "Use another network" (Joshua, 2026-10-03: the chain is changed from the wallet menu): with the other chain's wallet
- * already connected it goes to that chain; otherwise it opens the connect window at the network choice, even on a
- * chain's page (where the window would otherwise open at that chain's wallets). A one-shot flag read by ModalBody.
+ * already connected it goes to that chain; otherwise it opens the connect window, which always starts at the network
+ * choice.
  */
-let openAtNetworkChoice = false;
 function useOtherNetwork(current: ChainSide): () => void {
   const ui = useWalletUi();
   const evm = useEvmWallet();
   return () => {
     const next = otherNetwork(current, { solana: !!ui.address, robinhood: !!evm.address });
     if ('go' in next) { window.location.assign(next.go); return; }
-    openAtNetworkChoice = true;
     ui.openConnect();
   };
 }
@@ -165,6 +163,73 @@ function AddressPill({ name, address, short, chip, explorerHref, onDisconnect, o
   );
 }
 
+/**
+ * One network's wallets in the connect window, after the network is chosen: Robinhood Chain's EVM wallets, or Solana's
+ * (with a connected Solana wallet's row, the note while a Solana request is still open, and install rows).
+ */
+export function NetworkWallets({ network }: { network: ChainSide }) {
+  const w = useWalletUi();
+  return (
+    <>
+      {network === 'robinhood' && (
+                <>
+              {w.evmDetected.length === 0 && <InstallRow name="MetaMask" note="No EVM wallet in this browser" />}
+              {w.evmDetected.map((x, j) => {
+                const i = j;
+                const slot = slotFor(x.name, i);
+                return (
+                  <button key={x.uuid} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pickEvm(x.uuid)}>
+                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>
+                      {x.icon ? <img className={s.walletIcon} src={x.icon} alt="" width={30} height={30} /> : x.name[0]}
+                    </span>
+                    <span className={s.walletText}>
+                      <span className={s.walletName}>{x.name}</span>
+                      <span className={s.walletSub}>EVM wallet, detected in this browser</span>
+                    </span>
+                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                  </button>
+                );
+              })}
+                </>
+              )}
+      {network === 'solana' && (
+                <>
+              {w.address && w.walletName && (
+                <>
+                  <button type="button" className={s.walletRow} style={{ ...fill(slotFor(w.walletName, 0)), transform: `rotate(${TILTS[0]})` }} onClick={() => w.pick(w.walletName!)}>
+                    <span className={s.walletBadge} style={{ color: `var(--${slotFor(w.walletName, 0)})` }}>{w.walletName[0]}</span>
+                    <span className={s.walletText}>
+                      <span className={s.walletName}>{w.walletName}</span>
+                      <span className={s.walletSub}>Connected. Go to the Solana side</span>
+                    </span>
+                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                  </button>
+                  <p className={s.groupNote}>To use another Solana wallet, disconnect {w.walletName} from its menu on the Solana side first.</p>
+                </>
+              )}
+              {!w.address && w.solanaBusy && (
+                <p className={s.groupNote}>{w.walletName ?? 'A Solana wallet'} is still asking in its own window. Answer or close it there, then pick a Solana wallet again. If that window is gone, reload the page.</p>
+              )}
+              {!w.address && w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
+              {!w.address && w.detected.map((x, i) => {
+                const slot = slotFor(x.name, i);
+                return (
+                  <button key={x.name} type="button" className={s.walletRow} disabled={w.solanaBusy} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pick(x.name)}>
+                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>{x.name[0]}</span>
+                    <span className={s.walletText}>
+                      <span className={s.walletName}>{x.name}</span>
+                      <span className={s.walletSub}>Detected in this browser</span>
+                    </span>
+                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                  </button>
+                );
+              })}
+                </>
+              )}
+    </>
+  );
+}
+
 /** A link to install a wallet, with an optional line saying why it is offered. */
 function InstallRow({ name, note }: { name: keyof typeof KNOWN & string; note?: string }) {
   const k = KNOWN[name]!;
@@ -204,12 +269,10 @@ function ModalBody() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const stage = w.stage;
   const wallet = w.pending ?? 'your wallet';
-  // Network first, then wallet (Joshua, 2026-10-03): on a page of one chain the window opens at that chain's wallets;
-  // on a neutral page it starts with the network choice, Robinhood Chain first. A view choice only: picking, cancelling
-  // and the wallets' answers are lib/wallet.tsx's, unchanged.
-  const pathname = usePathname();
-  const [network, setNetwork] = useState<ChainSide | null>(() => (openAtNetworkChoice ? null : pageNetwork(pathname)));
-  useEffect(() => { openAtNetworkChoice = false; }, []);
+  // Network first, then wallet (Joshua, 2026-10-03): every Connect wallet opens at the network choice, Robinhood Chain
+  // first, on every page ("its supposed to be chain select first"; a page's address no longer picks a network). A view
+  // choice only: picking, cancelling and the wallets' answers are lib/wallet.tsx's, unchanged.
+  const [network, setNetwork] = useState<ChainSide | null>(null);
 
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
@@ -275,61 +338,7 @@ function ModalBody() {
                   <Icon d="M15 6 9 12l6 6" size={15} width={3} /> {sideName(network)}
                 </button>
               )}
-              {network === 'robinhood' && (
-                <>
-              {w.evmDetected.length === 0 && <InstallRow name="MetaMask" note="No EVM wallet in this browser" />}
-              {w.evmDetected.map((x, j) => {
-                const i = j;
-                const slot = slotFor(x.name, i);
-                return (
-                  <button key={x.uuid} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pickEvm(x.uuid)}>
-                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>
-                      {x.icon ? <img className={s.walletIcon} src={x.icon} alt="" width={30} height={30} /> : x.name[0]}
-                    </span>
-                    <span className={s.walletText}>
-                      <span className={s.walletName}>{x.name}</span>
-                      <span className={s.walletSub}>EVM wallet, detected in this browser</span>
-                    </span>
-                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
-                  </button>
-                );
-              })}
-                </>
-              )}
-              {network === 'solana' && (
-                <>
-              {w.address && w.walletName && (
-                <>
-                  <button type="button" className={s.walletRow} style={{ ...fill(slotFor(w.walletName, 0)), transform: `rotate(${TILTS[0]})` }} onClick={() => w.pick(w.walletName!)}>
-                    <span className={s.walletBadge} style={{ color: `var(--${slotFor(w.walletName, 0)})` }}>{w.walletName[0]}</span>
-                    <span className={s.walletText}>
-                      <span className={s.walletName}>{w.walletName}</span>
-                      <span className={s.walletSub}>Connected. Go to the Solana side</span>
-                    </span>
-                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
-                  </button>
-                  <p className={s.groupNote}>To use another Solana wallet, disconnect {w.walletName} from its menu on the Solana side first.</p>
-                </>
-              )}
-              {!w.address && w.solanaBusy && (
-                <p className={s.groupNote}>{w.walletName ?? 'A Solana wallet'} is still asking in its own window. Answer or close it there, then pick a Solana wallet again. If that window is gone, reload the page.</p>
-              )}
-              {!w.address && w.detected.length === 0 && <InstallRow name="Phantom" note="No Solana wallet in this browser" />}
-              {!w.address && w.detected.map((x, i) => {
-                const slot = slotFor(x.name, i);
-                return (
-                  <button key={x.name} type="button" className={s.walletRow} disabled={w.solanaBusy} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pick(x.name)}>
-                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>{x.name[0]}</span>
-                    <span className={s.walletText}>
-                      <span className={s.walletName}>{x.name}</span>
-                      <span className={s.walletSub}>Detected in this browser</span>
-                    </span>
-                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
-                  </button>
-                );
-              })}
-                </>
-              )}
+              {network !== null && <NetworkWallets network={network} />}
             </div>
             <div className={s.keys}>
               <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="var(--acid)" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 3.5 19 6v5.5c0 4.3-3 7.7-7 9-4-1.3-7-4.7-7-9V6l7-2.5ZM8.8 12l2.2 2.2 4.4-4.4" /></svg>

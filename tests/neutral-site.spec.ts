@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { hrefFor } from "../app/src/lib/nav.ts";
-import { activeSide, gateDecision, labelOf, otherNetwork, pageNetwork } from "../app/src/lib/side-rules.ts";
+import { activeSide, gateDecision, labelOf, otherNetwork } from "../app/src/lib/side-rules.ts";
 
 const none = { solana: false, robinhood: false };
 const evm = { solana: false, robinhood: true };
@@ -99,20 +99,6 @@ describe("neutral site: the connected wallet decides the side", () => {
       return !existsSync(layout) || !/^\s*return <RouteGate>\{children\}<\/RouteGate>;\s*$/m.test(readFileSync(layout, "utf8"));
     });
     assert.deepEqual(ungated, [], `route folders with no RouteGate layout: ${ungated.join(", ")}`);
-  });
-
-  it("the connect window opens at a chain page's network and asks for the network on neutral pages (Joshua, 2026-10-03)", () => {
-    for (const p of ["/robinhood", "/robinhood/new", "/robinhood/assets", "/circle/rh:0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5",
-      "/circle/rh%3A0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5"]) {
-      assert.equal(pageNetwork(p), "robinhood", p);
-    }
-    for (const p of ["/assets", "/assets/TSLAx", "/portfolio", "/circle/demo", "/circle/new", "/circle/forming/join/2", "/split-lab"]) {
-      assert.equal(pageNetwork(p), "solana", p);
-    }
-    for (const p of ["/", "/how-it-works", "/circles", "/no-such-page", "/robinhoodx", "/assetsx", "", null, undefined,
-      "/circle/no-such-state", "/robinhood/no-such-page", "/portfolio/x", "/assets/NOTASTOCK", "/circle/demo/join/9"]) {
-      assert.equal(pageNetwork(p as string), null, String(p));
-    }
   });
 });
 
