@@ -4,7 +4,7 @@
  * apply them.
  */
 import type { ChainSide } from "./chains";
-import { STATE_KEYS } from "../fixtures/circles";
+import { CIRCLE_STATES } from "../fixtures/circles";
 import { sideOf } from "./chains";
 import { hrefFor } from "./nav";
 import { TRADABLE_XSTOCKS } from "./xstocks";
@@ -47,7 +47,6 @@ export function labelOf(pathname: string): GatedLabel {
 /** The routes that exist on each chain (app/src/app): anything else is the 404, which is neutral. */
 const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/assets"]);
 const SOLANA_ROUTES = new Set(["/portfolio", "/split-lab", "/circle/new", "/assets"]);
-const SOLANA_CIRCLES = new Set<string>([...STATE_KEYS, "demo", "stale"]);
 const XSTOCK_SYMBOLS = new Set(TRADABLE_XSTOCKS.map((x) => x.symbol));
 const decodeOnce = (s: string): string | null => { try { return decodeURIComponent(s); } catch { return null; } };
 
@@ -68,7 +67,25 @@ export function pageNetwork(pathname: string | null | undefined): "robinhood" | 
   if (circle) {
     if (!circle[2] && sideOf(p) === "robinhood") return "robinhood";
     const id = decodeOnce(circle[1]!);
-    if (id !== null && SOLANA_CIRCLES.has(id) && (!circle[2] || /^[1-5]$/.test(circle[3]!))) return "solana";
+    if (id === null) return null;
+    if (!circle[2]) return id === "demo" || id === "stale" || isState(id) ? "solana" : null;
+    const seat = decodeOnce(circle[3]!);
+    return seat !== null && seatRenders(id, seat) ? "solana" : null;
   }
   return null;
+}
+
+/** A circle state the fixtures define (own keys only: /circle/constructor is not one). */
+const isState = (id: string): id is keyof typeof CIRCLE_STATES => Object.prototype.hasOwnProperty.call(CIRCLE_STATES, id);
+
+/**
+ * The join and position pages' own rule (app/src/app/circle/[id]/{join,position}/[seat]/page.tsx): "demo" takes seats
+ * 1 to 5 and a fixture state seats 1 to its size, read with Number() (so "01" is seat 1); anything else, "stale"
+ * included, is the 404 (adversary pass on b21087a).
+ */
+function seatRenders(id: string, seat: string): boolean {
+  const n = Number(seat);
+  if (!Number.isInteger(n) || n < 1) return false;
+  if (id === "demo") return n <= 5;
+  return isState(id) && n <= CIRCLE_STATES[id].n;
 }
