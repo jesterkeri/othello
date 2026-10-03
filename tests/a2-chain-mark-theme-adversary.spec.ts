@@ -26,6 +26,8 @@ import { PALETTES, innerVars } from "../app/src/lib/theme.ts";
 const SRC = resolve(REPO, "app/src");
 const SHELL = resolve(SRC, "components/othello/Shell.tsx");
 const SHELL_CSS = resolve(SRC, "components/othello/Shell.module.css");
+// Fix pass on 8e2f834: the mark's styles moved to ChainMark.module.css (shared with Landing); the cascade reads both
+const MARK_CSS = resolve(SRC, "components/othello/ChainMark.module.css");
 const appRequire = createRequire(resolve(SRC, "lib/chains.ts"));
 
 type Ctx = { ui: Record<string, unknown>; evm: Record<string, unknown>; path: string };
@@ -144,7 +146,7 @@ const evm = { address: "0x1111111111111111111111111111111111111111", onRobinhood
 describe("A2 adversary (29dfd84): Robinhood Chain's feather in the Shell's dark mode", () => {
   it("only MetaMask, Shell in dark mode (its default): the feather is white on the dark mark, not black", async () => {
     const html = await renderShell({ path: "/robinhood", ui, evm });
-    const css = readFileSync(SHELL_CSS, "utf8");
+    const css = readFileSync(SHELL_CSS, "utf8") + "\n" + readFileSync(MARK_CSS, "utf8");
 
     // the document root as app/src/app/layout.tsx renders it: <html lang class> with no data-theme on load
     const doc: El = { tag: "html", attrs: { lang: "en", class: "" }, parent: null };
@@ -173,12 +175,17 @@ describe("A2 adversary (29dfd84): Robinhood Chain's feather in the Shell's dark 
   it("Shell in light mode, even after Landing wrote <html data-theme=\"dark\">: the feather is black on the light mark", async () => {
     // Fix pass: the colour follows the Shell's own data-mode, so a stale document theme from Landing must not flip it
     const html = await renderShell({ path: "/robinhood", ui, evm });
-    const css = readFileSync(SHELL_CSS, "utf8");
+    const css = readFileSync(SHELL_CSS, "utf8") + "\n" + readFileSync(MARK_CSS, "utf8");
     const doc: El = { tag: "html", attrs: { lang: "en", class: "", "data-theme": "dark" }, parent: null };
     const body: El = { tag: "body", attrs: {}, parent: doc };
     const els = elements(html, body);
     const root = els.find((e) => (e.attrs["class"] ?? "").split(/\s+/).includes("root"))!;
-    root.attrs["data-mode"] = "light"; // the Shell after the person picks light (useTheme sets data-mode on .root)
+    assert.equal(root.attrs["data-mode"], "dark", "precondition: rendered dark first");
+    // the Shell after the person picks light: every data-mode in the frame comes from the same useTheme t.mode
+    // (.root and, since the fix pass on 8e2f834, the mark's own slot), so all of them switch together
+    const moded = els.filter((e) => e.attrs["data-mode"] !== undefined);
+    assert.ok(moded.length >= 1);
+    for (const e of moded) e.attrs["data-mode"] = "light";
     const feather = els.find((e) => e.tag === "path" && (e.attrs["class"] ?? "").split(/\s+/).includes("feather"))!;
     const raised = innerVars(PALETTES[1]!, false)["--raised"]!;
     const fill = cascaded(css, feather, "fill")!;

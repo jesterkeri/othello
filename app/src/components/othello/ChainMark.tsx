@@ -4,11 +4,25 @@
 //   (docs.robinhood.com/chain/brand-guidelines: the feather is for compact interface elements, at least 20px high;
 //   black on light, white on dark). Fetched 2026-10-03.
 import { useId } from 'react';
-import type { ChainSide } from '@/lib/chains';
-import s from './Shell.module.css';
+import { sideName, type ChainSide } from '@/lib/chains';
+import s from './ChainMark.module.css';
+
+/**
+ * The active chain's mark in a top bar (Joshua, 2026-10-03): one logo, only while a wallet is connected, so the bar
+ * stays neutral without one and does not grow as chains are added. Changing chain is in the wallet menu ("Use another
+ * network"). The slot carries the page's own mode, so the feather is white on dark and black on light on any page.
+ */
+export function ChainMarkSlot({ side, mode }: { side: ChainSide; mode: 'light' | 'dark' }) {
+  return (
+    <span className={s.chainMark} data-mode={mode} role="img" aria-label={sideName(side)} title={sideName(side)}>
+      <ChainMark side={side} />
+    </span>
+  );
+}
 
 export default function ChainMark({ side }: { side: ChainSide }) {
-  const id = useId();
+  // React 19's useId is «r0»-shaped; keep the url(#…) reference to plain characters
+  const id = `solana-mark-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   if (side === 'robinhood') {
     return (
       <svg viewBox="0 0 32 42" width={17} height={22} aria-hidden focusable="false">

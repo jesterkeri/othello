@@ -5,6 +5,7 @@ import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
 import { SIDE_HOME, sideName, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
+import { ChainMarkSlot } from '@/components/othello/ChainMark';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
   PALETTES, SLOT_LABELS, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
@@ -292,6 +293,8 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
 
             {/* Connected: the shared address pill, whose menu is where you
                 disconnect. A plain "Connected" label here left no way out. */}
+            {/* the active chain's mark, as in every other page's top bar; none with no wallet */}
+            {side && <span style={walletVars}><ChainMarkSlot side={side} mode={mode} /></span>}
             {walletConnected
               ? <span style={walletVars}><WalletControl side={side ?? undefined} /></span>
               : <button className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}

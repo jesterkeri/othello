@@ -8,10 +8,10 @@ import { usePathname } from 'next/navigation';
 import s from './Shell.module.css';
 import StockSearch from './StockSearch';
 import { WalletControl } from './WalletConnect';
-import { SIDE_HOME, SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
+import { sideOf, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { useActiveSide } from '@/lib/active-side';
-import ChainMark from './ChainMark';
+import { ChainMarkSlot } from './ChainMark';
 import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
 /** The builder's hue choices, as on Landing. */
@@ -81,14 +81,6 @@ export function useTheme() {
   const profile: Profile = choice.startsWith('c') ? (mine[Number(choice.slice(1))] ?? PALETTES[1]!) : (PALETTES[Number(choice.slice(1))] ?? PALETTES[1]!);
   const vars = useMemo(() => innerVars(profile, mode === 'dark'), [profile, mode]) as CSSProperties;
   return { mode, setMode, choice, setChoice, mine, vars, custom, setCustom };
-}
-
-/**
- * The active chain's mark (Joshua, 2026-10-03): one logo, only while a wallet is connected, so the bar stays neutral
- * without one and does not grow as chains are added. Changing chain is in the wallet menu ("Use another network").
- */
-function ChainMarkSlot({ side }: { side: ChainSide }) {
-  return <span className={s.chainMark} role="img" aria-label={sideName(side)} title={sideName(side)}><ChainMark side={side} /></span>;
 }
 
 export default function Shell({ active = 'Circles', onNavigate, surface = 'panel', network, wallet, chainSwitch = true, side, children }: ShellProps) {
@@ -232,9 +224,8 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
       <main className={`${s.panel} ${surface === 'gutter' ? s.panelGutter : ''}`}>
         <div className={s.topbar}>
           <span className={s.logoTop} aria-hidden>O</span>
-          {chainSwitch ? (
-            shown ? <ChainMarkSlot side={shown} /> : null
-          ) : network ? (
+          {shown && <ChainMarkSlot side={shown} mode={t.mode} />}
+          {chainSwitch ? null : network ? (
             <span className={s.devnet}>{network.chip}</span>
           ) : (
             <span className={s.devnet}><span className={s.dots} aria-hidden>{Array.from({ length: 6 }).map((_, i) => <span key={i} />)}</span>Devnet<span className={s.devnetFull}>&nbsp;demo</span></span>

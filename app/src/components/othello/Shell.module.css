@@ -136,10 +136,3 @@
 }
 @media (prefers-reduced-motion: reduce) { .root *, .root *::before, .root *::after { animation: none !important; transition: none !important; } }
 
-/* The active chain's mark (Joshua, 2026-10-03): one logo, only with a wallet connected */
-.chainMark { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 3px solid var(--line); border-radius: 999px; background: var(--raised); flex: 0 0 auto; }
-.chainMark svg { display: block; }
-/* Robinhood Chain's feather is black on light and white on dark, as its two official files are */
-.feather { fill: #000000; }
-/* The Shell's own mode (data-mode on .root), not <html data-theme>, which only Landing writes */
-.root[data-mode='dark'] .feather { fill: #FFFFFF; }
