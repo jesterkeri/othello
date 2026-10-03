@@ -40,3 +40,15 @@ export function labelOf(pathname: string): GatedLabel {
   if (pathname === "/split-lab" || pathname.startsWith("/split-lab/")) return "Split lab";
   return "Circles";
 }
+
+/**
+ * The network a page belongs to, for the connect window (Joshua, 2026-10-03: choose the network first, then the
+ * wallet; a page of one chain opens straight at that chain's wallets). Null for the neutral pages (home, How it works,
+ * the circles entry, anything unknown), where the window starts with the network choice.
+ */
+export function pageNetwork(pathname: string | null | undefined): "robinhood" | "solana" | null {
+  const p = pathname || "/";
+  if (p === "/robinhood" || p.startsWith("/robinhood/") || p.startsWith("/circle/rh:")) return "robinhood";
+  if (/^\/(assets|portfolio|split-lab)(\/|$)/.test(p) || p.startsWith("/circle/")) return "solana";
+  return null;
+}

@@ -8,7 +8,8 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { usePathname } from 'next/navigation';
 import s from './WalletConnect.module.css';
 import { useTheme } from './Shell';
-import { sideOf, type ChainSide } from '@/lib/chains';
+import { SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
+import { pageNetwork } from '@/lib/side-rules';
 import { explorerAddress } from '@/lib/robinhood/chain';
 import { useEvmWallet } from '@/lib/robinhood/wallet';
 import { shortAddress, useWalletUi } from '@/lib/wallet';
@@ -165,6 +166,9 @@ const HEAD: Record<string, string> = { list: 'acid', empty: 'sky', connecting: '
  * transaction lands: the app reads and sends through its own devnet
  * connection. Showing it would be showing a guess.
  */
+/** What the window asks for once a network is chosen. */
+const SIDE_WALLET: Record<ChainSide, string> = { robinhood: 'EVM wallet', solana: 'Solana wallet' };
+
 export function WalletModal() {
   const w = useWalletUi();
   if (w.stage === 'closed') return null;
@@ -177,6 +181,11 @@ function ModalBody() {
   const closeRef = useRef<HTMLButtonElement>(null);
   const stage = w.stage;
   const wallet = w.pending ?? 'your wallet';
+  // Network first, then wallet (Joshua, 2026-10-03): on a page of one chain the window opens at that chain's wallets;
+  // on a neutral page it starts with the network choice, Robinhood Chain first. A view choice only: picking, cancelling
+  // and the wallets' answers are lib/wallet.tsx's, unchanged.
+  const pathname = usePathname();
+  const [network, setNetwork] = useState<ChainSide | null>(() => pageNetwork(pathname));
 
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
@@ -186,7 +195,7 @@ function ModalBody() {
   }, [w]);
 
   const titles: Record<string, [string, string]> = {
-    list: ['Connect a wallet', 'Choose your wallet'],
+    list: network ? ['Connect a wallet', `Choose your ${SIDE_WALLET[network]}`] : ['Connect a wallet', 'Choose a network'],
     empty: ['Connect a wallet', 'No wallet found'],
     connecting: [`Waiting for ${wallet}`, `Approve in ${wallet}`],
     rejected: ['Not connected', 'Request cancelled'],
@@ -222,7 +231,49 @@ function ModalBody() {
         {stage === 'list' && (
           <>
             <div className={s.list}>
-              <span className={s.label}>Solana devnet</span>
+              {network === null && (
+                <>
+                  <span className={s.label}>Choose a network</span>
+                  {(['robinhood', 'solana'] as const).map((k, i) => (
+                    <button key={k} type="button" className={s.walletRow} style={{ ...fill(k === 'robinhood' ? 'acid' : 'sky'), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => setNetwork(k)}>
+                      <span className={s.walletBadge} style={{ color: `var(--${k === 'robinhood' ? 'acid' : 'sky'})` }}>{SIDE_LABEL[k].chain[0]}</span>
+                      <span className={s.walletText}>
+                        <span className={s.walletName}>{sideName(k)}</span>
+                        <span className={s.walletSub}>{k === 'robinhood' ? 'MetaMask or another EVM wallet' : 'Phantom, Solflare or another Solana wallet'}</span>
+                      </span>
+                      <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                    </button>
+                  ))}
+                </>
+              )}
+              {network !== null && (
+                <button type="button" className={s.back} onClick={() => setNetwork(null)} aria-label="Choose a different network">
+                  <Icon d="M15 6 9 12l6 6" size={15} width={3} /> {sideName(network)}
+                </button>
+              )}
+              {network === 'robinhood' && (
+                <>
+              {w.evmDetected.length === 0 && <InstallRow name="MetaMask" note="No EVM wallet in this browser" />}
+              {w.evmDetected.map((x, j) => {
+                const i = j;
+                const slot = slotFor(x.name, i);
+                return (
+                  <button key={x.uuid} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pickEvm(x.uuid)}>
+                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>
+                      {x.icon ? <img className={s.walletIcon} src={x.icon} alt="" width={30} height={30} /> : x.name[0]}
+                    </span>
+                    <span className={s.walletText}>
+                      <span className={s.walletName}>{x.name}</span>
+                      <span className={s.walletSub}>EVM wallet, detected in this browser</span>
+                    </span>
+                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
+                  </button>
+                );
+              })}
+                </>
+              )}
+              {network === 'solana' && (
+                <>
               {w.address && w.walletName && (
                 <>
                   <button type="button" className={s.walletRow} style={{ ...fill(slotFor(w.walletName, 0)), transform: `rotate(${TILTS[0]})` }} onClick={() => w.pick(w.walletName!)}>
@@ -253,24 +304,8 @@ function ModalBody() {
                   </button>
                 );
               })}
-              <span className={s.label}>Robinhood Chain testnet</span>
-              {w.evmDetected.length === 0 && <InstallRow name="MetaMask" note="No EVM wallet in this browser" />}
-              {w.evmDetected.map((x, j) => {
-                const i = j + w.detected.length;
-                const slot = slotFor(x.name, i);
-                return (
-                  <button key={x.uuid} type="button" className={s.walletRow} style={{ ...fill(slot), transform: `rotate(${TILTS[i % TILTS.length]})` }} onClick={() => w.pickEvm(x.uuid)}>
-                    <span className={s.walletBadge} style={{ color: `var(--${slot})` }}>
-                      {x.icon ? <img className={s.walletIcon} src={x.icon} alt="" width={30} height={30} /> : x.name[0]}
-                    </span>
-                    <span className={s.walletText}>
-                      <span className={s.walletName}>{x.name}</span>
-                      <span className={s.walletSub}>EVM wallet, detected in this browser</span>
-                    </span>
-                    <span className={s.walletGo}><Icon d="M6.5 17.5 17.5 6.5M9 6.5h8.5V15" size={17} width={3} /></span>
-                  </button>
-                );
-              })}
+                </>
+              )}
             </div>
             <div className={s.keys}>
               <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="var(--acid)" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 3.5 19 6v5.5c0 4.3-3 7.7-7 9-4-1.3-7-4.7-7-9V6l7-2.5ZM8.8 12l2.2 2.2 4.4-4.4" /></svg>
@@ -283,13 +318,13 @@ function ModalBody() {
           <>
             <div className={s.empty}>
               <p className={s.emptyLead}>A wallet is an app you install that holds your keys and asks you before anything is sent.</p>
-              <span className={s.label}>Install one for Solana devnet</span>
-              <div className={s.installs}>
-                {INSTALLS.map((name) => <InstallRow key={name} name={name} />)}
-              </div>
-              <span className={s.label}>Or one for Robinhood Chain testnet</span>
+              <span className={s.label}>Install one for Robinhood Chain testnet</span>
               <div className={s.installs}>
                 {EVM_INSTALLS.map((name) => <InstallRow key={name} name={name} />)}
+              </div>
+              <span className={s.label}>Or one for Solana devnet</span>
+              <div className={s.installs}>
+                {INSTALLS.map((name) => <InstallRow key={name} name={name} />)}
               </div>
             </div>
             <div className={s.emptyFoot}>
