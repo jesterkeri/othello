@@ -118,6 +118,9 @@
   .actions { order: 2; }
   .devnet { order: 3; }
   .devnetText { order: 4; flex: 1 1 0; }
+  /* With no chip (the chain switch is gone, adversary pass on f5315b1) nothing wide sits on row two, and a
+     0-basis note fits beside the wallet pill at 10px wide: give it the whole of row two */
+  .topbar:not(:has(.devnet)) .devnetText { flex-basis: 100%; }
   .topbar { gap: 8px; }
   .dots { display: none; }
   .devnet { padding: 6px 11px; }

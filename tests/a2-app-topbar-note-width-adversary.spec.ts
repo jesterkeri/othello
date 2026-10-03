@@ -1,0 +1,239 @@
+/**
+ * Adversary, A2 chain logos (Joshua, 2026-10-03), pass on f5315b1. The spec: "Layout must not break at phone width
+ * (360px and up, through desktop), in every wallet state, on the landing page (/) and in the app frame's top bar, with
+ * the site's real font."
+ *
+ * The app frame's top bar (components/othello/Shell.tsx) is a wrapping flex row. Under 760px Shell.module.css orders it
+ * "Row one: logo and the buttons. Row two: the network chip and its note, side by side": .actions order 2, .devnet and
+ * .chainSwitch order 3, .devnetText order 4 with `flex: 1 1 0; min-width: 0`. Before this feature (de78a6f) every page
+ * with the default chainSwitch put an order-3 item in the bar (the chain switch, or the chain's name in a .devnet chip),
+ * wide and nowrap, so it broke to row two and the note followed it there. 29dfd84 replaced both with nothing: the bar
+ * now holds the logo, the chain mark, the actions and the note. A zero flex-basis note fits on row one beside the
+ * wallet pill in a line-breaking sense, so it is laid out there, squeezed into whatever the pill leaves.
+ *
+ * Harness: the real Shell.tsx and the real WalletConnect.tsx (address pill unstubbed) rendered with the app's React
+ * (react-dom/server) over stubbed wallet contexts, as tests/a2-landing-topbar-widths-adversary.spec.ts does for the
+ * landing page; the real globals.css and the Shell, ChainMark and WalletConnect modules (each module's classes given
+ * its own prefix, as CSS modules do); a real Chromium; one iframe per phone width as its viewport; Plus Jakarta Sans
+ * fetched read-only from Google Fonts (the source next/font/google self-hosts it from; the URL is printed).
+ *
+ * Control: the desktop width (1280px), where the note keeps its 240px basis. The same spec run on de78a6f (the commit
+ * before the feature, the chain switch or chip still in the bar) passes all four cases.
+ *
+ *   npx mocha --import=tsx --timeout 300000 tests/a2-app-topbar-note-width-adversary.spec.ts
+ *
+ * Needs the network for the font. Installs module loader hooks: run in its own mocha process.
+ */
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire, registerHooks } from "node:module";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { REPO } from "./artifacts.ts";
+
+const SRC = resolve(REPO, "app/src");
+const SHELL = resolve(SRC, "components/othello/Shell.tsx");
+const CSS_FILES = {
+  Shell: resolve(SRC, "components/othello/Shell.module.css"),
+  ChainMark: resolve(SRC, "components/othello/ChainMark.module.css"),
+  WalletConnect: resolve(SRC, "components/othello/WalletConnect.module.css"),
+};
+const appRequire = createRequire(resolve(SRC, "lib/chains.ts"));
+
+type Ctx = { ui: Record<string, unknown>; evm: Record<string, unknown>; path: string };
+const g = globalThis as { __a2s?: Ctx; React?: unknown };
+
+registerHooks({
+  resolve(specifier, context, next) {
+    const parent = context.parentURL ?? "";
+    const stub = (src: string) => ({ url: `data:text/javascript,${encodeURIComponent(src)}`, shortCircuit: true });
+    if (specifier.endsWith(".module.css")) {
+      const mod = basename(specifier, ".module.css");
+      return stub(`export default new Proxy({}, { get: (_, k) => typeof k === "string" ? ${JSON.stringify(mod)} + "_" + k : undefined });`);
+    }
+    if (parent.endsWith("/components/othello/Shell.tsx") && specifier === "./StockSearch") {
+      return stub("export default function StockSearch() { return null; }");
+    }
+    if (specifier === "next/navigation") return stub("export const usePathname = () => globalThis.__a2s.path;");
+    if (specifier === "@/lib/wallet") {
+      // the real shortAddress (lib/wallet.tsx), restated: the stub replaces only the React context
+      return stub("export const useWalletUi = () => globalThis.__a2s.ui; export const shortAddress = (a) => `${a.slice(0, 4)}…${a.slice(-4)}`;");
+    }
+    if (specifier === "@/lib/robinhood/wallet") return stub("export const useEvmWallet = () => globalThis.__a2s.evm;");
+    if (specifier.startsWith("@/")) {
+      const base = resolve(SRC, specifier.slice(2));
+      for (const ext of [".ts", ".tsx", "/index.ts", ""]) {
+        try {
+          readFileSync(base + ext);
+          return next(pathToFileURL(base + ext).href, context);
+        } catch {
+          /* try the next extension */
+        }
+      }
+    }
+    return next(specifier, context);
+  },
+});
+
+/** The Shell as the Robinhood Chain pages use it (RobinhoodHome.tsx: side="robinhood" and its NETWORK). */
+async function render(ctx: Ctx, props: Record<string, unknown>): Promise<string> {
+  const React = appRequire("react");
+  g.React = React;
+  const { renderToStaticMarkup } = appRequire("react-dom/server");
+  const mod = await import(pathToFileURL(SHELL).href);
+  g.__a2s = ctx;
+  return renderToStaticMarkup(React.createElement(mod.default, { active: "Circles", ...props }, React.createElement("p", null, "page")));
+}
+
+function scoped(mod: string, css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\.([a-zA-Z_][\w-]*)/g, `.${mod}_$1`);
+}
+
+function browsers(): { bin: string; windows: boolean }[] {
+  const out: { bin: string; windows: boolean }[] = [];
+  if (process.env.CHROME) out.push({ bin: process.env.CHROME, windows: process.env.CHROME.endsWith(".exe") });
+  const cache = join(homedir(), ".cache/ms-playwright");
+  for (const d of existsSync(cache) ? readdirSync(cache) : []) {
+    const bin = join(cache, d, "chrome-headless-shell-linux64", "chrome-headless-shell");
+    if (d.startsWith("chromium_headless_shell") && existsSync(bin)) out.push({ bin, windows: false });
+  }
+  const win = "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe";
+  if (existsSync(win)) out.push({ bin: win, windows: true });
+  return out;
+}
+
+function forBrowser(path: string, windows: boolean): string {
+  if (!windows) return path;
+  const w = spawnSync("wslpath", ["-w", path], { encoding: "utf8" }).stdout.trim();
+  assert.ok(w, `wslpath gave nothing for ${path}`);
+  return w;
+}
+
+function fileUrl(path: string, windows: boolean): string {
+  return windows ? "file:" + forBrowser(path, true).replace(/\\/g, "/") : pathToFileURL(path).href;
+}
+
+type Box = { left: number; right: number; top: number; bottom: number; width: number };
+type Layout = {
+  width: number; inner: number; jakarta: string; bar: Box; note: Box & { scrollWidth: number; clientWidth: number; text: string };
+  pill: Box | null; actions: Box; logo: Box | null;
+};
+
+const FONT_CSS = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap";
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+
+async function jakartaLatin(): Promise<{ url: string; bytes: Buffer }> {
+  const css = await (await fetch(FONT_CSS, { headers: { "user-agent": UA } })).text();
+  const block = css.split("@font-face").find((b) => b.includes("U+0000-00FF"));
+  const url = block && /url\((https:[^)]+\.woff2)\)/.exec(block)?.[1];
+  assert.ok(url, `no latin Plus Jakarta Sans woff2 in ${FONT_CSS}`);
+  const res = await fetch(url);
+  assert.ok(res.ok, `font download failed: ${res.status} ${url}`);
+  return { url, bytes: Buffer.from(await res.arrayBuffer()) };
+}
+
+function layouts(markup: string, widths: number[], font: Buffer): Layout[] {
+  const css = "@font-face { font-family: 'Plus Jakarta Sans'; font-weight: 200 800; src: url(jakarta.woff2) format('woff2'); }\n" +
+    ":root { --font-jakarta: 'Plus Jakarta Sans'; --font-archivo: Archivo; }\n" +
+    readFileSync(resolve(SRC, "app/globals.css"), "utf8") + "\n" +
+    // ChainMark.module.css is new in this feature: missing when this spec is run on de78a6f, the commit before it
+    Object.entries(CSS_FILES).filter(([, f]) => existsSync(f)).map(([m, f]) => scoped(m, readFileSync(f, "utf8"))).join("\n");
+  const probe = (w: number) => `
+    const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width }; };
+    const bar = document.querySelector('.Shell_topbar');
+    const noteEl = bar.querySelector('.Shell_devnetText');
+    const note = { ...box(noteEl), scrollWidth: noteEl.scrollWidth, clientWidth: noteEl.clientWidth, text: noteEl.textContent };
+    const jakarta = [...document.fonts].filter((f) => f.family.includes('Jakarta')).map((f) => f.status).join(',') || 'not declared';
+    const out = { width: ${w}, inner: window.innerWidth, jakarta, bar: box(bar), note, pill: box(bar.querySelector('.WalletConnect_pill')),
+      actions: box(bar.querySelector('.Shell_actions')), logo: box(bar.querySelector('.Shell_logoTop')) };
+    const pre = parent.document.createElement('pre'); pre.className = 'layout-out'; pre.textContent = JSON.stringify(out); parent.document.body.appendChild(pre);`;
+  const frames = widths.map((w) => {
+    const inner = `<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head>` +
+      `<body>${markup}<script>document.fonts.ready.then(() => { ${probe(w)} });</script></body></html>`;
+    return `<iframe width="${w}" height="500" style="border:0;display:block" srcdoc="${inner.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"></iframe>`;
+  });
+  const outer = `<!doctype html><html><body style="margin:0">${frames.join("")}</body></html>`;
+  const errors: string[] = [];
+  for (const b of browsers()) {
+    const dir = mkdtempSync(join(REPO, ".a2-shell-widths-"));
+    try {
+      const file = join(dir, "shell.html");
+      writeFileSync(file, outer);
+      writeFileSync(join(dir, "jakarta.woff2"), font);
+      const r = spawnSync(b.bin, [
+        b.windows ? "--headless=new" : "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+        "--disable-extensions", "--allow-file-access-from-files", `--user-data-dir=${forBrowser(join(dir, "profile"), b.windows)}`,
+        "--window-size=1600,900", "--virtual-time-budget=5000", "--dump-dom", fileUrl(file, b.windows),
+      ], { encoding: "utf8", timeout: 120_000 });
+      const found = [...(r.stdout ?? "").matchAll(/<pre class="layout-out">([^<]*)<\/pre>/g)]
+        .map((m) => JSON.parse(m[1]!.replace(/&quot;/g, '"').replace(/&amp;/g, "&")) as Layout);
+      if (found.length === widths.length) return widths.map((w) => found.find((l) => l.width === w)!);
+      errors.push(`${b.bin} (status ${r.status}, ${found.length} of ${widths.length}): ${(r.stderr ?? "").slice(0, 300)}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  throw new Error(`no Chromium laid the page out; set CHROME to a chrome or chrome-headless-shell binary.\n${errors.join("\n")}`);
+}
+
+const noop = () => {};
+const noUi = { address: null, walletName: null, stage: "closed", openConnect: noop, disconnect: noop };
+const noEvm = { address: null, onRobinhood: false, walletName: null, disconnect: noop, switchToRobinhood: noop, error: null };
+const EVM = { address: "0x1111111111111111111111111111111111111111", onRobinhood: true, walletName: "MetaMask", disconnect: noop, switchToRobinhood: noop, error: null };
+// RobinhoodHome.tsx's own NETWORK, as the Robinhood Chain pages pass it
+const NETWORK = { chip: "Robinhood Chain testnet", note: "Test USDG only. It has no value." };
+const STATES: [string, Ctx, Record<string, unknown>][] = [
+  ["/robinhood, EVM wallet on Robinhood Chain", { path: "/robinhood", ui: noUi, evm: EVM }, { side: "robinhood", network: NETWORK }],
+  ["/robinhood, EVM wallet on another network", { path: "/robinhood", ui: noUi, evm: { ...EVM, onRobinhood: false } }, { side: "robinhood", network: NETWORK }],
+  ["/how-it-works, no wallet", { path: "/how-it-works", ui: noUi, evm: noEvm }, { surface: "gutter" }],
+  // Fix pass: the asset pages keep their chip, with the note beside it on row two (components/assets/Shell.tsx)
+  ["/assets, Solana wallet, chip and note", { path: "/assets", ui: { ...noUi, address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", walletName: "Phantom" }, evm: noEvm },
+    { active: "Assets", chainSwitch: false, network: { chip: "Mainnet, read only", note: "Real xStocks, read live from Solana mainnet. Othello sends nothing to mainnet." } }],
+];
+const PHONES = [360, 375, 390, 414];
+
+/** The note is laid out as running text: not squeezed beside the buttons into a box narrower than its own words. */
+function squeezed(l: Layout): string | null {
+  const beside = l.note.top < l.actions.bottom && l.note.bottom > l.actions.top;
+  const clipped = l.note.scrollWidth > l.note.clientWidth + 0.5;
+  if (!beside && !clipped) return null;
+  return `${l.width}px: the note "${l.note.text}" is ${l.note.width.toFixed(1)}px wide` +
+    (beside ? `, on the buttons' row (note top ${l.note.top.toFixed(1)}, buttons ${l.actions.top.toFixed(1)} to ${l.actions.bottom.toFixed(1)})` : "") +
+    (clipped ? `, its words ${l.note.scrollWidth}px wide overflow it` : "") +
+    `, ${(l.note.bottom - l.note.top).toFixed(1)}px tall`;
+}
+
+describe("A2 adversary (f5315b1): the app frame's top bar note at phone width, with the site's font", () => {
+  let font: { url: string; bytes: Buffer };
+  before(async () => {
+    font = await jakartaLatin();
+    console.log(`      font: ${font.url} (${font.bytes.length} bytes)`);
+  });
+
+  it("control: at 1280px the note is running text, not squeezed (its 240px basis)", async () => {
+    for (const [name, ctx, props] of STATES) {
+      const [l] = layouts(await render(ctx, props), [1280], font.bytes);
+      assert.match(l!.jakarta, /^loaded/, `precondition: Plus Jakarta Sans is loaded (${l!.jakarta})`);
+      assert.ok(l!.note.width >= 240, `control, ${name}: the note is at least its basis wide (${l!.note.width})`);
+      assert.ok(l!.note.scrollWidth <= l!.note.clientWidth, `control, ${name}: no word overflows the note`);
+    }
+  });
+
+  for (const [name, ctx, props] of STATES) {
+    it(`${name}, ${PHONES.join(", ")}px: the note is not squeezed beside the wallet pill`, async () => {
+      const markup = await render(ctx, props);
+      const bad: string[] = [];
+      for (const l of layouts(markup, PHONES, font.bytes)) {
+        assert.equal(l.inner, l.width, "precondition: the viewport is the iframe's width");
+        assert.match(l.jakarta, /^loaded/, `precondition: Plus Jakarta Sans is loaded (${l.jakarta})`);
+        assert.ok(l.logo && l.logo.width > 0, "precondition: the phone layout (the top bar's logo) is in force");
+        const s = squeezed(l);
+        if (s) bad.push(s);
+      }
+      assert.deepEqual(bad, [], `${name}: the app frame's top bar note is squeezed on a phone`);
+    });
+  }
+});
