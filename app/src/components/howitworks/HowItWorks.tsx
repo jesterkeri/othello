@@ -47,14 +47,14 @@ export default function HowItWorks() {
           <p>
             A savings circle (ajo, esusu, tontine) with a promise behind it. Friends pay in every round and take the whole pot
             in turn. The usual risk is the member who has already taken the pot and stops paying: here, that member has
-            tokenized stock locked on-chain that is sold to pay what they still owe. If it falls short, their guarantee and
+            an asset locked on-chain that covers what they still owe. If it falls short, their guarantee and
             the shared reserve make up the difference, and if even that is not enough, the next payout pauses until someone
             tops up.
           </p>
           {/* Codex T18c r1/r2: state the limits (KNOWN-LIMITS L3, L7, L10) rather than promise a trustless, automatic outcome. */}
           <p className={s.note}>
             What it does not remove: a member who stops paying before their turn can stall the circle,
-            because in this version it waits for them; the stock&apos;s issuer can freeze, pause or move its tokens; and every
+            because in this version it waits for them; the locked asset&apos;s issuer can freeze, pause or move its tokens; and every
             step (paying out a pot, declaring a default, topping up) happens when someone sends the transaction. Nothing runs by
             itself.
           </p>
@@ -119,7 +119,6 @@ export default function HowItWorks() {
             vault that reads the display would see a 90% loss and liquidate. Othello reads the multiplier: the cover stays
             {cover ? ` ${cover} ${money}` : ' the same'}, before and after.
           </p>
-          <Link className={s.cta} href="/split-lab">Play the split</Link>
         </section>
 
         <section className={`${s.card} ${s.hero} ${s.s6}`}>

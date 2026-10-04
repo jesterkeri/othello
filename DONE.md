@@ -2880,3 +2880,437 @@ secret checks; the branch stayed task/T18c-charts at 5bcdea7). One MINOR: a labe
 characters (U+0000) passed the "visible" check. The check is now positive: a label must contain a
 letter, number, punctuation mark or symbol (\p{L}\p{N}\p{P}\p{S}). tests/app-quote.spec.ts 18
 passing; with r3's check restored the new case fails (17 passing, 1 failing).
+
+## A1 slice 1: Robinhood USDG circles, model + contracts + tests (2026-09-28)
+design: othello-design/arb/ARB-DESIGN.md r9 (sha256 ca3b3c8c…8284), Codex SHIP (reviews/arb-design-review-r8.md)
+reviewed: pending (adversary, then Codex code review 1) | branch: task/A1-evm-usdg
+
+Built: core/reference.py (CommonModel, EvmUsdgModel, SolanaPythModel), core/actions.py (per-profile action
+lists), core/gen.py (vectors: common-v1 77, evm-usdg-v1 82, 5,174 steps), evm/src (OthelloFactory,
+OthelloCircle, CircleMath; OpenZeppelin v5.5.0, forge-std v1.16.2, solc 0.8.30), evm/test (vector replay,
+unit, invariant, schema/profile refusals, demonstrator), evm/mutation (37 mutations), evm/script/Demo.s.sol,
+.github/workflows/evm.yml. Findings for the reviewer: evm/ARB-FINDINGS.md (F-1 escrow deficit unreachable
+with USDG collateral; 20,000 random circles, 2,843 pauses, 0 deficits).
+
+verify (real output):
+  python3 -W error::ResourceWarning -m unittest core/test_core.py   -> Ran 17 tests ... OK
+  sha256sum -c MANIFEST.sha256 (both profiles)                        -> manifest ok x2
+  forge build --sizes  -> OthelloCircle 14,575 B runtime, OthelloFactory 18,112 B (limit 24,576)
+  forge test           -> Ran 5 test suites: 34 tests passed, 0 failed, 0 skipped
+                          (replay: every step's outcome, error args, 21 circle + 64 seat fields, balances,
+                          allowances equal the model's; INV-C1/C2 each step; invariants 256 runs x 200 calls;
+                          worst-case gas at n = 8: 217,651 <= 1,500,000)
+  python3 evm/mutation/run.py -> first run 37: 30 killed, 6 test gaps (M11 M24 M27 M29 M34 M35), M37 expected
+                          survivor (unreachable branch, F-2); gaps closed by new tests; re-run of those 6
+                          plus spot checks M01 M17: 8 mutations, 8 killed, 0 bad. M01 hand-checked: killed by
+                          vector create-members-length-n3-2.
+
+## A1 slice 1 adversary (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE (Codex code review r1, whose target 2a907ab contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 2a907ab
+adversary: NO DEFECT FOUND on staging..0d09dc3. 14 attack families (double claim, releasePot conservation,
+escrow left at Completed, underflow/panic, zero share denominator, deficit reachability, pause without
+default, queue order I23, grace boundary, check order per function, authority, hostile token/reentrancy,
+Python/Solidity shared mistakes, Demo.s.sol) plus its own 3,000-seed model explorer (about 2,450 completed
+circles, up to 7 defaults each): no violation. Independently confirmed ARB-FINDINGS F-1 (escrow deficit
+unreachable) without reading it; notes the consent path is exercised only on forced states (disclosed in F-1).
+
+## A1 slice 2: Robinhood page and adapter (viem, Joshua approved 2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE (Codex code review r1, whose target 2a907ab contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 2a907ab
+viem 2.56.8 exact (app, and root devDependency for the tests; 2.56.9 skipped as 4 days old).
+Built: app/src/lib/core/{profiles,adapter}.ts (ChainAdapter with no top-up; EvmUsdgAdapter {amount,
+expectedFill}; SolanaAdapter {amount}; exact-key argument check before any wallet call),
+app/src/lib/robinhood/{chain,config,copy,adapter,wallet}.ts (trust check: circle code, pinned factory code
+hash, factory.isCircle, circle.factory(); exact approvals; refusals decoded to plain words; TRUSTED_FACTORY
+null until the reviewed deploy), components/robinhood/RobinhoodCircle.tsx at /circle/rh:{address}, Shell
+`wallet` slot (the top bar shows the EVM wallet on Robinhood pages), evm/script/export_abi.py, CI job
+`adapter`.
+
+verify (real output):
+  npx tsc --noEmit (root, includes the @ts-expect-error adapter-split file) -> ok; app typecheck -> ok
+  mocha tests/core-profiles.spec.ts tests/robinhood-adapter.spec.ts (anvil, chain 46630, real contracts)
+    -> 15 passing (two legitimate circles with different runtime hashes accepted; foreign factory, lookalike,
+    wrong factory hash, no code and not-deployed refused; untrusted circle sends nothing; common surface has
+    no top-up; wrong-shape top-ups throw before any wallet call; full circle through the adapter, every
+    member ends where they started, allowances 0)
+  type-test mutation: adding topUpReserve to ChainAdapter -> tsc "Unused '@ts-expect-error' directive"
+  browser (local anvil + stand-in EIP-1193 wallet, headless Chromium): 3 joins, leave + rejoin, start,
+    3 rounds paid and released, 3 withdrawals, all "done"; untrusted address shows "This isn't an Othello
+    circle"; 0 console or page errors after the hydration fix. Bugs found and fixed on the way: reads before
+    the trust check (a lookalike threw), viem error class identity across copies, hydration mismatch, the
+    Solana top-bar wallet button on a Robinhood page.
+  next build -> Compiled successfully; forge test -> 34 passed; export_abi --check -> matches.
+
+## A1 slice 2 adversary + fixes (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE (Codex code review r1, whose target 2a907ab contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 2a907ab
+adversary on 0d09dc3..edb1fba: ONE DEFECT (low): an action refused after its approval confirmed (circle
+cancelled in between, or the user rejects the second prompt) left the approval on chain, 0 USDG moved.
+Proved by tests/robinhood-adapter-leftover-approval.spec.ts (kept as the regression test: "25000000n !== 0n").
+All other attacks failed (trust before approval, approval size, wrong chain, disclosure = signed fill, common
+surface, money copy, URL parsing, hydration, refresh races, stale adapter).
+Fixed: the adapter sets the allowance back after any failed action and says so (or says how to clear it);
+the freeze/upgrade disclosure now shows on every circle (AL2); any-casing addresses accepted; the timer no
+longer supersedes a read still running (slow RPC could loop "Checking…").
+Flake found while verifying: the full-circle test failed 1 run in 6, releasePot out of gas at exactly the
+estimated limit (gasUsed 148081 = gasLimit). Fixed with 20% + 10,000 gas headroom on every write.
+verify: mutation (restore disabled) -> regression test fails "1 !== 2"; with fix: 20 consecutive runs of the
+three adapter specs, 0 failed, 16 passing each; root and app tsc ok; next build compiled.
+
+## A1 code review r1 (Codex): REVISE, fixed (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r1.md | verdict: REVISE | commit: 2a907ab
+Codex found no contract, money, access or adapter defect; 36/36 required mutations killed (M37 expected).
+1. MAJOR trust-config control missing -> ops/trust-config.ts + CI job `trust-config` (fails closed once
+   TRUSTED_FACTORY is set: receipt chain/CREATE/address/USDG arg/success, receipt commit ancestor of HEAD with
+   evm/src + deploy script unchanged, live code hash = config, reviewed source's runtime with USDG filled = config;
+   ARB-FINDINGS F-7), script/DeployFactory.s.sol (factory only) + test, tests/trust-config.spec.ts (14: one pass
+   and one fail per check, real factory on anvil).
+2. MINOR no real-USDG coverage -> evm/test/ForkRobinhood.t.sol (real USDG on a testnet fork: decimals, symbol,
+   recorded implementation, not paused, exact transfer, the whole Demo circle on real USDG) + CI job `fork`.
+3. MINOR Join copy stated the unreachable subsidy -> reworded (F-8).
+verify: unittest OK; export_abi --check matches; forge 36 passed (+ fork 3 passed); root/app tsc; next build
+compiled; mocha 30 passing; trust-config CLI on null config passes; workflows clean; diff clean.
+
+## A1 trust-config adversary + fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
+adversary on 2a907ab..f34eb46: DEFECT (gate fails open): parseConfig read config.ts as text, so a commented
+null line made a set TRUSTED_FACTORY read as null and the CLI printed "Nothing to verify" (exit 0); a commented
+reviewed address could be verified while the page trusted another. Kept as tests/trust-config-hostile-config.spec.ts
+(failed "Expected 'actual' to be strictly unequal to: 'null'" and "gate passed").
+Also acted on its two suspicions: CI paths now cover all of app/src; the chain must confirm the receipt's
+deployment transaction (creation, exact reviewed init code + USDG, success, that address).
+Fix: config.ts loaded as a module and shape-checked; single source of trust in app/src; on-chain deployment check
+(ARB-FINDINGS F-9). verify: mocha 36 passing (20 trust-config incl. the 4 adversary cases); tsc root/app;
+trust-config CLI on the committed null config passes; workflows clean.
+
+## A1 trust-config, third adversary pass + structural fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
+adversary on f34eb46..4d0d5fd: DEFECTS: (1) a renamed import `checkTrusted as x` with a hard-coded factory passed the
+text scan while the config was null; (2) a config computed at run time showed Node and the browser different
+factories. Kept as tests/trust-config-trust-sources.spec.ts (re-aimed at the only function that still takes a
+factory, adapter-core's checkTrustedAgainst) plus a test that the app's checkTrusted ignores a passed factory.
+Fix (ARB-FINDINGS F-10): adapter.ts binds TRUSTED_FACTORY (no factory parameter in the app API); adapter-core.ts is
+the injectable implementation; AST import boundary; config.ts fixed shape (null or Object.freeze of two string
+literals, imported value equal and frozen); after the deployed commit only config, receipt and *.md may change;
+CI paths app/**.
+verify: mocha 41 passing (25 trust-config); mutation: boundary off -> 3 failing, changed-files rule off -> 1
+failing; tsc root/app; next build compiled; export_abi --check; trust-config CLI passes on the null config;
+browser click-through (local anvil) full circle, all "done", untrusted address refused.
+
+## A1 trust-config, fourth adversary pass + fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
+adversary on 4d0d5fd..33a8911: DEFECTS: (1) a config.js beside config.ts is what Next bundles (.js before .ts), so the
+gate checked a file the page did not load (proved with a real next build); (2) git's rename detection let
+`git mv X X.md` hide X's deletion. Suspicions acted on: extra usdg/factory fields passed through
+createRobinhoodAdapter at run time; checksum-invalid addresses accepted. Both adversary specs kept
+(tests/trust-config-shadow-module.spec.ts, now also requiring the gate to name config.js as the reason;
+tests/trust-config-rename-hides-delete.spec.ts).
+Fix (ARB-FINDINGS F-11): no JS modules / same-stem files in app/src; next.config.mjs + tsconfig.json pinned; trust
+source failures reported first; --no-renames; field-by-field adapter deps; strict addresses. Stated limit: the
+receipt's commit = review-2 SHIP commit is checked by review 3, not CI.
+verify: mocha 47 passing; mutations: shadow rule off -> shadow spec fails; spread restored -> smuggle test fails;
+tsc root/app; next build compiled; export_abi --check; CLI passes on the null config; workflows clean.
+
+## A1 trust-config, fifth adversary pass + build scan (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
+adversary on 33a8911..9ceaaae: DEFECTS proved with real next builds: (1) an extensionless `config` file beside
+config.ts is what the page loads; (2) a package.json "imports" alias lets a page reach adapter-core. Read, not built:
+(3) a module outside app/src re-exporting the core. Suspicion acted on: chain.ts USDG not compared with the pinned one.
+Specs kept: tests/trust-config-extensionless-shadow.spec.ts (plus an added assertion that the bundle scan alone flags
+it), tests/trust-config-subpath-imports.spec.ts.
+Fix (ARB-FINDINGS F-12): rules for each, and a build-output scan (CI: next build, then --build app/.next): only USDG,
+zero, viem's placeholder and the trusted factory may appear. Today's build holds exactly USDG, zero and the placeholder.
+verify: trust specs 37 passing; mutation: bundle scan disabled -> 2 failing; CLI with --build app/.next passes.
+
+## A1 trust-config, sixth adversary pass + fix (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE (Codex code review r2, whose target fdcfdfe contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: fdcfdfe
+adversary on 9ceaaae..64ab60b: DEFECTS proved with a real next build: (1) a spender inside a hard-coded approve
+calldata literal was invisible to the scan (no 0x before it); (2) app/public (fetched at run time) was not scanned.
+Suspicion acted on: Vercel builds with its own env -> env reads banned in trust/transaction code; deploy-from-CI-build
+left as a review-3 decision. Spec kept: tests/trust-config-bundle-scan-misses.spec.ts.
+Fix (ARB-FINDINGS F-13). verify: trust specs 42 passing; mutations: padded detection off -> 3 failing, public scan
+off -> 2 failing; real build scan passes with no false alarms.
+
+## A1 seventh adversary pass (on frozen fdcfdfe, while Codex review 2 runs) + fix on task/A1-r2-fixes (2026-09-28)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
+adversary: DEFECTS (adapter): (1) a join cancelled in the wallet (same-nonce 0-value replacement) was reported
+"done" and left the approval open, because viem returns the replacement's receipt and send() did not compare hashes;
+(2) an approval whose receipt wait timed out and then mined was left open with no warning (previous allowance was
+only recorded after the wait). Spec kept: tests/robinhood-adapter-cancelled-action.spec.ts.
+Fix: a receipt counts only if its hash is the one sent (else "cancelled or replaced", reset); the prior allowance is
+recorded before the approval is sent; a sent-but-unconfirmed approval is always reset (nonce order puts the reset
+after it); a confirmed-state check skips needless resets; timeouts say the transaction may still go through.
+verify: adapter specs 14 passing, 5/5 repeat runs green; mutations: hash check off -> case 1 fails; pending-reset off
+-> case 2 fails; tsc root/app.
+
+## A1 live-demo readiness: create and list circles in the page (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
+Joshua: the judged demo is real people in separate browsers/wallets, each signing on the page (the script stays).
+Built: adapter-core createCircleWith (chain + pinned factory hash, simulate first, gas headroom, receipt hash must
+match, circle address from CircleCreated), listCirclesWith, TS peakNeed/leastGuarantee (the factory's rule);
+adapter.ts binds both to TRUSTED_FACTORY (createCircle, listMyCircles, checkFactory); pages /robinhood (my circles)
+and /robinhood/new (create form: members in payout order, money, timing; suggested guarantee = least allowed rounded
+up to the cent); shared EvmWalletPill. Found by the rehearsal and fixed: time-based buttons used the device clock;
+now the chain's latest block time (readCircle.chainTime) plus seconds since the read.
+verify: tests/robinhood-adapter.spec.ts +3 (least guarantee creates and least-1 is refused GuaranteeBelowPeakNeed,
+i.e. the page's formula equals the factory's; decoded refusal and wrong factory hash sends nothing; list finds
+exactly the wallet's circles newest first); all adapter + trust specs 63 passing; next build (new routes /robinhood,
+/robinhood/new); trust-config --build passes (only allowed addresses). Browser rehearsal on local anvil with three
+separate sessions/wallets, every step clicked: create, 3 joins, start, round 1 paid and released, round 2 two paid,
+grace passed, missed payment recorded, default settled, released, round 3 paid and released, 3 withdrawals: all "done",
+no page or console errors.
+
+## Split lab removed from the UI, kept in code; demo = success first, then failure (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
+Joshua: "remove split lab from the UI not the code...its not needed for colosseum either since we will actually use
+proper demos." Unlinked from: the landing nav, the Solana circle page, How it works ("Play the split"), the NFLXx
+asset page ("Open Split lab"). The /split-lab route and components stay (it builds; 57.8 kB). The How it works card
+explaining that a split cannot fool the cover stays (true); only its link went.
+Demo order (Joshua): a working circle first, then a default if time allows. Rehearsed both in three browser sessions
+on local anvil, every step signed on the page: success (create, 3 joins, start, 9 payments, 3 payouts, 3 withdrawals)
+net 0.000000 USDG for A, B and C; failure (A skips round 2, recorded and settled after grace, B and C still paid in
+full) net 0.000000 for A, B and C with a 2 USDG lock (read from chain balances, not the page).
+verify: next build compiled (/split-lab still built); trust-config --build passes; tsc root; specs 63 passing; no UI
+href to /split-lab remains.
+
+## A1 create/list adversary + fix (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
+adversary on 44e9538..b1eb00e: DEFECTS: (1) a wallet "Speed up" (repriced replacement) created the circle but the page
+said "no circle was created" (the same over-strict hash check in circle actions called a sped-up action "did not
+run"); (2) "My circles" read only the newest 40 circles, so anyone could hide a member's circle with 40 creates.
+Suggestions acted on: grace buttons use max(chain time, device time) (an old last block on a quiet chain could keep
+them hidden; early display only yields the contract's decoded "grace ends at" refusal); the create form fills the
+first empty member seat instead of overwriting member 1. Confirmed by it: TS peakNeed/leastGuarantee equal the
+Python model and CircleMath on 20,000 vectors. Spec kept: tests/robinhood-create-list-adversary.spec.ts.
+Fix: waitForOwnReceipt (viem onReplaced reason; "repriced" = the same action) for approvals, actions and create;
+listCirclesWith reads every circle in pages of 8.
+verify: specs 65 passing; mutations: repriced not accepted -> speed-up case fails; 40-circle limit -> list case fails;
+tsc root/app; next build; trust-config --build passes.
+
+## A1 code review r2 (Codex): REVISE, fixed (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r2.md | verdict: REVISE | commit: 44e9538
+Codex r2: r1 MINORs resolved; trust-config gate "materially stronger", no new trust-source bypass; no contract money,
+access or registry defect. MAJORs: (1) a successful wallet speed-up reported as "did not run" (duplicate top-up risk):
+already fixed in c7c6bf6 (waitForOwnReceipt accepts viem "repriced"); added Codex's requested regression
+tests/robinhood-adapter-repriced-topup.spec.ts (a sped-up top-up: reported done, applied once, no approval left; it
+fails without the fix: "adapter said Replaced ... for a sped-up top-up that ran"). (2) the scanned build is not what
+Vercel serves: prebuilt release path (ARB-FINDINGS F-14): scanTree + artifactDigest + --vercel-output/--record,
+ops/release-robinhood.sh, CI offline vercel build + scan, release record allowed after the deploy, app/.vercel ignored.
+verify: specs 67 passing; mutation: scan skipping functions -> 1 failing; real vercel output 778 files scanned, digest
+stable; next build; tsc; workflows clean.
+
+## A1 prebuilt-release adversary + fix (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE (Codex code review r3, whose target 97fe920 contains this entry's commits; its findings were fixed and re-reviewed in the later rounds) | commit: 97fe920
+adversary on c7c6bf6..5f6c91a: DEFECTS (real offline vercel build): (1) the deploy uploads app/.next and node_modules
+files listed in functions' filePathMap, which scan and digest never read; (2) the gate refused real Vercel output (already
+fixed in f0e4c7c, CI green); (3) --record ignored untracked files. Suspicions acted on: digest not reproducible (per-file
+list now recorded), preview-only build (--prod option). Spec kept: tests/trust-config-prebuilt-upload-set.spec.ts
+(4 cases, 3 failed before, all pass now).
+Fix (ARB-FINDINGS F-15): uploadSet + scan/digest over it; untracked files refused; release/robinhood-prebuilt.files.txt;
+--prod. verify: specs 72 passing; real output 883 entries scanned; tsc; next build; workflows clean.
+CI 97fe920: all 5 jobs green (contracts, adapter/anvil, trust-config incl. offline vercel build, fork, core).
+
+## A1 code review r3 (Codex): REVISE, fixed (2026-09-29)
+reviewed: othello-design/reviews/arb-code-review-r3.md | verdict: REVISE | commit: 97fe920
+Codex r3: r2 MAJOR 1 resolved, MAJOR 2 partly. M1: the record was not a deploy-time control (deploy typed later).
+M2: "My circles" scanned every circle (sybil DoS). m1: stale list error.
+Fix a17d3e3 (ARB-DESIGN r10, sha256 e8fe9952…; F-16, F-17): factory circlesOf index written only by the account's own
+create or first join (circle -> factory.recordJoin, isCircle gate, dedup), views circlesOfCount/circlesOfPage (<= 50);
+page reads 10 newest first with Show more and retry, absolute-index paging, error cleared on start; release-robinhood.sh
+now deploys through ops/release-deploy.ts (record new + pinned CLI + recorded commit + only record changed + upload set
+rehash == record, then npx vercel@59.11.7 deploy --prebuilt, rehash after, URL written). Mutation runner rebuilds out/.
+Adversary on a17d3e3: DEFECT: vercel@59.11.7 also uploads app/.vercel/routes.json (and microfrontends / bulk
+redirects), unseen by digest and git. Fix ce68233: cliExtraUploads refused in the scan and before/after the deploy;
+adversary spec kept; real-build spec compares the CLI's own collector list with the scan; pin test and URL rule tightened.
+verify: forge 41 + fork 3 pass; mutation 43: 42 killed, M37 the documented unreachable survivor, 0 bad (M38-M43 new);
+mocha CI list 93 passing; tsc root/app; next build + trust-config --build; ABI check; browser (local anvil, 3 wallets):
+A 10 then 12 after Show more, newest first, B only its joined circle, C the empty message, no console errors;
+CI a17d3e3 5/5 green.
+Further adversary passes on the release path, each fixed with its spec kept (F-17): ce68233 routes.json/microfrontends/
+bulk redirects refused; 2ac8fc7 app/.vercel allow-list (compiled .vercel/vercel.json, rootDirectory), project.json in
+the digest; 260a333 absolute filePathMap sources refused, re-targeting VERCEL_* env refused, deploy CLI env allow-listed;
+then folder-link text bound, entries per source path. verify: mocha CI list 100 passing; CI green on ce68233, 2ac8fc7,
+260a333. Stated limit: a tampered global Vercel CLI config on the release machine.
+Then 3b7c9bd modes and every folder in the digest, special files refused; and folder modes, a linked .vercel/output
+refused (7e29684, CI green after re-running a Google Fonts fetch failure); then a linked app/.vercel and tab or
+line-break names refused (8597eee, CI green); then every digest field escaped (link text could forge a line).
+(66a12dc, CI green); then a linked .vc-config.json refused and upload/project lines namespaced with "/".
+(b36f94b, CI green); then project.json keys allow-listed (repoRoot moved the deploy) and a repo-root .vercel refused;
+the tenth pass's rule-by-rule table has no other uncovered row (76391cc, CI green); then an ancestor .vercel/repo.json
+and a project.json without ids refused (d957b89, CI green); then a root Vercel config (services mode) and local CLI
+copies refused (ffb3547, CI green). Then on branch task/A1-r4-cli-pin (Codex r4 may be reading ffb3547): the release
+never runs Vercel through npx; ops/vercel-cli lockfile, npm ci into a fresh folder, verifyPinnedCli, node vc.js.
+verify: mocha CI list 119 passing (the real build uses the lockfile CLI), CI green on ee474d2 after a Google Fonts
+re-run. Then app/.vercel reset to the project link, --preflight, pull/build via --run-cli in the allow-listed env; a real
+build through it completes and passes the gate (1d4c027; CI needed pnpm in the adapter job, c35e23b). Then the release
+builds from a fresh clone of the commit (a gitignored app/.env.local was inlined into the bundle; release/ was never
+created; .next cache survived). verify: mocha CI list 122 passing, the two sealed release-script specs run the real
+script end to end (pull and deploy stubbed, empty HOME). Passes: 15. Then the release runs in a sealed environment
+(env -i re-exec; git without config/templates/hooks; pnpm --ignore-pnpmfile; tsx via node, no npx): npm_config_node_options
+had planted a file in the clone (415b738, CI green, e2e 2.4 s). Then a private build folder under HOME, ancestor refusals,
+the seal verified from the environment itself (0d4821e; CI adapter failed on Google Fonts in two builds). Then a
+private TMPDIR for every later step and tsx --no-cache (another user could rewrite tsx's /tmp cache). verify: all seven
+sealed real-script runs pass (3e8e229, CI green). Pass 19: NO DEFECT; its suspicions closed (TMPDIR before any tool;
+deployStartedAt + record copied back on any exit; a started record refused) (43c559b, CI green). Pass 20: record only
+after every check, copy back only started deploys; the clone builds the contracts when the factory is set. verify: mocha
+CI list 130 (the failed-scan spec runs the real release with a set factory: submodules, forge build, chain check fails,
+no record, checkout record untouched) (3446710, CI green). Pass 21: a failed copy-back keeps the folder and fails;
+forge build --force; --config-state; contracts built after preflight (eb6a647). Pass 22: NO DEFECT; the record is
+replaced atomically and a voided deployment is named (f22a780, CI green). Pass 23 (low): a failing post-upload check
+now voids the deploy and records its URL. verify: release specs 28 + the kept spec passing. Passes: 23.
+
+## A1 code review r4 (Codex, two-stage): REVISE, fixed (2026-09-30)
+reviewed: othello-design/reviews/arb-code-review-r4.md (cold: r4-cold.md sha 7ee586df…) | verdict: REVISE | commit: b52d03f
+r3 M1, M2, m1 RESOLVED; recordJoin and the per-account index judged sound. F1 MAJOR: the Vercel target was not an
+authorised input. Fix: ops/release-target.json + releaseTargetRefusals in --preflight (before pull and after build);
+the void-write fix queued from pass 24. verify: release specs 30 passing.
+
+2026-09-30 | be54588 + 222e3fc pushed to task/A1-r4-cli-pin | adversary passes on 28df8a6 and be54588 each found one entry point
+without the target check (--record, then --run-cli); both now check it (F-18, F-19). The runner starts only the release's
+four pull/build argument lists, in app/, after the full preflight. verify: full CI list 139 passing (20m), both typechecks
+ok; CI run 36705263485 watching; adversary on 222e3fc running. Target IDs still othello's; Joshua to create othello-chains.
+
+## A1 release adversary passes on 222e3fc..975dc76, F-20 to F-26 (2026-09-30)
+reviewed: othello-design/reviews/arb-code-review-r5.md | verdict: REVISE (Codex code review r5 on 5e78c4c: F-18 to F-26 judged sound; its two findings are the next entry) | commit: 5e78c4c
+(Entry rewritten 2026-10-01: the one drafted on 09-30 was set aside for the frozen review and lost with the scratchpad.)
+Seven passes, each finding fixed with its spec kept (evm/ARB-FINDINGS.md F-20 to F-26): the target is read from HEAD
+(9b44681); every release git call ignores the caller's GIT_* and replace refs (49ec527); git gets no HOME and pins its
+repository and settings (647e485); the build's inputs are compared with HEAD by content (3b651eb); a linked worktree's
+.git file and the root node_modules are not build inputs (5ed06d3); git's changed paths are compared exactly (975dc76);
+the record's file list is pinned to the record's sibling (5e78c4c). verify: CI run 36760837041 on 5e78c4c, 5/5 jobs green.
+
+## A1 code review r5 (Codex, two-stage): REVISE, fixed (2026-10-01)
+reviewed: othello-design/reviews/arb-code-review-r5.md (cold: r5-cold.md sha c2042c8b…) | verdict: REVISE | commit: 5e78c4c
+F1 MAJOR: the Vercel project's build settings ran unreviewed code in the sealed build. F2 MINOR: the script's first git
+calls read the caller's global git config. Fix (evm/ARB-FINDINGS.md F-27): ops/release-target.json vercelSettings, the
+reviewed settings document, enforced after the pull before the build, scan and deploy; safe_git from the first call and
+git-sealed deployEnv for the CLI. Also: the 13 older A1 entries now name their review (scripts/check-reviews.sh: reviews
+ok). verify: release unit specs `120 passing (2m)` (tsc clean); sealed real-script specs below.
+
+## A1 release target: the othello-chains Vercel project (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in the next round; r5 named what this change must show)
+Created through the Vercel API with the reviewed settings (evm/ARB-FINDINGS.md F-28), linked and pulled in app/; the
+release's own check on the pulled link with these ids and the committed vercelSettings: `the pulled othello-chains
+settings are exactly the reviewed document: no refusal`. ops/release-target.json now names prj_4f0tXAiMfVCi5qrIxJVJkT8p05Ki.
+
+## A1 adversary pass on the r5 fix (ce04cd9): two defects, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix and the othello-chains target in the next round)
+adversary: DEFECTS. (1) MAJOR a pulled project variable NODE_OPTIONS ran a program in the sealed build and the release
+deployed; (2) MINOR a repository filter driver ran on the first git status. Specs kept (evm/ARB-FINDINGS.md F-29). Fix:
+--drop-pulled-env (names only against vercelEnvNames + Vercel's own; files removed before the build; the build refuses
+while one exists); git program drivers refused by the script and by gitIn; app/package.json engines.node "22.x" required
+to equal the reviewed nodeVersion. verify: release unit specs 122 passing (two real-build specs failed once on Google
+Fonts ETIMEDOUT and passed on rerun: `7 passing (1m)`), tsc clean; sealed real-script specs below.
+
+## A1 second adversary pass, on 4570ded: two defects, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECTS. (1) a submodule's own filter driver ran on the clean-checkout status; (2) a repository core.pager ran
+when a refusal was printed on a terminal. Fix: --ignore-submodules=all on the script's status calls and uncommittedPaths;
+--no-pager in safe_git and gitIn (evm/ARB-FINDINGS.md F-30). Specs kept.
+
+## A1 third adversary pass, on 1e196ff: one regression, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. --ignore-submodules=all also hid a staged gitlink under app/, so the clean check passed it. Fix:
+--ignore-submodules=dirty (no status inside a submodule, gitlink additions and removals still reported); verified on
+git 2.43.0 directly (evm/ARB-FINDINGS.md F-31). Spec kept. verify (on 1e196ff, before this fix): release unit specs
+`127 passing (2m)`.
+
+## A1 fourth adversary pass, on d39ec27: one low defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT (low). A root gitlink git could not open read as unchanged. Fix: gitlinks only under evm/lib/ (script
+refuses any other in HEAD or the index; uncommittedPaths reports them); a failing status stops the release
+(evm/ARB-FINDINGS.md F-32). Spec kept. verify (on d39ec27, before this fix): release unit specs `127 passing (3m)`;
+settings/git spec after it `12 passing (2s)`.
+
+## A1 fifth adversary pass, on 12f1cb7: one defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. In a partial clone, ls-tree lazily fetched and started the configured upload-pack. Fix:
+GIT_NO_LAZY_FETCH=1 everywhere; fetch-program and partial-clone keys refused; tree/index read failures stop the release
+(evm/ARB-FINDINGS.md F-33). Spec kept. verify: release-deploy + settings specs `44 passing (5s)`; real --preflight on
+the othello-chains link: no refusal. (On 12f1cb7 the fast list was `127 passing, 1 failing`: the safe_git test caught
+the word "git" in a new message, reworded here.)
+
+## A1 sixth adversary pass, on a76e46a: one defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. An empty driver name (filter..clean) passed the refused-config pattern's `.+`. Fix: `.*` for every
+driver and remote name in both copies (evm/ARB-FINDINGS.md F-34). Specs kept (the defect, and a positive normal-clone
+release). verify: release-deploy + settings specs `44 passing (4s)`. On a76e46a/f870a48 before it: fast `128 passing (3m)`,
+sealed 18/18 (three needed a rerun: one Google Fonts ETIMEDOUT, two specs widened to the earlier refusal: `3 passing (2m)`).
+
+## A1 seventh adversary pass, on cf03f94: one defect, fixed (2026-10-01)
+reviewed: n/a yet (goes to Codex with the r5 fix in round 6)
+adversary: DEFECT. Under a UTF-8 locale the refused-config regex skipped a driver name with a non-UTF-8 byte. Fix: LC_ALL=C
+for every safe_git call and explicitly in gitIn (evm/ARB-FINDINGS.md F-35). Spec kept. verify: release-deploy + settings
+specs `44 passing (4s)`; CI on f870a48: 5/5 success.
+
+## A1 eighth adversary pass, on 86afb72 (the frozen r6 target): one defect, fixed on task/A1-r6-followups (2026-10-01)
+reviewed: n/a yet (86afb72 is under Codex review r6; this follow-up goes to the next round)
+adversary: DEFECT. The script's grep read git's raw path output in a UTF-8 locale and dropped a non-UTF-8 gitlink line.
+Fix: export LC_ALL=C after the environment seal; safe_git passes core.quotePath=true (evm/ARB-FINDINGS.md F-36). Spec kept.
+
+## A1 ninth adversary pass, on 7552f17 (side branch): two defects fixed, one stated limit (2026-10-01)
+reviewed: n/a yet (follow-ups to the r6 target 86afb72; next Codex round)
+adversary: DEFECTS. The environment check's grep ran before LC_ALL=C; the CI triggers missed the root package.json,
+lockfile, tsconfig and .gitmodules. Fixed: the export moved above the check; triggers added. Stated limit: a caller shell
+that already exports functions or BASH_ENV (evm/ARB-FINDINGS.md F-37). Specs kept. verify: kept specs + release unit
+specs `47 passing (4s)`.
+
+## A1 tenth adversary pass, on 2dd59b2 (side branch): one defect fixed (2026-10-01)
+reviewed: n/a yet (follow-ups to the r6 target 86afb72; next Codex round)
+adversary: DEFECT. Root build configs next build reads (.browserslistrc, postcss.config.mjs) triggered no CI run. Fix:
+every root file triggers the release specs ("*", ".*"), evm/ARB-FINDINGS.md F-38. Spec kept. verify: both CI-trigger
+specs `5 passing (754ms)`; the locale fix held (the pass's own runs: the env-seal spec and a normal release passed).
+
+## A1 code review r6 (Codex, two-stage): REVISE; F2 fixed, F1 open (2026-10-01)
+reviewed: othello-design/reviews/arb-code-review-r6.md (cold: r6-cold.md sha 960d2ba7…) | verdict: REVISE | commit: 86afb72
+r5 F1, F2 RESOLVED; othello-chains confirmed. F2 MAJOR: the project's variables could change after the pull. Fix: the
+deploy reads the variable names from Vercel right before and right after deploying (fail closed before, void after),
+evm/ARB-FINDINGS.md F-39. F1 HIGH (caller PATH): decision pending with Joshua. verify: release unit + CI-trigger specs
+`139 passing (2m)`.
+
+## A1 r6 F1: the release's own tools by absolute path; unsafe PATH entries dropped; trust boundary (2026-10-01)
+reviewed: n/a yet (goes to Codex in round 7)
+Joshua chose option A (harden + state the boundary). Absolute paths before the seal and for every system tool; PATH
+entries not the operator's own dropped before any lookup (evm/ARB-FINDINGS.md F-40). verify: release unit, CI-trigger
+and PATH specs `143 passing (2m)`; on this machine's real PATH 32 of 52 entries (the /mnt/c ones) are dropped.
+
+## A1 batched adversary pass on 86afb72..275f514: two defects fixed, F2 strengthened (2026-10-02)
+reviewed: n/a yet (goes to Codex in round 7)
+adversary: DEFECTS. PATH entries judged by spelled name (a link, /proc/self/cwd); gitIn used PATH git. Fix: entries
+resolved with realpath -e and kept resolved; /usr/bin/git in gitIn. F2: both variable lists (project + team shared),
+hidden-count refusal, record fingerprint after the deploy; Linux-only guard (evm/ARB-FINDINGS.md F-41). Specs kept.
+verify: release-deploy + PATH specs `42 passing (1s)`; symlink spec `2 passing (215ms)`.
+
+## A1 adversary pass on 7afd45e (r7 target): three defects fixed on task/A1-r7-followups; CI tool cache (2026-10-02)
+reviewed: n/a yet (7afd45e is under Codex review r7; these go to the next round)
+adversary: DEFECTS. Program links into writable folders; parent owners; a missing hidden count. Fix: per-program link
+walk, own_dir with owners, hidden count required, wider fingerprint (evm/ARB-FINDINGS.md F-42). CI on 7afd45e: the
+release-script specs failed because the hosted runner's tool cache is writable by others; the CI job now tightens it and
+the release names each dropped PATH entry. verify: 7afd45e locally: fast `145 passing (2m)`, sealed `24 passing (11m)`;
+this branch: fast `148 passing (2m)`, PATH specs `8 passing`.
+
+## A1 adversary pass on aed6598: lookups by any name; curated PATH; shared-variable shapes (2026-10-02)
+reviewed: n/a yet (next Codex round)
+adversary: DEFECTS. Programs other than the four checked were looked up by name; a shared variable with an odd projectId
+shape was skipped. Fix: a private curated bin folder as the whole PATH (every program checked, final files linked);
+odd shapes refused (evm/ARB-FINDINGS.md F-43). CI: /opt and /usr/local/bin tightened on the hosted runner. verify: the
+real PATH here builds 1186 links in 2.5 s, 9 Docker Desktop links skipped; PATH and variable specs `9 passing (8s)`.
+
+## A1 adversary pass on 3429255 (r7 target): fixed on task/A1-r8-followups (2026-10-02)
+reviewed: n/a yet (3429255 is under Codex review r7; this goes to the next round)
+adversary: DEFECT. A colon in a kept folder's real path split it into unchecked pieces. Fix: such paths dropped, pieces
+must be absolute, the build folder must be own all the way up, an empty shared project list refused (evm/ARB-FINDINGS.md
+F-44). Spec kept. verify: targeted specs `10 passing (17s)`; fast `150 passing (3m)`.
+
+
+## A1 r7 SHIP, the factory deployed, the config commit, and the gate aligned with ARB-DESIGN r11 (2026-10-02)
+reviewed: Codex code review r7 SHIP (G-D1 and G-D2 at 3429255; reviews/arb-code-review-r7.md sha256 59bf3a10…). The
+config commit and everything after it go to Codex code review r8.
+deployed: OthelloFactory 0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5 on Robinhood Chain testnet (tx 0x4d5c1da8…81acd,
+block 127656060), from 3429255 by Joshua; runtime equals the build of 3429255 byte for byte; source verified on the
+explorer. Config commit c959260 (config.ts + receipt only).
+adversary: DEFECTS in seven passes, all fixed with specs kept (evm/ARB-FINDINGS.md F-46 to F-51): XDG folders; tests
+that assumed no factory (gate aligned with r11: only the contract bundle is frozen after the deploy); quoted names;
+ignored submodules; a ref named like the commit; a movable receipt commit (DEPLOYED_COMMIT pinned); a file named HEAD;
+a forged commit-graph and tree object; a long list of names.
+verify: trust-config, its adversary specs and release-deploy `91 passing (8s)`; real chain: "trust-config:
+0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5 verified against the receipt, the chain's deployment, its live code and the
+reviewed source." The specs that run next build or vercel build are verified in CI (Google Fonts times out here).

@@ -1,0 +1,71 @@
+/**
+ * A folder that passes ops/release-deploy.ts verifyPinnedCli without the real CLI: the committed lockfile and a
+ * `vercel` package.json at the pinned version, and a placeholder vc.js. Release specs pass its vc.js as `cli`, so each
+ * still reaches the check it is about; their spy runner never executes it.
+ */
+import { execFileSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import type { ProjectEnv } from "../ops/release-deploy.ts";
+import { VERCEL_CLI } from "../ops/trust-config.ts";
+import { REVIEWED_ENV_NAMES, REVIEWED_SETTINGS } from "./reviewed-settings.ts";
+
+let made: string | undefined;
+
+export function fakePinnedCli(): string {
+  if (made) return made;
+  const dir = mkdtempSync(join(tmpdir(), "pinned-cli-"));
+  copyFileSync(fileURLToPath(new URL("../ops/vercel-cli/package-lock.json", import.meta.url)), join(dir, "package-lock.json"));
+  const pkg = join(dir, "node_modules", "vercel");
+  mkdirSync(join(pkg, "dist"), { recursive: true });
+  writeFileSync(join(pkg, "package.json"), JSON.stringify({ name: "vercel", version: VERCEL_CLI }));
+  writeFileSync(join(pkg, "dist", "vc.js"), "// stands in for the pinned CLI in tests; never run\n");
+  made = realpathSync(join(pkg, "dist", "vc.js"));
+  return made;
+}
+
+/**
+ * Unit specs build their own release folder. The deploy step refuses any link but the reviewed target (Codex r4 F1),
+ * so before a spec records its release this gives it a link (app/.vercel/project.json, gitignored like the real one)
+ * when it has none, and returns the target matching the spec's link, which the spec passes to deployRecorded; the real
+ * release never passes one and reads the committed ops/release-target.json. A link without ids is left alone (the spec
+ * means it to be refused).
+ */
+export function reviewedTarget(root: string): { vercelOrgId: string; vercelProjectId: string; vercelSettings: Record<string, unknown>; vercelEnvNames: string[] } {
+  const pj = join(root, "app", ".vercel", "project.json");
+  if (!existsSync(pj)) {
+    mkdirSync(join(root, "app", ".vercel"), { recursive: true });
+    writeFileSync(pj, JSON.stringify({ projectId: "prj_TEST", orgId: "team_TEST", settings: REVIEWED_SETTINGS }));
+  }
+  let link: { orgId?: unknown; projectId?: unknown } = {};
+  try { link = JSON.parse(readFileSync(pj, "utf8")); } catch { /* unreadable: the spec means it to be refused */ }
+  return {
+    vercelOrgId: typeof link.orgId === "string" ? link.orgId : "team_TEST",
+    vercelProjectId: typeof link.projectId === "string" ? link.projectId : "prj_TEST",
+    vercelSettings: REVIEWED_SETTINGS,
+    vercelEnvNames: REVIEWED_ENV_NAMES,
+  };
+}
+
+/**
+ * The release reads the reviewed target from HEAD, never from the working tree (adversary pass on 222e3fc), so a spec
+ * that means "the committed target" makes its folder a git checkout and commits ops/release-target.json there.
+ */
+export function commitTarget(root: string, target: object): void {
+  mkdirSync(join(root, "ops"), { recursive: true });
+  writeFileSync(join(root, "ops", "release-target.json"), JSON.stringify(target));
+  const git = (...a: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=t", "-c", "user.email=t@t.invalid",
+    "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...a], { stdio: "ignore" });
+  if (!existsSync(join(root, ".git"))) git("init", "-q");
+  git("add", "ops/release-target.json");
+  git("commit", "-q", "-m", "reviewed target");
+}
+
+/**
+ * What Vercel answers, in the deploy's check right before and right after the deploy (Codex r6 F2), for a project that
+ * holds only reviewed variables: the othello-chains project holds SWAP_BINDING_SECRET alone.
+ */
+export const reviewedProjectEnv: ProjectEnv = async () => ({ names: ["SWAP_BINDING_SECRET"], fingerprint: "project\tenv_1\tSWAP_BINDING_SECRET\tpreview,production\t1790883400000" });

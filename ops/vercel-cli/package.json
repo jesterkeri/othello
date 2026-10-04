@@ -1,0 +1,8 @@
+{
+  "name": "othello-release-vercel-cli",
+  "private": true,
+  "description": "The one Vercel CLI the Robinhood release runs, installed with npm ci from this lockfile (ops/release-deploy.ts).",
+  "dependencies": {
+    "vercel": "59.11.7"
+  }
+}

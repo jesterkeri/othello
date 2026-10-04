@@ -1,0 +1,11 @@
+/* Robinhood data differences only. Layout and component styling come from AssetsIndex.module.css. */
+.eyebrow { color: var(--panelMuted); font-size: 10.5px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.usdgCover { background: var(--teal); color: var(--tealInk); }
+.footnote { max-width: 76ch; margin: -2px 4px 0; color: var(--panelMuted); font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.staticRow { grid-template-columns: auto minmax(0, 1fr) auto; cursor: default; }
+.staticTile { cursor: default; }
+/* Robinhood data slots into the shared Solana asset-detail bento. */
+.readCard { justify-content: space-between; min-height: 260px; }
+.reading { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 68%; font-weight: 900; font-size: clamp(42px, 5vw, 78px); letter-spacing: -.06em; line-height: .85; overflow-wrap: anywhere; }
+.readingNote, .faucetCopy { font-size: 13px; font-weight: 600; line-height: 1.45; }
+.faucetCopy { margin: auto 0 0; }

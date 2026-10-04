@@ -1,0 +1,1048 @@
+/**
+ * CI job `trust-config` (ARB-DESIGN r9 sections 7.1 and 9.1). Fails closed.
+ *
+ * While app/src/lib/robinhood/config.ts has TRUSTED_FACTORY = null, the page is read-only and this passes.
+ * Once it is non-null, every one of these must hold, or the job fails:
+ *   1. the committed broadcast receipt (evm/broadcast/DeployFactory.s.sol/46630/run-latest.json) is for chain
+ *      46630, has one successful CREATE of OthelloFactory with constructor argument USDG, and its
+ *      contractAddress equals the config address;
+ *   2. the receipt's commit is DEPLOYED_COMMIT (pinned here: the reviewed commit Joshua deployed from), which is an
+ *      ancestor of HEAD, and since it nothing
+ *      in the contract bundle or what builds it changed (CONTRACT_BUNDLE: evm/src, evm/script, evm/test, core/, the
+ *      pinned libraries and the Foundry config). ARB-DESIGN r11 §8: the contracts are fixed by G-D1 and the deploy;
+ *      the page bundle (the app, its trust config, the release tooling and this gate) may change after the deploy,
+ *      and every such change is reviewed under G-D2 before a release from it;
+ *   3. keccak256(eth_getCode(address)) on the chain equals the config codeHash;
+ *   4. the reviewed source's compiled runtime (evm/out, immutables filled with USDG) hashes to that same value,
+ *      which ties the live code to this exact compiler, source and constructor argument;
+ *   5. the chain itself confirms the receipt's deployment transaction: a contract creation whose input is exactly
+ *      the reviewed init code plus USDG, successful, creating that address (so no lookalike with other init code).
+ * With --build <.next dir> (CI always passes it after `next build`): every address in the build output and app/public
+ * (0x literals, and address words inside hex data) is
+ * USDG, the zero address, viem's native placeholder or the trusted factory, and a set factory must appear in it.
+ * Always: app/ has no alias fields in package.json and no module files outside src (except next.config.mjs and
+ * next-env.d.ts), no extensionless files, chain.ts's USDG equals the pinned USDG,
+ * app/src holds no JavaScript module and no two files differing only by extension (so the bundler loads
+ * the file checked here), next.config.mjs and tsconfig.json match pinned hashes, config.ts has a fixed shape (TypeScript AST: `null` or `Object.freeze({address, codeHash})` of two
+ * string literals, nothing computed), its imported value equals that literal, and in app/src only
+ * lib/robinhood/adapter.ts may import ./config or ./adapter-core (the only modules that take or hold a factory).
+ * Limit: a static gate cannot prove that code written to deceive it is harmless; that is the reviews' job. It
+ * catches mistakes and any change to the contract bundle after the deploy; a change to the page bundle (this gate
+ * included) is the G-D2 review's to judge.
+ *
+ *   npx tsx ops/trust-config.ts [--rpc https://rpc.testnet.chain.robinhood.com]
+ */
+import { createHash } from "node:crypto";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import ts from "typescript";
+import { encodeAbiParameters, getAddress, isAddress, isHex, keccak256, type Address, type Hex } from "viem";
+
+export const ROBINHOOD_TESTNET_ID = 46630;
+/** The one Vercel CLI the release builds, scans and deploys with (its filePathMap upload rule is what uploadSet reads). */
+export const VERCEL_CLI = "59.11.7";
+/** Its registry integrity; ops/vercel-cli/package-lock.json pins it and the whole dependency tree for `npm ci`. */
+export const VERCEL_CLI_INTEGRITY = "sha512-C+L/JKmlGDypKGcTU/atckydeK/AKa/7fKwUbvcwveguV1QPlY8beiIGgbwkdbb80bbIpPFHRQYrhi5XPAmCBA==";
+export const USDG: Address = "0x7E955252E15c84f5768B83c41a71F9eba181802F";
+/**
+ * The reviewed commit the factory was deployed from (code review r7: G-D1 SHIP, deployed 2026-10-02 by
+ * DeployFactory.s.sol). Rule 2 measures the contract-bundle freeze from here, never from the receipt's own "commit"
+ * field, which a later commit could rewrite to point past a bundle change (adversary pass on 3803cdd); the receipt
+ * must name this commit. A new deploy needs a new G-D1, and this pin changes with it, in a reviewed commit.
+ */
+export const DEPLOYED_COMMIT = "3429255c44fb3d20a194ca1186b7af6b7a17b962";
+
+/** The receipt names the pinned deployed commit (Foundry records it abbreviated). */
+export const receiptCommitIsDeployed = (c: unknown): boolean =>
+  typeof c === "string" && /^[0-9a-f]{7,40}$/.test(c) && DEPLOYED_COMMIT.startsWith(c);
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+export const PATHS = {
+  config: `${ROOT}app/src/lib/robinhood/config.ts`,
+  receipt: `${ROOT}evm/broadcast/DeployFactory.s.sol/46630/run-latest.json`,
+  artifact: `${ROOT}evm/out/OthelloFactory.sol/OthelloFactory.json`,
+};
+
+export type TrustedConfig = { state: "null" } | { state: "set"; address: Address; codeHash: Hex } | { state: "unreadable" };
+
+/**
+ * The exact value the page imports, checked for shape. Anything but `null` or an object with exactly
+ * `address` (a valid address) and `codeHash` (32 bytes) is unreadable, which fails.
+ */
+export function checkConfigValue(v: unknown): TrustedConfig {
+  if (v === null) return { state: "null" };
+  if (typeof v !== "object" || Array.isArray(v)) return { state: "unreadable" };
+  const keys = Object.keys(v).sort();
+  if (keys.length !== 2 || keys[0] !== "address" || keys[1] !== "codeHash") return { state: "unreadable" };
+  const { address, codeHash } = v as { address: unknown; codeHash: unknown };
+  // strict: all-lowercase, or mixed case with a valid EIP-55 checksum (the page's viem calls are strict too)
+  if (typeof address !== "string" || !isAddress(address)) return { state: "unreadable" };
+  if (typeof codeHash !== "string" || !isHex(codeHash) || codeHash.length !== 66) return { state: "unreadable" };
+  return { state: "set", address: getAddress(address.toLowerCase()), codeHash: codeHash.toLowerCase() as Hex };
+}
+
+/**
+ * Reads config.ts by its TypeScript syntax tree against a fixed template. Allowed statements: type-only imports,
+ * `export type TrustedFactory = …`, and exactly one `export const TRUSTED_FACTORY: TrustedFactory | null = X;`
+ * where X is `null` or `Object.freeze({ address: "<literal>", codeHash: "<literal>" })`. Anything else,
+ * including a value computed at run time (which could differ between Node and the browser), is unreadable.
+ */
+export function configFromSource(src: string): TrustedConfig {
+  const sf = ts.createSourceFile("config.ts", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let value: TrustedConfig | null = null;
+  for (const st of sf.statements) {
+    if (ts.isImportDeclaration(st) && st.importClause?.isTypeOnly) continue;
+    if (ts.isTypeAliasDeclaration(st) && st.name.text === "TrustedFactory") continue;
+    if (!ts.isVariableStatement(st) || value) return { state: "unreadable" };
+    const exported = st.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+    const decls = st.declarationList.declarations;
+    if (!exported || !(st.declarationList.flags & ts.NodeFlags.Const) || decls.length !== 1) return { state: "unreadable" };
+    const d = decls[0]!;
+    if (!ts.isIdentifier(d.name) || d.name.text !== "TRUSTED_FACTORY" || !d.initializer) return { state: "unreadable" };
+    if (d.type?.getText(sf).replace(/\s+/g, "") !== "TrustedFactory|null") return { state: "unreadable" };
+    const init = d.initializer;
+    if (init.kind === ts.SyntaxKind.NullKeyword) {
+      value = { state: "null" };
+      continue;
+    }
+    if (!ts.isCallExpression(init) || init.expression.getText(sf) !== "Object.freeze" || init.arguments.length !== 1) {
+      return { state: "unreadable" };
+    }
+    const obj = init.arguments[0]!;
+    if (!ts.isObjectLiteralExpression(obj) || obj.properties.length !== 2) return { state: "unreadable" };
+    const lit: Record<string, string> = {};
+    for (const pr of obj.properties) {
+      if (!ts.isPropertyAssignment(pr) || !ts.isIdentifier(pr.name) || !ts.isStringLiteral(pr.initializer)) {
+        return { state: "unreadable" };
+      }
+      lit[pr.name.text] = pr.initializer.text;
+    }
+    value = checkConfigValue(lit);
+    if (value.state !== "set") return { state: "unreadable" };
+  }
+  return value ?? { state: "unreadable" };
+}
+
+/** The config as the app sees it: the AST template, AND the module's actual exported value must agree. */
+export async function loadConfig(file: string = PATHS.config): Promise<TrustedConfig> {
+  let fromSource: TrustedConfig;
+  try {
+    fromSource = configFromSource(readFileSync(file, "utf8"));
+  } catch {
+    return { state: "unreadable" };
+  }
+  if (fromSource.state === "unreadable") return fromSource;
+  try {
+    const mod = (await import(`${pathToFileURL(file).href}?t=${Date.now()}`)) as Record<string, unknown>;
+    const imported = checkConfigValue(mod.TRUSTED_FACTORY);
+    if (imported.state !== fromSource.state) return { state: "unreadable" };
+    if (imported.state === "set" && fromSource.state === "set" &&
+        (imported.address !== fromSource.address || imported.codeHash !== fromSource.codeHash)) return { state: "unreadable" };
+    if (fromSource.state === "set" && !Object.isFrozen(mod.TRUSTED_FACTORY)) return { state: "unreadable" };
+    return fromSource;
+  } catch {
+    return { state: "unreadable" };
+  }
+}
+
+const GUARDED = ["lib/robinhood/config", "lib/robinhood/adapter-core"];
+
+/**
+ * The import boundary: in app/src only lib/robinhood/adapter.ts may import (statically, dynamically, by
+ * require or by re-export) the config module or the factory-injectable core, apart from type-only imports.
+ * Module specifiers are read from the TypeScript syntax tree and resolved (`@/…` and relative paths), so a
+ * renamed import is still an import. A non-literal dynamic import or require anywhere in app/src also fails.
+ */
+export function importBoundary(appSrc: string = `${ROOT}app/src`): string[] {
+  const f: string[] = [];
+  const files: string[] = [];
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/.test(n)) files.push(p);
+    }
+  };
+  walk(appSrc);
+  const allowed = join(appSrc, "lib/robinhood/adapter.ts");
+  const resolveSpec = (from: string, spec: string): string | null => {
+    let abs: string;
+    if (spec.startsWith("@/")) abs = join(appSrc, spec.slice(2));
+    else if (spec.startsWith(".")) abs = join(from, "..", spec);
+    else return null;
+    const rel = abs.slice(appSrc.length + 1).replace(/\.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$/, "").replace(/\/index$/, "");
+    return rel;
+  };
+  for (const file of files) {
+    const rel = file.slice(appSrc.length + 1);
+    const src = readFileSync(file, "utf8");
+    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true);
+    const hits: string[] = [];
+    const visit = (n: ts.Node) => {
+      if ((ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier)) {
+        const typeOnly = ts.isImportDeclaration(n) ? Boolean(n.importClause?.isTypeOnly) : n.isTypeOnly;
+        if (!typeOnly) hits.push(n.moduleSpecifier.text);
+      } else if (ts.isImportEqualsDeclaration(n) && ts.isExternalModuleReference(n.moduleReference) &&
+                 ts.isStringLiteral(n.moduleReference.expression)) {
+        hits.push(n.moduleReference.expression.text);
+      } else if (ts.isCallExpression(n) &&
+                 (n.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(n.expression) && n.expression.text === "require"))) {
+        const a0 = n.arguments[0];
+        if (a0 && (ts.isStringLiteral(a0) || ts.isNoSubstitutionTemplateLiteral(a0))) hits.push(a0.text);
+        else f.push(`${rel}: a dynamic import or require with a computed path`);
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    for (const spec of hits) {
+      if (spec.startsWith("#")) { f.push(`${rel} uses a package.json subpath import (${spec}); not allowed in app/src`); continue; }
+      const target = resolveSpec(file, spec);
+      if (target && GUARDED.includes(target) && file !== allowed) f.push(`${rel} imports ${spec}; only lib/robinhood/adapter.ts may`);
+    }
+  }
+  return f;
+}
+
+/** Module extensions Next's resolver may try for an import; a JS file would be tried before the .ts one. */
+const MODULE_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json)$/;
+
+/**
+ * What the bundler loads must be the file the gate checks: app/src may contain no JavaScript module files, and
+ * no two files that differ only by module extension (so `config.js` or `config.tsx` cannot shadow `config.ts`).
+ */
+export function moduleShadows(appSrc: string = `${ROOT}app/src`): string[] {
+  const f: string[] = [];
+  const stems = new Map<string, string[]>();
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (!n.includes(".")) f.push(`${p.slice(appSrc.length + 1)}: files without an extension are not allowed in app/src (the bundler tries the bare name first)`);
+      else if (MODULE_EXT.test(n)) {
+        const rel = p.slice(appSrc.length + 1);
+        if (/\.(js|jsx|mjs|cjs)$/.test(n)) f.push(`${rel}: JavaScript module files are not allowed in app/src`);
+        const stem = rel.replace(MODULE_EXT, "");
+        stems.set(stem, [...(stems.get(stem) ?? []), rel]);
+      }
+    }
+  };
+  walk(appSrc);
+  for (const [stem, files] of stems) if (files.length > 1) f.push(`${stem} resolves to more than one file: ${files.join(", ")}`);
+  return f;
+}
+
+/**
+ * Build files that can redirect an import (path aliases, webpack/turbopack resolve rules), pinned by sha256.
+ * Changing either one means editing this list, which a review sees.
+ */
+export const PINNED_BUILD_FILES: Record<string, string> = {
+  "app/next.config.mjs": "67c04765514b646bda06605f69bb6d7113d4c8f8871408cf2606ab478d39bb9e",
+  "app/tsconfig.json": "8ca1ad27ebaba629ce060411aef2a0bc2e317becd7e66978aece1d2d0d4b6bde",
+};
+
+export function buildFilePins(root: string = ROOT): string[] {
+  const f: string[] = [];
+  for (const [rel, want] of Object.entries(PINNED_BUILD_FILES)) {
+    const p = join(root, rel);
+    if (!existsSync(p)) { f.push(`${rel} is missing`); continue; }
+    const got = createHash("sha256").update(readFileSync(p)).digest("hex");
+    if (got !== want) f.push(`${rel} changed (sha256 ${got}); resolve rules must be reviewed and re-pinned in ops/trust-config.ts`);
+  }
+  for (const other of ["next.config.js", "next.config.ts", "next.config.cjs", "jsconfig.json"]) {
+    if (existsSync(join(root, "app", other))) f.push(`app/${other} exists beside the pinned build files`);
+  }
+  return f;
+}
+
+/**
+ * The rest of app/ (outside src, node_modules, .next, public): no alias fields in app/package.json (imports,
+ * exports, browser), no module file except next.config.mjs and next-env.d.ts, no extensionless file. So nothing
+ * outside app/src can stand in for, re-export or re-route a guarded module.
+ */
+export function appTreeRules(appDir: string = `${ROOT}app`): string[] {
+  const f: string[] = [];
+  const pkg = join(appDir, "package.json");
+  if (existsSync(pkg)) {
+    const j = JSON.parse(readFileSync(pkg, "utf8")) as Record<string, unknown>;
+    for (const k of ["imports", "exports", "browser"]) if (k in j) f.push(`app/package.json has an "${k}" field, which can re-route imports`);
+  }
+  // .next and .vercel are build output (gitignored, never from the repo; .vercel/output is checked by scanTree)
+  const skip = new Set(["node_modules", ".next", ".vercel", "public", "src"]);
+  const allowedModules = new Set(["next.config.mjs", "next-env.d.ts"]);
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const rel = p.slice(appDir.length + 1);
+      if (statSync(p).isDirectory()) {
+        if (!(d === appDir && skip.has(n))) walk(p);
+        continue;
+      }
+      if (!n.includes(".")) f.push(`app/${rel}: files without an extension are not allowed in app/`);
+      else if (MODULE_EXT.test(n) && !/\.json$/.test(n) && !(d === appDir && allowedModules.has(n))) {
+        f.push(`app/${rel}: module files outside app/src are not allowed`);
+      }
+    }
+  };
+  walk(appDir);
+  return f;
+}
+
+/**
+ * Code that decides trust or builds a transaction may not read environment variables: Vercel builds with its own
+ * environment, so an address from NEXT_PUBLIC_* would never appear in the build CI scans.
+ */
+export function noEnvInTrustCode(appSrc: string = `${ROOT}app/src`): string[] {
+  const f: string[] = [];
+  for (const sub of ["lib/robinhood", "lib/core", "components/robinhood"]) {
+    const d = join(appSrc, sub);
+    if (!existsSync(d)) continue;
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isFile() && /(process\.env|import\.meta\.env)/.test(readFileSync(p, "utf8"))) {
+        f.push(`${sub}/${n} reads environment variables; trust and transaction code may not`);
+      }
+    }
+  }
+  return f;
+}
+
+/**
+ * Robinhood's Stock Tokens on testnet, as its testnet faucet sends them (app/src/lib/robinhood/testnet-stocks.ts, which
+ * must list exactly these). Read-only on the Assets page: balanceOf only; no approve, no transfer, not used by circles.
+ */
+export const TESTNET_STOCK_PINS: Readonly<Record<string, Address>> = {
+  TSLA: "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E",
+  AMZN: "0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02",
+  PLTR: "0x1FBE1a0e43594b3455993B5dE5Fd0A7A266298d0",
+  NFLX: "0x3b8262A63d25f0477c4DDE23F83cfe22Cb768C93",
+  AMD: "0x71178BAc73cBeb415514eB542a8995b82669778d",
+};
+export const TESTNET_STOCK_TOKENS: readonly Address[] = Object.values(TESTNET_STOCK_PINS);
+
+/** Contract addresses that may appear in the built app (besides the trusted factory once it is set). */
+export const BUNDLE_ADDRESS_ALLOWLIST = new Set([
+  "0x0000000000000000000000000000000000000000", // zero address
+  "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", // viem's native-token placeholder
+  USDG.toLowerCase(),
+  ...TESTNET_STOCK_TOKENS.map((a) => a.toLowerCase()),
+]);
+
+/**
+ * Scans the real build output (.next/static and .next/server) for 20-byte hex addresses. Every one must be on the
+ * allowlist or be the trusted factory; once the factory is set it must appear. However an import is routed, a
+ * hard-coded factory has to be in the bytes the browser receives.
+ */
+/** Every address in `text`: 0x-prefixed 20-byte literals, and 32-byte words holding an address inside hex data. */
+export function addressesIn(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)) out.push(m[0].toLowerCase());
+  // ABI-encoded data (calldata, topics, pad()): a word of 24 zero digits then 40 hex digits. Take the word at the
+  // start of each run of >= 24 zeros; small padded numbers (whose first 4 address bytes are zero) are not addresses.
+  for (const run of text.matchAll(/[0-9a-fA-F]{64,}/g)) {
+    const hex = run[0];
+    for (const z of hex.matchAll(/0{24,}/g)) {
+      const cand = hex.slice(z.index! + 24, z.index! + 64);
+      if (cand.length === 40 && !/^0{8}/.test(cand)) out.push(`0x${cand.toLowerCase()}`);
+    }
+  }
+  return out;
+}
+
+export function bundleAddresses(nextDir: string, trusted: Address | null, publicDir: string = join(nextDir, "..", "public")): string[] {
+  const f: string[] = [];
+  const found = new Set<string>();
+  const roots = ["static", "server"].map((r) => join(nextDir, r)).filter((r) => existsSync(r));
+  if (roots.length !== 2) return [`no complete Next build at ${nextDir} (run next build first)`];
+  // Files the page can fetch at run time are shipped with it: scan them too.
+  if (existsSync(publicDir)) roots.push(publicDir);
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(js|mjs|cjs|html|rsc|json|txt|map|body|meta|svg|xml|csv|md|webmanifest)$/.test(n)) {
+        for (const a of addressesIn(readFileSync(p, "utf8"))) found.add(a);
+      }
+    }
+  };
+  roots.forEach(walk);
+  const want = trusted?.toLowerCase();
+  for (const a of found) if (!BUNDLE_ADDRESS_ALLOWLIST.has(a) && a !== want) f.push(`the build contains address ${a}, which is not USDG or the trusted factory`);
+  if (want && !found.has(want)) f.push(`the build does not contain the trusted factory ${trusted}`);
+  if (!found.has(USDG.toLowerCase())) f.push("the build does not contain USDG");
+  return f;
+}
+
+const MAX_SCANNED_FILE = 50 * 1024 * 1024;
+
+/** The keys `vercel pull` (59.11.7) writes into `.vercel/project.json`; any other (repoRoot, projectRootDirectory, …) is refused. */
+const PROJECT_JSON_KEYS = new Set(["projectId", "orgId", "projectName", "settings"]);
+
+/**
+ * What `vercel pull` and `vercel build` (59.11.7) leave in `<project>/.vercel` for this app, and nothing else. `node`
+ * holds only the build's `package-manifest.json` (dependency list; the deploy command never reads it).
+ */
+const VERCEL_DIR_ALLOWED = (n: string) =>
+  n === "project.json" || n === "README.txt" || n === "output" || n === "node" || /^\.env\.[a-z]+\.local$/.test(n);
+
+/**
+ * Anything the pinned CLI's prebuilt deploy would upload or apply beyond `.vercel/output` and filePathMap sources.
+ * vercel@59.11.7 (buildFileTree2, getLocalPathConfig) also uploads `<project>/.vercel/routes.json`, any
+ * `microfrontends.json(c)` in the project outside node_modules and .git, and a `bulkRedirectsPath` named by the
+ * project config, which it reads from `vercel.json`/`vercel.toml` or, failing those, the compiled
+ * `<project>/.vercel/vercel.json`; and `settings.rootDirectory` in `.vercel/project.json` moves where it looks. So,
+ * rather than list known extras: `<project>/.vercel` may hold only what pull and build write (VERCEL_DIR_ALLOWED), no
+ * Vercel config file of any name may sit in the project dir, `rootDirectory` must be unset, and no microfrontends file
+ * may exist. Each finding is a refusal (scanTree of a real `<project>/.vercel/output`, and ops/release-deploy.ts
+ * before and after the upload); `.vercel/project.json` itself is in artifactDigest. Env files are only named, never read.
+ * tests/release-deploy-*-adversary.spec.ts check this against the pinned CLI's own config reader and collector.
+ */
+export function cliExtraUploads(projectDir: string): string[] {
+  const found: string[] = [];
+  const vdir = join(projectDir, ".vercel");
+  // the CLI uploads a linked `.vercel` (or `output`, `node`) as the link itself, not its files: all must be real folders
+  if (existsSync(vdir) && lstatSync(vdir).isSymbolicLink()) found.push(".vercel (a link, not a folder)");
+  if (existsSync(vdir)) {
+    for (const n of readdirSync(vdir)) if (!VERCEL_DIR_ALLOWED(n)) found.push(`.vercel/${n}`);
+    for (const d of ["output", "node"]) {
+      const p = join(vdir, d);
+      if (existsSync(p) && lstatSync(p).isSymbolicLink()) found.push(`.vercel/${d} (a link, not a folder)`);
+    }
+    const nodeDir = join(vdir, "node");
+    if (existsSync(nodeDir)) {
+      if (!lstatSync(nodeDir).isDirectory()) found.push(".vercel/node (not a directory)");
+      else for (const n of readdirSync(nodeDir)) if (n !== "package-manifest.json") found.push(`.vercel/node/${n}`);
+    }
+    const pj = join(vdir, "project.json");
+    if (existsSync(pj)) {
+      try {
+        const j = JSON.parse(readFileSync(pj, "utf8")) as Record<string, unknown> & { settings?: { rootDirectory?: unknown } };
+        // only the keys `vercel pull` writes: `repoRoot` or `projectRootDirectory` would move the deploy's cwd
+        for (const k of Object.keys(j)) if (!PROJECT_JSON_KEYS.has(k)) found.push(`.vercel/project.json key ${JSON.stringify(k)}`);
+        // without both ids the CLI treats the folder as repo-linked and looks for a repo link instead
+        for (const k of ["projectId", "orgId"]) {
+          if (typeof j[k] !== "string" || j[k] === "") found.push(`.vercel/project.json without ${k}`);
+        }
+        const rd = j.settings?.rootDirectory;
+        if (rd !== undefined && rd !== null && rd !== "" && rd !== ".") found.push(`.vercel/project.json settings.rootDirectory ${JSON.stringify(rd)}`);
+      } catch {
+        found.push(".vercel/project.json (unreadable)");
+      }
+    }
+  }
+  const walk = (d: string) => {
+    let names: string[];
+    try { names = readdirSync(d); } catch { found.push(`${relative(projectDir, d) || "."} (unreadable, so it cannot be checked)`); return; }
+    for (const n of names) {
+      if (n === "node_modules" || n === ".git") continue;
+      const p = join(d, n);
+      // digest lines are tab-separated: a name with a tab or line break could make two trees read alike
+      if (/[\t\n\r]/.test(n)) found.push(`${JSON.stringify(relative(projectDir, p))} (a tab or line break in a name)`);
+      const st = lstatSync(p);
+      if (st.isDirectory()) walk(p);
+      else if (n === "microfrontends.json" || n === "microfrontends.jsonc") found.push(relative(projectDir, p).split(sep).join("/"));
+    }
+  };
+  // the CLI's findRepoRoot looks for `.vercel/repo.json` in every folder above the project, which would move the
+  // deploy's cwd to that folder: any one is refused
+  for (let d = dirname(resolve(projectDir)); ; d = dirname(d)) {
+    if (existsSync(join(d, ".vercel", "repo.json"))) found.push(`${join(d, ".vercel", "repo.json")} (a repo link above the project)`);
+    if (dirname(d) === d) break;
+  }
+  if (existsSync(projectDir)) {
+    walk(projectDir);
+    for (const n of readdirSync(projectDir)) if (/^(vercel|now)\.[^.]+$/i.test(n)) found.push(n);
+  }
+  return found.map((f) => `${f}: vercel deploy --prebuilt ${VERCEL_CLI} would upload or apply it, and this release uses none; remove it`);
+}
+
+/**
+ * Files `vercel deploy --prebuilt` uploads from OUTSIDE the output directory: every function's `.vc-config.json`
+ * `filePathMap` (output path → source path relative to the project dir, i.e. app/). Each source must exist and lie in
+ * the project dir or in its node_modules' real location (node_modules may itself be a link).
+ */
+export function uploadSet(outDir: string, projectDir: string): {
+  files: { key: string; path: string; mode: number; link?: string }[];
+  dirs: { key: string; path: string; mode: number; link?: string }[];
+  failures: string[];
+} {
+  const failures: string[] = [];
+  const files = new Map<string, { key: string; path: string; mode: number; link?: string }>();
+  const dirs = new Map<string, { key: string; path: string; mode: number; link?: string }>();
+  // one entry per SOURCE path, as the CLI dedupes (a Set of `join(path, v)`), so a link and a plain file that reach the
+  // same target are two entries; when several keys name one source, the smallest key labels it (a stable digest)
+  const put = <T extends { key: string }>(m: Map<string, T>, id: string, e: T) => {
+    const old = m.get(id);
+    if (!old || e.key < old.key) m.set(id, e);
+  };
+  const roots = [realpathSync(projectDir)];
+  const nm = join(projectDir, "node_modules");
+  if (existsSync(nm)) roots.push(realpathSync(nm));
+  const inside = (p: string) => roots.some((r) => p === r || p.startsWith(r + sep));
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) {
+        // a linked .func shares a real one, read where it lives; but the CLI reads a LINKED .vc-config.json by its name
+        // (buildFileTree2 picks by basename and follows it), so one is refused rather than skipped
+        if (n === ".vc-config.json") failures.push(`${relative(outDir, p)}: a linked .vc-config.json`);
+        continue;
+      }
+      if (st.isDirectory()) { walk(p); continue; }
+      if (n !== ".vc-config.json") continue;
+      let cfg: { filePathMap?: Record<string, string> };
+      try { cfg = JSON.parse(readFileSync(p, "utf8")); } catch { failures.push(`${relative(outDir, p)}: unreadable`); continue; }
+      for (const [key, v] of Object.entries(cfg.filePathMap ?? {})) {
+        // The pinned CLI joins (buildFileTree2: `join(path, v)`), so for an absolute value it uploads `<project>/<v>`
+        // while resolve() would read `v` itself: refused rather than interpreted (no real build has one). For a relative
+        // value join and resolve agree; one that climbs out of the project is dropped by the CLI, and hashed here only
+        // if it stays in the project or node_modules' real location (hashing more than is uploaded is harmless).
+        if (isAbsolute(String(v))) { failures.push(`upload ${v}: an absolute filePathMap source`); continue; }
+        if (/[\t\n\r]/.test(`${key}${v}`)) { failures.push(`upload ${JSON.stringify(key)}: a tab or line break in a name`); continue; }
+        const abs = resolve(projectDir, String(v));
+        let real: string;
+        try { real = realpathSync(abs); } catch { failures.push(`upload ${v}: missing`); continue; }
+        if (!inside(real)) { failures.push(`upload ${v}: outside the project`); continue; }
+        // a package link (pnpm) resolves to a folder: its needed files are listed as their own entries
+        // a linked source (pnpm package link, or a file link) is uploaded as its link text: bind the text too
+        const src = lstatSync(abs);
+        const link = src.isSymbolicLink() ? { link: readlinkSync(abs) } : {};
+        if (/[\t\n\r]/.test(`${link.link ?? ""}${real}`)) { failures.push(`upload ${JSON.stringify(key)}: a tab or line break in a link or path`); continue; }
+        const target = statSync(real);
+        if (target.isDirectory()) put(dirs, abs, { key, path: real, mode: src.mode, ...link });
+        else if (!target.isFile()) failures.push(`upload ${v}: not a regular file`);
+        else put(files, abs, { key, path: real, mode: src.mode, ...link });
+      }
+    }
+  };
+  walk(outDir);
+  return { files: [...files.values()], dirs: [...dirs.values()], failures };
+}
+
+const projectOf = (outDir: string) => resolve(outDir, "..", "..");
+
+/**
+ * Scans EVERY file of a deployable artifact (e.g. `app/.vercel/output` from `vercel build`, the exact bytes
+ * `vercel deploy --prebuilt` uploads). Every address found must be USDG, the zero address, viem's placeholder or the
+ * trusted factory; a set factory and USDG must be present. Fails closed: a file over 50 MB, or a symbolic link that
+ * resolves outside the artifact, is a failure, not a skip.
+ */
+export function scanTree(dir: string, trusted: Address | null, projectDir: string = projectOf(dir)): string[] {
+  const f: string[] = [];
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) return [`no artifact directory at ${dir}`];
+  const root = realpathSync(dir);
+  const found = new Set<string>();
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) {
+        let target: string;
+        try { target = realpathSync(p); } catch { f.push(`${relative(root, p)}: broken link`); continue; }
+        if (target !== root && !target.startsWith(root + sep)) f.push(`${relative(root, p)}: link leaves the artifact (${target})`);
+        continue; // its target is scanned where it lives inside the artifact
+      }
+      if (st.isDirectory()) { walk(p); continue; }
+      if (!st.isFile()) { f.push(`${relative(root, p)}: not a regular file`); continue; } // a FIFO or device: never read
+      if (st.size > MAX_SCANNED_FILE) { f.push(`${relative(root, p)}: ${st.size} bytes, too large to scan`); continue; }
+      for (const a of addressesIn(readFileSync(p, "latin1"))) found.add(a);
+    }
+  };
+  walk(root);
+  // and every file the deploy uploads from outside the output (functions' filePathMap: .next/server, node_modules, …)
+  const up = uploadSet(root, projectDir);
+  f.push(...up.failures);
+  // routes.json, microfrontends config, Vercel config: refused, not scanned. Only for a real `<project>/.vercel/output`
+  // (what vercel build writes and the release deploys); ops/release-deploy.ts checks the project dir itself too.
+  const standard = resolve(projectDir, ".vercel", "output");
+  if (existsSync(standard) && root === realpathSync(standard)) f.push(...cliExtraUploads(projectDir));
+  for (const u of up.files) {
+    const st = statSync(u.path);
+    if (st.size > MAX_SCANNED_FILE) { f.push(`upload ${u.key}: ${st.size} bytes, too large to scan`); continue; }
+    for (const a of addressesIn(readFileSync(u.path, "latin1"))) found.add(a);
+  }
+  const want = trusted?.toLowerCase();
+  for (const a of found) if (!BUNDLE_ADDRESS_ALLOWLIST.has(a) && a !== want) f.push(`the artifact contains address ${a}, which is not USDG or the trusted factory`);
+  if (want && !found.has(want)) f.push(`the artifact does not contain the trusted factory ${trusted}`);
+  if (!found.has(USDG.toLowerCase())) f.push("the artifact does not contain USDG");
+  return f;
+}
+
+/**
+ * One sha256 over what the deploy uploads, as the pinned CLI sends it (path, bytes, mode; directories, empty ones
+ * included; links as their text): sorted `path<TAB>sha256<TAB>mode` lines for the output directory (`path/<TAB>dir`,
+ * links `path<TAB>-> target`, anything else `path<TAB>special mode`, never read) and `upload:<filePathMap key>` lines
+ * for each file or package link uploaded from outside it. `lines` is the
+ * full per-file list, written next to the release record so a reviewer can compare files directly (a Next build ID is
+ * random, so a rebuild cannot reproduce the digest).
+ */
+/**
+ * Every free-text field of a digest line (a path, a key, link text) is escaped, so no name can carry a raw tab or line
+ * break and forge a field or a line: backslash first, then tab, CR, LF and every other control character.
+ */
+export const esc = (t: string) =>
+  t.replace(/\\/g, "\\\\").replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+
+export function artifactDigest(dir: string, projectDir: string = projectOf(dir)): { sha256: string; files: number; lines: string[] } {
+  const root = realpathSync(dir);
+  const lines: string[] = [];
+  const walk = (d: string) => {
+    for (const n of readdirSync(d)) {
+      const p = join(d, n);
+      const rel = relative(root, p).split(sep).join("/");
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) lines.push(`${esc(rel)}\t-> ${esc(readlinkSync(p))}`);
+      else if (st.isDirectory()) { lines.push(`${esc(rel)}/\tdir\t${st.mode.toString(8)}`); walk(p); }
+      else if (!st.isFile()) lines.push(`${esc(rel)}\tspecial ${st.mode.toString(8)}`);
+      else lines.push(`${esc(rel)}\t${createHash("sha256").update(readFileSync(p)).digest("hex")}\t${st.mode.toString(8)}`);
+    }
+  };
+  walk(root);
+  const up = uploadSet(root, projectDir);
+  // a linked source is uploaded as its link text, so the text is bound as well as the target's bytes
+  for (const u of up.files) {
+    const sha = createHash("sha256").update(readFileSync(u.path)).digest("hex");
+    lines.push(`/upload:${esc(u.key)}\t${sha}\t${u.mode.toString(8)}${u.link === undefined ? "" : `\t-> ${esc(u.link)}`}`);
+  }
+  // not uploaded, but the deploy reads it (project, org, settings): bound so it cannot change after the record
+  const pj = join(projectDir, ".vercel", "project.json");
+  // "/upload:" and "/project:" lines cannot collide with an output line: a relative output path never starts with "/"
+  if (existsSync(pj)) lines.push(`/project:.vercel/project.json\t${createHash("sha256").update(readFileSync(pj)).digest("hex")}`);
+  for (const u of up.dirs) {
+    const text = u.link === undefined ? "" : `\t(link text ${esc(u.link)})`;
+    lines.push(`/upload:${esc(u.key)}\t-> ${esc(relative(realpathSync(projectDir), u.path))}\t${u.mode.toString(8)}${text}`);
+  }
+  lines.sort();
+  return { sha256: createHash("sha256").update(lines.join("\n")).digest("hex"), files: lines.length, lines };
+}
+
+export type ReleaseRecord = {
+  commit: string; artifactSha256: string; files: number; trustedFactory: Address | null; scannedAt: string;
+  vercelCli: string; deploy: string; fileList: string;
+  /** Set just before the CLI is started: a record with this and no URL means a deploy may have happened; check Vercel. */
+  deployStartedAt: string | null;
+  /** A deployment whose files changed during the upload: not the scanned artifact; remove it on Vercel. */
+  voidedDeploymentUrl?: string;
+  deploymentUrl: string | null; target: "preview" | "production" | null; deployedAt: string | null;
+};
+
+/** Writes the release record and its per-file list (`<record>.files.txt`); ops/release-deploy.ts fills the deployment. */
+export function writeRecord(
+  file: string, dg: { sha256: string; files: number; lines: string[] }, commit: string, trusted: Address | null, root: string = ROOT,
+) {
+  const fileList = file.replace(/\.json$/, ".files.txt");
+  const rec: ReleaseRecord = {
+    commit, artifactSha256: dg.sha256, files: dg.files, trustedFactory: trusted, scannedAt: new Date().toISOString(),
+    vercelCli: VERCEL_CLI, deploy: `npx tsx ops/release-deploy.ts --record ${relative(root, file)}`, fileList: relative(root, fileList),
+    deployStartedAt: null, deploymentUrl: null, target: null, deployedAt: null,
+  };
+  writeFileSync(file, JSON.stringify(rec, null, 2) + "\n");
+  writeFileSync(fileList, dg.lines.join("\n") + "\n");
+}
+
+/** A Stock Token page entry must keep its ticker paired with its reviewed testnet contract. */
+export function testnetStockPinsMatch(entries: readonly { symbol: string; address: string }[] | undefined): string[] {
+  const got = (entries ?? []).map((t) => `${t.symbol}=${t.address.toLowerCase()}`).sort();
+  const want = Object.entries(TESTNET_STOCK_PINS).map(([sym, a]) => `${sym}=${a.toLowerCase()}`).sort();
+  return JSON.stringify(got) === JSON.stringify(want) ? [] : [`testnet-stocks.ts lists ${got.join(", ") || "nothing"}, not the pinned ${want.join(", ")}`];
+}
+
+/** The testnet Stock Tokens the Assets page reads (app/src/lib/robinhood/testnet-stocks.ts) are exactly the pinned ticker-to-address pairs. */
+export async function testnetStocksMatch(): Promise<string[]> {
+  try {
+    const mod = (await import(`${pathToFileURL(`${ROOT}app/src/lib/robinhood/testnet-stocks.ts`).href}?t=${Date.now()}`)) as { TESTNET_STOCK_TOKENS?: { symbol: string; address: string }[] };
+    // each ticker on its pinned contract, not only the same set of addresses (adversary pass on 0816b86: swapped labels)
+    return testnetStockPinsMatch(mod.TESTNET_STOCK_TOKENS);
+  } catch (e) {
+    return [`testnet-stocks.ts could not be loaded: ${e instanceof Error ? e.message : e}`];
+  }
+}
+
+/** The USDG the adapter approves (app/src/lib/robinhood/chain.ts) must be the USDG this gate pins. */
+export async function usdgMatches(): Promise<string[]> {
+  try {
+    const mod = (await import(`${pathToFileURL(`${ROOT}app/src/lib/robinhood/chain.ts`).href}?t=${Date.now()}`)) as { USDG?: string };
+    return mod.USDG?.toLowerCase() === USDG.toLowerCase() ? [] : [`chain.ts USDG is ${mod.USDG}, not ${USDG}`];
+  } catch (e) {
+    return [`chain.ts could not be loaded: ${e instanceof Error ? e.message : e}`];
+  }
+}
+
+/**
+ * Every git call of the release's TypeScript entry points goes through here (adversary passes on 9b44681 and 49ec527);
+ * ops/release-robinhood.sh's go through its safe_git, sealed the same way from its first call, and the Vercel CLI's run
+ * with no system or global configuration either (deployEnv; Codex r5 F2). The caller's GIT_*
+ * variables (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_CONFIG_COUNT …), system and global config, the user-global
+ * ignore and attributes files under HOME/XDG_CONFIG_HOME, replace refs (`refs/replace/`), repository discovery above
+ * `root`, and the repository's own `core.worktree`, `core.fsmonitor` (which runs a program) and untracked cache could
+ * each make git answer about something other than `root`'s own files against its own HEAD. So git gets only PATH (no
+ * HOME, no XDG_*), no system or global config, replace refs off, a ceiling at `root`'s parent, the repository named
+ * by `root/.git` with `root` itself as the working tree, and those repository settings overridden on the command line.
+ * The sealed release already runs in a fresh --no-local clone under env -i; this makes the entry points that can be
+ * run by hand agree with it. (A repository's own `.git/info/exclude` or hooks need write access to the checkout, like
+ * editing this file.)
+ */
+function sealedGit(root: string): { real: string; env: NodeJS.ProcessEnv; pinned: string[] } {
+  const real = realpathSync(root);
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH, LC_ALL: "C", // the C locale: git's regex then matches any byte in a name (adversary pass on cf03f94)
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_NO_REPLACE_OBJECTS: "1", GIT_NO_LAZY_FETCH: "1",
+    GIT_CEILING_DIRECTORIES: dirname(real),
+  };
+  const pinned = [
+    "--no-pager", "--no-replace-objects", "-C", real, `--git-dir=${join(real, ".git")}`, `--work-tree=${real}`,
+    "-c", "core.excludesFile=/dev/null", "-c", "core.attributesFile=/dev/null", "-c", "core.fsmonitor=false",
+    "-c", "core.untrackedCache=false", "-c", "core.hooksPath=/dev/null", "-c", "status.showUntrackedFiles=all",
+    "-c", "core.trustctime=true", "-c", "core.checkStat=default", "-c", "core.ignoreCase=false",
+    // commits are read from their objects, never from .git/objects/info/commit-graph, which can be rewritten to give
+    // a commit another tree (adversary pass on 84043b3; the same class as replace refs, refused above)
+    "-c", "core.commitGraph=false",
+  ];
+  return { real, env, pinned };
+}
+
+/**
+ * The programs a repository's own config can name, which git starts while it compares files (a clean or process filter
+ * on status, a textconv or external diff, a merge driver) or fetches (a partial clone's promisor remote and its
+ * upload-pack, an ssh command or proxy): no -c switch turns them off, so the release refuses a repository that names
+ * any (adversary passes on ce04cd9 and 12f1cb7); a release checkout is an ordinary full clone. Reading config runs
+ * nothing; includes are followed. A driver or remote may be named "" (`filter..clean`), so the names match `.*`
+ * (adversary pass on a76e46a). Lazy fetching is also off (GIT_NO_LAZY_FETCH).
+ */
+export const GIT_PROGRAM_DRIVERS = "^(filter\\..*\\.(clean|smudge|process)|diff\\..*\\.(textconv|command)|merge\\..*\\.driver|diff\\.external|remote\\..*\\.(uploadpack|receivepack|promisor|partialclonefilter)|extensions\\.partialclone|core\\.(sshcommand|gitproxy|askpass))$";
+export function gitProgramDrivers(root: string): string[] {
+  const { env, pinned } = sealedGit(root);
+  const r = spawnSync("/usr/bin/git", [...pinned, "config", "--get-regexp", GIT_PROGRAM_DRIVERS], { encoding: "utf8", env });
+  if (r.status === 1 && !r.stdout) return []; // no such key
+  if (r.status !== 0) return [`(the repository's git config could not be read: exit ${r.status})`];
+  return r.stdout.split("\n").filter(Boolean).map((l) => l.split(" ")[0]!);
+}
+
+export function gitIn(root: string, args: string[]): string {
+  const { env, pinned } = sealedGit(root);
+  const drivers = gitProgramDrivers(root);
+  if (drivers.length) throw new Error(`REFUSED: the repository's git config names programs git would run (${drivers.join(", ")}); remove them`);
+  // maxBuffer: a long list of changed names must not cut git's answer short (Node's default is 1 MiB; adversary pass
+  // on 55a2452: 1.1 MB of page-bundle names made the gate fail a correct state)
+  return execFileSync("/usr/bin/git", [...pinned, ...args], { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 * 1024 * 1024 });
+}
+
+/**
+ * What the build may read that the release itself writes: the install folders (from the committed lockfiles), the
+ * build's output folders and Next's two generated files (types and the type-check cache; neither reaches the output).
+ * Everything else in app/, and every file at the repository root (Next looks upward for some build configs), is a
+ * build input. The root `.git` is git's own (a folder, or a `gitdir:` file in a linked worktree), never an input.
+ * Stated limit: these folders are trusted because the sealed release creates them fresh in its clone; in a checkout
+ * run by hand they are whatever is on disk (the upload set is still hashed and recorded).
+ */
+export const NOT_SOURCE = new Set(["node_modules", "app/node_modules", "app/.next", "app/.vercel", "app/next-env.d.ts", "app/tsconfig.tsbuildinfo"]);
+
+/**
+ * The build's inputs on disk against HEAD, by content (adversary pass on 647e485): git's own status rests on ignore
+ * rules (an untracked `.gitignore` can hide itself and a page beside it), the index's stat cache and repository
+ * settings, so it can call a changed tree clean. This reads HEAD's tree (`ls-tree`, through gitIn) and hashes every
+ * file under app/ (but NOT_SOURCE) and at the root as git would store it: a file not in HEAD, a file whose bytes or kind
+ * (file or link) differ, or a file of HEAD missing on disk is returned by path. No ignore rule, cache or setting takes
+ * part. (The executable bit is not compared: the repository does not track it, and it does not change the build.)
+ */
+export function sourceDrift(root: string): string[] {
+  const head = new Map<string, { mode: string; oid: string }>();
+  for (const rec of gitIn(root, ["ls-tree", "-z", "--full-tree", "HEAD"]).split("\0").filter(Boolean)) {
+    const tab = rec.indexOf("\t");
+    const [mode, type, oid] = rec.slice(0, tab).split(" ");
+    if (type === "blob") head.set(rec.slice(tab + 1), { mode: mode!, oid: oid! });
+  }
+  for (const rec of gitIn(root, ["ls-tree", "-r", "-z", "--full-tree", "HEAD", "--", "app"]).split("\0").filter(Boolean)) {
+    const tab = rec.indexOf("\t");
+    const [mode, type, oid] = rec.slice(0, tab).split(" ");
+    head.set(rec.slice(tab + 1), { mode: type === "blob" ? mode! : `${type}`, oid: oid! });
+  }
+  const drift: string[] = [];
+  const seen = new Set<string>();
+  const check = (p: string) => {
+    seen.add(p);
+    const st = lstatSync(join(root, p));
+    const h = head.get(p);
+    if (!h) return drift.push(p);
+    let data: Buffer;
+    let link: boolean;
+    if (st.isSymbolicLink()) { data = Buffer.from(readlinkSync(join(root, p))); link = true; }
+    else if (st.isFile()) { data = readFileSync(join(root, p)); link = false; }
+    else return drift.push(p);
+    if ((h.mode === "120000") !== link) return drift.push(p);
+    const oid = createHash(h.oid.length === 64 ? "sha256" : "sha1").update(`blob ${data.length}\0`).update(data).digest("hex");
+    if (oid !== h.oid) drift.push(p);
+  };
+  const walk = (rel: string) => {
+    for (const name of readdirSync(join(root, rel))) {
+      const p = `${rel}/${name}`;
+      if (NOT_SOURCE.has(p)) continue;
+      if (lstatSync(join(root, p)).isDirectory()) walk(p);
+      else check(p);
+    }
+  };
+  for (const name of readdirSync(root)) {
+    if (name === ".git" || NOT_SOURCE.has(name)) continue;
+    const st = lstatSync(join(root, name));
+    if (name === "app" && st.isDirectory()) walk("app");
+    else if (!st.isDirectory()) check(name);
+  }
+  for (const p of head.keys()) if ((p.startsWith("app/") || !p.includes("/")) && !seen.has(p) && ![...NOT_SOURCE].some((x) => p === x || p.startsWith(`${x}/`))) drift.push(p);
+  return [...new Set(drift)].sort();
+}
+
+/** Changed, untracked or drifted paths: git's status (every untracked file) together with sourceDrift. */
+export function uncommittedPaths(root: string): string[] {
+  // submodule work trees are not looked into (a status inside one reads its own config, filter drivers included;
+  // adversary pass on 4570ded): they are no build input, the sealed release's clone initialises its own from the
+  // commit's gitlinks. "dirty", not "all": an added or removed gitlink is still reported (adversary pass on 1e196ff)
+  const status = gitIn(root, ["status", "--porcelain", "--no-renames", "--untracked-files=all", "--ignore-submodules=dirty"]).split("\n").filter(Boolean).map((l) => l.slice(3));
+  // a gitlink outside evm/lib/ (the contracts' pinned libraries) counts as a change wherever it is, in HEAD or the
+  // index: git answers for one from that repository's own config and treats one it cannot open as unchanged (adversary
+  // pass on d39ec27). Reading the tree and the index opens no submodule.
+  const links = [gitIn(root, ["ls-tree", "-r", "-z", "HEAD"]), gitIn(root, ["ls-files", "-s", "-z"])]
+    .flatMap((o) => o.split("\0")).filter((r) => r.startsWith("160000 ")).map((r) => r.slice(r.indexOf("\t") + 1))
+    .filter((path) => !path.startsWith("evm/lib/"));
+  return [...new Set([...status, ...links, ...sourceDrift(root)])].sort();
+}
+
+/** Paths changed since `commit` (null if it is not an ancestor of HEAD or git fails). */
+export function changedSince(commit: string | undefined): string[] | null {
+  if (!commit || !/^[0-9a-f]{7,40}$/.test(commit)) return null;
+  try {
+    // the receipt holds the commit abbreviated ("3429255"); git resolves a name that is also a branch or tag to that
+    // ref, so a ref named like it would point the diff at HEAD itself (adversary pass on c1fc27e). Resolve it among
+    // objects only: exactly one commit must carry that prefix, and from here on only its full hash is used.
+    const commits = gitIn(ROOT, ["rev-parse", `--disambiguate=${commit}`]).split("\n").filter(Boolean)
+      .filter((o) => /^[0-9a-f]{40}$/.test(o) && o.startsWith(commit) && gitIn(ROOT, ["cat-file", "-t", o]).trim() === "commit");
+    const full = commits.length === 1 ? commits[0] : undefined;
+    if (!full) return null;
+    // git checks a commit's own hash when it reads it, not the trees and files under it: a loose object rewritten
+    // in .git could give the deployed commit's core/ HEAD's tree (adversary pass on 55a2452). fsck re-hashes every
+    // object and fails on any mismatch, so a forged object store fails closed (about half a second here). Started
+    // from the two commits only: with no objects named, fsck also reads every worktree's index, and a sibling worktree
+    // on a new orphan branch (an index naming the empty tree, never written) failed it (adversary pass on dec7f58).
+    gitIn(ROOT, ["fsck", "--no-dangling", "--no-progress", "--no-reflogs", full, "HEAD"]);
+    gitIn(ROOT, ["merge-base", "--is-ancestor", full, "HEAD"]);
+    // --no-renames: a rename is listed as its deletion AND its addition, so `git mv X X.md` cannot hide X.
+    // -z: names exactly as stored, NUL-separated; without it git C-quotes a name holding a tab, a quote, a backslash or
+    // a non-ASCII byte ("evm/src/Fa\303\247ade.sol"), which no path rule matches (adversary pass on b9e3509)
+    // --ignore-submodules=none: a gitlink bump under evm/lib is always listed, whatever the repository's
+    // diff.ignoreSubmodules or submodule.<name>.ignore says (adversary pass on 9a1fa97)
+    // "--": both names are commits, so a committed file named HEAD (or like the hash) is never taken for a path
+    // (adversary pass on 84043b3: git stopped with "ambiguous argument" and the gate failed for a correct state)
+    const out = gitIn(ROOT, ["diff", "--no-renames", "--name-only", "-z", "--ignore-submodules=none", full, "HEAD", "--"]);
+    return out.split("\0").filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The contract bundle (ARB-DESIGN r11 §8, G-D1) and everything that shapes its bytecode: after the reviewed deploy
+ * none of it may change, since a change needs a new G-D1 and a new deploy. Everything else is the page bundle, which
+ * changes only under a G-D2 review (ARB-DESIGN r11: "A change to the page bundle needs a new G-D2 only").
+ */
+export const CONTRACT_BUNDLE = (p: string) =>
+  /^(evm\/(src|script|test|lib)|core)\//.test(p) || p === "evm/lib" ||
+  ["evm/foundry.toml", "evm/foundry.lock", "evm/remappings.txt", ".gitmodules"].includes(p);
+
+/** The factory's runtime bytecode as the reviewed source compiles it, with its immutables filled. */
+export function expectedRuntime(artifact: {
+  bytecode?: { object: string };
+  deployedBytecode: { object: string; immutableReferences?: Record<string, { start: number; length: number }[]> };
+}, usdg: Address): Hex {
+  const hex = artifact.deployedBytecode.object.replace(/^0x/, "");
+  const bytes = Buffer.from(hex, "hex");
+  const word = Buffer.from(usdg.slice(2).toLowerCase().padStart(64, "0"), "hex");
+  const refs = Object.values(artifact.deployedBytecode.immutableReferences ?? {});
+  if (refs.length !== 1) throw new Error(`expected exactly one immutable (usdg), found ${refs.length}`);
+  for (const r of refs[0]!) {
+    if (r.length !== 32) throw new Error("immutable length is not 32");
+    word.copy(bytes, r.start);
+  }
+  return `0x${bytes.toString("hex")}`;
+}
+
+type Receipt = {
+  chain?: number;
+  commit?: string;
+  transactions?: { hash?: string; transactionType?: string; contractName?: string; contractAddress?: string; arguments?: string[] }[];
+  receipts?: { contractAddress?: string | null; status?: string }[];
+};
+
+export type Inputs = {
+  config: TrustedConfig;
+  receipt: Receipt | null;
+  artifact: Parameters<typeof expectedRuntime>[0];
+  chainCode: Hex | null;
+  chainId: number | null;
+  /** Paths changed from the receipt's commit to HEAD, or null if that commit is not an ancestor of HEAD. */
+  changedSinceReceipt: string[] | null;
+  /** The deployment transaction and its receipt as the CHAIN reports them (looked up by the receipt's hash). */
+  chainDeployTx: { input: Hex; to: string | null } | null;
+  chainDeployReceipt: { status: string; contractAddress: string | null } | null;
+  /** Failures from importBoundary(). */
+  trustSources: string[];
+};
+
+/** The exact creation input the reviewed source produces: init code + abi-encoded USDG. */
+export function expectedCreationInput(artifact: { bytecode: { object: string } }, usdg: Address): Hex {
+  const init = artifact.bytecode.object.replace(/^0x/, "");
+  return `0x${init}${encodeAbiParameters([{ type: "address" }], [usdg]).slice(2)}`.toLowerCase() as Hex;
+}
+
+/** Every failure, in plain words. Empty means pass. */
+export function verify(i: Inputs): string[] {
+  if (i.trustSources.length) return i.trustSources;
+  if (i.config.state === "null") return [];
+  if (i.config.state === "unreadable") return ["TRUSTED_FACTORY is neither null nor { address, codeHash } literals"];
+  const { address, codeHash } = i.config;
+  const f: string[] = [];
+  const r = i.receipt;
+  if (!r) return ["TRUSTED_FACTORY is set but the broadcast receipt is missing"];
+  if (r.chain !== ROBINHOOD_TESTNET_ID) f.push(`receipt chain is ${r.chain}, not ${ROBINHOOD_TESTNET_ID}`);
+  if (!receiptCommitIsDeployed(r.commit)) f.push(`receipt commit ${r.commit ?? "(none)"} is not the reviewed deployed commit ${DEPLOYED_COMMIT}`);
+  const creates = (r.transactions ?? []).filter((t) => t.transactionType === "CREATE" && t.contractName === "OthelloFactory");
+  if (creates.length !== 1) f.push(`receipt has ${creates.length} OthelloFactory CREATEs, need exactly 1`);
+  const tx = creates[0];
+  if (tx) {
+    if (!tx.contractAddress || tx.contractAddress.toLowerCase() !== address.toLowerCase()) {
+      f.push(`receipt deployed ${tx.contractAddress}, config says ${address}`);
+    }
+    const arg = tx.arguments?.[0];
+    if (!arg || arg.toLowerCase() !== USDG.toLowerCase()) f.push(`factory constructor argument is ${arg}, not USDG ${USDG}`);
+    const rc = (r.receipts ?? []).find((x) => x.contractAddress?.toLowerCase() === address.toLowerCase());
+    if (!rc || rc.status !== "0x1") f.push("no successful receipt for the factory's deployment");
+  }
+  if (i.changedSinceReceipt === null) f.push(`receipt commit ${r.commit ?? "(none)"} is not an ancestor of HEAD`);
+  else {
+    const frozen = i.changedSinceReceipt.filter(CONTRACT_BUNDLE);
+    if (frozen.length) f.push(`since the deployed commit, the contract bundle changed (a new G-D1 and deploy are needed): ${frozen.join(", ")}`);
+  }
+  if (i.chainId !== ROBINHOOD_TESTNET_ID) f.push(`RPC chain id is ${i.chainId}, not ${ROBINHOOD_TESTNET_ID}`);
+  // The receipt file is only a pointer: the chain must confirm the deployment itself. Identical runtime code with
+  // other init code (e.g. pre-registering a circle in storage) fails here.
+  if (!i.chainDeployTx) f.push("the chain has no deployment transaction for the receipt's hash");
+  else {
+    if (i.chainDeployTx.to !== null) f.push("the deployment transaction is not a contract creation");
+    if (i.chainDeployTx.input.toLowerCase() !== expectedCreationInput(i.artifact as never, USDG)) {
+      f.push("the deployment transaction's creation code is not the reviewed factory with USDG");
+    }
+  }
+  if (!i.chainDeployReceipt || i.chainDeployReceipt.status !== "0x1") f.push("the chain reports no successful deployment receipt");
+  else if (i.chainDeployReceipt.contractAddress?.toLowerCase() !== address.toLowerCase()) {
+    f.push(`the chain says that transaction created ${i.chainDeployReceipt.contractAddress}, not ${address}`);
+  }
+  if (!i.chainCode || i.chainCode === "0x") f.push(`no code at ${address} on chain`);
+  else if (keccak256(i.chainCode) !== codeHash) f.push(`live code hash ${keccak256(i.chainCode)} differs from config ${codeHash}`);
+  const expected = keccak256(expectedRuntime(i.artifact, USDG));
+  if (expected !== codeHash) f.push(`the reviewed source compiles to ${expected}, config says ${codeHash}`);
+  return f;
+}
+
+async function rpc(url: string, method: string, params: unknown[]): Promise<unknown> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const j = (await res.json()) as { result?: unknown; error?: { message: string } };
+  if (j.error) throw new Error(j.error.message);
+  return j.result;
+}
+
+async function main() {
+  // for the release script: what config.ts holds, by this gate's own parser (never by matching its text)
+  if (process.argv.includes("--config-state")) {
+    console.log((await loadConfig()).state);
+    return;
+  }
+  let writeRecordWhenVerified = () => {};
+  const at = process.argv.indexOf("--rpc");
+  const url = at > 0 ? process.argv[at + 1] : "https://rpc.testnet.chain.robinhood.com";
+  if (!url) throw new Error("--rpc needs a URL");
+  const config = await loadConfig();
+  const trustSources = [
+    ...importBoundary(), ...moduleShadows(), ...appTreeRules(), ...buildFilePins(), ...noEnvInTrustCode(), ...(await usdgMatches()), ...(await testnetStocksMatch()),
+  ];
+  if (trustSources.length) {
+    // Where the page's factory comes from is wrong: say so before anything else is read.
+    console.error("trust-config FAILED:\n- " + trustSources.join("\n- "));
+    process.exit(1);
+  }
+  const b = process.argv.indexOf("--build");
+  if (b > 0) {
+    const nextDir = process.argv[b + 1];
+    const bf = nextDir ? bundleAddresses(nextDir, config.state === "set" ? config.address : null) : ["--build needs a directory"];
+    if (bf.length) {
+      console.error("trust-config FAILED:\n- " + bf.join("\n- "));
+      process.exit(1);
+    }
+    console.log(`trust-config: the build at ${nextDir} contains only allowed addresses.`);
+  }
+  const vo = process.argv.indexOf("--vercel-output");
+  if (vo > 0) {
+    const outDir = process.argv[vo + 1];
+    const vf = outDir ? scanTree(outDir, config.state === "set" ? config.address : null) : ["--vercel-output needs a directory"];
+    if (vf.length) {
+      console.error("trust-config FAILED:\n- " + vf.join("\n- "));
+      process.exit(1);
+    }
+    const dg = artifactDigest(outDir!);
+    console.log(`trust-config: the artifact at ${outDir} (${dg.files} files, sha256 ${dg.sha256}) contains only allowed addresses.`);
+    const rec = process.argv.indexOf("--record");
+    if (rec > 0) {
+      const file = process.argv[rec + 1];
+      if (!file) throw new Error("--record needs a file");
+      const commit = gitIn(ROOT, ["rev-parse", "HEAD"]).trim();
+      // untracked files count: vercel build would include an untracked page that is in no commit
+      const dirty = uncommittedPaths(ROOT);
+      if (dirty.length) throw new Error(`the working tree has uncommitted or untracked files; a release is built from a commit:\n${dirty.join("\n")}`);
+      // written only once EVERY check below has passed: a record in the release folder always means "scanned and verified"
+      writeRecordWhenVerified = () => {
+        writeRecord(resolve(ROOT, file), dg, commit, config.state === "set" ? config.address : null);
+        console.log(`trust-config: release record written to ${file}`);
+      };
+    }
+  }
+  if (config.state === "null") {
+    writeRecordWhenVerified();
+    console.log("trust-config: TRUSTED_FACTORY is null, config.ts has its fixed shape, and only adapter.ts imports it; the Robinhood page offers no action.");
+    return;
+  }
+  const receipt = existsSync(PATHS.receipt) ? (JSON.parse(readFileSync(PATHS.receipt, "utf8")) as Receipt) : null;
+  const artifact = JSON.parse(readFileSync(PATHS.artifact, "utf8"));
+  let chainCode: Hex | null = null;
+  let chainId: number | null = null;
+  let chainDeployTx: Inputs["chainDeployTx"] = null;
+  let chainDeployReceipt: Inputs["chainDeployReceipt"] = null;
+  if (config.state === "set") {
+    chainId = Number.parseInt(String(await rpc(url, "eth_chainId", [])), 16);
+    chainCode = (await rpc(url, "eth_getCode", [config.address, "latest"])) as Hex;
+    const hash = receipt?.transactions?.find((t) => t.contractName === "OthelloFactory")?.hash;
+    if (hash && /^0x[0-9a-fA-F]{64}$/.test(hash)) {
+      chainDeployTx = (await rpc(url, "eth_getTransactionByHash", [hash])) as Inputs["chainDeployTx"];
+      chainDeployReceipt = (await rpc(url, "eth_getTransactionReceipt", [hash])) as Inputs["chainDeployReceipt"];
+    }
+  }
+  const failures = verify({
+    config, receipt, artifact, chainCode, chainId, chainDeployTx, chainDeployReceipt, trustSources,
+    changedSinceReceipt: changedSince(DEPLOYED_COMMIT),
+  });
+  if (failures.length) {
+    console.error("trust-config FAILED:\n- " + failures.join("\n- "));
+    process.exit(1);
+  }
+  writeRecordWhenVerified();
+  console.log(`trust-config: ${config.state === "set" ? config.address : ""} verified against the receipt, the chain's deployment, its live code and the reviewed source.`);
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((e) => {
+    console.error("trust-config FAILED:", e instanceof Error ? e.message : e);
+    process.exit(1);
+  });
+}

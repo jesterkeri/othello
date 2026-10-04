@@ -1,0 +1,300 @@
+/**
+ * Adversary, A2-SWITCH (othello-design/arb/A2-SWITCH.md, "Rules the code must keep"): "Cancel, Close and picking a
+ * Solana wallet abandon a connect still waiting in an EVM wallet ... Cancel and Close abandon only the kind of connect
+ * that is waiting: a Solana cancel is not undone by a later EVM pick". And app/src/lib/wallet.tsx on `cancelled`: "if
+ * it is approved after the person cancelled, the connection is dropped rather than appearing out of nowhere."
+ *
+ * The sequence: pick a Solana wallet (its prompt opens), Close the modal, press "Connect wallet" again (the top bar's,
+ * or the Robinhood page's own "Connect an EVM wallet", both openConnect), then pick an EVM wallet. The earlier pass
+ * (a2-cancelled-solana-rearmed) used Cancel, which returns to the list. Close closes the modal, so the only way back to
+ * the list is openConnect, and openConnect clears the `cancelled` flag Close set. The Solana wallet's old prompt,
+ * approved afterwards, then connects, and the modal closes while the EVM prompt is still open. The EVM mirror (pick
+ * EVM, Close, reopen) keeps the late answer dropped, as the control.
+ *
+ * Harness: copied from tests/a2-cancelled-solana-rearmed-adversary.spec.ts (real wallet.tsx over a small hook runtime,
+ * the real createEvmSession over fake EIP-1193 providers, a fake Solana adapter whose connect the test answers).
+ * Copied rather than imported so that file's cases do not run twice.
+ *
+ *   npx mocha --import=tsx tests/a2-closed-solana-reopened-adversary.spec.ts
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createRequire, registerHooks } from "node:module";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { REPO } from "./artifacts.ts";
+import type { Discovery, EvmWallet } from "../app/src/lib/robinhood/eip6963.ts";
+import { createEvmSession, type EvmSession } from "../app/src/lib/robinhood/evm-session.ts";
+
+const SRC = resolve(REPO, "app/src");
+const WALLET_TSX = resolve(SRC, "lib/wallet.tsx");
+const appRequire = createRequire(resolve(SRC, "lib/chains.ts"));
+
+const A_B = "0x2222222222222222222222222222222222222222";
+
+type Hooks = {
+  useState(i: unknown): [unknown, (v: unknown) => void];
+  useRef(i: unknown): { current: unknown };
+  useMemo(f: () => unknown, deps: unknown[]): unknown;
+  useCallback(f: unknown, deps: unknown[]): unknown;
+  useEffect(f: () => void | (() => void), deps?: unknown[]): void;
+  evm(): unknown;
+  solana(): unknown;
+  router(): unknown;
+  pathname(): string;
+};
+const g = globalThis as { __a2?: Hooks; React?: unknown };
+
+registerHooks({
+  resolve(specifier, context, next) {
+    const fromWallet = context.parentURL?.endsWith("/lib/wallet.tsx") ?? false;
+    const stub = (src: string) => ({ url: `data:text/javascript,${encodeURIComponent(src)}`, shortCircuit: true });
+    if (fromWallet && specifier === "react") {
+      return stub(
+        "const H = () => globalThis.__a2;" +
+        "export const useState = (i) => H().useState(i);" +
+        "export const useRef = (i) => H().useRef(i);" +
+        "export const useMemo = (f, d) => H().useMemo(f, d);" +
+        "export const useCallback = (f, d) => H().useCallback(f, d);" +
+        "export const useEffect = (f, d) => H().useEffect(f, d);" +
+        "export const createContext = (d) => ({ Provider: 'Provider', d });" +
+        "export const useContext = (c) => c.d;",
+      );
+    }
+    if (fromWallet && specifier === "next/navigation") {
+      return stub("export const useRouter = () => globalThis.__a2.router(); export const usePathname = () => globalThis.__a2.pathname();");
+    }
+    if (fromWallet && specifier === "@solana/wallet-adapter-react") {
+      return stub("export const useWallet = () => globalThis.__a2.solana(); export const ConnectionProvider = (p) => p.children; export const WalletProvider = (p) => p.children;");
+    }
+    if (fromWallet && specifier === "@solana/wallet-adapter-base") return stub("export const WalletReadyState = { Installed: 'Installed' };");
+    if (fromWallet && specifier === "@solana/web3.js") return stub("export const clusterApiUrl = () => 'https://api.devnet.solana.com';");
+    if (fromWallet && specifier === "@/lib/robinhood/wallet") return stub("export const useEvmWallet = () => globalThis.__a2.evm();");
+    if (specifier.startsWith("@/")) {
+      const base = resolve(SRC, specifier.slice(2));
+      for (const ext of [".ts", ".tsx", "/index.ts", ""]) {
+        try {
+          readFileSync(base + ext);
+          return next(pathToFileURL(base + ext).href, context);
+        } catch {
+          /* try the next extension */
+        }
+      }
+    }
+    return next(specifier, context);
+  },
+});
+
+/** A fake EIP-1193 wallet whose eth_requestAccounts the test answers by hand. */
+class Wallet {
+  calls: string[] = [];
+  private handlers = new Map<string, Set<(x: unknown) => void>>();
+  private approve: ((a: string[]) => void) | null = null;
+  constructor(private account: string) {}
+  request = async ({ method, params }: { method: string; params?: unknown }): Promise<unknown> => {
+    this.calls.push(method);
+    if (method === "eth_requestAccounts") return new Promise<string[]>((r) => { this.approve = r; });
+    if (method === "eth_accounts") return [this.account];
+    if (method === "eth_chainId") return "0xb626";
+    if (method === "wallet_switchEthereumChain") { this.emit("chainChanged", (params as [{ chainId: string }])[0].chainId); return null; }
+    if (method === "wallet_revokePermissions") return null;
+    throw Object.assign(new Error(`unsupported ${method}`), { code: 4200 });
+  };
+  approveInWallet() { this.approve?.([this.account]); }
+  on(ev: string, f: (x: unknown) => void) { (this.handlers.get(ev) ?? this.handlers.set(ev, new Set()).get(ev)!).add(f); }
+  removeListener(ev: string, f: (x: unknown) => void) { this.handlers.get(ev)?.delete(f); }
+  emit(ev: string, x: unknown) { for (const f of this.handlers.get(ev) ?? []) f(x); }
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+type Ui = {
+  stage: string;
+  pick(name: string): void;
+  pickEvm(uuid: string): void;
+  cancel(): void;
+  close(): void;
+  openConnect(): void;
+};
+
+/** Mounts the modal's Ui with a minimal hook runtime: state, refs, memo, and effects that run after each render. */
+async function mount(evmWallets: EvmWallet[], rememberedRdns: string | null = null) {
+  const React = appRequire("react");
+  g.React = React;
+  const { WalletProviders } = await import(pathToFileURL(WALLET_TSX).href);
+
+  const remembered = { value: rememberedRdns, get: () => remembered.value, set: (v: string) => { remembered.value = v; }, clear: () => { remembered.value = null; } };
+  const discovery: Discovery = { list: () => evmWallets, subscribe: () => () => {}, stop: () => {} };
+  const session: EvmSession = createEvmSession({ discovery, remembered });
+
+  const solanaState = { connected: false, selected: null as string | null, pendingConnect: false, connectAsked: [] as string[] };
+  const pushes: string[] = [];
+  let path = "/robinhood";
+
+  const slots: unknown[] = [];
+  let i = 0;
+  let rendering = false;
+  let dirty = false;
+  let queued: (() => void)[] = [];
+  let ui!: Ui;
+  const same = (a?: unknown[], b?: unknown[]) => !!a && !!b && a.length === b.length && a.every((x, k) => Object.is(x, b[k]));
+
+  const hooks: Hooks = {
+    useState(init) {
+      const k = i++;
+      if (!(k in slots)) slots[k] = init;
+      const set = (v: unknown) => {
+        const next = typeof v === "function" ? (v as (p: unknown) => unknown)(slots[k]) : v;
+        if (Object.is(next, slots[k])) return;
+        slots[k] = next;
+        rerender();
+      };
+      return [slots[k], set];
+    },
+    useRef(init) {
+      const k = i++;
+      if (!(k in slots)) slots[k] = { current: init };
+      return slots[k] as { current: unknown };
+    },
+    useMemo(f, deps) {
+      const k = i++;
+      const prev = slots[k] as { deps: unknown[]; v: unknown } | undefined;
+      if (prev && same(prev.deps, deps)) return prev.v;
+      const v = f();
+      slots[k] = { deps, v };
+      return v;
+    },
+    useCallback(f, deps) { return hooks.useMemo(() => f, deps); },
+    useEffect(f, deps) {
+      const k = i++;
+      const prev = slots[k] as { deps?: unknown[]; cleanup?: void | (() => void) } | undefined;
+      if (prev && same(prev.deps, deps)) return;
+      queued.push(() => {
+        if (typeof prev?.cleanup === "function") prev.cleanup();
+        slots[k] = { deps, cleanup: f() };
+      });
+    },
+    evm() {
+      const snap = session.getSnapshot();
+      return { wallets: snap.wallets, connectWith: (u: string) => session.connectWith(u), disconnect: () => session.disconnect(), cancelPending: () => session.cancelPending() };
+    },
+    solana() {
+      return {
+        connected: solanaState.connected,
+        publicKey: null,
+        wallet: solanaState.selected ? { adapter: { name: solanaState.selected } } : null,
+        wallets: [{ readyState: "Installed", adapter: { name: "Phantom", icon: "data:image/png;base64,AA==" } }],
+        // autoConnect: selecting a wallet asks it to connect; the test answers.
+        select: (name: string) => { solanaState.selected = name; solanaState.pendingConnect = true; solanaState.connectAsked.push(name); rerender(); },
+        connect: async () => { solanaState.pendingConnect = true; },
+        disconnect: async () => { solanaState.connected = false; rerender(); },
+      };
+    },
+    router: () => ({ push: (to: string) => { pushes.push(to); path = to; } }),
+    pathname: () => path,
+  };
+
+  function renderOnce() {
+    g.__a2 = hooks;
+    i = 0;
+    queued = [];
+    const el = (WalletProviders as (p: { children: null }) => unknown)({ children: null });
+    // WalletProviders -> ConnectionProvider -> WalletProvider -> Ui -> Provider(value)
+    let node = el as { type: unknown; props: { children?: unknown; value?: Ui } };
+    while (node.type !== "Provider") {
+      const t = node.type as (p: unknown) => unknown;
+      node = t(node.props) as typeof node;
+    }
+    ui = node.props.value!;
+    const effects = queued;
+    for (const e of effects) e();
+  }
+  function rerender() {
+    if (rendering) { dirty = true; return; }
+    rendering = true;
+    try {
+      let n = 0;
+      do {
+        dirty = false;
+        renderOnce();
+        if (++n > 50) throw new Error("render loop");
+      } while (dirty);
+    } finally {
+      rendering = false;
+    }
+  }
+  session.subscribe(rerender);
+  rerender();
+
+  return {
+    ui: () => ui,
+    session,
+    remembered,
+    pushes,
+    solanaApproves: () => { solanaState.pendingConnect = false; solanaState.connected = true; rerender(); },
+    solanaConnected: () => solanaState.connected,
+  };
+}
+
+const evmWallet = (uuid: string, name: string, rdns: string, p: Wallet): EvmWallet =>
+  ({ info: { uuid, name, rdns, icon: null }, provider: p as never });
+
+describe("A2 adversary: a Solana pick closed, then the modal reopened and an EVM wallet picked", () => {
+  it("the late Solana approval is dropped: Close abandoned it and the latest intent was the EVM wallet", async () => {
+    const b = new Wallet(A_B);
+    const m = await mount([evmWallet("uuid-b", "Rabby", "io.rabby", b)]);
+
+    m.ui().openConnect();
+    m.ui().pick("Phantom"); // click the Phantom row: Phantom's prompt opens
+    await settle();
+    assert.equal(m.ui().stage, "connecting");
+    m.ui().close(); // Close, shown while waiting: the modal closes
+    assert.equal(m.ui().stage, "closed");
+    m.ui().openConnect(); // "Connect wallet" again: the only way back to the list after Close
+    assert.equal(m.ui().stage, "list");
+    m.ui().pickEvm("uuid-b"); // the person now picks Rabby: Rabby's prompt opens
+    await settle();
+    assert.equal(m.ui().stage, "connecting");
+
+    m.solanaApproves(); // Phantom's old, closed prompt is approved afterwards
+    await settle();
+    await settle();
+
+    assert.equal(
+      m.solanaConnected(), false,
+      `Phantom was closed and Rabby picked after it, yet Phantom is now connected; ` +
+      `modal stage is "${m.ui().stage}" while Rabby's prompt is still open (Rabby asked: ${b.calls.join(", ")})`,
+    );
+  }).timeout(20000); // the first mount compiles wallet.tsx cold
+});
+
+describe("A2 adversary (second, lesser): a Robinhood circle's page reached through a percent-encoded path", () => {
+  it("sideOf agrees with app/src/app/circle/[id]/page.tsx, which decodes the id before testing for rh:", async () => {
+    const { sideOf } = await import("../app/src/lib/chains.ts");
+    // usePathname returns url.pathname undecoded (next/dist/client/components/app-router.js, `url.pathname`); the
+    // page runs decodeURIComponent on the id, so these render RobinhoodCircle.
+    for (const p of ["/circle/%72h:0xB1eDe3F5AC8654124Cb5124aDf0Fd3885CbDD1F7", "/circle/r%68%3A0xB1eDe3F5AC8654124Cb5124aDf0Fd3885CbDD1F7"]) {
+      const id = decodeURIComponent(p.slice("/circle/".length));
+      assert.ok(id.startsWith("rh:"), `the page renders RobinhoodCircle for ${p}`);
+      assert.equal(sideOf(p), "robinhood", `${p}: the page is a Robinhood circle, but the switch and the top-bar wallet follow the Solana side`);
+    }
+  });
+});
+
+describe("A2 adversary: control, the EVM mirror of the same clicks", () => {
+  it("Rabby picked, Close, reopen, Rabby approves late: dropped (passes today)", async () => {
+    const b = new Wallet(A_B);
+    const m = await mount([evmWallet("uuid-b", "Rabby", "io.rabby", b)]);
+    m.ui().openConnect();
+    m.ui().pickEvm("uuid-b");
+    await settle();
+    m.ui().close();
+    m.ui().openConnect();
+    b.approveInWallet();
+    await settle();
+    await settle();
+    assert.equal(m.session.getSnapshot().chosen, null);
+    assert.equal(m.ui().stage, "list");
+  });
+});

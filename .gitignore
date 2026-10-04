@@ -26,3 +26,12 @@ app/node_modules/
 app/next-env.d.ts
 
 app/tsconfig.tsbuildinfo
+
+# foundry (evm/)
+evm/cache/
+evm/broadcast/*/31337/
+__pycache__/
+
+# vercel project link and build output (never committed)
+app/.vercel/
+.vercel/

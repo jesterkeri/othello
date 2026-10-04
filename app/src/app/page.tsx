@@ -1,20 +1,12 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 import Landing from "@/components/landing/Landing";
+import { useActiveSide } from "@/lib/active-side";
 import { useWalletUi } from "@/lib/wallet";
 
+/** The home page: neutral with no wallet; with one, it leads to that wallet's chain (lib/active-side.ts). */
 export default function Page() {
-  const router = useRouter();
   const wallet = useWalletUi();
-
-  return (
-    <Landing
-      onOpenDemo={() => router.push("/circle/demo")}
-      onCreateCircle={() => router.push("/circle/new")}
-      walletConnected={!!wallet.address}
-      onConnectWallet={wallet.openConnect}
-    />
-  );
+  const { side } = useActiveSide();
+  return <Landing side={side} onConnectWallet={wallet.openConnect} />;
 }

@@ -1,0 +1,1 @@
+{"actions":{"activate":[],"addStock":["amount"],"cancelCircle":[],"contribute":[],"declareDefault":["turn"],"joinAndLock":["amount"],"leaveForming":[],"markDelinquent":["round","turn"],"quote":["amount"],"releasePot":[],"updateCoverage":[],"withdraw":[]},"model":"CommonModel","profile":"common-v1"}

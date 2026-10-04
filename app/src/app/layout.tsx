@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 
 import { WalletModal } from "@/components/othello/WalletConnect";
+import { EvmWalletProvider } from "@/lib/robinhood/wallet";
 import { PALETTES, themeVars } from "@/lib/theme";
 import { WalletProviders } from "@/lib/wallet";
 
@@ -51,12 +52,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <style dangerouslySetInnerHTML={{ __html: `:root{${baseVars}}` }} />
       </head>
       <body>
-        {/* One wallet and one connect modal for every page, so connecting on
-            Landing is still connected on Create. */}
-        <WalletProviders>
-          {children}
-          <WalletModal />
-        </WalletProviders>
+        {/* One wallet of each kind and one connect modal for every page, so
+            connecting on Landing is still connected on Create. The EVM session
+            (Robinhood Chain) sits outside because the modal lists its wallets. */}
+        <EvmWalletProvider>
+          <WalletProviders>
+            {children}
+            <WalletModal />
+          </WalletProviders>
+        </EvmWalletProvider>
       </body>
     </html>
   );
