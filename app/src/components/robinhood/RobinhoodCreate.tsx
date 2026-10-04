@@ -298,7 +298,7 @@ export default function RobinhoodCreate() {
             <Setting id={`${id}-cover`} label="Minimum locked cover" unit="USDG" value={minCover} onChange={setMinCover} />
             <Setting id={`${id}-haircut`} label="Haircut" unit="%" value={haircut} onChange={setHaircut} />
             <Setting id={`${id}-coverage`} label="Coverage target" unit="%" value={coverage} onChange={setCoverage} />
-            <div className={s.field}><div className={s.fieldRow}><span className={s.no}>07</span><span className={s.fieldLabel}><span>Payment warning</span><small>fixed by contract</small></span><span className={s.valuePill}><input value="100" readOnly aria-label="Payment warning fixed at 100 percent" /><span>%</span></span></div></div>
+            <div className={s.field}><div className={`${s.fieldRow} ${s.fieldRowNumbered}`}><span className={s.no}>07</span><span className={s.fieldLabel}><span>Payment warning</span><small>fixed by contract</small></span><span className={s.valuePill}><input value="100" readOnly aria-label="Payment warning fixed at 100 percent" /><span>%</span></span></div></div>
           </div>
         </section>
       </main>

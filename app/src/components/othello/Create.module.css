@@ -110,11 +110,12 @@
 .matrix .lit { background: var(--line); }
 .field { display: flex; flex-direction: column; gap: 6px; padding: 7px 2px 7px 4px; border-bottom: 3px dotted var(--line); }
 .field:last-child { border-bottom: 0; }
-.fieldRow { display: grid; grid-template-columns: 20px minmax(0, 1fr) 108px; align-items: center; gap: 10px; }
+.fieldRow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(128px, 180px); align-items: center; gap: 12px; }
+.fieldRowNumbered { grid-template-columns: 20px minmax(0, 1fr) minmax(128px, 180px); }
 .no { font-size: 10.5px; font-weight: 800; color: var(--sheetMuted); font-variant-numeric: tabular-nums; }
 .fieldLabel { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
 .fieldLabel small { font-size: 11px; font-weight: 600; color: var(--sheetMuted); font-variant-numeric: tabular-nums; }
-.valuePill { display: flex; align-items: baseline; gap: 5px; border: 3px solid var(--line); border-radius: 999px; background: #FFFFFF; padding: 6px 13px 6px 12px; transition: background .15s; }
+.valuePill { display: flex; align-items: baseline; gap: 5px; min-width: 0; width: 100%; box-sizing: border-box; border: 3px solid var(--line); border-radius: 999px; background: #FFFFFF; padding: 6px 13px 6px 12px; transition: background .15s; }
 .valueBad { border-style: dashed; background: #F6E3EA; }
 .valuePill input { flex: 1 1 auto; min-width: 0; width: 100%; border: 0; background: transparent; color: #0B0B0B; font-family: var(--font-archivo, Archivo), sans-serif; font-style: italic; font-stretch: 72%; font-weight: 900; font-size: 22px; line-height: 1; outline: none; padding: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .valuePill span { flex: 0 0 30px; font-size: 9.5px; font-weight: 800; letter-spacing: .06em; }
