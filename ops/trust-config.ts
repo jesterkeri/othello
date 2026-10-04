@@ -642,14 +642,19 @@ export function writeRecord(
   writeFileSync(fileList, dg.lines.join("\n") + "\n");
 }
 
-/** The testnet Stock Tokens the Assets page reads (app/src/lib/robinhood/testnet-stocks.ts) are exactly the pinned set. */
+/** A Stock Token page entry must keep its ticker paired with its reviewed testnet contract. */
+export function testnetStockPinsMatch(entries: readonly { symbol: string; address: string }[] | undefined): string[] {
+  const got = (entries ?? []).map((t) => `${t.symbol}=${t.address.toLowerCase()}`).sort();
+  const want = Object.entries(TESTNET_STOCK_PINS).map(([sym, a]) => `${sym}=${a.toLowerCase()}`).sort();
+  return JSON.stringify(got) === JSON.stringify(want) ? [] : [`testnet-stocks.ts lists ${got.join(", ") || "nothing"}, not the pinned ${want.join(", ")}`];
+}
+
+/** The testnet Stock Tokens the Assets page reads (app/src/lib/robinhood/testnet-stocks.ts) are exactly the pinned ticker-to-address pairs. */
 export async function testnetStocksMatch(): Promise<string[]> {
   try {
     const mod = (await import(`${pathToFileURL(`${ROOT}app/src/lib/robinhood/testnet-stocks.ts`).href}?t=${Date.now()}`)) as { TESTNET_STOCK_TOKENS?: { symbol: string; address: string }[] };
     // each ticker on its pinned contract, not only the same set of addresses (adversary pass on 0816b86: swapped labels)
-    const got = (mod.TESTNET_STOCK_TOKENS ?? []).map((t) => `${t.symbol}=${t.address.toLowerCase()}`).sort();
-    const want = Object.entries(TESTNET_STOCK_PINS).map(([sym, a]) => `${sym}=${a.toLowerCase()}`).sort();
-    return JSON.stringify(got) === JSON.stringify(want) ? [] : [`testnet-stocks.ts lists ${got.join(", ") || "nothing"}, not the pinned ${want.join(", ")}`];
+    return testnetStockPinsMatch(mod.TESTNET_STOCK_TOKENS);
   } catch (e) {
     return [`testnet-stocks.ts could not be loaded: ${e instanceof Error ? e.message : e}`];
   }

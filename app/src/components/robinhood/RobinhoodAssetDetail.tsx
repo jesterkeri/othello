@@ -77,30 +77,42 @@ export default function RobinhoodAssetDetail({ symbol }: { symbol: string }) {
           </div>
         </section>
 
-        <div className={s.detailGrid}>
-          <section className={d.card} aria-label="Your wallet">
-            <span className={d.cardKicker}>Your wallet</span>
-            <span className={s.big}>
+        <div className={d.bento}>
+          <section className={`${d.card} ${d.chartArea} ${s.readCard}`} aria-label="Testnet balance and supply">
+            <span className={d.cardKicker}>Read on Robinhood Chain testnet</span>
+            <span className={s.reading}>
               {!w.address ? "Connect a wallet" : balance === null ? "Reading…" : balance === "failed" ? "Unavailable" : `${fmt(balance)} ${t.symbol}`}
             </span>
-            <span className={s.footnote}>Read from Robinhood Chain testnet. A test token; it has no value.</span>
+            <span className={s.readingNote}>Your wallet balance. This test token has no value.</span>
+            <div className={d.stats}>
+              <span><small>Total supply</small><b>{supply === null ? "Reading…" : supply === "failed" ? "Unavailable" : `${fmt(supply)} ${t.symbol}`}</b></span>
+              <span><small>Decimals</small><b>{TESTNET_STOCK_DECIMALS}</b></span>
+              <span><small>Price</small><b>Not shown on testnet</b></span>
+              <span><small>Network</small><b>Robinhood Chain testnet</b></span>
+            </div>
           </section>
-          <section className={d.card} aria-label="On testnet">
-            <span className={d.cardKicker}>On testnet</span>
-            <span className={s.big}>{supply === null ? "Reading…" : supply === "failed" ? "Unavailable" : `${fmt(supply)} ${t.symbol}`}</span>
-            <span className={s.footnote}>Total supply on testnet. An ERC-20 with {TESTNET_STOCK_DECIMALS} decimals; no price on testnet.</span>
-          </section>
-          <section className={d.card} aria-label="Get it">
-            <span className={d.cardKicker}>Get it</span>
-            <span className={s.big}>Testnet faucet</span>
-            <span className={s.footnote}>
-              Robinhood&apos;s <a href={TESTNET_FAUCET} target="_blank" rel="noreferrer">testnet faucet</a> sends 0.01 test ETH and five of each Stock Token, once every 24 hours.
+
+          <section className={`${d.card} ${d.buyArea} ${d.buyCard}`} aria-label={`Get ${t.symbol}`}>
+            <span className={d.buyHead}>
+              <b>Get {t.symbol}</b>
+              <span className={d.realMoney}>Test tokens</span>
             </span>
+            <span className={s.faucetCopy}>Robinhood&apos;s faucet sends 0.01 test ETH and five of each Stock Token, once every 24 hours.</span>
+            <a className={d.btnInk} href={TESTNET_FAUCET} target="_blank" rel="noreferrer">Open testnet faucet ↗</a>
           </section>
-          <section className={d.card} aria-label="In Othello">
-            <span className={d.cardKicker}>In Othello</span>
-            <span className={s.big}>Not used by circles yet</span>
-            <span className={s.footnote}>Othello&apos;s testnet circles are paid and locked in test USDG. Nothing here is advice.</span>
+
+          <section className={`${d.card} ${d.multArea}`} style={{ background: `var(--${slot})`, color: `var(--${slot}Ink)` }} aria-label="In Othello">
+            <span className={d.outlined}>In Othello</span>
+            <b className={d.multBig}>USDG</b>
+            <span className={d.dotted} />
+            <span className={d.changeLine}><b>Not used by circles yet</b></span>
+            <p className={d.multNote}>Othello&apos;s testnet circles are paid and locked in test USDG. Nothing here is advice.</p>
+          </section>
+
+          <section className={`${d.ident} ${d.identArea}`} aria-label="Token identity">
+            <span className={d.identItem}><small>Contract</small><a className={d.addr} href={explorerAddress(t.address)} target="_blank" rel="noreferrer">{t.address}</a></span>
+            <span className={d.identItem}><small>Token</small><span>Robinhood test Stock Token</span></span>
+            <span className={d.identItem}><small>Status</small><span>On testnet, read only</span></span>
           </section>
         </div>
       </main>

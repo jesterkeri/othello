@@ -9,7 +9,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { REPO } from "./artifacts.ts";
-import { BUNDLE_ADDRESS_ALLOWLIST, TESTNET_STOCK_TOKENS as PINNED, USDG, testnetStocksMatch } from "../ops/trust-config.ts";
+import { BUNDLE_ADDRESS_ALLOWLIST, TESTNET_STOCK_TOKENS as PINNED, USDG, testnetStockPinsMatch, testnetStocksMatch } from "../ops/trust-config.ts";
 import { STOCK_TOKENS } from "../app/src/lib/robinhood/stock-tokens.ts";
 import { TESTNET_FAUCET, TESTNET_STOCK_DECIMALS, TESTNET_STOCK_TOKENS } from "../app/src/lib/robinhood/testnet-stocks.ts";
 
@@ -17,6 +17,14 @@ describe("A3: Robinhood Stock Tokens on testnet", () => {
   it("the page's list is the gate's pinned set, and the gate check passes", async () => {
     assert.deepEqual(TESTNET_STOCK_TOKENS.map((t) => t.address.toLowerCase()).sort(), PINNED.map((a) => a.toLowerCase()).sort());
     assert.deepEqual(await testnetStocksMatch(), []);
+  });
+
+  it("fails when two tickers keep the set but swap their contracts", () => {
+    const swapped = TESTNET_STOCK_TOKENS.map((t) => ({ ...t }));
+    [swapped[0]!.address, swapped[1]!.address] = [swapped[1]!.address, swapped[0]!.address];
+    const errors = testnetStockPinsMatch(swapped).join("\n");
+    assert.match(errors, /AMZN=0xc9f9c86933092bbbfFF3CCb4b105A4A94bf3Bd4E/i);
+    assert.match(errors, /TSLA=0x5884ad2f920c162cfbbacc88c9c51aa75ec09e02/i);
   });
 
   it("the bundle allowlist is USDG, the two placeholders and the five tokens, nothing else", () => {
