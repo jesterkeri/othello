@@ -90,6 +90,7 @@ function Banner({
 
 export default function Circle({ circle, startNow, stateKey, live }: CircleProps) {
   const USDC_SUFFIX = live ? live.usdcWord : "USDC";
+  const [linkCopy, setLinkCopy] = useState<"idle" | "copied" | "failed">("idle");
   // Starts at the fixture's own moment so the server and the first client paint
   // agree, then ticks, which is what carries a round from open to overdue to
   // grace without anyone reloading.
@@ -142,6 +143,14 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
   // What each member locked, in the words it must always carry: the demo's stock is a labelled mirror.
   // The live read names it "NFLXx mirror"; say which network it is a mirror on, once.
   const stockUnit = live ? `${c.stockSymbol.replace(/\s*mirror$/i, "")} devnet mirror` : c.stockSymbol;
+  const copyCircleLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopy("copied");
+    } catch {
+      setLinkCopy("failed");
+    }
+  };
 
   return (
     <Shell active="Circles">
@@ -300,6 +309,15 @@ export default function Circle({ circle, startNow, stateKey, live }: CircleProps
           )}
           </div>
           <div className={s.act}>
+            <div className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>Share this circle</span>
+                <span className={s.actFixture}>Copy the permanent circle link to share its live state. A joinable invite is available only while a circle is forming.</span>
+              </span>
+              <button type="button" className={s.pay} onClick={() => void copyCircleLink()}>Copy circle link</button>
+              {linkCopy === "copied" && <span className={s.actFixture}>Circle link copied.</span>}
+              {linkCopy === "failed" && <span className={s.actFixture}>Copy was blocked. Copy this page&apos;s address from your browser instead.</span>}
+            </div>
             {live ? (
               live.action
             ) : (
