@@ -1,47 +1,82 @@
 # Othello
 
-**A savings circle (ajo, esusu, tontine) where every member locks real tokenized stock as collateral, so the pot keeps paying out even when someone stops.**
+Othello is a wallet-native savings circle: members contribute in turn, while the circle records who has paid and what is locked. This repository contains two distinct ecosystem builds:
 
-Friends pay in every round and take the whole pot once, in turn. The one failure mode is the member who takes the pot and then stops paying. In Othello, each member locks an xStock (tokenized shares on Solana) before the circle starts. If someone who already took the pot misses a payment, anyone can declare the default after the grace period: enough of their locked stock is sold to a liquidation pool to cover what they still owe, and a shared reserve covers any shortfall. The stock stays the member's own and comes back when the circle ends.
+- **Robinhood Chain:** the current testnet release, with test USDG circles and read-only Robinhood testnet Stock Token pages.
+- **Solana / Stocklana:** the original Anchor implementation, devnet circle demonstration, and read-only mainnet xStock experience.
 
-- **Live demo:** https://othello-circle.vercel.app
-- **Built for:** Stocklana (Solana), September 2026
+They share the Othello product idea, but they do not share assets, networks, or transaction paths. Testnet tokens are never presented as having value.
 
-## Try it
+## Live builds
 
-| What | Where | Network |
+| Build | Link | Network and scope |
 |---|---|---|
-| The live demo circle: five members, stakes, reserve, turn order | Circles | Solana devnet (test USDC, a labelled NFLXx devnet mirror) |
-| Release a pot, update coverage, declare a default, from any devnet wallet, when the circle allows it | Circles | devnet (free devnet SOL: faucet.solana.com) |
-| What a 10-for-1 split does to locked stock | How it works → Split lab | in the browser |
-| 22 buyable xStocks, live prices, charts, the multiplier, the issuer's powers decoded from each mint | Assets | Solana mainnet, read only |
-| **Buy a real xStock**, in the app, through Jupiter, signed in your own wallet | Assets → any stock | **Solana mainnet, real funds** (from 0.10 USDC plus ~0.005 SOL for fees) |
-| Your mainnet total, wallet USDC and SOL, xStocks, circle seat, devnet funds kept apart | Portfolio | mainnet + devnet |
+| Robinhood Chain | https://othello-chains.vercel.app/robinhood | Robinhood Chain testnet (`46630`); circles use test USDG. |
+| Solana / Stocklana | https://othello-circle.vercel.app | Solana devnet circle demonstration and read-only Solana mainnet xStock views. |
 
-Every button that sends a transaction is enabled only when the program would accept it, and says why otherwise. The demo circle's other members are run by us; the demo video shows a full round.
+## Live Robinhood Chain build
 
-## Why xStocks and Solana
+- **Judges' link:** https://othello-chains.vercel.app/robinhood
+- **Network:** Robinhood Chain testnet, chain ID `46630`
+- **Reviewed release commit:** `84ac22b045efa315b46bdc77c2fe3d964b3b621f`
+- **Factory:** [`0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5`](https://explorer.testnet.chain.robinhood.com/address/0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5), deployed and source-verified on the testnet explorer
+- **Circle asset:** test USDG. It is a test token with no value.
 
-xStocks change a token's multiplier for splits and dividends. A vault that reads the displayed balance would see a 10-for-1 split as a 90% loss and liquidate everyone. The Anchor program reads the Token-2022 Scaled UI multiplier from the mint, bit for bit, and values locked stock as raw × multiplier × price, so a split can neither inflate nor erase anyone's cover.
+Start at `/robinhood`. The page opens directly to Robinhood Chain wallets, while the top bar keeps the selected EVM wallet and network aligned with every write. A person must click before the app requests accounts or a chain switch.
 
-## How it is built
+## What to try
 
-- `programs/othello/`: the Anchor program (circles, join and lock, contribute, release, update coverage, default and liquidation, top up, withdraw). Deployed on devnet at `DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT`.
-- `app/`: Next.js. Reads the demo circle from devnet and the real xStocks from mainnet through server routes; the RPC URLs stay on the server.
-- Buy: the server has Jupiter build the swap for the buyer and checks it (paid and owned by the buyer, the listed stock, bounded fees) before the buyer signs it in their own wallet; the server relays only that swap. Othello never holds a key or funds.
-- `tests/`: 50 spec files, run against the program in a local bankrun and against recorded mainnet data.
-- `SPEC.md` is the design; `TASKS.md` the work list; `reviews/` the review record.
+| What | Where | Notes |
+|---|---|---|
+| Connect an EVM wallet | `/robinhood` | Robinhood Chain testnet only; no transaction is sent by connecting. |
+| View the circle asset | `/robinhood/assets` | Shows a connected wallet's test USDG balance. |
+| View faucet Stock Tokens | `/robinhood/assets/TSLA` and the other listed pages | TSLA, AMZN, PLTR, NFLX and AMD are Robinhood testnet ERC-20s. The pages are read only and show no price. |
+| Get test assets | [Robinhood testnet faucet](https://faucet.testnet.chain.robinhood.com/) | The faucet supplies test ETH and five of each listed Stock Token. |
+| Create and use a circle | `/robinhood` | Testnet circles are paid and locked in test USDG, not Stock Tokens. Every write requires an explicit wallet confirmation. |
 
-Run locally: `pnpm -C app install --frozen-lockfile && pnpm -C app dev`.
+The Assets page intentionally distinguishes the five faucet tokens from the wider Robinhood Stock Token registry: the other registry entries need mainnet and are not offered as testnet assets.
+
+## Security and scope
+
+- Othello does not ask for a recovery phrase, private key, or wallet password.
+- The frontend has no transfer or approval path for the five Stock Tokens. It reads their public balances and supply only.
+- The factory and test USDG are pinned by the release gate. The gate also pins each testnet ticker to its exact reviewed contract, so a swapped label and address fails the build.
+- The release builds from a fresh clone, scans the browser bundle, and accepts only the reviewed factory, USDG, and five read-only Stock Token addresses.
+- This is a testnet demonstration. No price, return, or investment advice is provided, and test assets have no value.
+
+## Repository map
+
+- `evm/src/`: `OthelloFactory` and `OthelloCircle` contracts.
+- `evm/script/`: factory deployment and demonstration scripts.
+- `evm/test/` and `core/`: contract tests, invariants, the reference model, and replay vectors.
+- `app/`: Next.js application, Robinhood adapter, EIP-6963 wallet selection, and the neutral/chain-aware UI.
+- `ops/`: reviewed release gate and production-release tooling.
+- `tests/`: 159 TypeScript specs, including wallet state, release, bundle, and adversarial regression tests.
+
+Run locally:
+
+```bash
+corepack pnpm install --frozen-lockfile
+corepack pnpm -C app install --frozen-lockfile
+corepack pnpm -C app dev
+```
+
+For the EVM suite, run `cd evm && forge test`. The full CI workflow also builds the app, checks the release gate against Robinhood testnet, and runs a read-only USDG fork suite.
+
+## Solana / Stocklana build
+
+The Solana implementation remains part of this repository and is separately usable from the Robinhood Chain testnet release.
+
+- `programs/othello/`: the Anchor program for circles, joining and locking, contributions, release, coverage updates, defaults, liquidation, top-ups, and withdrawals. The devnet program is deployed at `DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT`.
+- The Solana demo circle uses devnet assets. Its mainnet Assets pages are read-only xStock views; any mainnet wallet transaction requires the wallet holder's explicit confirmation.
+- xStocks use a scaled UI multiplier for splits and dividends. The Anchor program accounts for that multiplier rather than treating a split as a loss of collateral.
+- Solana devnet keys, when used by local demo tooling, live outside the repository; no credential file is tracked.
+
+The Solana and Robinhood pages keep their network-specific assets and language separate, so a connected wallet is not asked to use an asset from the other chain.
 
 ## Honest limits
 
-- The circle runs on devnet with test USDC and a labelled mirror of NFLXx. Creating your own circle is not in this demo yet: new members would need mirror stock, and a devnet faucet comes next.
-- A member who stops paying before their turn can stall the circle. The stock's issuer can freeze, pause or move its tokens (each stock page shows those powers).
-- Nothing runs by itself: every step happens when someone sends the transaction.
-- Buy's security boundary: the buyer's wallet is the authorisation. The wallet shows the transaction (and its balance changes) before signing, and nothing moves without that signature. Othello's server builds only the requested, quoted purchase, checks every account and amount it can see, seals it, and relays only that sealed transaction. It does not defend against a compromised browser or wallet, which could bypass Othello entirely; and it does not decode Jupiter's individual route steps, only the route's accounts, amounts, slippage and fee.
-- Othello pays no APR. Members get the pot interest-free, and their stock keeps its own returns. The planned business model, not in this version, is a 0.5% fee on each pot.
-
-## Built with (open source)
-
-Anchor, Next.js, @solana/web3.js and wallet-adapter, Token-2022 Scaled UI Amount, Jupiter (quotes and swaps), GeckoTerminal (price history), recharts.
+- The Robinhood release is testnet only.
+- Circles currently use test USDG. The listed testnet Stock Tokens are visible assets, not circle collateral or payment assets.
+- A connected wallet and its provider remain the authority for every transaction. Othello cannot protect a compromised browser, extension, or wallet.
+- Dependency advisories are tracked separately and require a reviewed package-upgrade pass; no dependency update is included in this release.
