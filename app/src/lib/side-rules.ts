@@ -7,6 +7,7 @@ import type { ChainSide } from "./chains";
 import { CIRCLE_STATES } from "../fixtures/circles";
 import { sideOf } from "./chains";
 import { hrefFor } from "./nav";
+import { TESTNET_STOCK_TOKENS } from "./robinhood/testnet-stocks";
 import { TRADABLE_XSTOCKS } from "./xstocks";
 
 export type Connected = { solana: boolean; robinhood: boolean };
@@ -48,6 +49,7 @@ export function labelOf(pathname: string): GatedLabel {
 const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/assets"]);
 const SOLANA_ROUTES = new Set(["/portfolio", "/split-lab", "/circle/new", "/assets"]);
 const XSTOCK_SYMBOLS = new Set(TRADABLE_XSTOCKS.map((x) => x.symbol));
+const RH_STOCK_SYMBOLS = new Set<string>(TESTNET_STOCK_TOKENS.map((t) => t.symbol));
 const decodeOnce = (s: string): string | null => { try { return decodeURIComponent(s); } catch { return null; } };
 
 /**
@@ -63,6 +65,10 @@ export function pageNetwork(pathname: string | null | undefined): "robinhood" | 
   if (SOLANA_ROUTES.has(p)) return "solana";
   const asset = /^\/assets\/([^/]+)$/.exec(p);
   if (asset) return XSTOCK_SYMBOLS.has(decodeOnce(asset[1]!) ?? "") ? "solana" : null;
+  // a testnet Stock Token's own page (app/robinhood/assets/[symbol]: the five only, anything else is the 404; adversary
+  // pass on 0816b86)
+  const rhAsset = /^\/robinhood\/assets\/([^/]+)$/.exec(p);
+  if (rhAsset) return RH_STOCK_SYMBOLS.has(decodeOnce(rhAsset[1]!) ?? "") ? "robinhood" : null;
   const circle = /^\/circle\/([^/]+)(?:\/(join|position)\/([^/]+))?$/.exec(p);
   if (circle) {
     if (!circle[2] && sideOf(p) === "robinhood") return "robinhood";
