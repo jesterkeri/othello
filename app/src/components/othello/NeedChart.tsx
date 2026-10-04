@@ -4,12 +4,12 @@
 import { Bar, BarChart, Cell, LabelList, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 export type NeedDatum = { r: string; need: number; label: string; over: boolean; peak: boolean };
-type Props = { data: NeedDatum[]; reserve: number; reserveLabel: string; top: number; refusal: boolean };
+type Props = { data: NeedDatum[]; reserve: number; reserveLabel: string; top: number; refusal: boolean; unit?: string };
 
 const INK = '#0B0B0B';
 const FONT = "var(--font-jakarta, 'Plus Jakarta Sans'), sans-serif";
 
-export default function NeedChart({ data, reserve, reserveLabel, top, refusal }: Props) {
+export default function NeedChart({ data, reserve, reserveLabel, top, refusal, unit = "USDC" }: Props) {
   const lineC = refusal ? 'var(--clay)' : INK;
 
   const Value = ({ x = 0, y = 0, width = 0, height = 0, value, index = 0 }: { x?: number; y?: number; width?: number; height?: number; value?: string; index?: number }) => {
@@ -33,7 +33,7 @@ export default function NeedChart({ data, reserve, reserveLabel, top, refusal }:
   const Tip = ({ active, payload }: { active?: boolean; payload?: { payload: NeedDatum }[] }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0]!.payload;
-    return <div style={{ border: `2px solid ${INK}`, borderRadius: 12, background: '#fff', color: INK, padding: '6px 10px', font: `700 12px ${FONT}` }}>Round {d.r.slice(1)} · {d.label} USDC</div>;
+    return <div style={{ border: `2px solid ${INK}`, borderRadius: 12, background: '#fff', color: INK, padding: '6px 10px', font: `700 12px ${FONT}` }}>Round {d.r.slice(1)} · {d.label} {unit}</div>;
   };
 
   return (

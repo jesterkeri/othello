@@ -1,7 +1,7 @@
 /**
  * Adversary pass on 6c78baa. Spec: every sentence the gate shows is true in every state it can be shown in (each
  * gated kind, including Portfolio) and names only what the visitor can reach. Robinhood Chain has no portfolio page:
- * lib/nav.ts sends Portfolio on the robinhood side to "/robinhood", which lib/side-rules.ts labelOf calls "Circles".
+ * lib/nav.ts sends Portfolio on the robinhood side to its own /robinhood/portfolio route, which must be a real EVM page.
  * The no-wallet gate on /portfolio still says "Connect a wallet to see your portfolio." next to "An EVM wallet such as
  * MetaMask opens Robinhood Chain testnet", so a person who connects MetaMask is promised a portfolio and gets the
  * circles home: the split lab defect fixed on 6c78baa, left in place for Portfolio.
@@ -67,15 +67,15 @@ function render(node: unknown): string {
 describe("A2 adversary on 6c78baa: the no-wallet portfolio gate promises only what an EVM wallet can open", function () {
   this.timeout(60_000);
 
-  it("does not promise a portfolio that connecting MetaMask never shows", async () => {
+  it("sends an EVM wallet to the Robinhood portfolio it promises", async () => {
     const React = appRequire("react") as { createElement: (...a: unknown[]) => unknown };
     g.React = React;
     g.__sl = { path: "/portfolio", active: [] };
     const { gateDecision, labelOf } = await import(pathToFileURL(resolve(SRC, "lib/side-rules.ts")).href);
-    // not vacuous: no wallet gives the gate, and an EVM wallet afterwards lands on the Robinhood circles home
+    // not vacuous: no wallet gives the gate, and an EVM wallet afterwards lands on the Robinhood portfolio.
     assert.deepEqual(gateDecision("solana", labelOf("/portfolio"), { solana: false, robinhood: false }), { show: "connect" });
-    assert.deepEqual(gateDecision("solana", labelOf("/portfolio"), { solana: false, robinhood: true }), { show: "redirect", to: "/robinhood" });
-    assert.equal(labelOf("/robinhood"), "Circles");
+    assert.deepEqual(gateDecision("solana", labelOf("/portfolio"), { solana: false, robinhood: true }), { show: "redirect", to: "/robinhood/portfolio" });
+    assert.equal(labelOf("/robinhood/portfolio"), "Portfolio");
 
     const { RouteGate } = await import(pathToFileURL(resolve(SRC, "components/othello/SideGate.tsx")).href);
     const text = render(React.createElement(RouteGate, { children: "PAGE_BODY" }));

@@ -36,7 +36,7 @@ export function gateDecision(page: ChainSide, label: GatedLabel, connected: Conn
 /** The menu label a gated route belongs to. */
 export function labelOf(pathname: string): GatedLabel {
   if (pathname === "/assets" || pathname.startsWith("/assets/") || pathname === "/robinhood/assets" || pathname.startsWith("/robinhood/assets/")) return "Assets";
-  if (pathname === "/portfolio" || pathname.startsWith("/portfolio/")) return "Portfolio";
+  if (pathname === "/portfolio" || pathname.startsWith("/portfolio/") || pathname === "/robinhood/portfolio") return "Portfolio";
   // each side's page to start a circle: sent to the other side's create page, not its circles home (adversary on 1ea71fe)
   if (pathname === "/circle/new" || pathname === "/robinhood/new") return "Create";
   // the Solana split lab sits under How it works in the menu; it has no Robinhood Chain equivalent, so an EVM-only
@@ -46,7 +46,7 @@ export function labelOf(pathname: string): GatedLabel {
 }
 
 /** The routes that exist on each chain (app/src/app): anything else is the 404, which is neutral. */
-const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/assets"]);
+const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/portfolio", "/robinhood/assets"]);
 const SOLANA_ROUTES = new Set(["/portfolio", "/split-lab", "/circle/new", "/assets"]);
 const XSTOCK_SYMBOLS = new Set(TRADABLE_XSTOCKS.map((x) => x.symbol));
 const RH_STOCK_SYMBOLS = new Set<string>(TESTNET_STOCK_TOKENS.map((t) => t.symbol));

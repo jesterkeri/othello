@@ -55,7 +55,7 @@ describe("neutral site: the connected wallet decides the side", () => {
     assert.deepEqual(gateDecision("solana", "Assets", sol), { show: "page" });
     assert.deepEqual(gateDecision("solana", "Assets", both), { show: "page" });
     assert.deepEqual(gateDecision("solana", "Assets", evm), { show: "redirect", to: "/robinhood/assets" });
-    assert.deepEqual(gateDecision("solana", "Portfolio", evm), { show: "redirect", to: "/robinhood" });
+    assert.deepEqual(gateDecision("solana", "Portfolio", evm), { show: "redirect", to: "/robinhood/portfolio" });
     assert.deepEqual(gateDecision("solana", "Circles", evm), { show: "redirect", to: "/robinhood" });
     assert.deepEqual(gateDecision("robinhood", "Circles", sol), { show: "redirect", to: "/circle/demo" });
     assert.deepEqual(gateDecision("robinhood", "Assets", sol), { show: "redirect", to: "/assets" });
@@ -67,6 +67,7 @@ describe("neutral site: the connected wallet decides the side", () => {
     assert.equal(labelOf("/assets"), "Assets");
     assert.equal(labelOf("/assets/TSLAx"), "Assets");
     assert.equal(labelOf("/robinhood/assets"), "Assets");
+    assert.equal(labelOf("/robinhood/portfolio"), "Portfolio");
     assert.equal(labelOf("/portfolio"), "Portfolio");
     assert.equal(labelOf("/robinhood"), "Circles");
     assert.equal(labelOf("/circle/demo"), "Circles");
@@ -95,7 +96,7 @@ describe("neutral site: the connected wallet decides the side", () => {
   });
 
   it("the connect window opens at a chain page's network and asks for the network on neutral pages (Joshua, 2026-10-03)", () => {
-    for (const p of ["/robinhood", "/robinhood/new", "/robinhood/assets", "/circle/rh:0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5",
+    for (const p of ["/robinhood", "/robinhood/new", "/robinhood/portfolio", "/robinhood/assets", "/circle/rh:0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5",
       "/circle/rh%3A0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5"]) {
       assert.equal(pageNetwork(p), "robinhood", p);
     }
@@ -108,4 +109,3 @@ describe("neutral site: the connected wallet decides the side", () => {
     }
   });
 });
-
