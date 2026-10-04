@@ -67,6 +67,9 @@ For the EVM suite, run `cd evm && forge test`. The full CI workflow also builds 
 
 The Solana implementation remains part of this repository and is separately usable from the Robinhood Chain testnet release.
 
+- **Circle demo network:** Solana devnet, using demonstration assets.
+- **Asset-view network:** Solana mainnet, read only for xStock discovery and market data.
+
 - `programs/othello/`: the Anchor program for circles, joining and locking, contributions, release, coverage updates, defaults, liquidation, top-ups, and withdrawals. The devnet program is deployed at `DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT`.
 - The Solana demo circle uses devnet assets. Its mainnet Assets pages are read-only xStock views; any mainnet wallet transaction requires the wallet holder's explicit confirmation.
 - xStocks use a scaled UI multiplier for splits and dividends. The Anchor program accounts for that multiplier rather than treating a split as a loss of collateral.
