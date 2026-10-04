@@ -4,3 +4,8 @@
 .footnote { max-width: 76ch; margin: -2px 4px 0; color: var(--panelMuted); font-size: 12.5px; font-weight: 600; line-height: 1.5; }
 .staticRow { grid-template-columns: auto minmax(0, 1fr) auto; cursor: default; }
 .staticTile { cursor: default; }
+/* The testnet Stock Token page: four cards, two across, one on phones */
+.detailGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(10px, 1.2vw, 16px); }
+.detailGrid > section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.big { font-size: clamp(22px, 2.2vw, 30px); font-weight: 800; letter-spacing: -.03em; line-height: 1.05; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .detailGrid { grid-template-columns: minmax(0, 1fr); } }

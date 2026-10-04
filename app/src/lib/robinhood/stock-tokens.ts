@@ -1,13 +1,14 @@
 /**
  * Robinhood Stock Tokens, as Robinhood's public registry lists them: symbol and name only. Snapshot of
  * GET https://api.robinhood.com/rhj/assets (documented at https://docs.robinhood.com/chain/stock-token-apis/), taken
- * 2026-10-03: 194 active assets, every one deployed on Robinhood Chain mainnet (chain id 4663) and none on testnet
- * (46630). Names have Robinhood's " • Robinhood Token" suffix removed.
+ * 2026-10-03: 194 active assets, every one deployed on Robinhood Chain mainnet (chain id 4663). The registry lists no
+ * testnet addresses; five of these tickers also exist on testnet, sent by Robinhood's testnet faucet
+ * (testnet-stocks.ts, checked 2026-10-04). Names have Robinhood's " • Robinhood Token" suffix removed.
  *
  * Deliberately left out: contract addresses (the release gate allows no address in the page but USDG and the trusted
- * factory, ops/trust-config.ts) and prices (Robinhood's terms of service restrict making its services available to
- * third parties). Othello's testnet circles do not use these tokens; the Robinhood assets page lists them as needing
- * mainnet.
+ * factory and the five pinned testnet Stock Tokens, ops/trust-config.ts) and prices (Robinhood's terms of service
+ * restrict making its services available to third parties). The Robinhood assets page lists the ones not on testnet as
+ * needing mainnet.
  */
 export const STOCK_TOKENS_SNAPSHOT = "2026-10-03";
 export const STOCK_TOKENS_SOURCE = "https://docs.robinhood.com/chain/stock-token-apis/";
