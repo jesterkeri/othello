@@ -49,28 +49,37 @@ export function seatList(turns: number[]): string {
   return l.length <= 1 ? (l[0] ?? "") : `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}`;
 }
 
-export function ringOf(v: RhCircleView, me?: string | null): Ring {
+/**
+ * `now` is chain time (the page's chainNow: the last block's time plus the seconds since that read); it defaults to
+ * the read's own chain time. A seat is late once it is unpaid after deadline + grace, recorded or not.
+ */
+export function ringOf(v: RhCircleView, me?: string | null, now: number = v.chainTime): Ring {
   const n = v.n;
   const step = 360 / n;
   const active = v.status === "Active";
   const finished = v.status === "Completed" || v.status === "Cancelled";
   const receiving = active ? v.round : null;
   const pot = BigInt(n) * v.c;
+  const pastGrace = active && now > v.deadline + v.graceSecs;
+  // defaulted seats' payments come from the escrow; it may not yet hold enough (RoundNotFunded)
+  const coverOk = v.escrow >= BigInt(v.seats.filter((x) => x.defaulted && !x.paid).length) * v.c;
   const seats: RingSeat[] = v.seats.map((seat) => {
     const role: SeatRole =
-      v.status === "Forming" ? (seat.joined ? "joined" : "open")
+      v.status === "Forming" || v.status === "Cancelled" ? (seat.joined ? "joined" : "open")
       : seat.received ? "received"
       : active && seat.turn === v.round ? "receiving"
       : "upcoming";
     const payment: SeatPayment = !active ? null
       : seat.paid ? "paid"
       : seat.defaulted ? "covered"
-      : seat.marked ? "late"
+      : seat.marked || pastGrace ? "late"
       : "due";
-    const roleWords = { receiving: "receives this round", received: "has received a pot", upcoming: `receives in round ${seat.turn + 1}`, joined: "joined", open: "not joined yet" }[role];
+    const cancelled = v.status === "Cancelled";
+    const roleWords = { receiving: "receives this round", received: "has received a pot", upcoming: `receives in round ${seat.turn + 1}`,
+      joined: cancelled ? "joined before the circle was cancelled" : "joined", open: cancelled ? "did not join" : "not joined yet" }[role];
     const payWords = payment === null
       ? (finished && (v.status === "Completed" || seat.joined) ? (seat.withdrawn ? ", collected their share" : ", has not collected their share yet") : "")
-      : { paid: ", paid this round", covered: ", settled in default: covered by locked USDG", late: ", late: payment recorded as missed", due: ", payment due this round" }[payment];
+      : { paid: ", paid this round", covered: coverOk ? ", settled in default: covered by locked USDG" : ", settled in default: cover short", late: seat.marked ? ", late: payment recorded as missed" : ", late: unpaid after the grace period", due: ", payment due this round" }[payment];
     return {
       turn: seat.turn,
       label: seatLabel(seat.turn),
@@ -162,11 +171,11 @@ export function releaseSteps(v: RhCircleView, phase: ReleasePhase): FlowStep[] {
 export type CloseOut = {
   title: string;
   body: string;
-  seats: { turn: number; label: string; wallet: string; you: boolean; collected: boolean; owed: boolean }[];
+  seats: { turn: number; label: string; wallet: string; you: boolean; collected: boolean; owed: boolean; amount: bigint }[];
   collected: number;
   owedCount: number;
-  /** The connected member's seat; `exact` is what is certain (the rest of a completed share depends on the reserve). */
-  mine: { turn: number; collected: boolean; owed: boolean; exact: bigint } | null;
+  /** The connected member's seat and exactly what withdraw() pays it: its locked USDG plus its reserve share. */
+  mine: { turn: number; collected: boolean; owed: boolean; locked: bigint; pooled: bigint; total: bigint } | null;
 };
 
 /**
@@ -178,17 +187,23 @@ export type CloseOut = {
 export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null {
   if (v.status !== "Completed" && v.status !== "Cancelled") return null;
   const completed = v.status === "Completed";
+  // withdraw()'s own arithmetic: none of these inputs change once the circle is finished (withdraw moves only
+  // withdrawnFromReserve and collateralReturned), so every seat's amount is exact (CircleMath.pooledShare, floor).
+  const poolLeft = v.reserveTotal - v.reserveLosses + v.escrow;
+  const denom = v.depositsTotal - v.forfeitedTotal;
+  const pays = (seat: RhCircleView["seats"][number]) => {
+    const pooled = !completed ? seat.g + seat.topUps
+      : denom === 0n ? 0n : (poolLeft * (seat.g + seat.topUps - seat.forfeited)) / denom;
+    return { locked: seat.collateral, pooled, total: seat.collateral + pooled };
+  };
   const seats = v.seats.map((seat) => ({
     turn: seat.turn, label: seatLabel(seat.turn), wallet: seat.wallet, you: same(seat.wallet, me),
-    collected: seat.withdrawn, owed: completed || seat.joined,
+    collected: seat.withdrawn, owed: completed || seat.joined, amount: pays(seat).total,
   }));
   const owed = seats.filter((x) => x.owed);
   const collected = owed.filter((x) => x.collected).length;
   const mineSeat = v.seats.find((seat) => same(seat.wallet, me));
-  const mine = mineSeat ? {
-    turn: mineSeat.turn, collected: mineSeat.withdrawn, owed: completed || mineSeat.joined,
-    exact: completed ? mineSeat.collateral : mineSeat.collateral + mineSeat.g + mineSeat.topUps,
-  } : null;
+  const mine = mineSeat ? { turn: mineSeat.turn, collected: mineSeat.withdrawn, owed: completed || mineSeat.joined, ...pays(mineSeat) } : null;
   return {
     title: completed ? `All ${v.n} rounds are paid out` : "This circle was cancelled",
     body: completed

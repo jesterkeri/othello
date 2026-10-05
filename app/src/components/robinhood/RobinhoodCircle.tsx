@@ -6,7 +6,7 @@
  * Every action goes through the evm-usdg-v1 adapter: exact approvals, refusals decoded into plain words.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getAddress, isAddress, parseUnits, type Address } from "viem";
+import { getAddress, isAddress, parseAbi, parseEventLogs, parseUnits, type Address } from "viem";
 
 import Shell from "@/components/othello/Shell";
 import type { ActionResult } from "@/lib/core/adapter";
@@ -40,6 +40,9 @@ const SEAT_SLOTS = ["teal", "acid", "cobalt", "clay", "sky"] as const;
 
 type Busy = { what: string } | null;
 type Last = { what: string; result: ActionResult } | null;
+
+// The contract's own payout record (evm/src/OthelloCircle.sol): the confirmation names who was paid from the receipt.
+const POT_RELEASED = parseAbi(["event PotReleased(uint8 round, address indexed recipient, uint256 pot, uint256 needed, uint256 remaining)"]);
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
@@ -160,6 +163,10 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     [refresh],
   );
 
+  // A refusal belongs to the round it happened in: a new round starts clean.
+  const viewRound = view?.round;
+  useEffect(() => { setPhase((p) => (p.kind === "failed" ? { kind: "idle" } : p)); }, [viewRound]);
+
   /** Release this round's pot, following the real transaction: wallet, sent (hash), receipt, then a fresh read. */
   const release = useCallback(async (round: number, recipientTurn: number, amount: bigint) => {
     if (!adapter) return;
@@ -169,15 +176,27 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     onSent.current = (hash) => setPhase({ kind: "sent", hash });
     try {
       const result = await adapter.releasePot({});
-      setPhase(result.ok
-        ? { kind: "released", hash: result.txHash, round, recipientTurn, amount }
-        : { kind: "failed", message: result.message, error: result.error });
+      if (!result.ok) {
+        setPhase({ kind: "failed", message: result.message, error: result.error });
+      } else {
+        // Who was paid, how much and for which round: from the receipt's PotReleased event when it can be read
+        // (another member may have released first, so this transaction released the next round); else the round
+        // the button showed.
+        let paid = { round, recipientTurn, amount };
+        try {
+          const receipt = await robinhoodPublicClient.getTransactionReceipt({ hash: result.txHash as `0x${string}` });
+          const ev = parseEventLogs({ abi: POT_RELEASED, logs: receipt.logs.filter((l) => same(l.address, circle)) })[0];
+          const seatOf = view?.seats.find((x) => same(x.wallet, ev?.args.recipient));
+          if (ev && seatOf) paid = { round: ev.args.round, recipientTurn: seatOf.turn, amount: ev.args.pot };
+        } catch { /* the read failed: the button's round stands, and "Confirmed" still waits for a fresh read */ }
+        setPhase({ kind: "released", hash: result.txHash, ...paid });
+      }
     } finally {
       onSent.current = null;
       setBusy(null);
       void refresh(true);
     }
-  }, [adapter, refresh]);
+  }, [adapter, refresh, circle, view]);
 
   if (!valid || (trust && !trust.ok)) {
     const notDeployed = trust && !trust.ok && trust.reason === "not-deployed";
@@ -233,7 +252,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         : v.status === "Completed"
           ? s.statusCompleted
           : s.statusCancelled;
-  const ring = ringOf(v, w.address);
+  const ring = ringOf(v, w.address, Math.max(v.chainTime + Math.max(0, now - v.readAt), now));
   const payout = releaseButton(v, { hasWallet: w.hasWallet, connected: Boolean(w.address), onRobinhood: w.onRobinhood, busy: Boolean(busy), me: w.address ?? null });
   // A finished release stays on screen until dismissed, even after the read has moved to the next round.
   const payoutShown = payout ?? (phase.kind === "released" ? { label: "", enabled: false, blocker: null, recipientTurn: phase.recipientTurn, amount: phase.amount } : null);

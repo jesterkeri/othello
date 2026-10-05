@@ -65,7 +65,9 @@ describe("A5: the circle ring follows live state", () => {
     assert.deepEqual(forming.seats.map((x) => x.role), ["joined", "open", "joined"]);
     assert.equal(forming.caption, "2 of 3 seats joined");
     assert.equal(ringOf(circle(3, { status: "Completed", round: 3 })).caption, "All 3 rounds paid out");
-    assert.equal(ringOf(circle(3, { status: "Cancelled" })).rotation, 0);
+    const cancelled = ringOf(circle(3, { status: "Cancelled" }, [seat(0), seat(1, { joined: false }), seat(2)]));
+    assert.equal(cancelled.rotation, 0);
+    assert.deepEqual(cancelled.seats.map((x) => x.role), ["joined", "open", "joined"]);
   });
 });
 
@@ -148,14 +150,16 @@ describe("A5: the payout steps follow the real transaction", () => {
 
 describe("A5: a finished circle says how every member collects (Joshua, 2026-10-05)", () => {
   it("completed: each seat collects its own; who has collected; your exact locked USDG plus a reserve share", () => {
-    const v = circle(3, { status: "Completed", round: 3 }, [seat(0, { received: true, withdrawn: true }), seat(1, { received: true }), seat(2, { received: true, collateral: 4n * U })]);
+    // reserve left 3 USDG over three equal 1 USDG guarantees: each seat's reserve share is exactly 1 USDG (withdraw())
+    const v = circle(3, { status: "Completed", round: 3, reserveTotal: 3n * U, depositsTotal: 3n * U }, [seat(0, { received: true, withdrawn: true }), seat(1, { received: true }), seat(2, { received: true, collateral: 4n * U })]);
     const c = closeOutOf(v, W(2))!;
     assert.equal(c.title, "All 3 rounds are paid out");
     assert.match(c.body, /Only the member's own wallet can collect it, and it does not expire\./);
     assert.deepEqual(c.seats.map((x) => [x.label, x.collected, x.owed, x.you]), [["Seat 1", true, true, false], ["Seat 2", false, true, false], ["Seat 3", false, true, true]]);
     assert.equal(c.collected, 1);
     assert.equal(c.owedCount, 3);
-    assert.deepEqual(c.mine, { turn: 2, collected: false, owed: true, exact: 4n * U });
+    assert.deepEqual(c.mine, { turn: 2, collected: false, owed: true, locked: 4n * U, pooled: U, total: 5n * U });
+    assert.deepEqual(c.seats.map((x) => x.amount), [11n * U, 11n * U, 5n * U]);
     assert.match(ringOf(v, W(2)).seats[0]!.status, /collected their share/);
     assert.match(ringOf(v, W(2)).seats[1]!.status, /has not collected their share yet/);
   });
@@ -166,7 +170,7 @@ describe("A5: a finished circle says how every member collects (Joshua, 2026-10-
     assert.equal(c.title, "This circle was cancelled");
     assert.deepEqual(c.seats.map((x) => x.owed), [true, false, true]);
     assert.equal(c.owedCount, 2);
-    assert.equal(c.mine!.exact, 10n * U + U + U);
+    assert.equal(c.mine!.total, 10n * U + U + U);
     assert.equal(closeOutOf(v, W(7))!.mine, null);
   });
 

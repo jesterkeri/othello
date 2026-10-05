@@ -32,7 +32,7 @@ export default function CloseOutPanel({ close, completed, canWrite, blocker, bus
             <span className={r.dot} aria-hidden>{x.collected ? "✓" : ""}</span>
             <span className={r.stepText}>
               <b>{x.label}{x.you ? " (you)" : ""} · {short(x.wallet)}</b>
-              <span>{!x.owed ? "Did not join: nothing to collect" : x.collected ? "Collected" : "Not collected yet"}</span>
+              <span>{!x.owed ? "Did not join: nothing to collect" : x.collected ? "Collected" : `Not collected yet: ${fmtUsdg(x.amount)} waiting`}</span>
             </span>
           </li>
         ))}
@@ -40,11 +40,15 @@ export default function CloseOutPanel({ close, completed, canWrite, blocker, bus
       {mine && mine.owed && !mine.collected && (
         <>
           <p className={r.blocker}>
-            {completed
-              ? `You collect your ${fmtUsdg(mine.exact)} locked USDG plus your share of the shared reserve.`
-              : `You collect ${fmtUsdg(mine.exact)}: your locked USDG, guarantee and top ups.`}
+            {!completed
+              ? `You collect ${fmtUsdg(mine.total)}: your locked USDG, guarantee and top ups.`
+              : mine.pooled > 0n
+                ? `You collect ${fmtUsdg(mine.total)}: your ${fmtUsdg(mine.locked)} locked USDG and ${fmtUsdg(mine.pooled)} from the shared reserve.`
+                : mine.total > 0n
+                  ? `You collect ${fmtUsdg(mine.total)}: your locked USDG. Your guarantee went to cover a missed payment, so there is no reserve share.`
+                  : "Nothing is left for your seat: its locked USDG and guarantee covered a missed payment. Withdrawing closes your seat."}
           </p>
-          <button type="button" className={r.release} disabled={!canWrite} onClick={onWithdraw}>{busy ? "Confirm in your wallet…" : "Withdraw your share"}</button>
+          <button type="button" className={r.release} disabled={!canWrite} onClick={onWithdraw}>{busy ? "Confirm in your wallet…" : `Withdraw ${fmtUsdg(mine.total)}`}</button>
           {blocker && <p className={r.note}>{blocker}</p>}
         </>
       )}
