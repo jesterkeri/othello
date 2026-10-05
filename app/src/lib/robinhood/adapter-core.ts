@@ -126,9 +126,27 @@ export async function readCircle(
 ): Promise<RhCircleView> {
   // One block for everything: its timestamp is the page's chain time, and every state read is pinned to it, so a
   // deadline and a paid bitmap are never paired with a later block's time (adversary on 885ecc6: a round settled and
-  // released between two unpinned reads showed seats late that the chain never had).
-  const block = await client.getBlock({ blockTag: "latest" });
-  const at = { blockNumber: block.number ?? undefined };
+  // released between two unpinned reads showed seats late that the chain never had). The reads are pinned by number,
+  // so the block is checked again afterwards: if that number now names a different block (a reorg mid-read, adversary
+  // on c5d7863), the read starts over.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const block = await client.getBlock({ blockTag: "latest" });
+    if (block.number === null || block.hash === null) throw new Error("Robinhood Chain returned a block without a number.");
+    const view = await readCircleAt(client, circle, usdg, block.number, Number(block.timestamp));
+    const again = await client.getBlock({ blockNumber: block.number });
+    if (again.hash === block.hash) return view;
+  }
+  throw new Error("Robinhood Chain changed its recent blocks while the circle was read. Trying again shortly.");
+}
+
+async function readCircleAt(
+  client: Pick<PublicClient, "readContract">,
+  circle: Address,
+  usdg: Address,
+  blockNumber: bigint,
+  chainTime: number,
+): Promise<RhCircleView> {
+  const at = { blockNumber };
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
     client.readContract({ address: circle, abi: othelloCircleAbi, functionName, args, ...at } as never) as Promise<T>;
   const [
@@ -184,7 +202,7 @@ export async function readCircle(
       withdrawn: bit(withdrawn, t),
     })),
     readAt: Math.floor(Date.now() / 1000),
-    chainTime: Number(block.timestamp),
+    chainTime,
   };
 }
 
