@@ -95,7 +95,6 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const [addAmt, setAddAmt] = useState("");
   const [topAmt, setTopAmt] = useState("");
   const [inviteCopy, setInviteCopy] = useState<"idle" | "copied" | "failed">("idle");
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const latest = useRef(0);
   const inFlight = useRef(false);
   const [phase, setPhase] = useState<ReleasePhase>({ kind: "idle" });
@@ -127,11 +126,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   useEffect(() => {
     void refresh();
     const id = window.setInterval(() => void refresh(), REFRESH_MS);
-    const tick = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1_000);
-    return () => {
-      window.clearInterval(id);
-      window.clearInterval(tick);
-    };
+    return () => window.clearInterval(id);
   }, [refresh]);
 
   const adapter = useMemo(
@@ -236,10 +231,11 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const reserve = reserveDisplay(v);
   const paused = v.status === "Active" && v.nextGateShortBy > 0n;
   const graceEnds = v.deadline + v.graceSecs;
-  // Chain time (the last block's timestamp plus the seconds since that read) or the device clock, whichever is later:
-  // a slow device clock cannot hide the buttons, and on a quiet chain an old last block cannot either. If a device
-  // clock runs ahead the buttons can show early; the contract then refuses with "grace ends at …" (no funds move).
-  const chainNow = Math.max(v.chainTime + Math.max(0, now - v.readAt), now);
+  // The chain's own time: the latest block's timestamp in the last read, never the device clock. Late, "Grace ended"
+  // and "Record missed payment" show only once the chain is past grace, when markDelinquent can succeed (Codex r1 on
+  // PR #22: a device clock ten minutes fast showed seats late inside grace). Robinhood Chain makes a block about every
+  // second and the page reads every 8 s, so this trails the chain by seconds.
+  const chainNow = v.chainTime;
   const afterGrace = chainNow > graceEnds;
   const allSettled = v.seats.every((x) => x.paid || x.defaulted);
   const canWrite = Boolean(adapter) && w.onRobinhood && !busy;
@@ -252,7 +248,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         : v.status === "Completed"
           ? s.statusCompleted
           : s.statusCancelled;
-  const ring = ringOf(v, w.address, Math.max(v.chainTime + Math.max(0, now - v.readAt), now));
+  const ring = ringOf(v, w.address, chainNow);
   const payout = releaseButton(v, { hasWallet: w.hasWallet, connected: Boolean(w.address), onRobinhood: w.onRobinhood, busy: Boolean(busy), me: w.address ?? null });
   // A finished release stays on screen until dismissed, even after the read has moved to the next round.
   const payoutShown = payout ?? (phase.kind === "released" ? { label: "", enabled: false, blocker: null, recipientTurn: phase.recipientTurn, amount: phase.amount } : null);
