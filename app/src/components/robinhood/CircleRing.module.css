@@ -6,7 +6,7 @@
 .marker::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #0B0B0B; border-bottom: 0; }
 .spin { position: absolute; inset: 0; transform: rotate(var(--rot)); }
 /* The logo's seat on a coloured hero: colour fill in a solid black ring (Joshua: "let the border ... be black") */
-.seat { position: absolute; width: var(--seat); aspect-ratio: 1; transform: translate(-50%, -50%); border: 4px solid #0B0B0B; border-radius: 999px; box-shadow: 3px 3px 0 #0B0B0B; display: flex; align-items: center; justify-content: center; }
+.seat { position: absolute; width: var(--seat); aspect-ratio: 1; transform: translate(-50%, -50%); border: 4px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
 .upright { display: flex; flex-direction: column; align-items: center; line-height: 1; transform: rotate(calc(-1 * var(--rot))); }
 .seatWord { font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .seatNum { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(18px, 2.2vw, 28px); line-height: .9; }
@@ -18,7 +18,7 @@
 .receiving { z-index: 2; width: calc(var(--seat) * 1.15); box-shadow: 0 0 0 4px #FBF9F2, 0 0 0 7px #0B0B0B; }
 .open { background: #0B0B0B !important; color: #FBF9F2 !important; box-shadow: none; outline: 2.5px dashed #FBF9F2; outline-offset: 2px; }
 /* The logo's centre disc, smaller, in black so it stands out on every palette's hero */
-.pot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 27%; aspect-ratio: 1; border: 4px solid #0B0B0B; border-radius: 999px; box-shadow: 3px 3px 0 #0B0B0B; background: #0B0B0B; color: #FBF9F2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 6px; }
+.pot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 27%; aspect-ratio: 1; border: 4px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 6px; }
 .potLabel { font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #D8D2C4; }
 .potAmt { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(16px, 2vw, 24px); line-height: .9; text-transform: uppercase; }
 .flying { position: absolute; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%); border: 3px solid #0B0B0B; border-radius: 999px; background: var(--acid); color: var(--acidInk); padding: 6px 12px; font-size: 12px; font-weight: 900; white-space: nowrap; animation: potFly .7s cubic-bezier(.5, 0, .3, 1) forwards; pointer-events: none; }

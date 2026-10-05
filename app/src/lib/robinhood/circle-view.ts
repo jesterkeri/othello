@@ -218,3 +218,24 @@ export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null
 export function currentPhase(phase: ReleasePhase, v: RhCircleView): ReleasePhase {
   return phase.kind === "failed" && phase.round !== v.round ? { kind: "idle" } : phase;
 }
+
+/**
+ * Seat colours, never the hero's own: the hero is the palette's accent (--acid), so seats take the palette's other four
+ * colours in turn, then white and black, and reuse them for larger circles (Joshua, 2026-10-05).
+ */
+const FILLS = [
+  { fill: "var(--teal)", ink: "var(--tealInk)" },
+  { fill: "var(--sky)", ink: "var(--skyInk)" },
+  { fill: "var(--cobalt)", ink: "var(--cobaltInk)" },
+  { fill: "var(--clay)", ink: "var(--clayInk)" },
+  { fill: "#FBF9F2", ink: "#0B0B0B" },
+  { fill: "#0B0B0B", ink: "#FBF9F2" },
+] as const;
+// seats 7 and 8 reuse sky and cobalt: a plain wrap would put seat 7 (teal) next to seat 1 (teal) in a circle of 7
+export const seatFill = (turn: number) => FILLS[turn < FILLS.length ? turn : (turn - 5) % FILLS.length]!;
+
+/**
+ * A seat's diameter as a percentage of the ring: 20% up to four seats; from five, about 10% smaller for each seat
+ * more, so eight never crowd (Joshua, 2026-10-05: "after 4 people ... the circles should start shrinking by percentage").
+ */
+export const seatSize = (n: number) => (n <= 4 ? 20 : 20 * 0.9 ** (n - 4));

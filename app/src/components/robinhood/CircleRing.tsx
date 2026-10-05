@@ -8,12 +8,12 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import type { Ring } from "@/lib/robinhood/circle-view";
+import { seatFill, seatSize, type Ring } from "@/lib/robinhood/circle-view";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 
 import r from "./CircleRing.module.css";
 
-const SLOTS = ["teal", "acid", "cobalt", "clay", "sky"] as const;
+
 const BADGE = { paid: "✓", covered: "◐", short: "!", late: "!", due: "" } as const;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -38,8 +38,7 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
   }, [round]);
 
   const n = ring.n;
-  // seats small enough that the arcs between them read as the logo's (Joshua, 2026-10-05: "shrink the surrounding circles")
-  const size = n <= 4 ? 20 : n <= 6 ? 17 : 14.5;
+  const size = seatSize(n);
   const radius = 50 - size / 2 - 4;
   // The logo's look (Joshua, 2026-10-05): coloured seats in a white ring with a black gap, joined by arcs in each
   // seat's colour that stop short of the next seat. Thinner lines than the logo's.
@@ -60,20 +59,20 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
               // a black edge under the colour, so an arc in the hero's own accent still reads (adversary on 10bead6)
               return (
                 <g key={seat.turn}>
-                  <path d={d} fill="none" stroke="#0B0B0B" strokeWidth={4} strokeLinecap="butt" />
-                  <path d={d} fill="none" stroke={`var(--${SLOTS[seat.turn % SLOTS.length]})`} strokeWidth={2.4} strokeLinecap="butt" />
+                  <path d={d} fill="none" stroke="#0B0B0B" strokeWidth={3.6} strokeLinecap="round" />
+                  <path d={d} fill="none" stroke={seatFill(seat.turn).fill} strokeWidth={2} strokeLinecap="round" />
                 </g>
               );
             })}
           </svg>
           {ring.seats.map((seat) => {
-            const slot = SLOTS[seat.turn % SLOTS.length];
+            const colour = seatFill(seat.turn);
             const rad = (seat.angle * Math.PI) / 180;
             return (
               <span
                 key={seat.turn}
                 className={`${r.seat} ${r[seat.role]} ${seat.payment ? r[seat.payment] : ""}`}
-                style={{ left: `${50 + radius * Math.sin(rad)}%`, top: `${50 - radius * Math.cos(rad)}%`, background: `var(--${slot})`, color: `var(--${slot}Ink)` }}
+                style={{ left: `${50 + radius * Math.sin(rad)}%`, top: `${50 - radius * Math.cos(rad)}%`, background: colour.fill, color: colour.ink }}
               >
                 <span className={r.upright}>
                   <span className={r.seatWord}>Seat</span>

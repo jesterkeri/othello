@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 
 import type { RhCircleView, RhSeat } from "../app/src/lib/robinhood/adapter.ts";
-import { closeOutOf, currentPhase, releaseButton, releaseSteps, ringOf, seatList, type ReleaseContext } from "../app/src/lib/robinhood/circle-view.ts";
+import { closeOutOf, currentPhase, releaseButton, seatFill, seatSize, releaseSteps, ringOf, seatList, type ReleaseContext } from "../app/src/lib/robinhood/circle-view.ts";
 
 const U = 1_000_000n; // 1 USDG
 const W = (i: number) => `0x${String(i + 1).repeat(40).slice(0, 40)}` as `0x${string}`;
@@ -195,5 +195,24 @@ describe("A5 fix pass on 05b8701: a refusal stays with its round; cover is shown
     const short = ringOf(circle(3, { round: 1, escrow: U }, seats)).seats[2]!;
     assert.equal(short.payment, "short");
     assert.match(short.status, /cover short/);
+  });
+});
+
+describe("A5 (Joshua, 2026-10-05): seat colours and sizes on the ring", () => {
+  it("no seat, in a circle of 3 to 8, takes the hero's colour (the palette's accent), and neighbours differ", () => {
+    for (let n = 3; n <= 8; n++) {
+      const fills = Array.from({ length: n }, (_, t) => seatFill(t).fill);
+      assert.ok(fills.every((f) => !f.includes("--acid")), `n=${n}: ${fills.join(", ")}`);
+      for (let t = 0; t < n; t++) assert.notEqual(fills[t], fills[(t + 1) % n], `n=${n}: seats ${t + 1} and ${((t + 1) % n) + 1} share a colour`);
+    }
+    // the four other palette colours first, then white and black
+    assert.deepEqual(Array.from({ length: 6 }, (_, t) => seatFill(t).fill), ["var(--teal)", "var(--sky)", "var(--cobalt)", "var(--clay)", "#FBF9F2", "#0B0B0B"]);
+  });
+
+  it("seats keep 20% up to four members and shrink about 10% for each member more", () => {
+    assert.deepEqual([3, 4].map(seatSize), [20, 20]);
+    const big = [5, 6, 7, 8].map(seatSize);
+    assert.ok(big.every((x, i) => x < (i ? big[i - 1]! : 20)), big.join(", "));
+    assert.ok(Math.abs(seatSize(5) - 18) < 1e-9 && seatSize(8) > 13 && seatSize(8) < 13.2, big.join(", "));
   });
 });
