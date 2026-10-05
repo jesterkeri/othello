@@ -124,8 +124,13 @@ export async function readCircle(
   circle: Address,
   usdg: Address = USDG,
 ): Promise<RhCircleView> {
+  // One block for everything: its timestamp is the page's chain time, and every state read is pinned to it, so a
+  // deadline and a paid bitmap are never paired with a later block's time (adversary on 885ecc6: a round settled and
+  // released between two unpinned reads showed seats late that the chain never had).
+  const block = await client.getBlock({ blockTag: "latest" });
+  const at = { blockNumber: block.number ?? undefined };
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
-    client.readContract({ address: circle, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
+    client.readContract({ address: circle, abi: othelloCircleAbi, functionName, args, ...at } as never) as Promise<T>;
   const [
     factory, creator, n, c, g, minStockCover, haircutBps, coverageBps, warnBps, roundSecs, graceSecs,
     status, round, deadline, paid, joined, withdrawn, received, defaulted, marked,
@@ -143,7 +148,7 @@ export async function readCircle(
     r<bigint>("heldContributions"), r<bigint>("lastCoverageAt"), r<bigint>("accounted"),
   ]);
   const count = Number(n);
-  const [members, seats, balance, block] = await Promise.all([
+  const [members, seats, balance] = await Promise.all([
     Promise.all(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
     Promise.all(
       Array.from({ length: count }, (_, t) =>
@@ -153,8 +158,7 @@ export async function readCircle(
         }>("seat", [BigInt(t)]),
       ),
     ),
-    client.readContract({ address: usdg, abi: erc20Abi, functionName: "balanceOf", args: [circle] }),
-    client.getBlock({ blockTag: "latest" }),
+    client.readContract({ address: usdg, abi: erc20Abi, functionName: "balanceOf", args: [circle], ...at }),
   ]);
   return {
     address: getAddress(circle),
