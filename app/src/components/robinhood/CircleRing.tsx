@@ -14,7 +14,7 @@ import { fmtUsdg } from "@/lib/robinhood/copy";
 import r from "./CircleRing.module.css";
 
 const SLOTS = ["teal", "acid", "cobalt", "clay", "sky"] as const;
-const BADGE = { paid: "✓", covered: "◐", late: "!", due: "" } as const;
+const BADGE = { paid: "✓", covered: "◐", short: "!", late: "!", due: "" } as const;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default function CircleRing({ ring, pot, round }: { ring: Ring; pot: bigint; round: number }) {
@@ -72,7 +72,7 @@ export default function CircleRing({ ring, pot, round }: { ring: Ring; pot: bigi
           </li>
         ))}
       </ol>
-      <p className={r.legend} aria-hidden><span>✓ paid</span><span>◐ covered by locked USDG</span><span>! late</span><span>no mark: due</span></p>
+      <p className={r.legend} aria-hidden><span>✓ paid</span><span>◐ covered by locked USDG</span><span>! late or cover short</span><span>no mark: due</span></p>
     </figure>
   );
 }

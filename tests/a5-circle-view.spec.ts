@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 
 import type { RhCircleView, RhSeat } from "../app/src/lib/robinhood/adapter.ts";
-import { closeOutOf, releaseButton, releaseSteps, ringOf, seatList, type ReleaseContext } from "../app/src/lib/robinhood/circle-view.ts";
+import { closeOutOf, currentPhase, releaseButton, releaseSteps, ringOf, seatList, type ReleaseContext } from "../app/src/lib/robinhood/circle-view.ts";
 
 const U = 1_000_000n; // 1 USDG
 const W = (i: number) => `0x${String(i + 1).repeat(40).slice(0, 40)}` as `0x${string}`;
@@ -51,7 +51,8 @@ describe("A5: the circle ring follows live state", () => {
   });
 
   it("each seat's payment and role come from its flags: paid, covered (defaulted), late (marked), due; received earlier", () => {
-    const v = circle(4, { round: 2 }, [seat(0, { received: true, paid: true }), seat(1, { received: true, defaulted: true }), seat(2, { marked: true }), seat(3)]);
+    // seat 2 is settled in default and the escrow holds its 2 USDG payment, so it is truly covered
+    const v = circle(4, { round: 2, escrow: 2n * U }, [seat(0, { received: true, paid: true }), seat(1, { received: true, defaulted: true }), seat(2, { marked: true }), seat(3)]);
     const ring = ringOf(v, W(3));
     assert.deepEqual(ring.seats.map((x) => [x.role, x.payment]), [["received", "paid"], ["received", "covered"], ["receiving", "late"], ["upcoming", "due"]]);
     assert.equal(ring.seats[3]!.you, true);
@@ -138,10 +139,10 @@ describe("A5: the payout steps follow the real transaction", () => {
   });
 
   it("a refusal blocks the step it belongs to; nothing is marked paid", () => {
-    const cover = releaseSteps(settled, { kind: "failed", message: "x", error: "CoverageTooLow" });
+    const cover = releaseSteps(settled, { kind: "failed", message: "x", error: "CoverageTooLow", round: 1 });
     assert.equal(cover[1]!.status, "blocked");
     assert.deepEqual(status(cover).slice(4), ["todo", "todo"]);
-    const rejected = releaseSteps(settled, { kind: "failed", message: "You rejected the request in your wallet.", error: "UserRejected" });
+    const rejected = releaseSteps(settled, { kind: "failed", message: "You rejected the request in your wallet.", error: "UserRejected", round: 1 });
     assert.equal(rejected[2]!.status, "blocked");
     assert.equal(rejected[2]!.detail, "You rejected the request in your wallet.");
     assert.deepEqual(status(rejected).slice(3), ["todo", "todo", "todo"]);
@@ -177,5 +178,22 @@ describe("A5: a finished circle says how every member collects (Joshua, 2026-10-
   it("no close-out while forming or active", () => {
     assert.equal(closeOutOf(circle(3, { status: "Forming" }), W(0)), null);
     assert.equal(closeOutOf(circle(3), W(0)), null);
+  });
+});
+
+describe("A5 fix pass on 05b8701: a refusal stays with its round; cover is shown only when it is real", () => {
+  it("a failure from round 1 is not shown once the read is on round 2; it is shown while round 1 is current", () => {
+    const failed = { kind: "failed", message: "The transaction failed on chain.", error: "Failed", round: 0 } as const;
+    assert.deepEqual(currentPhase(failed, circle(3, { round: 1 })), { kind: "idle" });
+    assert.deepEqual(currentPhase(failed, circle(3, { round: 0 })), failed);
+    assert.deepEqual(currentPhase({ kind: "sent", hash: "0xab" }, circle(3, { round: 1 })), { kind: "sent", hash: "0xab" });
+  });
+
+  it("a defaulted seat is 'covered' only while the escrow covers its payment, else 'short'", () => {
+    const seats = [seat(0, { paid: true, received: true }), seat(1, { paid: true }), seat(2, { defaulted: true })];
+    assert.equal(ringOf(circle(3, { round: 1, escrow: 2n * U }, seats)).seats[2]!.payment, "covered");
+    const short = ringOf(circle(3, { round: 1, escrow: U }, seats)).seats[2]!;
+    assert.equal(short.payment, "short");
+    assert.match(short.status, /cover short/);
   });
 });

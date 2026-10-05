@@ -13,7 +13,7 @@ import type { RhCircleView } from "./adapter";
 import { fmtUsdg } from "./copy";
 
 export type SeatRole = "receiving" | "received" | "upcoming" | "joined" | "open";
-export type SeatPayment = "paid" | "covered" | "late" | "due" | null;
+export type SeatPayment = "paid" | "covered" | "short" | "late" | "due" | null;
 
 export type RingSeat = {
   turn: number;
@@ -71,7 +71,7 @@ export function ringOf(v: RhCircleView, me?: string | null, now: number = v.chai
       : "upcoming";
     const payment: SeatPayment = !active ? null
       : seat.paid ? "paid"
-      : seat.defaulted ? "covered"
+      : seat.defaulted ? (coverOk ? "covered" : "short")
       : seat.marked || pastGrace ? "late"
       : "due";
     const cancelled = v.status === "Cancelled";
@@ -79,7 +79,7 @@ export function ringOf(v: RhCircleView, me?: string | null, now: number = v.chai
       joined: cancelled ? "joined before the circle was cancelled" : "joined", open: cancelled ? "did not join" : "not joined yet" }[role];
     const payWords = payment === null
       ? (finished && (v.status === "Completed" || seat.joined) ? (seat.withdrawn ? ", collected their share" : ", has not collected their share yet") : "")
-      : { paid: ", paid this round", covered: coverOk ? ", settled in default: covered by locked USDG" : ", settled in default: cover short", late: seat.marked ? ", late: payment recorded as missed" : ", late: unpaid after the grace period", due: ", payment due this round" }[payment];
+      : { paid: ", paid this round", covered: ", settled in default: covered by locked USDG", short: ", settled in default: cover short", late: seat.marked ? ", late: payment recorded as missed" : ", late: unpaid after the grace period", due: ", payment due this round" }[payment];
     return {
       turn: seat.turn,
       label: seatLabel(seat.turn),
@@ -128,7 +128,8 @@ export type ReleasePhase =
   | { kind: "wallet" }
   | { kind: "sent"; hash: string }
   | { kind: "released"; hash: string; round: number; recipientTurn: number; amount: bigint }
-  | { kind: "failed"; message: string; error: string };
+  /** A refusal belongs to the round it was tried in; once the read has moved on it no longer applies. */
+  | { kind: "failed"; message: string; error: string; round: number };
 
 export type StepStatus = "done" | "now" | "todo" | "blocked";
 export type FlowStep = { key: string; label: string; status: StepStatus; detail: string };
@@ -211,4 +212,9 @@ export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null
       : "It was cancelled before it started. Each member who joined collects their locked USDG, guarantee and any top ups back. Only the member's own wallet can collect it, and it does not expire.",
     seats, collected, owedCount: owed.length, mine,
   };
+}
+
+/** The phase to show for this read: a failure from an earlier round does not carry into the next (spec: no lingering). */
+export function currentPhase(phase: ReleasePhase, v: RhCircleView): ReleasePhase {
+  return phase.kind === "failed" && phase.round !== v.round ? { kind: "idle" } : phase;
 }

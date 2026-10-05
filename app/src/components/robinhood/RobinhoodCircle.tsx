@@ -22,7 +22,7 @@ import {
 } from "@/lib/robinhood/adapter";
 import { explorerAddress, explorerTx } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
-import { closeOutOf, releaseButton, releaseSteps, ringOf, type ReleasePhase } from "@/lib/robinhood/circle-view";
+import { closeOutOf, currentPhase, releaseButton, releaseSteps, ringOf, type ReleasePhase } from "@/lib/robinhood/circle-view";
 import { reserveDisplay } from "@/lib/robinhood/reserve-display";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
@@ -177,7 +177,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     try {
       const result = await adapter.releasePot({});
       if (!result.ok) {
-        setPhase({ kind: "failed", message: result.message, error: result.error });
+        setPhase({ kind: "failed", message: result.message, error: result.error, round });
       } else {
         // Who was paid, how much and for which round: from the receipt's PotReleased event when it can be read
         // (another member may have released first, so this transaction released the next round); else the round
@@ -256,10 +256,12 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const payout = releaseButton(v, { hasWallet: w.hasWallet, connected: Boolean(w.address), onRobinhood: w.onRobinhood, busy: Boolean(busy), me: w.address ?? null });
   // A finished release stays on screen until dismissed, even after the read has moved to the next round.
   const payoutShown = payout ?? (phase.kind === "released" ? { label: "", enabled: false, blocker: null, recipientTurn: phase.recipientTurn, amount: phase.amount } : null);
-  const steps = releaseSteps(v, phase);
+  // a refusal from a round the read has already left is not shown (two members releasing at once)
+  const shownPhase = currentPhase(phase, v);
+  const steps = releaseSteps(v, shownPhase);
   const close = closeOutOf(v, w.address);
   const writeBlocker = !w.hasWallet ? "Install MetaMask or another EVM wallet to collect." : !w.address ? "Connect the wallet of your seat to collect." : !w.onRobinhood ? "Switch your wallet to Robinhood Chain testnet to collect." : busy ? "A transaction is already waiting for your wallet or for Robinhood Chain." : null;
-  const coverFailed = phase.kind === "failed" && ["CoverageTooLow", "ReserveOvercommitted"].includes(phase.error);
+  const coverFailed = shownPhase.kind === "failed" && ["CoverageTooLow", "ReserveOvercommitted"].includes(shownPhase.error);
   const firstLateUnpaidPrePayout = v.status === "Active" && afterGrace
     ? v.seats.find((x) => !x.paid && !x.defaulted && !x.received)
     : undefined;
@@ -351,7 +353,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
               <PayoutPanel
                 button={payoutShown}
                 steps={steps}
-                phase={phase}
+                phase={shownPhase}
                 showSafetyCheck={paused || coverFailed}
                 canWrite={canWrite}
                 onRelease={() => void release(v.round, payoutShown.recipientTurn, payoutShown.amount)}
