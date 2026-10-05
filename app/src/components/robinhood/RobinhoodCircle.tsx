@@ -314,7 +314,8 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         </div>
 
         <section className={`${s.hero} ${rh.ringHero}`} aria-label="This savings circle">
-          <CircleRing ring={ring} pot={pot} round={v.round} />
+          {/* a finished circle lists its seats once, in the close-out panel */}
+          <CircleRing ring={ring} pot={pot} round={v.round} showList={!close} />
           <div className={s.heroMain}>
             <div className={s.headTop}>
               <span className={`${s.statusPill} ${statusClass} ${s.micro}`}>{paused ? "Paused" : v.status}</span>
