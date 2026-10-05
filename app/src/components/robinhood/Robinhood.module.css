@@ -76,3 +76,4 @@
 /* The circle page's hero: the ring first, then the round, the pot and the payout (Joshua, 2026-10-05) */
 .ringHero.ringHero { grid-template-columns: minmax(280px, 1fr) minmax(0, 1.15fr); align-items: start; }
 @media (max-width: 899px) { .ringHero.ringHero { grid-template-columns: minmax(0, 1fr); } }
+.ringCol { display: flex; flex-direction: column; gap: clamp(14px, 1.6vw, 20px); min-width: 0; }

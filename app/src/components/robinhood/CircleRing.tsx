@@ -38,11 +38,12 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
   }, [round]);
 
   const n = ring.n;
-  const size = n <= 4 ? 27 : n <= 6 ? 23 : 19;
+  // seats small enough that the arcs between them read as the logo's (Joshua, 2026-10-05: "shrink the surrounding circles")
+  const size = n <= 4 ? 20 : n <= 6 ? 17 : 14.5;
   const radius = 50 - size / 2 - 4;
   // The logo's look (Joshua, 2026-10-05): coloured seats in a white ring with a black gap, joined by arcs in each
   // seat's colour that stop short of the next seat. Thinner lines than the logo's.
-  const gap = (Math.asin(Math.min(1, (size / 2 + 3.5) / radius)) * 180) / Math.PI;
+  const gap = (Math.asin(Math.min(1, (size / 2 + 2.5) / radius)) * 180) / Math.PI;
   const step = 360 / n;
   return (
     <figure className={`${r.wrap} ${ready ? r.ready : ""}`} aria-label={`The circle: ${ring.caption}`}>
@@ -53,7 +54,7 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
             {ring.seats.map((seat) => (
               <path key={seat.turn} d={arc(radius, seat.angle + gap, seat.angle + step - gap)} fill="none"
                 stroke={`var(--${SLOTS[seat.turn % SLOTS.length]})`} strokeWidth={2.4} strokeLinecap="butt"
-                className={seat.role === "received" ? r.arcDone : undefined} />
+                />
             ))}
           </svg>
           {ring.seats.map((seat) => {
