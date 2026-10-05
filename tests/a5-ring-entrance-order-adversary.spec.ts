@@ -168,7 +168,7 @@ describe("A5 adversary (594acfe, adapted): the round-change motion after the loa
 
   it("precondition: only .ready delays the turn until the pot has flown; the entrance spin turns at once", () => {
     assert.match(css, /\.ready \.spin, \.ready \.upright \{ transition: transform \.9s cubic-bezier\(\.2, \.9, \.2, 1\) \.65s; \}/);
-    assert.match(css, /\.stSpin \.spin, \.stSpin \.upright \{ transition: transform 1\.4s/);
+    assert.match(css, /\.stSpin \.spin, \.stSpin \.upright \{ transition: transform 1\.5s/);
     assert.equal(ring1.rotation, -120);
     assert.equal(ring2.rotation, -240);
   });

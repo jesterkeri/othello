@@ -56,7 +56,8 @@ export default function CircleRing({ ring, pot, round, showList = true, entrance
       return;
     }
     const at = (ms: number, st: Stage) => window.setTimeout(() => setStage(st), ms);
-    const timers = [at(150, "grow"), at(600, "unfold"), at(1150, "draw"), at(1600, "spin"), at(3100, "settled")];
+    // overlapping phases, one easing (Joshua, 2026-10-05: "the beginning is slow and isnt smooth for its phase changes")
+    const timers = [at(40, "grow"), at(220, "unfold"), at(620, "draw"), at(820, "spin"), at(2450, "settled")];
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, []);
   useEffect(() => {
