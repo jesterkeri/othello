@@ -35,8 +35,8 @@
 .stUnfold .seat, .stDraw .seat, .stSpin .seat { transition: left .6s var(--ease) calc(var(--i) * 35ms), top .6s var(--ease) calc(var(--i) * 35ms), opacity .35s ease calc(var(--i) * 35ms); }
 .ghost { opacity: 0; }
 /* the logo carries no labels: seat words, badges and the "Receives" marker appear as the arcs draw */
-.preDraw .upright > *, .preDraw .badge, .preDraw .marker { opacity: 0; }
-.upright > *, .badge, .marker { transition: opacity .3s ease; }
+.preDraw .upright > *, .preDraw .badge, .preDraw .marker, .preDraw .caption, .preDraw .flying { opacity: 0; }
+.upright > *, .badge, .marker, .caption { transition: opacity .3s ease; }
 .drawPath { stroke-dasharray: 1 2; stroke-dashoffset: 0; }
 .preDraw .drawPath { opacity: 0; }
 .stDraw .drawPath, .stSpin .drawPath { animation: drawArc .55s cubic-bezier(.45, 0, .2, 1) both; }
@@ -62,7 +62,7 @@
 .itemText span { color: #B9B3A5; font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 0; font-size: 11px; font-weight: 700; opacity: .8; }
 @media (prefers-reduced-motion: reduce) {
-  .ring, .seat, .upright > *, .badge, .marker, .pot, .pot > *, .stSpin .spin, .stSpin .upright, .ready .spin, .ready .upright { transition: none !important; }
+  .ring, .seat, .upright > *, .badge, .marker, .caption, .pot, .pot > *, .stSpin .spin, .stSpin .upright, .ready .spin, .ready .upright { transition: none !important; }
   .stDraw .drawPath, .stSpin .drawPath { animation: none; }
   .flying { display: none; }
 }
