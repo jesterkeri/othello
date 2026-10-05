@@ -274,3 +274,91 @@ describe("A5 adversary (10bead6): the ring in the logo's style, laid out and pai
     });
   }
 });
+
+/**
+ * Adversary pass on 6c5b505 (seat colours, cleaner edges, seats shrink from five). Spec (product owner, 2026-10-05):
+ * "seats and pot are smooth circles with solid black borders, arcs have tidy ends and stop short of the seats
+ * (including the larger receiving seat)" (2); "from 5 members they shrink ... for 5, 6, 7 and 8 seats, on desktop and
+ * at phone width (360px+); labels ("Seat N", "You") stay readable inside each seat at every size" (3).
+ * The ring is built by ringOf over a constructed Active read of n seats, round 0 (Seat 1 receives at the top, the ring
+ * is not turned), the viewer holding the last seat, so that seat carries its "You" label as the page draws it.
+ */
+const GEOMETRY = `
+  const ring = document.querySelector('.CircleRing_ring').getBoundingClientRect();
+  const seats = [...document.querySelectorAll('.CircleRing_seat')].map((el) => {
+    const b = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    const label = el.querySelector('.CircleRing_upright').getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2, w: el.offsetWidth, h: el.offsetHeight, border: parseFloat(cs.borderTopWidth),
+      halo: Math.max(0, ...cs.boxShadow.split(/,(?![^(]*\\))/).map((s) => parseFloat(s.trim().split(' ').pop()) || 0)),
+      label: { w: label.width, h: label.height }, you: !!el.querySelector('.CircleRing_you') };
+  });
+  const arcs = [...document.querySelectorAll('.CircleRing_arcs path')].map((p) => {
+    const m = p.getScreenCTM(), L = p.getTotalLength();
+    const at = (s) => { const q = p.getPointAtLength(s); return { x: m.a * q.x + m.c * q.y + m.e, y: m.b * q.x + m.d * q.y + m.f }; };
+    return { a: at(0), b: at(L), half: (parseFloat(p.getAttribute('stroke-width')) * m.a) / 2, cap: p.getAttribute('stroke-linecap') };
+  });
+  const pre = document.createElement('pre'); pre.id = 'ring-out';
+  pre.textContent = JSON.stringify({ ring: { width: ring.width }, seats, arcs }); document.body.appendChild(pre);`;
+type GSeat = { x: number; y: number; w: number; h: number; border: number; halo: number; label: { w: number; h: number }; you: boolean };
+type GArc = { a: { x: number; y: number }; b: { x: number; y: number }; half: number; cap: string };
+
+describe("A5 adversary (6c5b505): seats stay circles holding their labels, and arcs stop short of them, 3 to 8 seats", () => {
+  const sized: Record<number, string> = {};
+  before(async () => {
+    const React = appRequire("react");
+    g.React = React;
+    const { renderToStaticMarkup } = appRequire("react-dom/server");
+    const mod = await import(pathToFileURL(RING).href);
+    for (let n = 3; n <= 8; n++) {
+      const v: RhCircleView = { ...read, n, seats: Array.from({ length: n }, (_, t) => seat(t)) };
+      const ring = ringOf(v, W(n - 1));
+      assert.equal(ring.receiving, 0, "precondition: Seat 1 receives");
+      assert.ok(ring.seats[n - 1]!.you, "precondition: the viewer holds the last seat");
+      sized[n] = renderToStaticMarkup(React.createElement(mod.default, { ring, pot: BigInt(n) * 2n * U, round: 0 }));
+    }
+  });
+  function geometry(n: number, width: number): { ring: { width: number }; seats: GSeat[]; arcs: GArc[] } {
+    const { stdout } = chrome(page(sized[n]!, PALETTE_VARS[0]!.vars, width, GEOMETRY), ["--dump-dom"], width);
+    const json = /<pre id="ring-out">([^<]*)<\/pre>/.exec(stdout)?.[1];
+    assert.ok(json, "the probe reported the ring's geometry");
+    const out = JSON.parse(json.replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
+    assert.equal(out.seats.length, n, `precondition: ${n} seats drawn`);
+    assert.ok(out.seats[n - 1].you, "precondition: the last seat carries its You label");
+    assert.equal(out.arcs.length, 2 * n, `precondition: ${n} arcs, each a black casing and a colour`);
+    return out;
+  }
+
+  for (const width of [DESKTOP, PHONE]) {
+    for (let n = 3; n <= 8; n++) {
+      it(`${width}px, ${n} seats: every seat is a circle (as tall as it is wide) whose "Seat N" and "You" fit inside its black border`, () => {
+        const l = geometry(n, width);
+        const bad: string[] = [];
+        l.seats.forEach((s, i) => {
+          const inner = s.w - 2 * s.border;
+          if (Math.abs(s.h - s.w) > 0.5 || s.label.h > inner + 0.5) {
+            bad.push(`Seat ${i + 1}${s.you ? " (You)" : ""} is ${s.w}px wide and ${s.h}px tall; its label stack is ` +
+              `${s.label.h.toFixed(1)}px tall inside ${inner}px within the border`);
+          }
+        });
+        assert.deepEqual(bad, [], `ring ${l.ring.width.toFixed(0)}px wide at ${width}px: ${bad.join("; ")}`);
+      });
+
+      it(`${width}px, ${n} seats: every arc's drawn end, round cap included, stops short of the seats it joins, the receiving seat's ring included`, () => {
+        const l = geometry(n, width);
+        const bad: string[] = [];
+        l.arcs.forEach((arc, i) => {
+          const k = Math.floor(i / 2);
+          for (const { p, s } of [{ p: arc.a, s: k }, { p: arc.b, s: (k + 1) % n }]) {
+            const at = l.seats[s]!;
+            const reach = arc.cap === "butt" ? 0 : arc.half; // a round or square cap paints half the stroke's width past the end
+            const gap = Math.hypot(p.x - at.x, p.y - at.y) - reach - (at.w / 2 + at.halo);
+            // half a pixel of anti-aliasing allowed
+            if (gap < -0.5) bad.push(`Seat ${k + 1}'s arc (${i % 2 ? "colour" : "black casing"}, ${arc.cap} cap, ${(2 * arc.half).toFixed(1)}px wide) ` +
+              `runs ${(-gap).toFixed(1)}px into Seat ${s + 1} (disc ${at.w}px across, ${at.halo}px ring around it)`);
+          }
+        });
+        assert.deepEqual(bad, [], `ring ${l.ring.width.toFixed(0)}px wide at ${width}px: ${bad.join("; ")}`);
+      });
+    }
+  }
+});

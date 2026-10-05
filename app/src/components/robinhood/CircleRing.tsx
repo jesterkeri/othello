@@ -27,11 +27,17 @@ function arc(radius: number, a: number, b: number): string {
 }
 
 export default function CircleRing({ ring, pot, round, showList = true }: { ring: Ring; pot: bigint; round: number; showList?: boolean }) {
-  // Animate only a real change seen in a chain read, never on first paint.
-  const [ready, setReady] = useState(false);
+  // On every load the ring turns one full lap and lands with this round's receiver at the top (Joshua, 2026-10-05:
+  // "let it turn on page reload too"): first paint one lap back, then the entrance turn, then the round-change motion
+  // (the pot flies to the receiver, then the ring turns) for real changes seen in later chain reads.
+  const [stage, setStage] = useState<"start" | "entering" | "settled">("start");
   const [flight, setFlight] = useState(0);
   const lastRound = useRef(round);
-  useEffect(() => { const id = requestAnimationFrame(() => setReady(true)); return () => cancelAnimationFrame(id); }, []);
+  useEffect(() => {
+    let id = requestAnimationFrame(() => { id = requestAnimationFrame(() => setStage("entering")); });
+    const done = window.setTimeout(() => setStage("settled"), 1900);
+    return () => { cancelAnimationFrame(id); window.clearTimeout(done); };
+  }, []);
   useEffect(() => {
     if (round > lastRound.current) setFlight((f) => f + 1);
     lastRound.current = round;
@@ -42,15 +48,16 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
   const radius = 50 - size / 2 - 4;
   // The logo's look (Joshua, 2026-10-05): coloured seats in a white ring with a black gap, joined by arcs in each
   // seat's colour that stop short of the next seat. Thinner lines than the logo's.
-  // where an arc stops short of a seat: past its disc and ring; the receiving seat is 1.15x with a halo
+  // where an arc stops short of a seat: past its disc, its due ring or the receiving seat's 1.15x disc and halo, plus
+  // the arc's own round cap (half its 3.6-unit edge) and a clear gap (adversary pass on 6c5b505: 1px touches at 360px)
   const gapAt = (turn: number) => {
-    const half = turn === ring.receiving ? (size * 1.15) / 2 + 4 : size / 2 + 2.5;
+    const half = turn === ring.receiving ? (size * 1.15) / 2 + 3 + 2.6 : size / 2 + 2.2 + 2.6;
     return (Math.asin(Math.min(1, half / radius)) * 180) / Math.PI;
   };
   const step = 360 / n;
   return (
-    <figure className={`${r.wrap} ${ready ? r.ready : ""}`} aria-label={`The circle: ${ring.caption}`}>
-      <div className={r.ring} style={{ "--rot": `${ring.rotation}deg`, "--seat": `${size}%` } as React.CSSProperties}>
+    <figure className={`${r.wrap} ${stage === "entering" ? r.entering : stage === "settled" ? r.ready : ""}`} aria-label={`The circle: ${ring.caption}`}>
+      <div className={r.ring} style={{ "--rot": `${ring.rotation + (stage === "start" ? 360 : 0)}deg`, "--seat": `${size}%` } as React.CSSProperties}>
         {ring.receiving !== null && <span className={r.marker} aria-hidden>Receives</span>}
         <div className={r.spin} aria-hidden>
           <svg className={r.arcs} viewBox="0 0 100 100" aria-hidden focusable="false">

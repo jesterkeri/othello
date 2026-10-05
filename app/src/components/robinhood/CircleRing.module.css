@@ -6,11 +6,12 @@
 .marker::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #0B0B0B; border-bottom: 0; }
 .spin { position: absolute; inset: 0; transform: rotate(var(--rot)); }
 /* The logo's seat on a coloured hero: colour fill in a solid black ring (Joshua: "let the border ... be black") */
-.seat { position: absolute; width: var(--seat); aspect-ratio: 1; transform: translate(-50%, -50%); border: 4px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+/* min-height 0 keeps the circle (aspect-ratio) whatever the labels; the labels scale with the seat (cqi) */
+.seat { position: absolute; width: var(--seat); aspect-ratio: 1; min-height: 0; container-type: inline-size; transform: translate(-50%, -50%); border: 4px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
 .upright { display: flex; flex-direction: column; align-items: center; line-height: 1; transform: rotate(calc(-1 * var(--rot))); }
-.seatWord { font-size: 8px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-.seatNum { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(18px, 2.2vw, 28px); line-height: .9; }
-.you { margin-top: 3px; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: 2px 6px; font-size: 8.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.seatWord { font-size: clamp(5px, 15cqi, 9px); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.seatNum { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(9px, 40cqi, 30px); line-height: .9; }
+.you { margin-top: clamp(1px, 4cqi, 3px); border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: clamp(1px, 3cqi, 2px) clamp(3px, 9cqi, 6px); font-size: clamp(5px, 14cqi, 8.5px); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .badge { position: absolute; right: -6%; top: -6%; width: 34%; aspect-ratio: 1; min-width: 20px; border: 2px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; }
 .paid .badge { background: var(--teal); color: var(--tealInk); }
 .covered .badge, .short .badge, .late .badge { background: var(--clay); color: var(--clayInk); }
@@ -27,7 +28,9 @@
   80% { transform: translate(-50%, calc(-50% - 210%)) scale(.9); opacity: 1; }
   100% { transform: translate(-50%, calc(-50% - 230%)) scale(.6); opacity: 0; }
 }
-/* The ring turns after the pot has reached the receiving seat. Only after first paint, never on load. */
+/* On load: one full lap, easing out, landing on this round's receiver. */
+.entering .spin, .entering .upright { transition: transform 1.6s cubic-bezier(.16, .84, .24, 1); }
+/* A round seen to change in a chain read: the ring turns after the pot has reached the receiving seat. */
 .ready .spin, .ready .upright { transition: transform .9s cubic-bezier(.2, .9, .2, 1) .65s; }
 .caption { text-align: center; font-size: 14px; font-weight: 800; }
 /* The seat list in the payout panel's row style: a status dot, the seat, its state (Joshua, 2026-10-05) */
@@ -41,6 +44,6 @@
 .itemText span { color: #B9B3A5; font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 0; font-size: 11px; font-weight: 700; opacity: .8; }
 @media (prefers-reduced-motion: reduce) {
-  .ready .spin, .ready .upright { transition: none; }
+  .entering .spin, .entering .upright, .ready .spin, .ready .upright { transition: none; }
   .flying { display: none; }
 }
