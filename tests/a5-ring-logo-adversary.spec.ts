@@ -78,7 +78,7 @@ async function ringMarkup(): Promise<string> {
   const ring = ringOf(read, null);
   assert.equal(ring.receiving, 0, "precondition: Seat 1 receives, at the top");
   assert.equal(ring.rotation, 0, "precondition: the ring is not turned");
-  return renderToStaticMarkup(React.createElement(mod.default, { ring, pot: 6n * U, round: 0 }));
+  return renderToStaticMarkup(React.createElement(mod.default, { entrance: false, ring, pot: 6n * U, round: 0 }));
 }
 
 function scoped(mod: string, css: string): string {
@@ -314,7 +314,7 @@ describe("A5 adversary (6c5b505): seats stay circles holding their labels, and a
       const ring = ringOf(v, W(n - 1));
       assert.equal(ring.receiving, 0, "precondition: Seat 1 receives");
       assert.ok(ring.seats[n - 1]!.you, "precondition: the viewer holds the last seat");
-      sized[n] = renderToStaticMarkup(React.createElement(mod.default, { ring, pot: BigInt(n) * 2n * U, round: 0 }));
+      sized[n] = renderToStaticMarkup(React.createElement(mod.default, { entrance: false, ring, pot: BigInt(n) * 2n * U, round: 0 }));
     }
   });
   function geometry(n: number, width: number): { ring: { width: number }; seats: GSeat[]; arcs: GArc[] } {

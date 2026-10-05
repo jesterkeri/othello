@@ -26,17 +26,38 @@ function arc(radius: number, a: number, b: number): string {
   return `M ${pt(a)} A ${radius} ${radius} 0 ${b - a > 180 ? 1 : 0} 1 ${pt(b)}`;
 }
 
-export default function CircleRing({ ring, pot, round, showList = true }: { ring: Ring; pot: bigint; round: number; showList?: boolean }) {
-  // On every load the ring turns one full lap and lands with this round's receiver at the top (Joshua, 2026-10-05:
-  // "let it turn on page reload too"): first paint one lap back, then the entrance turn, then the round-change motion
-  // (the pot flies to the receiver, then the ring turns) for real changes seen in later chain reads.
-  const [stage, setStage] = useState<"start" | "entering" | "settled">("start");
+type Stage = "logo" | "grow" | "unfold" | "draw" | "spin" | "settled";
+const ORDER: Stage[] = ["logo", "grow", "unfold", "draw", "spin", "settled"];
+const BEFORE_UNFOLD: Stage[] = ["logo", "grow"];
+const BEFORE_DRAW: Stage[] = ["logo", "grow", "unfold"];
+const BEFORE_SPIN: Stage[] = ["logo", "grow", "unfold", "draw"];
+
+export default function CircleRing({ ring, pot, round, showList = true, entrance = true }: {
+  ring: Ring; pot: bigint; round: number; showList?: boolean;
+  /** Play the logo-unfold entrance on mount (false: render the settled ring, e.g. for a static layout check). */
+  entrance?: boolean;
+}) {
+  // On every load the Othello logo unfolds into this circle, then the ring turns one lap and lands with this round's
+  // receiver at the top (Joshua, 2026-10-05: "more to the animation before the spin, like some sort of
+  // transformation"; chosen: the logo unfolds). Stages: the small logo (three discs, lime centre) -> it grows -> the
+  // discs slide out to the seats (seats 4 to 8 split off the logo's discs) -> the arcs draw, the centre becomes the
+  // pot, the labels appear -> the spin. Then a real round change seen in a later chain read plays the pot flying to the
+  // receiver and the ring turning. Reduced motion: straight to the final state.
+  const [stage, setStageRaw] = useState<Stage>(entrance ? "logo" : "settled");
+  // stages only move forward, whatever order late timers arrive in (adversary pass on 594acfe: a hidden tab's
+  // held frame moved "settled" back to the entrance, so later round changes lost the pot-then-turn motion)
+  const setStage = (next: Stage) => setStageRaw((now) => (ORDER.indexOf(next) > ORDER.indexOf(now) ? next : now));
   const [flight, setFlight] = useState(0);
   const lastRound = useRef(round);
   useEffect(() => {
-    let id = requestAnimationFrame(() => { id = requestAnimationFrame(() => setStage("entering")); });
-    const done = window.setTimeout(() => setStage("settled"), 1900);
-    return () => { cancelAnimationFrame(id); window.clearTimeout(done); };
+    if (!entrance) return;
+    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setStage("settled");
+      return;
+    }
+    const at = (ms: number, st: Stage) => window.setTimeout(() => setStage(st), ms);
+    const timers = [at(150, "grow"), at(600, "unfold"), at(1150, "draw"), at(1600, "spin"), at(3100, "settled")];
+    return () => timers.forEach((t) => window.clearTimeout(t));
   }, []);
   useEffect(() => {
     if (round > lastRound.current) setFlight((f) => f + 1);
@@ -55,9 +76,11 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
     return (Math.asin(Math.min(1, half / radius)) * 180) / Math.PI;
   };
   const step = 360 / n;
+  const folded = BEFORE_UNFOLD.includes(stage);
+  const stageClass = { logo: r.stLogo, grow: r.stGrow, unfold: r.stUnfold, draw: r.stDraw, spin: r.stSpin, settled: r.ready }[stage];
   return (
-    <figure className={`${r.wrap} ${stage === "entering" ? r.entering : stage === "settled" ? r.ready : ""}`} aria-label={`The circle: ${ring.caption}`}>
-      <div className={r.ring} style={{ "--rot": `${ring.rotation + (stage === "start" ? 360 : 0)}deg`, "--seat": `${size}%` } as React.CSSProperties}>
+    <figure className={`${r.wrap} ${stageClass} ${BEFORE_DRAW.includes(stage) ? r.preDraw : ""}`} aria-label={`The circle: ${ring.caption}`}>
+      <div className={r.ring} style={{ "--rot": `${ring.rotation + (BEFORE_SPIN.includes(stage) ? 360 : 0)}deg`, "--seat": `${size}%` } as React.CSSProperties}>
         {ring.receiving !== null && <span className={r.marker} aria-hidden>Receives</span>}
         <div className={r.spin} aria-hidden>
           <svg className={r.arcs} viewBox="0 0 100 100" aria-hidden focusable="false">
@@ -66,20 +89,22 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
               // a black edge under the colour, so an arc in the hero's own accent still reads (adversary on 10bead6)
               return (
                 <g key={seat.turn}>
-                  <path d={d} fill="none" stroke="#0B0B0B" strokeWidth={3.6} strokeLinecap="round" />
-                  <path d={d} fill="none" stroke={seatFill(seat.turn).fill} strokeWidth={2} strokeLinecap="round" />
+                  <path className={r.drawPath} pathLength={1} d={d} fill="none" stroke="#0B0B0B" strokeWidth={3.6} strokeLinecap="round" />
+                  <path className={r.drawPath} pathLength={1} d={d} fill="none" stroke={seatFill(seat.turn).fill} strokeWidth={2} strokeLinecap="round" />
                 </g>
               );
             })}
           </svg>
           {ring.seats.map((seat) => {
             const colour = seatFill(seat.turn);
-            const rad = (seat.angle * Math.PI) / 180;
+            // folded: on one of the logo's three discs (120 degrees apart, closer in); unfolded: its seat on the ring
+            const rad = ((folded ? (seat.turn % 3) * 120 : seat.angle) * Math.PI) / 180;
+            const at = folded ? radius * 0.5 : radius;
             return (
               <span
                 key={seat.turn}
-                className={`${r.seat} ${r[seat.role]} ${seat.payment ? r[seat.payment] : ""}`}
-                style={{ left: `${50 + radius * Math.sin(rad)}%`, top: `${50 - radius * Math.cos(rad)}%`, background: colour.fill, color: colour.ink }}
+                className={`${r.seat} ${r[seat.role]} ${seat.payment ? r[seat.payment] : ""} ${folded && seat.turn >= 3 ? r.ghost : ""}`}
+                style={{ left: `${50 + at * Math.sin(rad)}%`, top: `${50 - at * Math.cos(rad)}%`, background: colour.fill, color: colour.ink, "--i": seat.turn } as React.CSSProperties}
               >
                 <span className={r.upright}>
                   <span className={r.seatWord}>Seat</span>

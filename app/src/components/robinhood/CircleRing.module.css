@@ -28,8 +28,23 @@
   80% { transform: translate(-50%, calc(-50% - 210%)) scale(.9); opacity: 1; }
   100% { transform: translate(-50%, calc(-50% - 230%)) scale(.6); opacity: 0; }
 }
-/* On load: one full lap, easing out, landing on this round's receiver. */
-.entering .spin, .entering .upright { transition: transform 1.6s cubic-bezier(.16, .84, .24, 1); }
+/* The entrance: the logo unfolds into the circle, then the spin (CircleRing.tsx stages). */
+.ring { transition: transform .45s cubic-bezier(.2, 1.3, .3, 1); }
+.stLogo .ring { transform: scale(.55); }
+.stUnfold .seat, .stDraw .seat { transition: left .55s cubic-bezier(.2, 1.25, .3, 1) calc(var(--i) * 55ms), top .55s cubic-bezier(.2, 1.25, .3, 1) calc(var(--i) * 55ms), opacity .3s ease calc(var(--i) * 55ms); }
+.ghost { opacity: 0; }
+.preDraw .upright > *, .preDraw .badge { opacity: 0; }
+.upright > *, .badge { transition: opacity .3s ease; }
+.drawPath { stroke-dasharray: 1 2; stroke-dashoffset: 0; }
+.preDraw .drawPath { opacity: 0; }
+.stDraw .drawPath { animation: drawArc .45s ease-out both; }
+@keyframes drawArc { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.preDraw .pot { background: var(--acid); }
+.preDraw .pot > * { opacity: 0; }
+.pot { transition: background-color .35s ease; }
+.pot > * { transition: opacity .3s ease .1s; }
+/* then one full lap, easing out, landing on this round's receiver */
+.stSpin .spin, .stSpin .upright { transition: transform 1.4s cubic-bezier(.16, .84, .24, 1); }
 /* A round seen to change in a chain read: the ring turns after the pot has reached the receiving seat. */
 .ready .spin, .ready .upright { transition: transform .9s cubic-bezier(.2, .9, .2, 1) .65s; }
 .caption { text-align: center; font-size: 14px; font-weight: 800; }
@@ -44,6 +59,7 @@
 .itemText span { color: #B9B3A5; font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 0; font-size: 11px; font-weight: 700; opacity: .8; }
 @media (prefers-reduced-motion: reduce) {
-  .entering .spin, .entering .upright, .ready .spin, .ready .upright { transition: none; }
+  .ring, .seat, .upright > *, .badge, .pot, .pot > *, .stSpin .spin, .stSpin .upright, .ready .spin, .ready .upright { transition: none !important; }
+  .stDraw .drawPath { animation: none; }
   .flying { display: none; }
 }
