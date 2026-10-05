@@ -43,7 +43,11 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
   const radius = 50 - size / 2 - 4;
   // The logo's look (Joshua, 2026-10-05): coloured seats in a white ring with a black gap, joined by arcs in each
   // seat's colour that stop short of the next seat. Thinner lines than the logo's.
-  const gap = (Math.asin(Math.min(1, (size / 2 + 2.5) / radius)) * 180) / Math.PI;
+  // where an arc stops short of a seat: past its disc and ring; the receiving seat is 1.15x with a halo
+  const gapAt = (turn: number) => {
+    const half = turn === ring.receiving ? (size * 1.15) / 2 + 4 : size / 2 + 2.5;
+    return (Math.asin(Math.min(1, half / radius)) * 180) / Math.PI;
+  };
   const step = 360 / n;
   return (
     <figure className={`${r.wrap} ${ready ? r.ready : ""}`} aria-label={`The circle: ${ring.caption}`}>
@@ -51,11 +55,16 @@ export default function CircleRing({ ring, pot, round, showList = true }: { ring
         {ring.receiving !== null && <span className={r.marker} aria-hidden>Receives</span>}
         <div className={r.spin} aria-hidden>
           <svg className={r.arcs} viewBox="0 0 100 100" aria-hidden focusable="false">
-            {ring.seats.map((seat) => (
-              <path key={seat.turn} d={arc(radius, seat.angle + gap, seat.angle + step - gap)} fill="none"
-                stroke={`var(--${SLOTS[seat.turn % SLOTS.length]})`} strokeWidth={2.4} strokeLinecap="butt"
-                />
-            ))}
+            {ring.seats.map((seat) => {
+              const d = arc(radius, seat.angle + gapAt(seat.turn), seat.angle + step - gapAt((seat.turn + 1) % n));
+              // a black edge under the colour, so an arc in the hero's own accent still reads (adversary on 10bead6)
+              return (
+                <g key={seat.turn}>
+                  <path d={d} fill="none" stroke="#0B0B0B" strokeWidth={4} strokeLinecap="butt" />
+                  <path d={d} fill="none" stroke={`var(--${SLOTS[seat.turn % SLOTS.length]})`} strokeWidth={2.4} strokeLinecap="butt" />
+                </g>
+              );
+            })}
           </svg>
           {ring.seats.map((seat) => {
             const slot = SLOTS[seat.turn % SLOTS.length];
