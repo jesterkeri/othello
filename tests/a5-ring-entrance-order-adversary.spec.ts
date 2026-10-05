@@ -73,9 +73,10 @@ function rerender() {
   }
 }
 const hooks = {
-  useState<T>(init: T) {
+  useState<T>(init: T | (() => T)) {
     const k = mini.i++;
-    if (!(k in mini.slots)) mini.slots[k] = init;
+    // React calls a lazy initializer once (fix pass on dba0cb9: CircleRing reads reduced motion in one)
+    if (!(k in mini.slots)) mini.slots[k] = typeof init === "function" ? (init as () => T)() : init;
     const set = (next: T | ((p: T) => T)) => {
       const val = typeof next === "function" ? (next as (p: T) => T)(mini.slots[k] as T) : next;
       if (!Object.is(val, mini.slots[k])) { mini.slots[k] = val; dirty = true; }

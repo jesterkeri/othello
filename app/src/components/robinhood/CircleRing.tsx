@@ -26,6 +26,9 @@ function arc(radius: number, a: number, b: number): string {
   return `M ${pt(a)} A ${radius} ${radius} 0 ${b - a > 180 ? 1 : 0} 1 ${pt(b)}`;
 }
 
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 type Stage = "logo" | "grow" | "unfold" | "draw" | "spin" | "settled";
 const ORDER: Stage[] = ["logo", "grow", "unfold", "draw", "spin", "settled"];
 const BEFORE_UNFOLD: Stage[] = ["logo", "grow"];
@@ -43,18 +46,16 @@ export default function CircleRing({ ring, pot, round, showList = true, entrance
   // discs slide out to the seats (seats 4 to 8 split off the logo's discs) -> the arcs draw, the centre becomes the
   // pot, the labels appear -> the spin. Then a real round change seen in a later chain read plays the pot flying to the
   // receiver and the ring turning. Reduced motion: straight to the final state.
-  const [stage, setStageRaw] = useState<Stage>(entrance ? "logo" : "settled");
+  // Reduced motion starts settled on the first frame, not one frame later (adversary on dba0cb9). The ring mounts only
+  // in the browser, after the first chain read, so reading the media query here cannot mismatch a server render.
+  const [stage, setStageRaw] = useState<Stage>(() => (entrance && !prefersReducedMotion() ? "logo" : "settled"));
   // stages only move forward, whatever order late timers arrive in (adversary pass on 594acfe: a hidden tab's
   // held frame moved "settled" back to the entrance, so later round changes lost the pot-then-turn motion)
   const setStage = (next: Stage) => setStageRaw((now) => (ORDER.indexOf(next) > ORDER.indexOf(now) ? next : now));
   const [flight, setFlight] = useState(0);
   const lastRound = useRef(round);
   useEffect(() => {
-    if (!entrance) return;
-    if (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setStage("settled");
-      return;
-    }
+    if (!entrance || prefersReducedMotion()) return;
     const at = (ms: number, st: Stage) => window.setTimeout(() => setStage(st), ms);
     // overlapping phases, one easing (Joshua, 2026-10-05: "the beginning is slow and isnt smooth for its phase changes")
     const timers = [at(40, "grow"), at(220, "unfold"), at(620, "draw"), at(820, "spin"), at(2450, "settled")];
