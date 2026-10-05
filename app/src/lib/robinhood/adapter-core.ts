@@ -243,6 +243,11 @@ export type RobinhoodDeps = {
   factory: TrustedFactory | null;
   /** Test hook: USDG address (defaults to the Robinhood testnet USDG). */
   usdg?: Address;
+  /**
+   * Told the hash once the wallet has sent an action's transaction, before its receipt: lets a screen show "waiting for
+   * the wallet" and "pending on chain" apart. A view callback only; a throw in it is ignored and changes nothing.
+   */
+  onSent?: (hash: `0x${string}`) => void;
 };
 
 export type RobinhoodAdapter = EvmUsdgAdapter<RhCircleView> & { trust(): Promise<TrustResult> };
@@ -341,6 +346,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
         address: d.circle, abi: othelloCircleAbi, functionName, args, account: d.account,
       } as never));
       const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
+      try { d.onSent?.(hash); } catch { /* a view callback cannot affect the action */ }
       const { receipt, sameAction } = await waitForOwnReceipt(d.publicClient, hash);
       if (!sameAction) {
         // Cancelled or replaced in the wallet: the action did not run, whatever the replacement's status.

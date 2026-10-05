@@ -1,0 +1,41 @@
+/* The circle ring: seats around the pot, turned so the receiving seat is at the top (CircleRing.tsx). */
+.wrap { margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ring { position: relative; width: 100%; max-width: 440px; aspect-ratio: 1; margin: 0 auto; }
+.track { position: absolute; inset: calc(var(--seat) / 2 + 3%); border: 3px dashed currentColor; border-radius: 999px; opacity: .35; }
+.marker { position: absolute; left: 50%; top: -4px; transform: translate(-50%, -100%); z-index: 3; border: 2px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: 4px 10px; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.marker::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #0B0B0B; border-bottom: 0; }
+.spin { position: absolute; inset: 0; transform: rotate(var(--rot)); }
+.seat { position: absolute; width: var(--seat); aspect-ratio: 1; transform: translate(-50%, -50%); border: 3px solid #0B0B0B; border-radius: 999px; box-shadow: 3px 3px 0 #0B0B0B; display: flex; align-items: center; justify-content: center; }
+.upright { display: flex; flex-direction: column; align-items: center; line-height: 1; transform: rotate(calc(-1 * var(--rot))); }
+.seatWord { font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.seatNum { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(22px, 3vw, 36px); line-height: .9; }
+.you { margin-top: 3px; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: 2px 6px; font-size: 8.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.badge { position: absolute; right: -6%; top: -6%; width: 34%; aspect-ratio: 1; min-width: 20px; border: 2px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; }
+.paid .badge { background: var(--teal); color: var(--tealInk); }
+.covered .badge, .late .badge { background: var(--clay); color: var(--clayInk); }
+.due { outline: 3px dashed #0B0B0B; outline-offset: 3px; }
+.receiving { z-index: 2; box-shadow: 0 0 0 5px #0B0B0B, 0 0 0 10px var(--paper); }
+.received { filter: saturate(.35); opacity: .78; }
+.open { background: transparent !important; color: inherit !important; border-style: dashed; box-shadow: none; }
+.pot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34%; aspect-ratio: 1; border: 3px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 6px; }
+.potLabel { font-size: 9px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; color: #D8D2C4; }
+.potAmt { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(18px, 2.4vw, 28px); line-height: .9; text-transform: uppercase; }
+.flying { position: absolute; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%); border: 3px solid #0B0B0B; border-radius: 999px; background: var(--acid); color: var(--acidInk); padding: 6px 12px; font-size: 12px; font-weight: 900; white-space: nowrap; animation: potFly .7s cubic-bezier(.5, 0, .3, 1) forwards; pointer-events: none; }
+@keyframes potFly {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  80% { transform: translate(-50%, calc(-50% - 210%)) scale(.9); opacity: 1; }
+  100% { transform: translate(-50%, calc(-50% - 230%)) scale(.6); opacity: 0; }
+}
+/* The ring turns after the pot has reached the receiving seat. Only after first paint, never on load. */
+.ready .spin, .ready .upright { transition: transform .9s cubic-bezier(.2, .9, .2, 1) .65s; }
+.caption { text-align: center; font-size: 14px; font-weight: 800; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.item { display: flex; flex-direction: column; gap: 2px; border: 2px solid #0B0B0B; border-radius: 14px; background: var(--paper); color: var(--ink); padding: 7px 10px; font-size: 12px; min-width: 0; }
+.itemNow { background: #0B0B0B; color: #FBF9F2; }
+.itemWho { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; opacity: .8; }
+.itemStatus { font-weight: 600; line-height: 1.35; }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 0; font-size: 11px; font-weight: 700; opacity: .8; }
+@media (prefers-reduced-motion: reduce) {
+  .ready .spin, .ready .upright { transition: none; }
+  .flying { display: none; }
+}

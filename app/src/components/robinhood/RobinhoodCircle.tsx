@@ -22,12 +22,16 @@ import {
 } from "@/lib/robinhood/adapter";
 import { explorerAddress, explorerTx } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
+import { closeOutOf, releaseButton, releaseSteps, ringOf, type ReleasePhase } from "@/lib/robinhood/circle-view";
 import { reserveDisplay } from "@/lib/robinhood/reserve-display";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
 import { useWalletUi } from "@/lib/wallet";
 
 import s from "@/components/circle/Circle.module.css";
+import CircleRing from "./CircleRing";
+import CloseOutPanel from "./CloseOutPanel";
+import PayoutPanel from "./PayoutPanel";
 import rh from "./Robinhood.module.css";
 
 const REFRESH_MS = 8_000;
@@ -91,6 +95,9 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const latest = useRef(0);
   const inFlight = useRef(false);
+  const [phase, setPhase] = useState<ReleasePhase>({ kind: "idle" });
+  // Set only while a release is in flight: the adapter reports the wallet's hash here before the receipt.
+  const onSent = useRef<((hash: string) => void) | null>(null);
 
   // The timer skips a tick while a read is still running, so a slow RPC cannot keep cancelling every read.
   // After an action, `force` starts a fresh read that supersedes any older one.
@@ -132,6 +139,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
             walletClient: w.walletClient,
             account: w.address,
             circle,
+            onSent: (hash) => onSent.current?.(hash),
           })
         : null,
     [w.walletClient, w.address, circle],
@@ -151,6 +159,25 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     },
     [refresh],
   );
+
+  /** Release this round's pot, following the real transaction: wallet, sent (hash), receipt, then a fresh read. */
+  const release = useCallback(async (round: number, recipientTurn: number, amount: bigint) => {
+    if (!adapter) return;
+    setBusy({ what: "Release the pot" });
+    setLast(null);
+    setPhase({ kind: "wallet" });
+    onSent.current = (hash) => setPhase({ kind: "sent", hash });
+    try {
+      const result = await adapter.releasePot({});
+      setPhase(result.ok
+        ? { kind: "released", hash: result.txHash, round, recipientTurn, amount }
+        : { kind: "failed", message: result.message, error: result.error });
+    } finally {
+      onSent.current = null;
+      setBusy(null);
+      void refresh(true);
+    }
+  }, [adapter, refresh]);
 
   if (!valid || (trust && !trust.ok)) {
     const notDeployed = trust && !trust.ok && trust.reason === "not-deployed";
@@ -187,7 +214,6 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const me = w.address ? v.seats.find((x) => same(x.wallet, w.address)) ?? null : null;
   const isCreator = same(v.creator, w.address);
   const pot = BigInt(v.n) * v.c;
-  const finished = v.status === "Completed" || v.status === "Cancelled";
   const reserve = reserveDisplay(v);
   const paused = v.status === "Active" && v.nextGateShortBy > 0n;
   const graceEnds = v.deadline + v.graceSecs;
@@ -207,6 +233,14 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         : v.status === "Completed"
           ? s.statusCompleted
           : s.statusCancelled;
+  const ring = ringOf(v, w.address);
+  const payout = releaseButton(v, { hasWallet: w.hasWallet, connected: Boolean(w.address), onRobinhood: w.onRobinhood, busy: Boolean(busy), me: w.address ?? null });
+  // A finished release stays on screen until dismissed, even after the read has moved to the next round.
+  const payoutShown = payout ?? (phase.kind === "released" ? { label: "", enabled: false, blocker: null, recipientTurn: phase.recipientTurn, amount: phase.amount } : null);
+  const steps = releaseSteps(v, phase);
+  const close = closeOutOf(v, w.address);
+  const writeBlocker = !w.hasWallet ? "Install MetaMask or another EVM wallet to collect." : !w.address ? "Connect the wallet of your seat to collect." : !w.onRobinhood ? "Switch your wallet to Robinhood Chain testnet to collect." : busy ? "A transaction is already waiting for your wallet or for Robinhood Chain." : null;
+  const coverFailed = phase.kind === "failed" && ["CoverageTooLow", "ReserveOvercommitted"].includes(phase.error);
   const firstLateUnpaidPrePayout = v.status === "Active" && afterGrace
     ? v.seats.find((x) => !x.paid && !x.defaulted && !x.received)
     : undefined;
@@ -258,7 +292,8 @@ export default function RobinhoodCircle({ address }: { address: string }) {
           )}
         </div>
 
-        <section className={s.hero} aria-label="This savings circle">
+        <section className={`${s.hero} ${rh.ringHero}`} aria-label="This savings circle">
+          <CircleRing ring={ring} pot={pot} round={v.round} />
           <div className={s.heroMain}>
             <div className={s.headTop}>
               <span className={`${s.statusPill} ${statusClass} ${s.micro}`}>{paused ? "Paused" : v.status}</span>
@@ -283,7 +318,30 @@ export default function RobinhoodCircle({ address }: { address: string }) {
                 <span className={`${s.display} ${s.clockValue}`}>{fmtUsdg(pot)}</span>
               </span>
             </div>
+            {close && (
+              <CloseOutPanel
+                close={close}
+                completed={v.status === "Completed"}
+                canWrite={canWrite}
+                blocker={writeBlocker}
+                busy={busy?.what === "Withdraw"}
+                onWithdraw={() => adapter && void run("Withdraw", () => adapter.withdraw({}))}
+              />
+            )}
+            {payoutShown && (
+              <PayoutPanel
+                button={payoutShown}
+                steps={steps}
+                phase={phase}
+                showSafetyCheck={paused || coverFailed}
+                canWrite={canWrite}
+                onRelease={() => void release(v.round, payoutShown.recipientTurn, payoutShown.amount)}
+                onCheckSafety={() => adapter && void run("Check payout safety", () => adapter.updateCoverage({}))}
+                onClose={() => setPhase({ kind: "idle" })}
+              />
+            )}
           </div>
+        </section>
 
           <section className={s.act} aria-live="polite">
             <span className={s.kicker}>Your next step</span>
@@ -356,18 +414,6 @@ export default function RobinhoodCircle({ address }: { address: string }) {
                     <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Pay this round", () => adapter.contribute({}))}>Approve and pay {fmtUsdg(v.c)}</button>
                   </div>
                 )}
-                {v.status === "Active" && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Circle controls</span>
-                      <span className={s.actFixture}>{allSettled ? "Every seat is settled; the pot can be released." : "The pot releases only after every seat has paid or been settled."}</span>
-                    </span>
-                    <span className={s.actionButtons}>
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite || !allSettled} onClick={() => adapter && void run("Release the pot", () => adapter.releasePot({}))}>Release to {short(v.seats[v.round]?.wallet ?? "")}</button>
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Check payout safety", () => adapter.updateCoverage({}))}>Check payout safety</button>
-                    </span>
-                  </div>
-                )}
                 {v.status === "Active" && me && !me.defaulted && (
                   <div className={s.action}>
                     <span className={s.actionText}>
@@ -397,20 +443,12 @@ export default function RobinhoodCircle({ address }: { address: string }) {
                     ) : null}
                   </div>
                 ))}
-                {finished && me && !me.withdrawn && (v.status === "Completed" || me.joined) && (
-                  <div className={s.action}>
-                    <span className={s.actionText}><span className={s.bannerTitle}>Withdraw your share</span><span className={s.actFixture}>The circle has finished. Your wallet confirms the withdrawal.</span></span>
-                    <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Withdraw", () => adapter.withdraw({}))}>Withdraw your share</button>
-                  </div>
-                )}
-                {finished && me?.withdrawn && <p className={s.actFixture}>You&apos;ve withdrawn your share. Nothing more to do here.</p>}
-                {!me && <p className={s.actFixture}>This wallet is not a member. Anyone can release a settled pot, recheck cover, or record a missed payment after grace.</p>}
+                {!me && <p className={s.actFixture}>This wallet is not a member. Anyone can release a settled pot, check payout safety, or record a missed payment after grace.</p>}
               </>
             )}
             {busy && <p className={s.actFixture} role="status">{busy.what}: confirm in your wallet, then wait for Robinhood Chain.</p>}
             {last && <p className={s.actFixture} role="status">{last.result.ok ? <>{last.what}: done. <a className={s.link} href={explorerTx(last.result.txHash)} target="_blank" rel="noreferrer">See it on the explorer</a></> : `${last.what}: ${last.result.message}`}</p>}
           </section>
-        </section>
 
         {v.status === "Forming" ? (
           <section className={s.section}>
