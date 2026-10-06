@@ -214,8 +214,8 @@ export default function RobinhoodPortfolio() {
                     {circles.count === 0
                       ? "This wallet hasn't started or joined a circle yet. Start one, or open the link someone sent you."
                       : circles.more
-                        ? `This wallet is in ${circles.count} circles. This card reads the ${READ_LIMIT} newest, and none of them is running right now; older ones are on your circles page.`
-                        : `This wallet is in ${circles.count === 1 ? "1 circle" : `${circles.count} circles`}, and none is running right now.`}
+                        ? `This wallet has created or joined ${circles.count} circles. This card reads the ${READ_LIMIT} newest, and none of them is running right now; older ones are on your circles page.`
+                        : `This wallet has created or joined ${circles.count === 1 ? "1 circle" : `${circles.count} circles`}, and none is running right now.`}
                   </span>
                   <Link href={circles.count === 0 ? "/robinhood/new" : "/robinhood"} className={portfolio.btnCream}>
                     {circles.count === 0 ? "Start a circle" : "Open your circles"}<Arrow d={ARROW_RIGHT} />
@@ -245,7 +245,12 @@ export default function RobinhoodPortfolio() {
             <span className={portfolio.demoPills}>
               <span><b>{shown(usdg, fmtUsdg)}</b> test USDG (not real USDG)</span>
               <span><b>{shown(eth, (v) => trimZeros(exactTokens(v.toString(), 18)))}</b> testnet ETH for gas (not real ETH)</span>
-              <span><b>{stocksRead ? held : "…"}</b> of {TESTNET_STOCK_TOKENS.length} faucet Stock Tokens held (not real shares)</span>
+              {/* a failed read says so, never the "…" of a read still running (adversary on 783fec7) */}
+              {stockReads.includes("failed") ? (
+                <span><b>Unavailable:</b> some faucet Stock Token balances could not be read (not real shares)</span>
+              ) : (
+                <span><b>{stocksRead ? held : "…"}</b> of {TESTNET_STOCK_TOKENS.length} faucet Stock Tokens held (not real shares)</span>
+              )}
             </span>
             <a href={TESTNET_FAUCET} target="_blank" rel="noreferrer" className={portfolio.inlineLink}>Robinhood&apos;s testnet faucet</a>
           </TestTokenStrip>
