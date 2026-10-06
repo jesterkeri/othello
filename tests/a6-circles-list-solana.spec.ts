@@ -118,7 +118,7 @@ describe("A6: the shared circles list on Solana", () => {
     const key = (n: number): Key => ({ toBase58: () => `Wallet${n}${"1".repeat(30)}` });
     const def: Key = { toBase58: () => "11111111111111111111111111111111" };
     const circle = (id: number, creator: Key, members: Key[], n = members.length, status: Record<string, unknown> = { active: {} }) =>
-      ({ address: `c${id}`, circle: { circleId: { toString: () => String(id) }, creator, n, status, members: [...members, ...Array(8 - members.length).fill(def)] } });
+      ({ address: `c${id}`, circle: { circleId: { toString: () => String(id) }, creator, n, status, joinedBitmap: 0, withdrawnBitmap: 0, members: [...members, ...Array(8 - members.length).fill(def)] } });
 
     it("keeps the circles the wallet created or holds a seat in, newest first", () => {
       const me = key(1);
@@ -131,7 +131,7 @@ describe("A6: the shared circles list on Solana", () => {
       assert.deepEqual(circlesOf(all as never, me.toBase58()).map((x) => x.address), ["c4", "c2", "c1"]);
     });
 
-    it("puts running circles before finished ones, so a cap never drops one the wallet may have to act in", () => {
+    it("lists the circles the wallet has to act in first: active, then owed and uncollected, then forming", () => {
       const me = key(1);
       const all = [
         circle(9, me, [me, key(2)], 2, { completed: {} }),
@@ -139,7 +139,8 @@ describe("A6: the shared circles list on Solana", () => {
         circle(8, me, [me, key(2)], 2, { cancelled: {} }),
         circle(2, me, [me, key(2)], 2, { forming: {} }),
       ];
-      assert.deepEqual(circlesOf(all as never, me.toBase58()).map((x) => x.address), ["c3", "c2", "c9", "c8"]);
+      // c9 completed, this wallet's seat not collected; c8 cancelled before this wallet joined (nothing owed)
+      assert.deepEqual(circlesOf(all as never, me.toBase58()).map((x) => x.address), ["c3", "c9", "c2", "c8"]);
     });
 
     it("ignores the unused seats past n (they hold the default key)", () => {

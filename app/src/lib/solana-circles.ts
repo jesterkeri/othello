@@ -30,18 +30,38 @@ export const namesFor = (circle: string): readonly string[] => (circle === DEMO_
 
 export { parseAddress } from "./sol-address";
 
-/** Running (Forming or Active) before finished, so a cap never drops a circle the wallet may have to act in. */
-const running = (status: Record<string, unknown>) => "forming" in status || "active" in status;
+type Listed = { address: string; circle: Pick<DecodedCircle, "creator" | "members" | "n" | "circleId" | "status" | "joinedBitmap" | "withdrawnBitmap"> };
 
 /**
- * The circles in `accounts` that `wallet` created or holds a seat in: running ones first, then by circle id, highest
- * first (adversary on 51bc786: a cap by id alone could drop a running circle).
+ * Where a circle sits in the list, lowest first, so the MAX_LISTED cap never drops one the wallet has to act in
+ * (adversary passes on 51bc786 and 92b2ab7). A creator names the members and picks the circle id without their
+ * consent, so neither a Forming invitation nor the id may outrank a circle the wallet has joined:
+ *   0 Active (every seat joined, so the wallet chose to be in it): it may owe a payment or a claim
+ *   1 finished, and this wallet's seat is owed and not yet collected
+ *   2 Forming, and the wallet has joined or created it
+ *   3 Forming, an invitation it has not joined
+ *   4 finished, nothing left for this wallet
  */
-export function circlesOf(accounts: { address: string; circle: Pick<DecodedCircle, "creator" | "members" | "n" | "circleId" | "status"> }[], wallet: string) {
-  const id = (x: (typeof accounts)[number]) => BigInt(x.circle.circleId.toString());
+export function listRank({ circle }: Listed, wallet: string): number {
+  const turn = circle.members.slice(0, circle.n).findIndex((m) => m.toBase58() === wallet);
+  const bit = (bitmap: number) => turn >= 0 && (bitmap & (1 << turn)) !== 0;
+  const s = circle.status;
+  if ("active" in s) return 0;
+  if ("completed" in s || "cancelled" in s) {
+    const owed = turn >= 0 && ("completed" in s || bit(circle.joinedBitmap));
+    return owed && !bit(circle.withdrawnBitmap) ? 1 : 4;
+  }
+  return bit(circle.joinedBitmap) || circle.creator.toBase58() === wallet ? 2 : 3;
+}
+
+/** The circles in `accounts` that `wallet` created or holds a seat in, by listRank, then circle id, highest first. */
+export function circlesOf(accounts: Listed[], wallet: string) {
+  const id = (x: Listed) => BigInt(x.circle.circleId.toString());
   return accounts
     .filter(({ circle }) => circle.creator.toBase58() === wallet || circle.members.slice(0, circle.n).some((m) => m.toBase58() === wallet))
-    .sort((a, b) => Number(running(b.circle.status)) - Number(running(a.circle.status)) || (id(b) > id(a) ? 1 : id(b) < id(a) ? -1 : 0));
+    .map((x) => ({ x, rank: listRank(x, wallet) }))
+    .sort((a, b) => a.rank - b.rank || (id(b.x) > id(a.x) ? 1 : id(b.x) < id(a.x) ? -1 : 0))
+    .map(({ x }) => x);
 }
 
 /** The Othello circles `wallet` created or holds a seat in, the first MAX_LISTED read in full, and how many it has. */

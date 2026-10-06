@@ -86,7 +86,7 @@ function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpe
               <span className={c.cardTop}><span className={c.stage}>Finished</span></span>
               <span className={c.cardBody}>
                 <b className={c.headline}>Your completed circles come here.</b>
-                <span className={c.detail}>When a circle pays out its last round, it moves here, and you collect your locked USDG from it.</span>
+                <span className={c.detail}>When a circle pays out its last round, it moves here, and you collect what you locked from it.</span>
               </span>
             </span>
           </span>

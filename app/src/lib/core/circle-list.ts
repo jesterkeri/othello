@@ -29,9 +29,11 @@ export type ListCircle = RingSource & {
   closeOut: { collected: number; owedCount: number; mine: { owed: boolean; collected: boolean; amount: bigint | null } | null } | null;
 };
 
-const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+// EVM addresses compare case-insensitively (checksum casing); anything else, such as base58, exactly
+const same = (a?: string | null, b?: string | null) =>
+  Boolean(a && b && (a.startsWith("0x") && b.startsWith("0x") ? a.toLowerCase() === b.toLowerCase() : a === b));
 
-/** The seat this wallet holds, if any (addresses compared case-insensitively, as EVM addresses are). */
+/** The seat this wallet holds, if any. */
 export const mySeat = (c: ListCircle, me: string | null | undefined): ListSeat | null => c.seats.find((s) => same(s.wallet, me)) ?? null;
 export const isCreator = (c: ListCircle, me: string | null | undefined) => same(c.creator, me);
 
