@@ -6,7 +6,7 @@
  * Every action goes through the evm-usdg-v1 adapter: exact approvals, refusals decoded into plain words.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getAddress, isAddress, parseAbi, parseEventLogs, parseUnits, type Address } from "viem";
+import { getAddress, isAddress, parseUnits, type Address } from "viem";
 
 import Shell from "@/components/othello/Shell";
 import type { ActionResult } from "@/lib/core/adapter";
@@ -42,7 +42,6 @@ type Busy = { what: string } | null;
 type Last = { what: string; result: ActionResult } | null;
 
 // The contract's own payout record (evm/src/OthelloCircle.sol): the confirmation names who was paid from the receipt.
-const POT_RELEASED = parseAbi(["event PotReleased(uint8 round, address indexed recipient, uint256 pot, uint256 needed, uint256 remaining)"]);
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
@@ -166,7 +165,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   useEffect(() => { setPhase((p) => (p.kind === "failed" ? { kind: "idle" } : p)); }, [viewRound]);
 
   /** Release this round's pot, following the real transaction: wallet, sent (hash), receipt, then a fresh read. */
-  const release = useCallback(async (round: number, recipientTurn: number, amount: bigint) => {
+  const release = useCallback(async (round: number) => {
     if (!adapter) return;
     setBusy({ what: "Release the pot" });
     setLast(null);
@@ -177,24 +176,24 @@ export default function RobinhoodCircle({ address }: { address: string }) {
       if (!result.ok) {
         setPhase({ kind: "failed", message: result.message, error: result.error, round });
       } else {
-        // Who was paid, how much and for which round: from the receipt's PotReleased event when it can be read
-        // (another member may have released first, so this transaction released the next round); else the round
-        // the button showed.
-        let paid = { round, recipientTurn, amount };
-        try {
-          const receipt = await robinhoodPublicClient.getTransactionReceipt({ hash: result.txHash as `0x${string}` });
-          const ev = parseEventLogs({ abi: POT_RELEASED, logs: receipt.logs.filter((l) => same(l.address, circle)) })[0];
-          const seatOf = view?.seats.find((x) => same(x.wallet, ev?.args.recipient));
-          if (ev && seatOf) paid = { round: ev.args.round, recipientTurn: seatOf.turn, amount: ev.args.pot };
-        } catch { /* the read failed: the button's round stands, and "Confirmed" still waits for a fresh read */ }
-        setPhase({ kind: "released", hash: result.txHash, ...paid });
+        // Who was paid and for which round comes only from this transaction's own receipt, as the adapter read it:
+        // another member may have released first, so this one released the next round (Codex r2 on PR #22). With no
+        // such event the page names no seat: a plain "done" with the explorer link.
+        const paid = result.released;
+        const seatOf = paid ? view?.seats.find((x) => same(x.wallet, paid.recipient)) : undefined;
+        if (paid && seatOf) {
+          setPhase({ kind: "released", hash: result.txHash, round: paid.round, recipientTurn: seatOf.turn, amount: paid.pot });
+        } else {
+          setPhase({ kind: "idle" });
+          setLast({ what: "Release the pot", result });
+        }
       }
     } finally {
       onSent.current = null;
       setBusy(null);
       void refresh(true);
     }
-  }, [adapter, refresh, circle, view]);
+  }, [adapter, refresh, view]);
 
   if (!valid || (trust && !trust.ok)) {
     const notDeployed = trust && !trust.ok && trust.reason === "not-deployed";
@@ -469,7 +468,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
                 phase={shownPhase}
                 showSafetyCheck={paused || coverFailed}
                 canWrite={canWrite}
-                onRelease={() => void release(v.round, payoutShown.recipientTurn, payoutShown.amount)}
+                onRelease={() => void release(v.round)}
                 onCheckSafety={() => adapter && void run("Check payout safety", () => adapter.updateCoverage({}))}
                 onClose={() => setPhase({ kind: "idle" })}
               />

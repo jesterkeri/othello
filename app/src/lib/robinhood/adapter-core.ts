@@ -18,7 +18,9 @@ import {
   keccak256,
   type Address,
   type Hex,
+  parseEventLogs,
   type PublicClient,
+  type TransactionReceipt,
   type WalletClient,
 } from "viem";
 
@@ -282,7 +284,19 @@ export type RobinhoodDeps = {
   onSent?: (hash: `0x${string}`) => void;
 };
 
-export type RobinhoodAdapter = EvmUsdgAdapter<RhCircleView> & { trust(): Promise<TrustResult> };
+/** What a release paid, from the PotReleased event in its own receipt: the round and seat that receipt names. */
+export type Released = { round: number; recipient: Address; pot: bigint };
+/**
+ * releasePot's result. The contract pays whichever round is current when the transaction lands (releasePot takes no
+ * round), so after a race with another member it may be the next one; `released` says which, from the receipt the
+ * adapter waited for, never from a second lookup (Codex r2 on PR #22). Absent only if the receipt has no such event.
+ */
+export type ReleaseResult = Extract<ActionResult, { ok: false }> | (Extract<ActionResult, { ok: true }> & { released?: Released });
+
+export type RobinhoodAdapter = Omit<EvmUsdgAdapter<RhCircleView>, "releasePot"> & {
+  trust(): Promise<TrustResult>;
+  releasePot(a: Record<string, never>): Promise<ReleaseResult>;
+};
 
 export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
   const usdg = d.usdg ?? USDG;
@@ -355,6 +369,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     functionName: string,
     args: readonly unknown[],
     pullOf?: () => Promise<bigint> | bigint,
+    onReceipt?: (receipt: TransactionReceipt) => void,
   ): Promise<ActionResult> {
     const memo: { previous: bigint | null; pending: boolean } = { previous: null, pending: false };
     try {
@@ -388,6 +403,8 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
       if (receipt.status !== "success") {
         return restore({ ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." }, memo);
       }
+      // reading the receipt can only add detail: a throw here must not turn a confirmed success into a failure
+      try { onReceipt?.(receipt); } catch { /* the result stands without the detail */ }
       return { ok: true, txHash: receipt.transactionHash };
     } catch (e) {
       return restore(decodeFailure(e), memo);
@@ -410,7 +427,16 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     cancelCircle: checked(P, "cancelCircle", async () => send("cancelCircle", [])),
     activate: checked(P, "activate", async () => send("activate", [])),
     contribute: checked(P, "contribute", async () => send("contribute", [], async () => (await view()).c)),
-    releasePot: checked(P, "releasePot", async () => send("releasePot", [])),
+    releasePot: checked(P, "releasePot", async (): Promise<ReleaseResult> => {
+      let released: Released | undefined;
+      const result = await send("releasePot", [], undefined, (receipt) => {
+        const ev = parseEventLogs({
+          abi: othelloCircleAbi, eventName: "PotReleased", logs: receipt.logs.filter((l) => isAddressEqual(l.address, d.circle)),
+        })[0];
+        if (ev) released = { round: Number(ev.args.round), recipient: getAddress(ev.args.recipient), pot: ev.args.pot };
+      });
+      return result.ok && released ? { ...result, released } : result;
+    }),
     updateCoverage: checked(P, "updateCoverage", async () => send("updateCoverage", [])),
     markDelinquent: checked(P, "markDelinquent", async ({ round, turn }: { round: number; turn: number }) =>
       send("markDelinquent", [round, turn])),
