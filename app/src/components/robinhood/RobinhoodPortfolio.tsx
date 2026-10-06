@@ -47,11 +47,13 @@ const shown = (r: TokenRead, f: (v: bigint) => string) => (r === null ? "Reading
 /**
  * The wallet's newest circles, at most MAX_PAGES pages of listMyCircles (newest first), then a read of each running one.
  * The reads are bounded by the page cap, never by how many circles the wallet has ever had (adversary on d82d67e: a
- * wallet with 240 circles cost 2000 reads before the card drew). A running circle is among the newest: a member is in
- * at most three at a time (Joshua 2026-10-06). `count` is every circle in the factory's index for this wallet (its
+ * wallet with 240 circles cost 2000 reads before the card drew). A running circle is usually among the newest (a
+ * member is meant to be in at most three at a time, Joshua 2026-10-06), but nothing on chain enforces that yet, so
+ * when older circles were not read the empty card says so instead of "no running circle". `count` is every circle in the factory's index for this wallet (its
  * own creates and joins); `more` says older ones exist that were not read.
  */
 const MAX_PAGES = 3;
+const READ_LIMIT = MAX_PAGES * MY_CIRCLES_PAGE;
 async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCircleView[]; count: number; more: boolean }> {
   const all: Summary[] = [];
   let before: number | undefined;
@@ -203,12 +205,14 @@ export default function RobinhoodPortfolio() {
                 />
               ) : (
                 <div className={portfolio.down}>
-                  <b>No running circle</b>
+                  {/* with older circles unread, the card says only what it read (adversary on b1b1c30: an older circle can
+                      still be running, since nothing on chain enforces three at a time yet) */}
+                  <b>{circles.more ? `Nothing running in your ${READ_LIMIT} newest` : "No running circle"}</b>
                   <span>
                     {circles.count === 0
                       ? "This wallet hasn't started or joined a circle yet. Start one, or open the link someone sent you."
                       : circles.more
-                        ? `This wallet is in ${circles.count} circles, and none of its ${MAX_PAGES * MY_CIRCLES_PAGE} newest is running right now.`
+                        ? `This wallet is in ${circles.count} circles. This card reads the ${READ_LIMIT} newest, and none of them is running right now; older ones are on your circles page.`
                         : `This wallet is in ${circles.count === 1 ? "1 circle" : `${circles.count} circles`}, and none is running right now.`}
                   </span>
                   <Link href={circles.count === 0 ? "/robinhood/new" : "/robinhood"} className={portfolio.btnCream}>
