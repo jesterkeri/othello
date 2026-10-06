@@ -11,7 +11,7 @@ import { WalletControl } from './WalletConnect';
 import { SIDE_HOME, SIDE_LABEL, sideName, sideOf, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { showsChainSwitch, useActiveSide } from '@/lib/active-side';
-import { PALETTES, SLOT_LABELS, STORAGE_KEY, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
+import { PALETTES, SLOT_LABELS, STORAGE_KEY, cacheThemeVars, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, saveTheme, type CustomProfile, type Profile, type ThemeMode } from '@/lib/theme';
 
 /** The builder's hue choices, as on Landing. */
 const SWATCH_HUES = [8, 26, 44, 66, 96, 140, 168, 192, 212, 236, 268, 302];
@@ -79,7 +79,8 @@ export function useTheme() {
   const mine = useMemo(() => custom.map(customToProfile), [custom]);
   const profile: Profile = choice.startsWith('c') ? (mine[Number(choice.slice(1))] ?? PALETTES[1]!) : (PALETTES[Number(choice.slice(1))] ?? PALETTES[1]!);
   const vars = useMemo(() => innerVars(profile, mode === 'dark'), [profile, mode]) as CSSProperties;
-  return { mode, setMode, choice, setChoice, mine, vars, custom, setCustom };
+  useEffect(() => { if (ready) cacheThemeVars(profile, mode); }, [ready, profile, mode]);
+  return { mode, setMode, choice, setChoice, mine, vars, custom, setCustom, ready };
 }
 
 /**
@@ -111,8 +112,8 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
   const t = useTheme();
   // Which colours menu is open: the rail's (desktop) or the top bar's (phone). One state, two places.
   const [menu, setMenu] = useState<'rail' | 'top' | null>(null);
-  useEffect(() => { document.body.style.background = String((t.vars as Record<string, string>)['--panel']); }, [t.vars]);
-  useEffect(() => { document.documentElement.style.colorScheme = t.mode; }, [t.mode]);
+  useEffect(() => { if (t.ready) document.body.style.background = String((t.vars as Record<string, string>)['--panel']); }, [t.ready, t.vars]);
+  useEffect(() => { if (t.ready) document.documentElement.style.colorScheme = t.mode; }, [t.ready, t.mode]);
   useEffect(() => {
     if (!menu) return;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
@@ -211,8 +212,9 @@ export default function Shell({ active = 'Circles', onNavigate, surface = 'panel
     </div>
   );
 
+  // until the stored theme is read, the variables and mode come from layout.tsx's head rules ([data-tk=inner])
   return (
-    <div className={s.root} style={{ ...t.vars, colorScheme: t.mode }} data-mode={t.mode}>
+    <div className={s.root} data-tk="inner" style={t.ready ? { ...t.vars, colorScheme: t.mode } : undefined} data-mode={t.ready ? t.mode : undefined}>
       <aside className={s.rail}>
         <span className={s.logo} aria-label="Othello">O</span>
         <nav className={s.railNav} aria-label="Main">

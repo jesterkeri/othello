@@ -10,6 +10,8 @@ export type StoredTheme = { choice: string; theme: ThemeMode | null; custom: Cus
 export const SLOTS = ['acid', 'sky', 'cobalt', 'teal', 'clay'] as const;
 export const SLOT_LABELS = ['Primary', 'Secondary', 'Deep', 'Support', 'Accent'] as const;
 export const STORAGE_KEY = 'othello.theme';
+/** The resolved variables of the stored theme, read by layout.tsx's head script before the page paints. */
+export const VARS_KEY = 'othello.theme.vars';
 
 export const PALETTES: Profile[] = [
   { name: 'Signal', note: 'Lime and cobalt', brand: '#2B4BFF', dark: ['#D6F24A', '#7FC4EE', '#2B3BEF', '#12A594', '#E2552B'] },
@@ -172,4 +174,15 @@ export function innerVars(set: { brand: string; dark: string[] }, dark: boolean)
   v['--gutterMuted'] = dark ? v['--panelMuted']! : '#2E2C27';
   v['--tile'] = dark ? mix(atLum(b, 0.03), '#1C1C1B', 0.6) : v['--panel']!;
   return v;
+}
+
+/**
+ * Caches the stored theme's resolved variables for both kinds of screen (inner pages, Landing), so layout.tsx's head
+ * script can paint them before React runs: without it every page first drew the default palette, then switched
+ * (Joshua 2026-10-06). Also marks the document's mode, which the shell's light-mode rules read before hydration.
+ */
+export function cacheThemeVars(profile: { brand: string; dark: string[] }, mode: ThemeMode) {
+  const dark = mode === 'dark';
+  try { localStorage.setItem(VARS_KEY, JSON.stringify({ mode, inner: innerVars(profile, dark), landing: themeVars(profile, dark) })); } catch { /* storage unavailable */ }
+  if ('document' in globalThis) document.documentElement.dataset['mode'] = mode;
 }

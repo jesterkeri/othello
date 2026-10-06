@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { applyThemeToDocument } from "@/lib/applyTheme";
 import {
   PALETTES,
+  cacheThemeVars,
   customToProfile,
   loadTheme,
   themeVars,
@@ -31,9 +32,11 @@ export function ThemeRoot({
   const [mode, setMode] = useState<ThemeMode>("light");
   const [choice, setChoice] = useState("r0");
   const [custom, setCustom] = useState<{ name: string; hues: string[] }[]>([]);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const saved = loadTheme();
+    setReady(true);
     if (!saved) return;
     setChoice(saved.choice);
     setCustom(saved.custom);
@@ -53,11 +56,13 @@ export function ThemeRoot({
   // body and the overscroll area sit outside this element, so they need the
   // same variables or dark mode shows a light strip behind the frame.
   useEffect(() => {
+    if (!ready) return;
     applyThemeToDocument(vars, mode);
-  }, [vars, mode]);
+    cacheThemeVars(active, mode);
+  }, [ready, vars, mode, active]);
 
   return (
-    <div className={className} data-theme={mode} style={vars as CSSProperties}>
+    <div className={className} data-tk="landing" data-theme={mode} style={ready ? (vars as CSSProperties) : undefined}>
       {children}
     </div>
   );

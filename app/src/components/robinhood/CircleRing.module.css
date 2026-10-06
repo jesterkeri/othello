@@ -41,8 +41,7 @@
 .preDraw .drawPath { opacity: 0; }
 .stDraw .drawPath, .stSpin .drawPath { animation: drawArc .55s cubic-bezier(.45, 0, .2, 1) both; }
 @keyframes drawArc { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-/* the logo's centre is the brand lime on every palette (the palette's accent is the hero's own colour) */
-.preDraw .pot { background: #D6F24A; }
+/* the logo's centre stays the pot's own black (Joshua 2026-10-06: the fixed lime read as a colour flash) */
 .preDraw .pot > * { opacity: 0; }
 .pot { transition: background-color .4s ease; }
 .pot > * { transition: opacity .35s ease .08s; }
