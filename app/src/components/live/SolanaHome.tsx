@@ -22,13 +22,15 @@ export function useSolanaCircles(): CirclesSource {
   // for the one render before the reset below runs (adversary on 3e5d468)
   const [answer, setAnswer] = useState<{ wallet: string; circles: LiveCircle[]; failed: string[]; total: number } | null>(null);
   const found = answer && answer.wallet === me ? answer : null;
-  const [error, setError] = useState<string | null>(null);
+  // like the answer, an error belongs to the wallet it was for
+  const [failure, setFailure] = useState<{ wallet: string; message: string } | null>(null);
+  const error = failure && failure.wallet === me ? failure.message : null;
   // each request carries the wallet it was for; a reply for an earlier wallet (or an unmounted page) is dropped
   const req = useRef(0);
 
   const load = useCallback((address: string) => {
     const id = ++req.current;
-    setError(null);
+    setFailure(null);
     fetch(`/api/circles?wallet=${address}`, { cache: "no-store" })
       .then((r) => r.json() as Promise<{ circles: LiveCircle[]; failed: string[]; total: number } | { error: string }>)
       .then((b) => {
@@ -36,13 +38,13 @@ export function useSolanaCircles(): CirclesSource {
         if ("error" in b) throw new Error(b.error);
         setAnswer({ wallet: address, ...b });
       })
-      .catch((e: unknown) => id === req.current && setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => id === req.current && setFailure({ wallet: address, message: e instanceof Error ? e.message : String(e) }));
   }, []);
 
   useEffect(() => {
     req.current += 1;
     setAnswer(null);
-    setError(null);
+    setFailure(null);
     if (me) load(me);
     return () => {
       req.current += 1;

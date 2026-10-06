@@ -14,7 +14,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 import type { ChainSide } from "@/lib/chains";
-import { CHAIN_PAGE, type ListCircle } from "@/lib/core/circle-list";
+import { CHAIN_PAGE, isCreator, mySeat, type ListCircle } from "@/lib/core/circle-list";
 import type { CircleCard as Card } from "@/lib/core/circle-card";
 
 import CircleCard, { Arrow, Fit, MiniRing, PillShape, Trim, short, type Design } from "./CircleCard";
@@ -150,7 +150,11 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
     return () => window.removeEventListener("resize", measure);
   }, []);
   // circles waiting on this wallet first, so the largest tile is the one to act on
-  const running = items.filter((x) => live(x.v)).sort((x, y) => Number(y.card.group === "needs") - Number(x.card.group === "needs"));
+  // An invitation (Forming, a seat in the wallet's name it has not joined, a circle it did not create) is anyone's to
+  // send (adversary on f3be27c): it waits in the Needs-you list as a Join, and never takes a tile from a circle the
+  // wallet chose to be in.
+  const invite = (v: ListCircle) => v.status === "Forming" && !isCreator(v, me) && !mySeat(v, me)?.joined;
+  const running = items.filter((x) => live(x.v) && !invite(x.v)).sort((x, y) => Number(y.card.group === "needs") - Number(x.card.group === "needs"));
   const shown = running.slice(0, SHOWN);
   const done = items.filter((x) => !live(x.v));
   const needs = items.filter((x) => x.card.group === "needs");

@@ -74,7 +74,10 @@ export default function CirclesHome({ source }: { source: CirclesSource }) {
           <p className={s.muted}>Reading {source.reading === 1 ? "1 circle" : `${source.reading} circles`} on {source.chainName}…</p>
         )}
         {source.notShown ? (
-          <p className={s.muted}>Showing {source.circles.length} of {source.circles.length + source.notShown} circles: the ones you have to act in first.</p>
+          <p className={s.muted}>
+            Showing {source.circles.length + source.failed.length} of {source.circles.length + source.failed.length + source.notShown} circles:
+            the ones you have to act in first.
+          </p>
         ) : null}
         {source.failed.map((c) => (
           <p key={c.address} className={s.muted}>
