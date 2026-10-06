@@ -14,7 +14,7 @@ export function rhToList(v: RhCircleView, me: string | null): ListCircle {
   return {
     side: "robinhood", address: v.address, href: `/circle/rh:${v.address}`, creator: v.creator,
     n: v.n, c: v.c, status: v.status, round: v.round, deadline: v.deadline, graceSecs: v.graceSecs, chainTime: v.chainTime,
-    escrow: v.escrow, reserveTotal: v.reserveTotal, seats: v.seats, money: USDG, collateral: "USDG",
+    escrow: v.escrow, reserveTotal: v.reserveTotal, reserveLosses: v.reserveLosses, seats: v.seats, money: USDG, collateral: "USDG",
     releasable: Boolean(release?.enabled),
     pausedShortBy: v.nextGateShortBy,
     closeOut: close && {

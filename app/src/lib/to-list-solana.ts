@@ -44,6 +44,7 @@ export function solToList(live: LiveCircle, me: string | null): ListCircle {
     chainTime: live.readAt,
     escrow: big(c.escrow),
     reserveTotal: big(c.reserveTotal),
+    reserveLosses: big(c.reserveLosses),
     seats,
     money: USDC,
     collateral: c.stockSymbol,

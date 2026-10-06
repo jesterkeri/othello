@@ -147,7 +147,7 @@ function HeroStickers({ v }: { v: ListCircle }) {
     <div className={c.stickers}>
       <span className={`${c.stk} ${c.stkPaper}`}>{forming ? `${joined} of ${v.n} joined` : `✓ ${paid} of ${v.n} paid`}</span>
       <span className={`${c.stk} ${c.stkInk}`}><Clock /> {due ? (due === "Late" || due === "Grace period" ? due : `${due} left`) : "Starts when all join"}</span>
-      <span className={`${c.stk} ${c.stkCobalt}`}>Reserve {fmtMoney(v.money, v.reserveTotal)}</span>
+      <span className={`${c.stk} ${c.stkCobalt}`}>Reserve {fmtMoney(v.money, v.reserveTotal - v.reserveLosses)}</span>
     </div>
   );
 }

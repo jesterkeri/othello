@@ -19,6 +19,8 @@ export type ListCircle = RingSource & {
   creator: string;
   /** The shared reserve, in the money unit. */
   reserveTotal: bigint;
+  /** What defaults have taken from it; reserveTotal minus this is what remains (SPEC.md: "remains", R minus L). */
+  reserveLosses: bigint;
   /** The unit contributions and pots are paid in. */
   money: Money;
   /** What a member locks: "USDG" on Robinhood, the circle's stock on Solana. */

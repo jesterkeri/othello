@@ -104,8 +104,10 @@ export function useRobinhoodCircles(): CirclesSource {
       .filter((c) => views[c.address.toLowerCase()] === "failed")
       .map((c) => ({ address: c.address, href: `/circle/rh:${c.address}` })),
     error: fresh ? list.error : null,
-    retry: w.address ? () => w.address && load(w.address, nextBefore(list)) : null,
-    more: w.address && hasMore(list) ? { loading: list.loading, load: () => w.address && load(w.address, nextBefore(list)) } : null,
+    // both page from the list read for this wallet only: before the reset runs, `list` is still the last wallet's
+    // (adversary on b37ba45: its "Show more" was drawn for one render after a switch)
+    retry: w.address && fresh ? () => w.address && load(w.address, nextBefore(list)) : null,
+    more: w.address && fresh && hasMore(list) ? { loading: list.loading, load: () => w.address && load(w.address, nextBefore(list)) } : null,
   };
 }
 
