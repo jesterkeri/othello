@@ -170,7 +170,9 @@ describe("adversary 0908465: a reorg that is undone while readCircle reads (A, B
     assert.ok(b && b.number === a.number && b.hash !== a.hash, "precondition: B was a different block at A's height");
     assert.equal(canon.hash, a.hash, "precondition: A is canonical again with the same hash");
     const truth = await readCircle(pub, circle, usdg);
-    assert.equal(truth.chainTime, v.chainTime, "precondition: the clean read is at block A too");
+    // after the failed read, readCircle (fix pass on 9343ef9) reads again one block back: the view is A or A's parent,
+    // and neither has seat 3's payment, which exists only in B
+    assert.ok(v.chainTime <= truth.chainTime, "precondition: the view is block A or an earlier canonical block");
 
     const pick = (x: typeof v) => ({
       balance: x.balance, surplus: x.surplus, escrow: x.escrow, depositsTotal: x.depositsTotal,

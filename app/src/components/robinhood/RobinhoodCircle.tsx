@@ -88,7 +88,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const connectUi = useWalletUi();
   const [trust, setTrust] = useState<TrustResult | null>(null);
   const [view, setView] = useState<RhCircleView | null>(null);
-  const [readError, setReadError] = useState<string | null>(null);
+  const [readFailed, setReadFailed] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [last, setLast] = useState<Last>(null);
   const [joinAmt, setJoinAmt] = useState("");
@@ -115,9 +115,10 @@ export default function RobinhoodCircle({ address }: { address: string }) {
       const v = await readCircle(robinhoodPublicClient, circle);
       if (mine !== latest.current) return;
       setView(v);
-      setReadError(null);
-    } catch (e) {
-      if (mine === latest.current) setReadError(e instanceof Error ? e.message : String(e));
+      setReadFailed(false);
+    } catch {
+      // the RPC's own error (its URL, the request body) is not for the screen
+      if (mine === latest.current) setReadFailed(true);
     } finally {
       if (mine === latest.current) inFlight.current = false;
     }
@@ -215,8 +216,8 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     return (
       <Shell active="Circles" side="robinhood" network={NETWORK}>
         <main className={rh.page}>
-          <p className={rh.muted} role="status">{readError ? `Couldn't read the circle: ${readError}` : "Checking the circle on Robinhood Chain…"}</p>
-          {readError && (
+          <p className={rh.muted} role="status">{readFailed ? "Couldn't read the circle from Robinhood Chain. The page tries again every few seconds." : "Checking the circle on Robinhood Chain…"}</p>
+          {readFailed && (
             <button type="button" className={rh.btn} onClick={() => void refresh(true)}>Try again</button>
           )}
         </main>

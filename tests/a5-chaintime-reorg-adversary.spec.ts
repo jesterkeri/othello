@@ -140,6 +140,11 @@ describe("adversary c5d7863: a reorg between readCircle's getBlock and its pinne
     assert.equal(Number(orphan!.timestamp), d + GRACE + 1, "precondition: the orphaned N is past grace");
     assert.equal(Number(canon.timestamp), d + GRACE - 10, "precondition: the canonical N is inside grace");
 
+    // The view's time is a canonical block's, never the orphaned N's. After the failed read, readCircle (fix pass on
+    // 9343ef9) reads again one block back, so the view is the canonical N-1 here; the canonical N is also correct.
+    const prev = await pub.getBlock({ blockNumber: orphan!.number! - 1n });
+    assert.ok([Number(canon.timestamp), Number(prev.timestamp)].includes(v.chainTime),
+      `the view's time ${v.chainTime} is not a canonical block's (N ${canon.timestamp}, N-1 ${prev.timestamp})`);
     // The page's own expressions (RobinhoodCircle.tsx: chainNow = v.chainTime; afterGrace = chainNow > graceEnds).
     const afterGrace = v.chainTime > v.deadline + v.graceSecs;
     const ring = ringOf(v, null, v.chainTime);
@@ -154,8 +159,8 @@ describe("adversary c5d7863: a reorg between readCircle's getBlock and its pinne
       }
     }
     assert.deepEqual(
-      { chainTime: v.chainTime, afterGrace, late: ring.seats.filter((x) => x.payment === "late").map((x) => x.turn), recordable },
-      { chainTime: Number(canon.timestamp), afterGrace: false, late: [], recordable: [] },
+      { afterGrace, late: ring.seats.filter((x) => x.payment === "late").map((x) => x.turn), recordable },
+      { afterGrace: false, late: [], recordable: [] },
       `the view pairs the orphaned block's time (${orphan!.timestamp}) with state read at block ${canon.number} `
         + `(canonical time ${canon.timestamp}, grace ends ${d + GRACE}); the chain there refuses: ${recordReverts}`,
     );

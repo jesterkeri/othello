@@ -127,19 +127,22 @@ export async function readCircle(
   // One block for everything: its timestamp is the page's chain time, and every read is pinned to its HASH (EIP-1898,
   // requireCanonical), so a deadline and a paid bitmap are never paired with another block's time or state. Adversary
   // passes on 885ecc6 (state and time read at different blocks), c5d7863 (a reorg between getBlock and reads pinned by
-  // number) and 0908465 (a reorg undone mid-read, A then B then A, unseen by a before-and-after hash check). A read of
-  // a block that is no longer canonical fails; the read then starts over if block N has changed, up to three times.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const block = await client.getBlock({ blockTag: "latest" });
-    if (block.number === null || block.hash === null) throw new Error("Robinhood Chain returned a block without a number.");
+  // number) and 0908465 (a reorg undone mid-read). A failed read starts over one block further back, then two: a
+  // reorged block is left behind, and a load-balanced RPC whose call node has not yet seen the newest block ("header
+  // not found", adversary on 9343ef9) still answers. Robinhood Chain makes several blocks a second.
+  let last: unknown;
+  for (let back = 0n; back < 3n; back++) {
     try {
+      const head = await client.getBlock({ blockTag: "latest" });
+      if (head.number === null) throw new Error("Robinhood Chain returned a block without a number.");
+      const block = back === 0n ? head : await client.getBlock({ blockNumber: head.number - back });
+      if (block.hash === null) throw new Error("Robinhood Chain returned a block without a hash.");
       return await readCircleAt(client, circle, usdg, block.hash, Number(block.timestamp));
     } catch (e) {
-      const now = await client.getBlock({ blockNumber: block.number }).catch(() => null);
-      if (now?.hash === block.hash) throw e; // the block stands: a real failure, not a reorg
+      last = e;
     }
   }
-  throw new Error("Robinhood Chain changed its recent blocks while the circle was read. Trying again shortly.");
+  throw new Error("Robinhood Chain did not answer the circle read.", { cause: last });
 }
 
 async function readCircleAt(
