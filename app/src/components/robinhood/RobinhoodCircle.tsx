@@ -22,12 +22,16 @@ import {
 } from "@/lib/robinhood/adapter";
 import { explorerAddress, explorerTx } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
+import { closeOutOf, currentPhase, releaseButton, releaseSteps, ringOf, type ReleasePhase } from "@/lib/robinhood/circle-view";
 import { reserveDisplay } from "@/lib/robinhood/reserve-display";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
 
 import { useWalletUi } from "@/lib/wallet";
 
 import s from "@/components/circle/Circle.module.css";
+import CircleRing from "./CircleRing";
+import CloseOutPanel from "./CloseOutPanel";
+import PayoutPanel from "./PayoutPanel";
 import rh from "./Robinhood.module.css";
 
 const REFRESH_MS = 8_000;
@@ -36,6 +40,8 @@ const SEAT_SLOTS = ["teal", "acid", "cobalt", "clay", "sky"] as const;
 
 type Busy = { what: string } | null;
 type Last = { what: string; result: ActionResult } | null;
+
+// The contract's own payout record (evm/src/OthelloCircle.sol): the confirmation names who was paid from the receipt.
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
@@ -81,16 +87,18 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const connectUi = useWalletUi();
   const [trust, setTrust] = useState<TrustResult | null>(null);
   const [view, setView] = useState<RhCircleView | null>(null);
-  const [readError, setReadError] = useState<string | null>(null);
+  const [readFailed, setReadFailed] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [last, setLast] = useState<Last>(null);
   const [joinAmt, setJoinAmt] = useState("");
   const [addAmt, setAddAmt] = useState("");
   const [topAmt, setTopAmt] = useState("");
   const [inviteCopy, setInviteCopy] = useState<"idle" | "copied" | "failed">("idle");
-  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const latest = useRef(0);
   const inFlight = useRef(false);
+  const [phase, setPhase] = useState<ReleasePhase>({ kind: "idle" });
+  // Set only while a release is in flight: the adapter reports the wallet's hash here before the receipt.
+  const onSent = useRef<((hash: string) => void) | null>(null);
 
   // The timer skips a tick while a read is still running, so a slow RPC cannot keep cancelling every read.
   // After an action, `force` starts a fresh read that supersedes any older one.
@@ -105,10 +113,13 @@ export default function RobinhoodCircle({ address }: { address: string }) {
       if (!t.ok) return;
       const v = await readCircle(robinhoodPublicClient, circle);
       if (mine !== latest.current) return;
-      setView(v);
-      setReadError(null);
-    } catch (e) {
-      if (mine === latest.current) setReadError(e instanceof Error ? e.message : String(e));
+      // never back to an earlier block: a read that fell back a block (or a lagging RPC node) must not make a payment,
+      // a released pot or a cancellation un-happen on screen (adversary on de3c654)
+      setView((prev) => (prev && same(prev.address, v.address) && v.block < prev.block ? prev : v));
+      setReadFailed(false);
+    } catch {
+      // the RPC's own error (its URL, the request body) is not for the screen
+      if (mine === latest.current) setReadFailed(true);
     } finally {
       if (mine === latest.current) inFlight.current = false;
     }
@@ -117,11 +128,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   useEffect(() => {
     void refresh();
     const id = window.setInterval(() => void refresh(), REFRESH_MS);
-    const tick = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1_000);
-    return () => {
-      window.clearInterval(id);
-      window.clearInterval(tick);
-    };
+    return () => window.clearInterval(id);
   }, [refresh]);
 
   const adapter = useMemo(
@@ -132,6 +139,7 @@ export default function RobinhoodCircle({ address }: { address: string }) {
             walletClient: w.walletClient,
             account: w.address,
             circle,
+            onSent: (hash) => onSent.current?.(hash),
           })
         : null,
     [w.walletClient, w.address, circle],
@@ -151,6 +159,41 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     },
     [refresh],
   );
+
+  // A refusal belongs to the round it happened in: a new round starts clean.
+  const viewRound = view?.round;
+  useEffect(() => { setPhase((p) => (p.kind === "failed" ? { kind: "idle" } : p)); }, [viewRound]);
+
+  /** Release this round's pot, following the real transaction: wallet, sent (hash), receipt, then a fresh read. */
+  const release = useCallback(async (round: number) => {
+    if (!adapter) return;
+    setBusy({ what: "Release the pot" });
+    setLast(null);
+    setPhase({ kind: "wallet" });
+    onSent.current = (hash) => setPhase({ kind: "sent", hash });
+    try {
+      const result = await adapter.releasePot({});
+      if (!result.ok) {
+        setPhase({ kind: "failed", message: result.message, error: result.error, round });
+      } else {
+        // Who was paid and for which round comes only from this transaction's own receipt, as the adapter read it:
+        // another member may have released first, so this one released the next round (Codex r2 on PR #22). With no
+        // such event the page names no seat: a plain "done" with the explorer link.
+        const paid = result.released;
+        const seatOf = paid ? view?.seats.find((x) => same(x.wallet, paid.recipient)) : undefined;
+        if (paid && seatOf) {
+          setPhase({ kind: "released", hash: result.txHash, round: paid.round, recipientTurn: seatOf.turn, amount: paid.pot });
+        } else {
+          setPhase({ kind: "idle" });
+          setLast({ what: "Release the pot", result });
+        }
+      }
+    } finally {
+      onSent.current = null;
+      setBusy(null);
+      void refresh(true);
+    }
+  }, [adapter, refresh, view]);
 
   if (!valid || (trust && !trust.ok)) {
     const notDeployed = trust && !trust.ok && trust.reason === "not-deployed";
@@ -174,8 +217,8 @@ export default function RobinhoodCircle({ address }: { address: string }) {
     return (
       <Shell active="Circles" side="robinhood" network={NETWORK}>
         <main className={rh.page}>
-          <p className={rh.muted} role="status">{readError ? `Couldn't read the circle: ${readError}` : "Checking the circle on Robinhood Chain…"}</p>
-          {readError && (
+          <p className={rh.muted} role="status">{readFailed ? "Couldn't read the circle from Robinhood Chain. The page tries again every few seconds." : "Checking the circle on Robinhood Chain…"}</p>
+          {readFailed && (
             <button type="button" className={rh.btn} onClick={() => void refresh(true)}>Try again</button>
           )}
         </main>
@@ -187,14 +230,14 @@ export default function RobinhoodCircle({ address }: { address: string }) {
   const me = w.address ? v.seats.find((x) => same(x.wallet, w.address)) ?? null : null;
   const isCreator = same(v.creator, w.address);
   const pot = BigInt(v.n) * v.c;
-  const finished = v.status === "Completed" || v.status === "Cancelled";
   const reserve = reserveDisplay(v);
   const paused = v.status === "Active" && v.nextGateShortBy > 0n;
   const graceEnds = v.deadline + v.graceSecs;
-  // Chain time (the last block's timestamp plus the seconds since that read) or the device clock, whichever is later:
-  // a slow device clock cannot hide the buttons, and on a quiet chain an old last block cannot either. If a device
-  // clock runs ahead the buttons can show early; the contract then refuses with "grace ends at …" (no funds move).
-  const chainNow = Math.max(v.chainTime + Math.max(0, now - v.readAt), now);
+  // The chain's own time: the latest block's timestamp in the last read, never the device clock. Late, "Grace ended"
+  // and "Record missed payment" show only once the chain is past grace, when markDelinquent can succeed (Codex r1 on
+  // PR #22: a device clock ten minutes fast showed seats late inside grace). Robinhood Chain makes a block about every
+  // second and the page reads every 8 s, so this trails the chain by seconds.
+  const chainNow = v.chainTime;
   const afterGrace = chainNow > graceEnds;
   const allSettled = v.seats.every((x) => x.paid || x.defaulted);
   const canWrite = Boolean(adapter) && w.onRobinhood && !busy;
@@ -207,6 +250,16 @@ export default function RobinhoodCircle({ address }: { address: string }) {
         : v.status === "Completed"
           ? s.statusCompleted
           : s.statusCancelled;
+  const ring = ringOf(v, w.address, chainNow);
+  const payout = releaseButton(v, { hasWallet: w.hasWallet, connected: Boolean(w.address), onRobinhood: w.onRobinhood, busy: Boolean(busy), me: w.address ?? null });
+  // A finished release stays on screen until dismissed, even after the read has moved to the next round.
+  const payoutShown = payout ?? (phase.kind === "released" ? { label: "", enabled: false, blocker: null, recipientTurn: phase.recipientTurn, amount: phase.amount } : null);
+  // a refusal from a round the read has already left is not shown (two members releasing at once)
+  const shownPhase = currentPhase(phase, v);
+  const steps = releaseSteps(v, shownPhase);
+  const close = closeOutOf(v, w.address);
+  const writeBlocker = !w.hasWallet ? "Install MetaMask or another EVM wallet to collect." : !w.address ? "Connect the wallet of your seat to collect." : !w.onRobinhood ? "Switch your wallet to Robinhood Chain testnet to collect." : busy ? "A transaction is already waiting for your wallet or for Robinhood Chain." : null;
+  const coverFailed = shownPhase.kind === "failed" && ["CoverageTooLow", "ReserveOvercommitted"].includes(shownPhase.error);
   const firstLateUnpaidPrePayout = v.status === "Active" && afterGrace
     ? v.seats.find((x) => !x.paid && !x.defaulted && !x.received)
     : undefined;
@@ -224,6 +277,116 @@ export default function RobinhoodCircle({ address }: { address: string }) {
       setInviteCopy("failed");
     }
   };
+
+  // "Your next step": below the hero while the circle runs; in a finished circle it fills the space under the ring.
+  const actBlock = (
+    <section className={s.act} aria-live="polite">
+      <span className={s.kicker}>Your next step</span>
+      <div className={s.action}>
+        <span className={s.actionText}>
+          <span className={s.bannerTitle}>{v.status === "Forming" ? "Invite the remaining members" : "Share this circle"}</span>
+          <span className={s.actFixture}>{v.status === "Forming" ? "Send one link. Each person opens it in their own wallet and locks their own USDG." : "Copy the permanent circle link to share its live state. New members cannot join after the circle starts."}</span>
+        </span>
+        <span className={s.actionButtons}>
+          <button type="button" className={s.pay} onClick={() => void copyInvite()}>{v.status === "Forming" ? "Copy invite link" : "Copy circle link"}</button>
+          <a className={`${s.pay} ${s.payQuiet}`} href={invitePath}>{v.status === "Forming" ? "Open invite" : "Open circle"}</a>
+        </span>
+        {inviteCopy === "copied" && <span className={s.actFixture}>{v.status === "Forming" ? "Invite link copied." : "Circle link copied."}</span>}
+        {inviteCopy === "failed" && <span className={s.actFixture}>Copy was blocked. Copy this page&apos;s address from your browser instead.</span>}
+      </div>
+      {!w.hasWallet && <p className={s.actFixture}>Install MetaMask or another EVM wallet to take part.</p>}
+      {w.hasWallet && !w.address && (
+        <button type="button" className={s.pay} onClick={connectUi.openConnect}>Connect an EVM wallet</button>
+      )}
+      {w.address && !w.onRobinhood && (
+        <button type="button" className={s.pay} onClick={() => void w.switchToRobinhood()}>Switch to Robinhood Chain testnet</button>
+      )}
+      {w.error && <p className={s.actFixture}>{w.error}</p>}
+
+      {w.address && w.onRobinhood && (
+        <>
+          {v.status === "Forming" && me && !me.joined && (
+            <div className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>Claim your seat</span>
+                <span className={s.actFixture}>Lock USDG as your promise plus the {fmtUsdg(v.g)} guarantee. Your wallet confirms the approval and the join separately.</span>
+              </span>
+              <span className={s.amountRow}>
+                <input className={s.amount} aria-label="USDG to lock" inputMode="decimal" placeholder="USDG" value={joinAmt} onChange={(e) => setJoinAmt(e.target.value)} />
+                <button type="button" className={s.pay} disabled={!canWrite || joinUnits === null} onClick={() => joinUnits !== null && adapter && void run("Join", () => adapter.joinAndLock({ amount: joinUnits }))}>
+                  {joinUnits !== null ? `Approve ${fmtUsdg(joinUnits + v.g)} and join` : "Enter USDG to join"}
+                </button>
+              </span>
+            </div>
+          )}
+          {v.status === "Forming" && me?.joined && (
+            <div className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>Your seat is locked</span>
+                <span className={s.actFixture}>You can leave while the circle is still forming.</span>
+              </span>
+              <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Leave", () => adapter.leaveForming({}))}>
+                Leave and take back {fmtUsdg(me.collateral + me.g + me.topUps)}
+              </button>
+            </div>
+          )}
+          {v.status === "Forming" && isCreator && (
+            <div className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>Creator controls</span>
+                <span className={s.actFixture}>{v.seats.some((seat) => !seat.joined) ? "The circle starts after every seat has joined." : "Everyone is in. Start the first round when you are ready."}</span>
+              </span>
+              <span className={s.actionButtons}>
+                <button type="button" className={s.pay} disabled={!canWrite || v.seats.some((seat) => !seat.joined)} onClick={() => adapter && void run("Start the circle", () => adapter.activate({}))}>Start the circle</button>
+                <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Cancel the circle", () => adapter.cancelCircle({}))}>Cancel circle</button>
+              </span>
+            </div>
+          )}
+          {v.status === "Active" && me && !me.defaulted && !me.paid && (
+            <div className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>Pay this round</span>
+                <span className={s.actFixture}>You are paying {fmtUsdg(v.c)} into this round&apos;s pot.</span>
+              </span>
+              <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Pay this round", () => adapter.contribute({}))}>Approve and pay {fmtUsdg(v.c)}</button>
+            </div>
+          )}
+          {v.status === "Active" && me && !me.defaulted && (
+            <div className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>Strengthen the circle</span>
+                <span className={s.actFixture}>{topUnits !== null ? (fill > 0n ? `${fmtUsdg(fill)} covers missed payments; the rest enters the shared reserve.` : `All ${fmtUsdg(topUnits)} enters the shared reserve.`) : "Lock more of your USDG or top up the shared reserve."}</span>
+              </span>
+              <span className={s.amountRow}>
+                <input className={s.amount} aria-label="USDG to lock more" inputMode="decimal" placeholder="More USDG" value={addAmt} onChange={(e) => setAddAmt(e.target.value)} />
+                <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite || addUnits === null} onClick={() => addUnits !== null && adapter && void run("Lock more", () => adapter.addStock({ amount: addUnits }))}>Approve and lock</button>
+              </span>
+              <span className={s.amountRow}>
+                <input className={s.amount} aria-label="USDG reserve top up" inputMode="decimal" placeholder={paused ? fmtUsdg(v.nextGateShortBy).replace(" USDG", "") : "Reserve USDG"} value={topAmt} onChange={(e) => setTopAmt(e.target.value)} />
+                <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite || topUnits === null} onClick={() => topUnits !== null && adapter && void run("Top up", () => adapter.topUpReserve({ amount: topUnits, expectedFill: fill }))}>Approve and top up</button>
+              </span>
+            </div>
+          )}
+          {v.status === "Active" && afterGrace && v.seats.filter((seat) => !seat.paid && !seat.defaulted).map((seat) => (
+            <div key={seat.turn} className={s.action}>
+              <span className={s.actionText}>
+                <span className={s.bannerTitle}>{short(seat.wallet)} missed this round</span>
+                <span className={s.actFixture}>{seat.marked ? (seat.received ? "This member has received a pot and can now be settled in default." : "Recorded late. They have not received a pot, so they cannot be defaulted.") : "Record the missed payment after grace. A late payment can still settle the round."}</span>
+              </span>
+              {!seat.marked ? (
+                <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Record missed payment", () => adapter.markDelinquent({ round: v.round, turn: seat.turn }))}>Record missed payment</button>
+              ) : seat.received ? (
+                <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Settle default", () => adapter.declareDefault({ turn: seat.turn }))}>Settle default</button>
+              ) : null}
+            </div>
+          ))}
+          {!me && <p className={s.actFixture}>This wallet is not a member. Anyone can release a settled pot, check payout safety, or record a missed payment after grace.</p>}
+        </>
+      )}
+      {busy && <p className={s.actFixture} role="status">{busy.what}: confirm in your wallet, then wait for Robinhood Chain.</p>}
+      {last && <p className={s.actFixture} role="status">{last.result.ok ? <>{last.what}: done. <a className={s.link} href={explorerTx(last.result.txHash)} target="_blank" rel="noreferrer">See it on the explorer</a></> : `${last.what}: ${last.result.message}`}</p>}
+    </section>
+  );
 
   return (
     <Shell active="Circles" side="robinhood" network={NETWORK}>
@@ -258,7 +421,12 @@ export default function RobinhoodCircle({ address }: { address: string }) {
           )}
         </div>
 
-        <section className={s.hero} aria-label="This savings circle">
+        <section className={`${s.hero} ${rh.ringHero}`} aria-label="This savings circle">
+          {/* a finished circle lists its seats once, in the close-out panel */}
+          <div className={rh.ringCol}>
+            <CircleRing ring={ring} pot={pot} round={v.round} showList={!close} />
+            {close && actBlock}
+          </div>
           <div className={s.heroMain}>
             <div className={s.headTop}>
               <span className={`${s.statusPill} ${statusClass} ${s.micro}`}>{paused ? "Paused" : v.status}</span>
@@ -283,134 +451,32 @@ export default function RobinhoodCircle({ address }: { address: string }) {
                 <span className={`${s.display} ${s.clockValue}`}>{fmtUsdg(pot)}</span>
               </span>
             </div>
+            {close && (
+              <CloseOutPanel
+                close={close}
+                completed={v.status === "Completed"}
+                canWrite={canWrite}
+                blocker={writeBlocker}
+                busy={busy?.what === "Withdraw"}
+                onWithdraw={() => adapter && void run("Withdraw", () => adapter.withdraw({}))}
+              />
+            )}
+            {payoutShown && (
+              <PayoutPanel
+                button={payoutShown}
+                steps={steps}
+                phase={shownPhase}
+                showSafetyCheck={paused || coverFailed}
+                canWrite={canWrite}
+                onRelease={() => void release(v.round)}
+                onCheckSafety={() => adapter && void run("Check payout safety", () => adapter.updateCoverage({}))}
+                onClose={() => setPhase({ kind: "idle" })}
+              />
+            )}
           </div>
-
-          <section className={s.act} aria-live="polite">
-            <span className={s.kicker}>Your next step</span>
-            <div className={s.action}>
-              <span className={s.actionText}>
-                <span className={s.bannerTitle}>{v.status === "Forming" ? "Invite the remaining members" : "Share this circle"}</span>
-                <span className={s.actFixture}>{v.status === "Forming" ? "Send one link. Each person opens it in their own wallet and locks their own USDG." : "Copy the permanent circle link to share its live state. New members cannot join after the circle starts."}</span>
-              </span>
-              <span className={s.actionButtons}>
-                <button type="button" className={s.pay} onClick={() => void copyInvite()}>{v.status === "Forming" ? "Copy invite link" : "Copy circle link"}</button>
-                <a className={`${s.pay} ${s.payQuiet}`} href={invitePath}>{v.status === "Forming" ? "Open invite" : "Open circle"}</a>
-              </span>
-              {inviteCopy === "copied" && <span className={s.actFixture}>{v.status === "Forming" ? "Invite link copied." : "Circle link copied."}</span>}
-              {inviteCopy === "failed" && <span className={s.actFixture}>Copy was blocked. Copy this page&apos;s address from your browser instead.</span>}
-            </div>
-            {!w.hasWallet && <p className={s.actFixture}>Install MetaMask or another EVM wallet to take part.</p>}
-            {w.hasWallet && !w.address && (
-              <button type="button" className={s.pay} onClick={connectUi.openConnect}>Connect an EVM wallet</button>
-            )}
-            {w.address && !w.onRobinhood && (
-              <button type="button" className={s.pay} onClick={() => void w.switchToRobinhood()}>Switch to Robinhood Chain testnet</button>
-            )}
-            {w.error && <p className={s.actFixture}>{w.error}</p>}
-
-            {w.address && w.onRobinhood && (
-              <>
-                {v.status === "Forming" && me && !me.joined && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Claim your seat</span>
-                      <span className={s.actFixture}>Lock USDG as your promise plus the {fmtUsdg(v.g)} guarantee. Your wallet confirms the approval and the join separately.</span>
-                    </span>
-                    <span className={s.amountRow}>
-                      <input className={s.amount} aria-label="USDG to lock" inputMode="decimal" placeholder="USDG" value={joinAmt} onChange={(e) => setJoinAmt(e.target.value)} />
-                      <button type="button" className={s.pay} disabled={!canWrite || joinUnits === null} onClick={() => joinUnits !== null && adapter && void run("Join", () => adapter.joinAndLock({ amount: joinUnits }))}>
-                        {joinUnits !== null ? `Approve ${fmtUsdg(joinUnits + v.g)} and join` : "Enter USDG to join"}
-                      </button>
-                    </span>
-                  </div>
-                )}
-                {v.status === "Forming" && me?.joined && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Your seat is locked</span>
-                      <span className={s.actFixture}>You can leave while the circle is still forming.</span>
-                    </span>
-                    <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Leave", () => adapter.leaveForming({}))}>
-                      Leave and take back {fmtUsdg(me.collateral + me.g + me.topUps)}
-                    </button>
-                  </div>
-                )}
-                {v.status === "Forming" && isCreator && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Creator controls</span>
-                      <span className={s.actFixture}>{v.seats.some((seat) => !seat.joined) ? "The circle starts after every seat has joined." : "Everyone is in. Start the first round when you are ready."}</span>
-                    </span>
-                    <span className={s.actionButtons}>
-                      <button type="button" className={s.pay} disabled={!canWrite || v.seats.some((seat) => !seat.joined)} onClick={() => adapter && void run("Start the circle", () => adapter.activate({}))}>Start the circle</button>
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Cancel the circle", () => adapter.cancelCircle({}))}>Cancel circle</button>
-                    </span>
-                  </div>
-                )}
-                {v.status === "Active" && me && !me.defaulted && !me.paid && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Pay this round</span>
-                      <span className={s.actFixture}>You are paying {fmtUsdg(v.c)} into this round&apos;s pot.</span>
-                    </span>
-                    <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Pay this round", () => adapter.contribute({}))}>Approve and pay {fmtUsdg(v.c)}</button>
-                  </div>
-                )}
-                {v.status === "Active" && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Circle controls</span>
-                      <span className={s.actFixture}>{allSettled ? "Every seat is settled; the pot can be released." : "The pot releases only after every seat has paid or been settled."}</span>
-                    </span>
-                    <span className={s.actionButtons}>
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite || !allSettled} onClick={() => adapter && void run("Release the pot", () => adapter.releasePot({}))}>Release to {short(v.seats[v.round]?.wallet ?? "")}</button>
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Check payout safety", () => adapter.updateCoverage({}))}>Check payout safety</button>
-                    </span>
-                  </div>
-                )}
-                {v.status === "Active" && me && !me.defaulted && (
-                  <div className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>Strengthen the circle</span>
-                      <span className={s.actFixture}>{topUnits !== null ? (fill > 0n ? `${fmtUsdg(fill)} covers missed payments; the rest enters the shared reserve.` : `All ${fmtUsdg(topUnits)} enters the shared reserve.`) : "Lock more of your USDG or top up the shared reserve."}</span>
-                    </span>
-                    <span className={s.amountRow}>
-                      <input className={s.amount} aria-label="USDG to lock more" inputMode="decimal" placeholder="More USDG" value={addAmt} onChange={(e) => setAddAmt(e.target.value)} />
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite || addUnits === null} onClick={() => addUnits !== null && adapter && void run("Lock more", () => adapter.addStock({ amount: addUnits }))}>Approve and lock</button>
-                    </span>
-                    <span className={s.amountRow}>
-                      <input className={s.amount} aria-label="USDG reserve top up" inputMode="decimal" placeholder={paused ? fmtUsdg(v.nextGateShortBy).replace(" USDG", "") : "Reserve USDG"} value={topAmt} onChange={(e) => setTopAmt(e.target.value)} />
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite || topUnits === null} onClick={() => topUnits !== null && adapter && void run("Top up", () => adapter.topUpReserve({ amount: topUnits, expectedFill: fill }))}>Approve and top up</button>
-                    </span>
-                  </div>
-                )}
-                {v.status === "Active" && afterGrace && v.seats.filter((seat) => !seat.paid && !seat.defaulted).map((seat) => (
-                  <div key={seat.turn} className={s.action}>
-                    <span className={s.actionText}>
-                      <span className={s.bannerTitle}>{short(seat.wallet)} missed this round</span>
-                      <span className={s.actFixture}>{seat.marked ? (seat.received ? "This member has received a pot and can now be settled in default." : "Recorded late. They have not received a pot, so they cannot be defaulted.") : "Record the missed payment after grace. A late payment can still settle the round."}</span>
-                    </span>
-                    {!seat.marked ? (
-                      <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canWrite} onClick={() => adapter && void run("Record missed payment", () => adapter.markDelinquent({ round: v.round, turn: seat.turn }))}>Record missed payment</button>
-                    ) : seat.received ? (
-                      <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Settle default", () => adapter.declareDefault({ turn: seat.turn }))}>Settle default</button>
-                    ) : null}
-                  </div>
-                ))}
-                {finished && me && !me.withdrawn && (v.status === "Completed" || me.joined) && (
-                  <div className={s.action}>
-                    <span className={s.actionText}><span className={s.bannerTitle}>Withdraw your share</span><span className={s.actFixture}>The circle has finished. Your wallet confirms the withdrawal.</span></span>
-                    <button type="button" className={s.pay} disabled={!canWrite} onClick={() => adapter && void run("Withdraw", () => adapter.withdraw({}))}>Withdraw your share</button>
-                  </div>
-                )}
-                {finished && me?.withdrawn && <p className={s.actFixture}>You&apos;ve withdrawn your share. Nothing more to do here.</p>}
-                {!me && <p className={s.actFixture}>This wallet is not a member. Anyone can release a settled pot, recheck cover, or record a missed payment after grace.</p>}
-              </>
-            )}
-            {busy && <p className={s.actFixture} role="status">{busy.what}: confirm in your wallet, then wait for Robinhood Chain.</p>}
-            {last && <p className={s.actFixture} role="status">{last.result.ok ? <>{last.what}: done. <a className={s.link} href={explorerTx(last.result.txHash)} target="_blank" rel="noreferrer">See it on the explorer</a></> : `${last.what}: ${last.result.message}`}</p>}
-          </section>
         </section>
+
+          {!close && actBlock}
 
         {v.status === "Forming" ? (
           <section className={s.section}>

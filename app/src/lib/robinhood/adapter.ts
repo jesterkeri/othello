@@ -58,6 +58,7 @@ export function createRobinhoodAdapter(d: Omit<RobinhoodDeps, "factory" | "usdg"
     walletClient: d.walletClient,
     account: d.account,
     circle: d.circle,
+    onSent: d.onSent,
     factory: TRUSTED_FACTORY,
   });
 }

@@ -1,0 +1,68 @@
+/* The circle ring: seats around the pot, turned so the receiving seat is at the top (CircleRing.tsx). */
+.wrap { margin: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ring { position: relative; width: 100%; max-width: 440px; aspect-ratio: 1; margin: 0 auto; }
+.arcs { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.marker { position: absolute; left: 50%; top: -4px; transform: translate(-50%, -100%); z-index: 3; border: 2px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: 4px 10px; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.marker::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #0B0B0B; border-bottom: 0; }
+.spin { position: absolute; inset: 0; transform: rotate(var(--rot)); }
+/* The logo's seat on a coloured hero: colour fill in a solid black ring (Joshua: "let the border ... be black") */
+/* min-height 0 keeps the circle (aspect-ratio) whatever the labels; the labels scale with the seat (cqi) */
+.seat { position: absolute; width: var(--seat); aspect-ratio: 1; min-height: 0; container-type: inline-size; transform: translate(-50%, -50%); border: 4px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.upright { display: flex; flex-direction: column; align-items: center; line-height: 1; transform: rotate(calc(-1 * var(--rot))); }
+.seatWord { font-size: clamp(5px, 15cqi, 9px); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.seatNum { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(9px, 40cqi, 30px); line-height: .9; }
+.you { margin-top: clamp(1px, 4cqi, 3px); border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: clamp(1px, 3cqi, 2px) clamp(3px, 9cqi, 6px); font-size: clamp(5px, 14cqi, 8.5px); font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.badge { position: absolute; right: -6%; top: -6%; width: 34%; aspect-ratio: 1; min-width: 20px; border: 2px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; }
+.paid .badge { background: var(--teal); color: var(--tealInk); }
+.covered .badge, .short .badge, .late .badge { background: var(--clay); color: var(--clayInk); }
+.due { outline: 2.5px dashed #0B0B0B; outline-offset: 3px; }
+.receiving { z-index: 2; width: calc(var(--seat) * 1.15); box-shadow: 0 0 0 4px #FBF9F2, 0 0 0 7px #0B0B0B; }
+.open { background: #0B0B0B !important; color: #FBF9F2 !important; box-shadow: none; outline: 2.5px dashed #FBF9F2; outline-offset: 2px; }
+/* The logo's centre disc, smaller, in black so it stands out on every palette's hero */
+.pot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 27%; aspect-ratio: 1; border: 4px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 6px; }
+.potLabel { font-size: 8px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #D8D2C4; }
+.potAmt { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(16px, 2vw, 24px); line-height: .9; text-transform: uppercase; }
+.flying { position: absolute; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%); border: 3px solid #0B0B0B; border-radius: 999px; background: var(--acid); color: var(--acidInk); padding: 6px 12px; font-size: 12px; font-weight: 900; white-space: nowrap; animation: potFly .7s cubic-bezier(.5, 0, .3, 1) forwards; pointer-events: none; }
+@keyframes potFly {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  80% { transform: translate(-50%, calc(-50% - 210%)) scale(.9); opacity: 1; }
+  100% { transform: translate(-50%, calc(-50% - 230%)) scale(.6); opacity: 0; }
+}
+/* The entrance: the logo unfolds into the circle, then the spin (CircleRing.tsx stages). */
+/* one easing for every phase, so they hand over without a jolt */
+.ring { --ease: cubic-bezier(.22, 1, .36, 1); transition: transform .55s var(--ease); }
+.stLogo .ring { transform: scale(.55); }
+.stUnfold .seat, .stDraw .seat, .stSpin .seat { transition: left .6s var(--ease) calc(var(--i) * 35ms), top .6s var(--ease) calc(var(--i) * 35ms), opacity .35s ease calc(var(--i) * 35ms); }
+.ghost { opacity: 0; }
+/* the logo carries no labels: seat words, badges and the "Receives" marker appear as the arcs draw */
+.preDraw .upright > *, .preDraw .badge, .preDraw .marker, .preDraw .caption, .preDraw .flying { opacity: 0; }
+.upright > *, .badge, .marker, .caption { transition: opacity .3s ease; }
+.drawPath { stroke-dasharray: 1 2; stroke-dashoffset: 0; }
+.preDraw .drawPath { opacity: 0; }
+.stDraw .drawPath, .stSpin .drawPath { animation: drawArc .55s cubic-bezier(.45, 0, .2, 1) both; }
+@keyframes drawArc { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+/* the logo's centre is the brand lime on every palette (the palette's accent is the hero's own colour) */
+.preDraw .pot { background: #D6F24A; }
+.preDraw .pot > * { opacity: 0; }
+.pot { transition: background-color .4s ease; }
+.pot > * { transition: opacity .35s ease .08s; }
+/* then one full lap, easing out, landing on this round's receiver */
+.stSpin .spin, .stSpin .upright { transition: transform 1.5s var(--ease); }
+/* A round seen to change in a chain read: the ring turns after the pot has reached the receiving seat. */
+.ready .spin, .ready .upright { transition: transform .9s cubic-bezier(.2, .9, .2, 1) .65s; }
+.caption { text-align: center; font-size: 14px; font-weight: 800; }
+/* The seat list in the payout panel's row style: a status dot, the seat, its state (Joshua, 2026-10-05) */
+.list { list-style: none; margin: 0; padding: clamp(12px, 1.4vw, 16px); display: flex; flex-direction: column; gap: 8px; border: 3px solid #0B0B0B; border-radius: 24px; background: #0B0B0B; color: #FBF9F2; }
+.item { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.itemDot { width: 26px; height: 26px; border: 2px solid #55524A; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; }
+.itemDone .itemDot { border-color: var(--teal); background: var(--teal); color: var(--tealInk); }
+.itemNow .itemDot { border-color: var(--acid); background: var(--acid); color: var(--acidInk); }
+.itemText { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 13px; line-height: 1.35; }
+.itemText b { font-weight: 800; overflow-wrap: anywhere; }
+.itemText span { color: #B9B3A5; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 14px; margin: 0; font-size: 11px; font-weight: 700; opacity: .8; }
+@media (prefers-reduced-motion: reduce) {
+  .ring, .seat, .upright > *, .badge, .marker, .caption, .pot, .pot > *, .stSpin .spin, .stSpin .upright, .ready .spin, .ready .upright { transition: none !important; }
+  .stDraw .drawPath, .stSpin .drawPath { animation: none; }
+  .flying { display: none; }
+}

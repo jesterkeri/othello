@@ -18,7 +18,9 @@ import {
   keccak256,
   type Address,
   type Hex,
+  parseEventLogs,
   type PublicClient,
+  type TransactionReceipt,
   type WalletClient,
 } from "viem";
 
@@ -84,6 +86,8 @@ export type RhCircleView = {
   surplus: bigint;
   seats: RhSeat[];
   readAt: number;
+  /** The block every field was read at (its number); the page never replaces a view with one from an earlier block. */
+  block: number;
   /** The chain's latest block time at this read. Time-based buttons follow the chain, not the device clock. */
   chainTime: number;
 };
@@ -124,8 +128,38 @@ export async function readCircle(
   circle: Address,
   usdg: Address = USDG,
 ): Promise<RhCircleView> {
+  // One block for everything: its timestamp is the page's chain time, and every read is pinned to its HASH (EIP-1898,
+  // requireCanonical), so a deadline and a paid bitmap are never paired with another block's time or state. Adversary
+  // passes on 885ecc6 (state and time read at different blocks), c5d7863 (a reorg between getBlock and reads pinned by
+  // number) and 0908465 (a reorg undone mid-read). A failed read starts over one block further back, then two: a
+  // reorged block is left behind, and a load-balanced RPC whose call node has not yet seen the newest block ("header
+  // not found", adversary on 9343ef9) still answers. Robinhood Chain makes several blocks a second.
+  let last: unknown;
+  for (let back = 0n; back < 3n; back++) {
+    try {
+      const head = await client.getBlock({ blockTag: "latest" });
+      if (head.number === null) throw new Error("Robinhood Chain returned a block without a number.");
+      const block = back === 0n ? head : await client.getBlock({ blockNumber: head.number - back });
+      if (block.hash === null) throw new Error("Robinhood Chain returned a block without a hash.");
+      return await readCircleAt(client, circle, usdg, block.hash, Number(block.timestamp), Number(block.number));
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw new Error("Robinhood Chain did not answer the circle read.", { cause: last });
+}
+
+async function readCircleAt(
+  client: Pick<PublicClient, "readContract">,
+  circle: Address,
+  usdg: Address,
+  blockHash: `0x${string}`,
+  chainTime: number,
+  block: number,
+): Promise<RhCircleView> {
+  const at = { blockHash, requireCanonical: true };
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
-    client.readContract({ address: circle, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
+    client.readContract({ address: circle, abi: othelloCircleAbi, functionName, args, ...at } as never) as Promise<T>;
   const [
     factory, creator, n, c, g, minStockCover, haircutBps, coverageBps, warnBps, roundSecs, graceSecs,
     status, round, deadline, paid, joined, withdrawn, received, defaulted, marked,
@@ -143,7 +177,7 @@ export async function readCircle(
     r<bigint>("heldContributions"), r<bigint>("lastCoverageAt"), r<bigint>("accounted"),
   ]);
   const count = Number(n);
-  const [members, seats, balance, block] = await Promise.all([
+  const [members, seats, balance] = await Promise.all([
     Promise.all(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
     Promise.all(
       Array.from({ length: count }, (_, t) =>
@@ -153,8 +187,7 @@ export async function readCircle(
         }>("seat", [BigInt(t)]),
       ),
     ),
-    client.readContract({ address: usdg, abi: erc20Abi, functionName: "balanceOf", args: [circle] }),
-    client.getBlock({ blockTag: "latest" }),
+    client.readContract({ address: usdg, abi: erc20Abi, functionName: "balanceOf", args: [circle], ...at }),
   ]);
   return {
     address: getAddress(circle),
@@ -180,7 +213,8 @@ export async function readCircle(
       withdrawn: bit(withdrawn, t),
     })),
     readAt: Math.floor(Date.now() / 1000),
-    chainTime: Number(block.timestamp),
+    chainTime,
+    block,
   };
 }
 
@@ -243,9 +277,26 @@ export type RobinhoodDeps = {
   factory: TrustedFactory | null;
   /** Test hook: USDG address (defaults to the Robinhood testnet USDG). */
   usdg?: Address;
+  /**
+   * Told the hash once the wallet has sent an action's transaction, before its receipt: lets a screen show "waiting for
+   * the wallet" and "pending on chain" apart. A view callback only; a throw in it is ignored and changes nothing.
+   */
+  onSent?: (hash: `0x${string}`) => void;
 };
 
-export type RobinhoodAdapter = EvmUsdgAdapter<RhCircleView> & { trust(): Promise<TrustResult> };
+/** What a release paid, from the PotReleased event in its own receipt: the round and seat that receipt names. */
+export type Released = { round: number; recipient: Address; pot: bigint };
+/**
+ * releasePot's result. The contract pays whichever round is current when the transaction lands (releasePot takes no
+ * round), so after a race with another member it may be the next one; `released` says which, from the receipt the
+ * adapter waited for, never from a second lookup (Codex r2 on PR #22). Absent only if the receipt has no such event.
+ */
+export type ReleaseResult = Extract<ActionResult, { ok: false }> | (Extract<ActionResult, { ok: true }> & { released?: Released });
+
+export type RobinhoodAdapter = Omit<EvmUsdgAdapter<RhCircleView>, "releasePot"> & {
+  trust(): Promise<TrustResult>;
+  releasePot(a: Record<string, never>): Promise<ReleaseResult>;
+};
 
 export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
   const usdg = d.usdg ?? USDG;
@@ -318,6 +369,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     functionName: string,
     args: readonly unknown[],
     pullOf?: () => Promise<bigint> | bigint,
+    onReceipt?: (receipt: TransactionReceipt) => void,
   ): Promise<ActionResult> {
     const memo: { previous: bigint | null; pending: boolean } = { previous: null, pending: false };
     try {
@@ -341,6 +393,7 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
         address: d.circle, abi: othelloCircleAbi, functionName, args, account: d.account,
       } as never));
       const hash = await d.walletClient.writeContract({ ...(request as object), gas, chain: d.walletClient.chain ?? null } as never);
+      try { d.onSent?.(hash); } catch { /* a view callback cannot affect the action */ }
       const { receipt, sameAction } = await waitForOwnReceipt(d.publicClient, hash);
       if (!sameAction) {
         // Cancelled or replaced in the wallet: the action did not run, whatever the replacement's status.
@@ -350,6 +403,8 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
       if (receipt.status !== "success") {
         return restore({ ok: false, error: "Failed", args: [hash], message: "The transaction failed on chain." }, memo);
       }
+      // reading the receipt can only add detail: a throw here must not turn a confirmed success into a failure
+      try { onReceipt?.(receipt); } catch { /* the result stands without the detail */ }
       return { ok: true, txHash: receipt.transactionHash };
     } catch (e) {
       return restore(decodeFailure(e), memo);
@@ -372,7 +427,16 @@ export function createRobinhoodAdapterWith(d: RobinhoodDeps): RobinhoodAdapter {
     cancelCircle: checked(P, "cancelCircle", async () => send("cancelCircle", [])),
     activate: checked(P, "activate", async () => send("activate", [])),
     contribute: checked(P, "contribute", async () => send("contribute", [], async () => (await view()).c)),
-    releasePot: checked(P, "releasePot", async () => send("releasePot", [])),
+    releasePot: checked(P, "releasePot", async (): Promise<ReleaseResult> => {
+      let released: Released | undefined;
+      const result = await send("releasePot", [], undefined, (receipt) => {
+        const ev = parseEventLogs({
+          abi: othelloCircleAbi, eventName: "PotReleased", logs: receipt.logs.filter((l) => isAddressEqual(l.address, d.circle)),
+        })[0];
+        if (ev) released = { round: Number(ev.args.round), recipient: getAddress(ev.args.recipient), pot: ev.args.pot };
+      });
+      return result.ok && released ? { ...result, released } : result;
+    }),
     updateCoverage: checked(P, "updateCoverage", async () => send("updateCoverage", [])),
     markDelinquent: checked(P, "markDelinquent", async ({ round, turn }: { round: number; turn: number }) =>
       send("markDelinquent", [round, turn])),
