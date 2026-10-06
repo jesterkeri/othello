@@ -23,7 +23,8 @@ const BUILT_IN = Object.fromEntries(PALETTES.map((p, i) => [`r${i}`, {
  * Runs before the body is parsed. Takes the cached variables when they were cached from the theme stored now (the
  * cache carries the stored theme it came from); otherwise resolves a built-in palette from the stored theme itself, so
  * a visitor whose theme was stored before the cache existed also opens in it (adversary on 8f0db93). A custom palette
- * with no cache yet keeps the defaults until its first visit caches it. Paints the variables onto :root and every
+ * with no cache yet, or a choice that names no palette, paints the first built-in in the stored mode, as loadTheme
+ * resolves it, until the first visit caches it. Paints the variables onto :root and every
  * screen root, the shell's panel onto the body, and the mode onto <html> (the shell's light rules read it before
  * hydration). Only custom-property names and hex or rgb() colours pass (lib/theme safeVar); anything else in storage is ignored.
  * The mode follows each screen's own fallback for a stored theme without one: the shell dark, Landing the system's.
@@ -34,7 +35,7 @@ var t=JSON.parse(raw);if(!t||typeof t!=="object")return;
 var c=null;try{c=JSON.parse(localStorage.getItem(${JSON.stringify(VARS_KEY)})||"null")}catch(e){}
 var inner,landing,im,lm;
 if(c&&c.key===raw&&c.inner&&c.landing){inner=c.inner;landing=c.landing;im=lm=c.mode==="light"?"light":"dark"}
-else{var B=${JSON.stringify(BUILT_IN)};var p=Object.prototype.hasOwnProperty.call(B,t.choice)?B[t.choice]:B.r0;
+else{var B=${JSON.stringify(BUILT_IN)};var p=typeof t.choice==="string"&&Object.prototype.hasOwnProperty.call(B,t.choice)?B[t.choice]:B.r0;
 im=t.theme==="light"?"light":"dark";lm=t.theme==="light"||t.theme==="dark"?t.theme:(window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
 inner=p[im].inner;landing=p[lm].landing}
 var ok=function(k,x){return ${VAR_NAME}.test(k)&&${VAR_VALUE}.test(x)};

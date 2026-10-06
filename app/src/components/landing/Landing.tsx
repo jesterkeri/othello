@@ -7,7 +7,7 @@ import { SIDE_HOME, sideName, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
-  PALETTES, SLOT_LABELS, cacheThemeVars, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
+  PALETTES, SLOT_LABELS, STORAGE_KEY, cacheThemeVars, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
   type CustomProfile, type Profile, type ThemeMode,
 } from '@/lib/theme';
 
@@ -105,13 +105,20 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
   const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
-    const saved = loadTheme();
-    if (saved) {
+    const read = () => {
+      const saved = loadTheme();
+      if (!saved) return;
       setChoice(saved.choice);
       setCustom(saved.custom);
       setMode(saved.theme ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-    }
+    };
+    read();
     setHydrated(true);
+    // follow a change made in another tab, as the shell does, so this page and the head rules it keeps (the connect
+    // modal opens on them) stay on the current choice (adversary on 24e044d)
+    const onStorage = (e: StorageEvent) => { if (e.key === STORAGE_KEY) read(); };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   useEffect(() => {
