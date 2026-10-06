@@ -124,17 +124,20 @@ export async function readCircle(
   circle: Address,
   usdg: Address = USDG,
 ): Promise<RhCircleView> {
-  // One block for everything: its timestamp is the page's chain time, and every state read is pinned to it, so a
-  // deadline and a paid bitmap are never paired with a later block's time (adversary on 885ecc6: a round settled and
-  // released between two unpinned reads showed seats late that the chain never had). The reads are pinned by number,
-  // so the block is checked again afterwards: if that number now names a different block (a reorg mid-read, adversary
-  // on c5d7863), the read starts over.
+  // One block for everything: its timestamp is the page's chain time, and every read is pinned to its HASH (EIP-1898,
+  // requireCanonical), so a deadline and a paid bitmap are never paired with another block's time or state. Adversary
+  // passes on 885ecc6 (state and time read at different blocks), c5d7863 (a reorg between getBlock and reads pinned by
+  // number) and 0908465 (a reorg undone mid-read, A then B then A, unseen by a before-and-after hash check). A read of
+  // a block that is no longer canonical fails; the read then starts over if block N has changed, up to three times.
   for (let attempt = 0; attempt < 3; attempt++) {
     const block = await client.getBlock({ blockTag: "latest" });
     if (block.number === null || block.hash === null) throw new Error("Robinhood Chain returned a block without a number.");
-    const view = await readCircleAt(client, circle, usdg, block.number, Number(block.timestamp));
-    const again = await client.getBlock({ blockNumber: block.number });
-    if (again.hash === block.hash) return view;
+    try {
+      return await readCircleAt(client, circle, usdg, block.hash, Number(block.timestamp));
+    } catch (e) {
+      const now = await client.getBlock({ blockNumber: block.number }).catch(() => null);
+      if (now?.hash === block.hash) throw e; // the block stands: a real failure, not a reorg
+    }
   }
   throw new Error("Robinhood Chain changed its recent blocks while the circle was read. Trying again shortly.");
 }
@@ -143,10 +146,10 @@ async function readCircleAt(
   client: Pick<PublicClient, "readContract">,
   circle: Address,
   usdg: Address,
-  blockNumber: bigint,
+  blockHash: `0x${string}`,
   chainTime: number,
 ): Promise<RhCircleView> {
-  const at = { blockNumber };
+  const at = { blockHash, requireCanonical: true };
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
     client.readContract({ address: circle, abi: othelloCircleAbi, functionName, args, ...at } as never) as Promise<T>;
   const [
