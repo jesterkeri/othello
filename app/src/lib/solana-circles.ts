@@ -43,8 +43,11 @@ type Listed = {
  *     and not collected (collect); Forming, created by it, every seat joined (start)
  *   1 Active, nothing to do this round
  *   2 Forming, joined or created by it, waiting for others
- *   3 Forming, an invitation it has not joined
- *   4 finished, nothing left for it
+ *   3 finished, joined or created by it, nothing left for it
+ *   4 Forming, an invitation it has not joined
+ *   5 finished, never joined and not created by it (a stranger's cancelled invitation)
+ * So nothing a stranger can create (invitations, cancelled ones, any circle id) outranks a circle the wallet chose to
+ * be in, finished ones included (adversary on 5c308b7).
  * Claim is ranked whenever its seat receives this round: the cap is about not losing a circle, and the card itself
  * still says Claim only when the release would be accepted.
  */
@@ -58,12 +61,13 @@ export function listRank({ circle }: Listed, wallet: string): number {
   }
   if ("completed" in s || "cancelled" in s) {
     const owed = turn >= 0 && ("completed" in s || bit(circle.joinedBitmap));
-    return owed && !bit(circle.withdrawnBitmap) ? 0 : 4;
+    if (owed && !bit(circle.withdrawnBitmap)) return 0;
+    return owed || circle.creator.toBase58() === wallet ? 3 : 5;
   }
   const creator = circle.creator.toBase58() === wallet;
   const full = circle.n > 0 && (circle.joinedBitmap & ((1 << circle.n) - 1)) === (1 << circle.n) - 1;
   if (creator && full) return 0;
-  return bit(circle.joinedBitmap) || creator ? 2 : 3;
+  return bit(circle.joinedBitmap) || creator ? 2 : 4;
 }
 
 /** The circles in `accounts` that `wallet` created or holds a seat in, by listRank, then circle id, highest first. */

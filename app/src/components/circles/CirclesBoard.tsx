@@ -9,7 +9,9 @@
  * circle, more open a pop-up list).
  *
  * The layout is drawn for up to three running circles: a member is in at most three at a time (Joshua 2026-10-06; the
- * join/create limit that enforces it is its own change). The board shows the first three.
+ * join/create limit that enforces it is its own change). The board shows the first three. Until that limit exists
+ * nothing stops a fourth, so any past three are listed behind an "N more running" button in the title row, drawn only
+ * then (adversary on 5c308b7: a fourth was nowhere on the page).
  */
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 
@@ -139,6 +141,7 @@ function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpe
 export default function CirclesBoard({ items, me, side }: { items: Item[]; me: string; side: ChainSide }) {
   const needsDialog = useRef<HTMLDialogElement>(null);
   const doneDialog = useRef<HTMLDialogElement>(null);
+  const moreDialog = useRef<HTMLDialogElement>(null);
   // the screen fills the viewport below wherever it starts (the shell's bar, a banner above it)
   const screen = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -156,6 +159,7 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
   const invite = (v: ListCircle) => v.status === "Forming" && !isCreator(v, me) && !mySeat(v, me)?.joined;
   const running = items.filter((x) => live(x.v) && !invite(x.v)).sort((x, y) => Number(y.card.group === "needs") - Number(x.card.group === "needs"));
   const shown = running.slice(0, SHOWN);
+  const extra = running.slice(SHOWN);
   const done = items.filter((x) => !live(x.v));
   const needs = items.filter((x) => x.card.group === "needs");
   const layout = c[`n${shown.length}`];
@@ -163,7 +167,11 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
   const pill = <NeedsPill count={needs.length} onOpen={() => needsDialog.current?.showModal()} />;
   return (
     <div ref={screen} className={`${c.screen} ${shown.length >= 2 ? c.screenFit : ""}`}>
-      <CirclesTitle side={side} action={shown.length === 0 ? <span className={c.deskOnly}>{pill}</span> : null} />
+      <CirclesTitle side={side} action={shown.length === 0 ? <span className={c.deskOnly}>{pill}</span> : extra.length > 0 ? (
+        <button type="button" className={c.start} onClick={() => moreDialog.current?.showModal()} aria-haspopup="dialog">
+          {extra.length} more running
+        </button>
+      ) : null} />
       {/* a phone gets its own layout (CirclesPhone), not this bento squeezed (Joshua 2026-10-06) */}
       <CirclesPhone side={side} running={shown} done={done} needsCount={needs.length}
         onNeeds={() => needsDialog.current?.showModal()} onDone={() => doneDialog.current?.showModal()} />
@@ -190,6 +198,7 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
       </div>
       <ListDialog dialog={needsDialog} title="Waiting on you" items={needs} me={me} />
       <ListDialog dialog={doneDialog} title="Finished circles" items={done} me={me} />
+      <ListDialog dialog={moreDialog} title="Also running" items={extra} me={me} />
     </div>
   );
 }

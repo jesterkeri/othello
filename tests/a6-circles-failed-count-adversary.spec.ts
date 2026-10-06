@@ -173,12 +173,15 @@ describe("A6 adversary: a failed read inside the cap makes 'Showing N of M' unde
     const payMembers = [me, ...others];
     accounts.set(pay.toBase58(), await circleBytes(me, "1", payMembers, { active: {} }, { joined: 0b111, paid: 0b110, received: 0, withdrawn: 0 }));
     await addMembers(pay, payMembers, 0b111);
-    // a stranger's invitation naming the wallet, id 2^60: rank 3, inside the first MAX_LISTED, and unreadable
+    // a stranger's circle the wallet has joined, id 2^60: Forming, joined (rank 2), inside the first MAX_LISTED, and
+    // unreadable. (On 5c308b7 this was an unjoined invitation; since the ranking fix on 5c308b7's adversary pass an
+    // invitation ranks below the wallet's own finished circles and falls outside the cap, so the failed read inside the
+    // cap is now one the wallet joined.)
     const invite = pk();
     const inviteMembers = [stranger, me, others[0]!];
-    accounts.set(invite.toBase58(), await circleBytes(stranger, (2n ** 60n).toString(), inviteMembers, { forming: {} }, { joined: 0b001, paid: 0, received: 0, withdrawn: 0 }));
-    await addMembers(invite, inviteMembers, 0b001);
-    // twelve finished circles of its own, every seat collected: nothing left for it (rank 4)
+    accounts.set(invite.toBase58(), await circleBytes(stranger, (2n ** 60n).toString(), inviteMembers, { forming: {} }, { joined: 0b011, paid: 0, received: 0, withdrawn: 0 }));
+    await addMembers(invite, inviteMembers, 0b011);
+    // twelve finished circles of its own, every seat collected: nothing left for it (rank 3)
     for (let id = 2; id <= 13; id++) {
       const done = pk();
       accounts.set(done.toBase58(), await circleBytes(me, String(id), payMembers, { completed: {} }, { joined: 0b111, paid: 0, received: 0b111, withdrawn: 0b111 }));
@@ -207,7 +210,7 @@ describe("A6 adversary: a failed read inside the cap makes 'Showing N of M' unde
     // the server's answer, exactly as /api/circles sends it (JSON)
     const body = JSON.parse(JSON.stringify(await solanaCirclesOf(connection as never, me.toBase58())));
     assert.equal(body.total, 14);
-    assert.deepEqual(body.failed, [invite.toBase58()], "the stranger's invitation is the one failed read");
+    assert.deepEqual(body.failed, [invite.toBase58()], "the stranger's circle with an id past 2^53 is the one failed read");
     assert.equal(body.circles.length, MAX_LISTED - 1);
 
     // the page: the real useSolanaCircles, with fetch answering that body
