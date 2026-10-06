@@ -51,8 +51,10 @@ const shown = (r: TokenRead, f: (v: bigint) => string) => (r === null ? "Reading
  * The reads are bounded by the page cap, never by how many circles the wallet has ever had (adversary on d82d67e: a
  * wallet with 240 circles cost 2000 reads before the card drew). A running circle is usually among the newest (a
  * member is meant to be in at most three at a time, Joshua 2026-10-06), but nothing on chain enforces that yet, so
- * when older circles were not read the empty card says so instead of "no running circle". `count` is every circle in the factory's index for this wallet (its
- * own creates and joins); `more` says older ones exist that were not read.
+ * when older circles were not read the empty card says so instead of "no running circle". `count` is every circle in
+ * the factory's index for this wallet (its own creates and joins), from the first page; `more` says older ones exist
+ * that were not read. A later page that comes back empty because the factory check failed on that read (total 0) fails
+ * the card rather than overwrite the count (adversary suspicion on a486495).
  */
 const MAX_PAGES = 3;
 const READ_LIMIT = MAX_PAGES * MY_CIRCLES_PAGE;
@@ -62,8 +64,9 @@ async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCi
   let count = 0;
   for (let page = 0; page < MAX_PAGES; page++) {
     const next = await listMyCircles(robinhoodPublicClient, account, before);
+    if (page > 0 && next.total === 0) throw new Error("the factory check failed on a later page");
+    if (page === 0) count = next.total;
     all.push(...next.circles);
-    count = next.total;
     before = next.before ?? undefined;
     if (before === undefined) break;
   }
@@ -201,7 +204,7 @@ export default function RobinhoodPortfolio() {
                 <CircleSummary
                   href={card.href}
                   headline={card.headline}
-                  sub={card.mustAct ? `${card.sub} · your payment is due` : card.sub}
+                  sub={card.mustAct ? `${card.sub} · your payment is ${card.late ? "late" : "due"}` : card.sub}
                   pips={card.pips}
                   facts={card.facts}
                 />

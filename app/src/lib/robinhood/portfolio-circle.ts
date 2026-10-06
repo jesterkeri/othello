@@ -43,6 +43,8 @@ export type CircleCard = {
   headline: string;
   sub: string;
   mustAct: boolean;
+  /** This wallet's payment for the round is past deadline plus grace (or marked delinquent): late, not merely due. */
+  late: boolean;
   pips: CardPip[];
   facts: CardFact[];
 };
@@ -62,6 +64,7 @@ export function circleCard(v: RhCircleView, me?: string | null): CircleCard | nu
     headline: active ? `Round ${v.round + 1} of ${v.n}` : v.status,
     sub: `Seat ${seat.turn + 1} · ${pot}`,
     mustAct: mustAct(v, me),
+    late,
     pips: v.seats.map((s) => ({
       key: String(s.turn),
       title: `Round ${s.turn + 1}: Seat ${s.turn + 1}${s.received ? ", paid out" : ""}`,
