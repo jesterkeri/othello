@@ -18,7 +18,7 @@ export function useSolanaCircles(): CirclesSource {
   const wallet = useWallet();
   const connectUi = useWalletUi();
   const me = wallet.publicKey?.toBase58() ?? null;
-  const [found, setFound] = useState<LiveCircle[] | null>(null);
+  const [found, setFound] = useState<{ circles: LiveCircle[]; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   // each request carries the wallet it was for; a reply for an earlier wallet (or an unmounted page) is dropped
   const req = useRef(0);
@@ -27,11 +27,11 @@ export function useSolanaCircles(): CirclesSource {
     const id = ++req.current;
     setError(null);
     fetch(`/api/circles?wallet=${address}`, { cache: "no-store" })
-      .then((r) => r.json() as Promise<{ circles: LiveCircle[] } | { error: string }>)
+      .then((r) => r.json() as Promise<{ circles: LiveCircle[]; total: number } | { error: string }>)
       .then((b) => {
         if (id !== req.current) return;
         if ("error" in b) throw new Error(b.error);
-        setFound(b.circles);
+        setFound(b);
       })
       .catch((e: unknown) => id === req.current && setError(e instanceof Error ? e.message : String(e)));
   }, []);
@@ -57,8 +57,9 @@ export function useSolanaCircles(): CirclesSource {
       installHint: "Install Phantom or another Solana wallet to see your circles.",
     },
     blocked: null,
-    found: found ? found.length : null,
-    circles: (found ?? []).map((c) => solToList(c, me)),
+    found: found ? found.total : null,
+    circles: (found?.circles ?? []).map((c) => solToList(c, me)),
+    notShown: found ? found.total - found.circles.length : 0,
     reading: 0,
     failed: [],
     error,

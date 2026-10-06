@@ -30,15 +30,22 @@ export const namesFor = (circle: string): readonly string[] => (circle === DEMO_
 
 export { parseAddress } from "./sol-address";
 
-/** The circles in `accounts` that `wallet` created or holds a seat in, newest-created first by circle id. */
-export function circlesOf(accounts: { address: string; circle: Pick<DecodedCircle, "creator" | "members" | "n" | "circleId"> }[], wallet: string) {
+/** Running (Forming or Active) before finished, so a cap never drops a circle the wallet may have to act in. */
+const running = (status: Record<string, unknown>) => "forming" in status || "active" in status;
+
+/**
+ * The circles in `accounts` that `wallet` created or holds a seat in: running ones first, then by circle id, highest
+ * first (adversary on 51bc786: a cap by id alone could drop a running circle).
+ */
+export function circlesOf(accounts: { address: string; circle: Pick<DecodedCircle, "creator" | "members" | "n" | "circleId" | "status"> }[], wallet: string) {
+  const id = (x: (typeof accounts)[number]) => BigInt(x.circle.circleId.toString());
   return accounts
     .filter(({ circle }) => circle.creator.toBase58() === wallet || circle.members.slice(0, circle.n).some((m) => m.toBase58() === wallet))
-    .sort((a, b) => Number(BigInt(b.circle.circleId.toString()) - BigInt(a.circle.circleId.toString())));
+    .sort((a, b) => Number(running(b.circle.status)) - Number(running(a.circle.status)) || (id(b) > id(a) ? 1 : id(b) < id(a) ? -1 : 0));
 }
 
-/** Every Othello circle `wallet` created or holds a seat in, each read in full. */
-export async function solanaCirclesOf(connection: Connection, wallet: string): Promise<LiveCircle[]> {
+/** The Othello circles `wallet` created or holds a seat in, the first MAX_LISTED read in full, and how many it has. */
+export async function solanaCirclesOf(connection: Connection, wallet: string): Promise<{ circles: LiveCircle[]; total: number }> {
   const coder = accountsCoder();
   const filter = coder.memcmp("circle");
   const raw = await connection.getProgramAccounts(new PublicKey(PROGRAM_ID), {
@@ -51,6 +58,7 @@ export async function solanaCirclesOf(connection: Connection, wallet: string): P
       return [];
     }
   });
-  const mine = circlesOf(decoded, wallet).slice(0, MAX_LISTED);
-  return Promise.all(mine.map(({ address }) => readLiveCircle(connection, address, stockWord, namesFor(address))));
+  const all = circlesOf(decoded, wallet);
+  const circles = await Promise.all(all.slice(0, MAX_LISTED).map(({ address }) => readLiveCircle(connection, address, stockWord, namesFor(address))));
+  return { circles, total: all.length };
 }

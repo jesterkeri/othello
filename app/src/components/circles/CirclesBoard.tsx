@@ -125,8 +125,10 @@ function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpe
   const cls = `${c.tile} ${c.notched} ${c.finished} ${c.toneGrey}`;
   return (
     <div className={c.stackWrap} style={{ gridArea: "f" }}>
-      {items.length > 1 && <span className={`${c.layer} ${c.layer1}`} aria-hidden />}
-      {items.length > 2 && <span className={`${c.layer} ${c.layer2}`} aria-hidden />}
+      {/* the pile's layers always show, whatever the count, so its bottom lines up with the tiles beside it (Joshua
+          2026-10-06) */}
+      <span className={`${c.layer} ${c.layer1}`} aria-hidden />
+      <span className={`${c.layer} ${c.layer2}`} aria-hidden />
       {items.length === 1
         ? <a className={cls} href={items[0]!.v.href}>{inner}</a>
         : <button type="button" className={cls} onClick={onOpen} aria-haspopup="dialog">{inner}</button>}

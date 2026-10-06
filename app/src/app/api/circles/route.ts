@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const CACHE_SECONDS = 10;
 const MAX_CACHED = 64;
-const cache = new Map<string, { at: number; body: { circles: LiveCircle[] } }>();
+const cache = new Map<string, { at: number; body: { circles: LiveCircle[]; total: number } }>();
 
 export async function GET(req: NextRequest) {
   const wallet = parseAddress(req.nextUrl.searchParams.get("wallet"));
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   const url = process.env.DEVNET_RPC_URL || clusterApiUrl("devnet");
   try {
-    const body = { circles: await solanaCirclesOf(new Connection(url, "confirmed"), wallet) };
+    const body = await solanaCirclesOf(new Connection(url, "confirmed"), wallet);
     cache.delete(wallet);
     cache.set(wallet, { at: now, body });
     if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);

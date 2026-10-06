@@ -42,6 +42,8 @@ export type CirclesSource = {
   /** Finding the circles failed. */
   error: string | null;
   retry: (() => void) | null;
+  /** Circles found but not read (a cap): the page says so instead of dropping them silently. */
+  notShown?: number;
   /** Older circles exist (Robinhood lists a page at a time). */
   more: { loading: boolean; load: () => void } | null;
 };
@@ -71,6 +73,9 @@ export default function CirclesHome({ source }: { source: CirclesSource }) {
         {source.reading > 0 && (
           <p className={s.muted}>Reading {source.reading === 1 ? "1 circle" : `${source.reading} circles`} on {source.chainName}…</p>
         )}
+        {source.notShown ? (
+          <p className={s.muted}>Showing {source.circles.length} of {source.circles.length + source.notShown} circles: running ones first, then the newest.</p>
+        ) : null}
         {source.failed.map((c) => (
           <p key={c.address} className={s.muted}>
             Couldn&apos;t read circle {short(c.address)} just now. <a className={s.addr} href={c.href}>Open it</a>

@@ -62,8 +62,10 @@ describe("A6: the shared circles list on Solana", () => {
       assert.equal(solToList(live(repricing), null).releasable, false, "price and split disagree");
       const unpriced = { ...allPaid, feed: { ...allPaid.feed, sharePrice: 0 } };
       assert.equal(solToList(live(unpriced), null).releasable, false, "no price set");
-      const covered = { ...v, defaultedBitmap: 0b10000 };
+      // a defaulted seat is covered from the escrow, when it holds that seat's share of the round (release_pot.rs)
+      const covered = { ...v, defaultedBitmap: 0b10000, escrow: v.contribution };
       assert.equal(solToList(live(covered), null).releasable, true, "a defaulted seat is covered, not owed");
+      assert.equal(releaseBlock({ ...covered, escrow: v.contribution - 1 }, FIXTURE_NOW), "escrow-short");
     });
 
     it("a finished circle: who collected, and this wallet's share named in words (no amount yet)", () => {
@@ -115,8 +117,8 @@ describe("A6: the shared circles list on Solana", () => {
     type Key = { toBase58: () => string };
     const key = (n: number): Key => ({ toBase58: () => `Wallet${n}${"1".repeat(30)}` });
     const def: Key = { toBase58: () => "11111111111111111111111111111111" };
-    const circle = (id: number, creator: Key, members: Key[], n = members.length) =>
-      ({ address: `c${id}`, circle: { circleId: { toString: () => String(id) }, creator, n, members: [...members, ...Array(8 - members.length).fill(def)] } });
+    const circle = (id: number, creator: Key, members: Key[], n = members.length, status: Record<string, unknown> = { active: {} }) =>
+      ({ address: `c${id}`, circle: { circleId: { toString: () => String(id) }, creator, n, status, members: [...members, ...Array(8 - members.length).fill(def)] } });
 
     it("keeps the circles the wallet created or holds a seat in, newest first", () => {
       const me = key(1);
@@ -127,6 +129,17 @@ describe("A6: the shared circles list on Solana", () => {
         circle(4, key(2), [key(2), key(3), me]),
       ];
       assert.deepEqual(circlesOf(all as never, me.toBase58()).map((x) => x.address), ["c4", "c2", "c1"]);
+    });
+
+    it("puts running circles before finished ones, so a cap never drops one the wallet may have to act in", () => {
+      const me = key(1);
+      const all = [
+        circle(9, me, [me, key(2)], 2, { completed: {} }),
+        circle(3, me, [me, key(2)], 2, { active: {} }),
+        circle(8, me, [me, key(2)], 2, { cancelled: {} }),
+        circle(2, me, [me, key(2)], 2, { forming: {} }),
+      ];
+      assert.deepEqual(circlesOf(all as never, me.toBase58()).map((x) => x.address), ["c3", "c2", "c9", "c8"]);
     });
 
     it("ignores the unused seats past n (they hold the default key)", () => {

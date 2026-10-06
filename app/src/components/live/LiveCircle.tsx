@@ -233,6 +233,8 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
     ? `The circle is ${c.status}; these open while it is Active.`
     : owing.length > 0
       ? `The pot can be released once every seat has paid or been declared in default. Still to pay: ${owing.map((m) => m.name).join(", ")}.`
+      : releaseBlock(c, wallClock) === "escrow-short"
+        ? `Every seat is settled, but the escrow holds ${formatUsdc(c.escrow)} ${USDC_WORD} and the defaulted seats' share of this round is ${formatUsdc(c.contribution * covered.length)}: the program refuses the release until the escrow can pay it.`
       : priceBlock
         ? `Every seat is settled, but the pot waits. ${priceBlock}`
         : dv.paused
