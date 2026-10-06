@@ -1,21 +1,25 @@
 "use client";
 
-/** Robinhood circles the connected wallet created or joined (newest first, a page at a time), and the way to start one. */
+/**
+ * Robinhood circles the connected wallet created or joined (newest first, a page at a time), and the way to start one,
+ * on the shared circles page (components/circles/CirclesHome.tsx; Joshua 2026-10-06, one frontend for both chains).
+ * Each listed circle is read in full with the same readCircle as its page, then shown as a ListCircle (rhToList).
+ */
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
+import CirclesHome, { type CirclesSource } from "@/components/circles/CirclesHome";
 import Shell from "@/components/othello/Shell";
-import { checkFactory, listMyCircles, type TrustResult } from "@/lib/robinhood/adapter";
-import { fmtUsdg } from "@/lib/robinhood/copy";
+import { checkFactory, listMyCircles, readCircle, type RhCircleView, type TrustResult } from "@/lib/robinhood/adapter";
 import { EMPTY, hasMore, myCircles, nextBefore } from "@/lib/robinhood/my-circles";
+import { rhToList } from "@/lib/robinhood/to-list";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
-
 import { useWalletUi } from "@/lib/wallet";
+
 import s from "./Robinhood.module.css";
 
 const NETWORK = { chip: "Robinhood Chain testnet", note: "Test USDG only. It has no value." };
-const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-export default function RobinhoodHome() {
+export function useRobinhoodCircles(): CirclesSource {
   const w = useEvmWallet();
   const connectUi = useWalletUi();
   const [factory, setFactory] = useState<TrustResult | null>(null);
@@ -47,80 +51,63 @@ export default function RobinhoodHome() {
 
   const circles = list.started ? list.circles : null;
 
+  // Each listed circle's full read, by address: a view, or "failed" (that card links to the page instead).
+  const [views, setViews] = useState<Record<string, RhCircleView | "failed">>({});
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    setViews({});
+    asked.current = new Set();
+  }, [w.address]);
+  useEffect(() => {
+    if (!circles) return;
+    const id = req.current;
+    for (const c of circles) {
+      const key = c.address.toLowerCase();
+      if (asked.current.has(key)) continue;
+      asked.current.add(key);
+      readCircle(robinhoodPublicClient, c.address)
+        .then((v) => id === req.current && setViews((m) => ({ ...m, [key]: v })))
+        .catch(() => id === req.current && setViews((m) => ({ ...m, [key]: "failed" })));
+    }
+  }, [circles]);
+  const me = w.address ?? null;
+
+  return {
+    side: "robinhood",
+    chainName: "Robinhood Chain",
+    wallet: {
+      installed: w.hasWallet,
+      address: me,
+      connect: connectUi.openConnect,
+      connectLabel: "Connect an EVM wallet (MetaMask)",
+      installHint: "Install MetaMask or another EVM wallet to see your circles.",
+    },
+    blocked: factory && !factory.ok ? (
+      <section className={`${s.banner} ${s.refusal}`} role="alert">
+        <h2 className={s.bannerTitle}>Robinhood circles aren&apos;t open yet</h2>
+        <p className={s.bannerText}>Othello&apos;s contracts on Robinhood Chain testnet are waiting for their final review.</p>
+      </section>
+    ) : null,
+    found: circles ? circles.length : null,
+    circles: (circles ?? []).flatMap((c) => {
+      const v = views[c.address.toLowerCase()];
+      return v && v !== "failed" ? [rhToList(v, me)] : [];
+    }),
+    reading: (circles ?? []).filter((c) => !views[c.address.toLowerCase()]).length,
+    failed: (circles ?? [])
+      .filter((c) => views[c.address.toLowerCase()] === "failed")
+      .map((c) => ({ address: c.address, href: `/circle/rh:${c.address}` })),
+    error: list.error,
+    retry: w.address ? () => w.address && load(w.address, nextBefore(list)) : null,
+    more: w.address && hasMore(list) ? { loading: list.loading, load: () => w.address && load(w.address, nextBefore(list)) } : null,
+  };
+}
+
+export default function RobinhoodHome() {
+  const source = useRobinhoodCircles();
   return (
     <Shell active="Circles" side="robinhood" network={NETWORK}>
-      <main className={s.page}>
-        <header className={s.head}>
-          <div className={s.pills}><span className={s.pill}>USDG on Robinhood Chain</span></div>
-          <h1 className={s.title}>Your Robinhood circles</h1>
-          <p className={s.sub}>
-            Save in USDG with people you know. Each round everyone pays the same amount and one member takes the whole
-            pot. Locked USDG and a shared reserve cover anyone who stops paying after their turn.
-          </p>
-          <a className={s.btn} href="/robinhood/new">Start a circle</a>
-        </header>
-
-        {factory && !factory.ok && (
-          <section className={`${s.banner} ${s.refusal}`} role="alert">
-            <h2 className={s.bannerTitle}>Robinhood circles aren&apos;t open yet</h2>
-            <p className={s.bannerText}>Othello&apos;s contracts on Robinhood Chain testnet are waiting for their final review.</p>
-          </section>
-        )}
-
-        <section className={s.section} aria-live="polite">
-          {!w.hasWallet && <p className={s.muted}>Install MetaMask or another EVM wallet to see your circles.</p>}
-          {w.hasWallet && !w.address && (
-            <button type="button" className={s.btn} onClick={connectUi.openConnect}>Connect an EVM wallet (MetaMask)</button>
-          )}
-          {w.address && factory?.ok && circles === null && list.loading && <p className={s.muted}>Looking for your circles…</p>}
-          {circles && circles.length === 0 && (
-            <p className={s.muted}>This wallet hasn&apos;t started or joined a circle yet. Start one, or open the link someone sent you.</p>
-          )}
-          {circles && circles.length > 0 && (
-            <ol className={s.members}>
-              {circles.map((c) => (
-                <li key={c.address} className={s.member}>
-                  <span className={s.turn}>{c.turn + 1}</span>
-                  <div className={s.memberBody}>
-                    <a className={s.addr} href={`/circle/rh:${c.address}`}>Circle {short(c.address)}</a>
-                    <span className={s.tags}>
-                      <span className={s.tag}>{c.status}</span>
-                      <span className={s.tag}>{c.n} members</span>
-                      <span className={s.tag}>{fmtUsdg(c.c)} a round</span>
-                      <span className={s.tag}>You receive in round {c.turn + 1}</span>
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-          {list.error && (
-            <p className={s.error} role="alert">
-              Couldn&apos;t read your circles: {list.error}{" "}
-              {w.address && (
-                <button type="button" className={s.btnQuiet} onClick={() => w.address && load(w.address, nextBefore(list))}>
-                  Try again
-                </button>
-              )}
-            </p>
-          )}
-          {w.address && hasMore(list) && !list.error && (
-            <button type="button" className={s.btnQuiet} disabled={list.loading} onClick={() => w.address && load(w.address, nextBefore(list))}>
-              {list.loading ? "Loading…" : "Show more"}
-            </button>
-          )}
-        </section>
-
-        <section className={`${s.banner} ${s.neutral}`} aria-labelledby="mainnet-plan">
-          <h2 id="mainnet-plan" className={s.bannerTitle}>Planned for mainnet: interest on idle USDG</h2>
-          <p className={s.bannerText}>
-            On Robinhood Chain mainnet, USDG in your wallet could earn interest from borrowers through a USDG lending
-            vault on Morpho, already live there. The rate moves with demand and nothing is promised. Lending carries
-            risk: money can be lost, and a withdrawal can wait while the vault&apos;s USDG is lent out. Circle money
-            stays out of it. Not built yet: nothing on this testnet earns.
-          </p>
-        </section>
-      </main>
+      <CirclesHome source={source} />
     </Shell>
   );
 }

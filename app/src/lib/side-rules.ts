@@ -3,6 +3,7 @@
  * they are tested without React (tests/neutral-site.spec.ts). lib/active-side.ts and components/othello/SideGate.tsx
  * apply them.
  */
+import { parseAddress } from "./sol-address";
 import type { ChainSide } from "./chains";
 import { CIRCLE_STATES } from "../fixtures/circles";
 import { sideOf } from "./chains";
@@ -47,7 +48,7 @@ export function labelOf(pathname: string): GatedLabel {
 
 /** The routes that exist on each chain (app/src/app): anything else is the 404, which is neutral. */
 const ROBINHOOD_ROUTES = new Set(["/robinhood", "/robinhood/new", "/robinhood/portfolio", "/robinhood/assets"]);
-const SOLANA_ROUTES = new Set(["/portfolio", "/split-lab", "/circle/new", "/assets"]);
+const SOLANA_ROUTES = new Set(["/solana", "/portfolio", "/split-lab", "/circle/new", "/assets"]);
 const XSTOCK_SYMBOLS = new Set(TRADABLE_XSTOCKS.map((x) => x.symbol));
 const RH_STOCK_SYMBOLS = new Set<string>(TESTNET_STOCK_TOKENS.map((t) => t.symbol));
 const decodeOnce = (s: string): string | null => { try { return decodeURIComponent(s); } catch { return null; } };
@@ -74,12 +75,15 @@ export function pageNetwork(pathname: string | null | undefined): "robinhood" | 
     if (!circle[2] && sideOf(p) === "robinhood") return "robinhood";
     const id = decodeOnce(circle[1]!);
     if (id === null) return null;
-    if (!circle[2]) return id === "demo" || id === "stale" || isState(id) ? "solana" : null;
+    if (!circle[2]) return id === "demo" || id === "stale" || isState(id) || solCircle(id) ? "solana" : null;
     const seat = decodeOnce(circle[3]!);
     return seat !== null && seatRenders(id, seat) ? "solana" : null;
   }
   return null;
 }
+
+/** A Solana circle opened by address, /circle/sol:<address> (Joshua 2026-10-06, the shared circles list). */
+const solCircle = (id: string) => id.startsWith("sol:") && parseAddress(id.slice(4)) !== null;
 
 /** A circle state the fixtures define (own keys only: /circle/constructor is not one). */
 const isState = (id: string): id is keyof typeof CIRCLE_STATES => Object.prototype.hasOwnProperty.call(CIRCLE_STATES, id);
@@ -93,5 +97,7 @@ function seatRenders(id: string, seat: string): boolean {
   const n = Number(seat);
   if (!Number.isInteger(n) || n < 1) return false;
   if (id === "demo") return n <= 5;
+  // any other Solana circle: seats 1 to 8, the program's most (the page says so for a seat its circle lacks)
+  if (solCircle(id)) return n <= 8;
   return isState(id) && n <= CIRCLE_STATES[id].n;
 }

@@ -1,0 +1,332 @@
+/*
+ * The circles page as one bento, in the site's style (a 3px black edge, big radius, no shadow: Joshua 2026-10-06),
+ * with the references' notched corner, pill-and-bubble button and stacked card. Palette tokens only, so every palette
+ * and light/dark work. The black edge is #0B0B0B, as on the landing page.
+ */
+/* full width, like the other pages */
+.wide.wide { max-width: none; width: 100%; }
+
+/*
+ * With two or three running circles, one screen on tablet and desktop (Joshua 2026-10-06: no scrolling): the title
+ * row, then the board filling the rest of the viewport; with fewer, a set height. The first running circle is the largest tile across the top, the others beneath it, and the
+ * finished stack bottom right. Six columns so the bottom row can split in halves or thirds.
+ */
+/* --top is where the screen starts on the page, measured by CirclesBoard; 20px leaves the bottom edge in view */
+.screen { display: flex; flex-direction: column; gap: 12px; }
+.screenFit { height: calc(100dvh - var(--top, 190px) - 20px); min-height: 600px; }
+.board { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px;
+  grid-template-rows: minmax(410px, 1.5fr) minmax(270px, 1fr); }
+/* below those heights (a small laptop) the page scrolls a little rather than shrink the text past reading size */
+/* the finished stack is always there, bottom right; with one or no running circle the board keeps a set height */
+.n0 { grid-template-areas: "e e e e f f"; grid-template-rows: 300px; }
+.n1 { grid-template-areas: "a a a a a a" "s s s s f f"; grid-template-rows: clamp(420px, 56vh, 560px) 270px; }
+.n2 { grid-template-areas: "a a a a a a" "b b b b f f"; }
+.n3 { grid-template-areas: "a a a a a a" "b b c c f f"; }
+/* each tile's content sizes itself to the tile (container queries below) */
+@media (min-width: 700px) { .tile { container-type: size; } }
+/* on a tablet or a phone the tiles grow with their content (a fixed screen height was too short for the top tile,
+   Joshua 2026-10-06), so only their width is queried */
+@media (max-width: 1099px) {
+  .tile { container-type: inline-size; }
+  .screenFit { height: auto; min-height: 0; }
+  .board.board { grid-template-rows: none; grid-auto-rows: auto; }
+  .tile:not(.dHero) { min-height: 250px; }
+}
+/* the bento is for laptops and wider; below 1100px CirclesPhone shows the circles as plain cards */
+@media (max-width: 1099px) { .deskOnly.deskOnly { display: none; } }
+@media (max-width: 699px) {
+  .screen { height: auto; min-height: 0; }
+  .board { grid-template-columns: minmax(0, 1fr); grid-template-areas: none; grid-template-rows: none; grid-auto-rows: auto; }
+  .board > * { grid-area: auto !important; }
+}
+
+/* title row */
+.titleRow { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.headText { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.kicker { border: 2px solid currentColor; border-radius: 999px; padding: 4px 11px; font-size: 10px; font-weight: 800; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--muted); }
+.title { margin: 0; font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900;
+  text-transform: uppercase; letter-spacing: -.02em; line-height: .9; font-size: clamp(32px, 4vw, 54px); text-wrap: balance; }
+.headActions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.start { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; border: 3px solid #0B0B0B; border-radius: 999px;
+  background: var(--paper); color: var(--ink) !important; padding: 0 22px; font: inherit; font-size: 12.5px; font-weight: 900; letter-spacing: .08em;
+  text-transform: uppercase; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.start:hover { background: var(--acid); color: var(--acidInk) !important; }
+
+/* the Needs-you pill: a pill joined to a bubble that holds the count */
+.pill { border: 0; background: none; padding: 0; margin: 0; cursor: pointer; display: block; transition: transform .16s cubic-bezier(.2, 1.4, .4, 1); }
+.pill:disabled { cursor: default; }
+.pill:not(:disabled):hover { transform: translateY(-2px); }
+.pill:focus-visible { outline: 3px solid var(--sky); outline-offset: 4px; border-radius: 999px; }
+.pillSvg { display: block; width: 236px; height: auto; overflow: visible; }
+.pillBody { fill: var(--paper); stroke: #0B0B0B; stroke-width: 3; stroke-linejoin: round; }
+.pillBubble { fill: var(--greyFill); transform-origin: 222px 30px; transform-box: view-box; }
+.pillHot .pillBubble { fill: var(--acid); animation: beat 2.4s ease-in-out infinite; }
+.pillText { fill: var(--ink); font-size: 14px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.pillCount { fill: var(--ink); font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: 32px; }
+.pillHot .pillCount { fill: var(--acidInk); }
+.pillArrow { color: var(--ink); }
+.pillHot .pillArrow { color: var(--acidInk); }
+@keyframes beat { 0%, 70%, 100% { transform: scale(1); } 80% { transform: scale(1.08); } 90% { transform: scale(.97); } }
+
+.empty { position: relative; margin: 0; border: 3px dashed currentColor; border-radius: 30px; padding: clamp(20px, 2.4vw, 32px); color: var(--onPanel, var(--ink));
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
+.empty .heroAction { position: static; margin-top: 8px; background-color: var(--acid); color: var(--acidInk) !important; }
+
+/*
+ * A tile. .shape is the black edge and .fill the colour inside it. A notched tile masks both with the same notch (the
+ * fill's grown by the 3px edge), so the edge follows the notch's curve and the round button sits in the gap.
+ */
+/* the asset page's card trim: rise in one after another, lift on hover, a glint sweeps across, faint rings */
+.tile { position: relative; min-width: 0; display: flex; transition: transform .45s cubic-bezier(.2, 1.5, .35, 1);
+  animation: rise .5s cubic-bezier(.2, .9, .2, 1) backwards; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+.glint { position: absolute; top: -20%; left: 0; width: 22%; height: 140%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .38), transparent);
+  transform: translateX(-120%) skewX(-18deg); pointer-events: none; z-index: 2; }
+@keyframes sheen { 0% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(560%) skewX(-18deg); } }
+.decoRings { position: absolute; right: -14%; bottom: -34%; width: 58%; aspect-ratio: 1; border: 3px solid currentColor; border-radius: 999px;
+  opacity: .16; pointer-events: none; }
+.decoRings span { position: absolute; inset: 22%; border: 3px solid currentColor; border-radius: 999px; }
+/* the landing page's tilted pill and disc */
+.decoPill { position: absolute; right: 8%; bottom: 16%; width: 34%; height: 18%; border: 3px solid currentColor; border-radius: 999px; transform: rotate(-12deg);
+  opacity: .2; pointer-events: none; }
+.decoDisc { position: absolute; right: 5%; top: 14%; width: 16%; aspect-ratio: 1; border-radius: 999px; background: currentColor; opacity: .14; pointer-events: none; }
+/* a dot grid fading out from a corner */
+.decoDots { position: absolute; right: 0; top: 0; width: 52%; height: 70%; pointer-events: none; opacity: .28;
+  background: radial-gradient(currentColor 1.6px, transparent 2.2px) 0 0 / 16px 16px;
+  -webkit-mask: radial-gradient(circle at 100% 0, #000, transparent 70%); mask: radial-gradient(circle at 100% 0, #000, transparent 70%); }
+/* diagonal stripes in a disc */
+.decoStripes { position: absolute; right: -10%; bottom: -22%; width: 52%; aspect-ratio: 1; border-radius: 999px; pointer-events: none; opacity: .14;
+  background: repeating-linear-gradient(-45deg, currentColor 0 4px, transparent 4px 14px); }
+@media (hover: hover) and (pointer: fine) { .tile:hover .glint { animation: sheen .9s cubic-bezier(.2, .9, .2, 1); } }
+.tile:hover { transform: translate(-3px, -3px); }
+/* the asset cards' shape: one tighter corner, bottom left */
+.shape { flex: 1 1 auto; min-width: 0; display: flex; background: #0B0B0B; border-radius: 30px 30px 30px 12px; padding: 3px; }
+.fill { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; border-radius: 27px 27px 27px 9px; background: var(--paper); color: var(--ink);
+  padding: clamp(16px, 1.6vw, 22px); }
+.notched .shape {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 86 86'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 52A20 20 0 0 0 34 72L72 72A14 14 0 0 1 86 86L86 0Z'/%3E%3C/svg%3E") right top / 86px 86px no-repeat, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 86 86'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 52A20 20 0 0 0 34 72L72 72A14 14 0 0 1 86 86L86 0Z'/%3E%3C/svg%3E") right top / 86px 86px no-repeat exclude, linear-gradient(#000 0 0); }
+.notched .fill {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 86 86'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 52A20 20 0 0 0 34 72L72 72A14 14 0 0 1 86 86L86 0Z' stroke='%23000' stroke-width='6' stroke-linejoin='round'/%3E%3C/svg%3E") right -3px top -3px / 86px 86px no-repeat, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 86 86'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 52A20 20 0 0 0 34 72L72 72A14 14 0 0 1 86 86L86 0Z' stroke='%23000' stroke-width='6' stroke-linejoin='round'/%3E%3C/svg%3E") right -3px top -3px / 86px 86px no-repeat exclude, linear-gradient(#000 0 0); }
+/* the hero's wider notch, holding its next step as a pill (Joshua 2026-10-06) */
+.notchedWide .shape {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 236 78'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 44A20 20 0 0 0 34 64L222 64A14 14 0 0 1 236 78L236 0Z'/%3E%3C/svg%3E") right top / 236px 78px no-repeat, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 236 78'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 44A20 20 0 0 0 34 64L222 64A14 14 0 0 1 236 78L236 0Z'/%3E%3C/svg%3E") right top / 236px 78px no-repeat exclude, linear-gradient(#000 0 0); }
+.notchedWide .fill {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 236 78'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 44A20 20 0 0 0 34 64L222 64A14 14 0 0 1 236 78L236 0Z' stroke='%23000' stroke-width='6' stroke-linejoin='round'/%3E%3C/svg%3E") right -3px top -3px / 236px 78px no-repeat, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 236 78'%3E%3Cpath d='M0 0A14 14 0 0 1 14 14L14 44A20 20 0 0 0 34 64L222 64A14 14 0 0 1 236 78L236 0Z' stroke='%23000' stroke-width='6' stroke-linejoin='round'/%3E%3C/svg%3E") right -3px top -3px / 236px 78px no-repeat exclude, linear-gradient(#000 0 0); }
+.notchPill { position: absolute; top: 6px; right: 6px; width: 210px; display: block; transition: transform .16s cubic-bezier(.2, 1.4, .4, 1); }
+.notchPill .pillSvg { width: 210px; }
+.notchPill .pill { width: 210px; }
+/* the notch is fixed real pixels, the content is scaled by --s: divide so the gap stays the notch's size */
+.notchedWide .cardTop { padding-right: calc(226px / var(--s, 1)); min-height: calc(66px / var(--s, 1)); }
+.notchBtn, .cornerBtn { position: absolute; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--paper); color: var(--ink) !important;
+  display: flex; align-items: center; justify-content: center; transition: transform .18s cubic-bezier(.2, 1.4, .4, 1); }
+.notchBtn { top: 5px; right: 5px; width: 60px; height: 60px; }
+.cornerBtn { top: 16px; right: 16px; width: 50px; height: 50px; }
+.notchBtn:hover, .cornerBtn:hover, .finished:hover .notchBtn { transform: rotate(45deg); }
+.needs .notchBtn, .needs .cornerBtn { background: var(--acid); color: var(--acidInk) !important; }
+
+.toneTeal .fill { background: var(--teal); color: var(--tealInk); }
+.toneSky .fill { background: var(--sky); color: var(--skyInk); }
+.toneCobalt .fill { background: var(--cobalt); color: var(--cobaltInk); }
+.toneClay .fill { background: var(--clay); color: var(--clayInk); }
+.tonePaper .fill { background: var(--paper); color: var(--ink); }
+.toneGrey .fill { background: var(--greyFill); color: var(--ink); }
+
+/* in a notched tile, tall enough that what follows starts below the corner */
+.cardTop { position: relative; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.notched .cardTop { padding-right: 66px; min-height: 48px; }
+.stage { border: 2px solid currentColor; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 900; letter-spacing: .12em;
+  text-transform: uppercase; white-space: nowrap; }
+.sticker { border: 2px solid #0B0B0B; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 900; letter-spacing: .12em;
+  text-transform: uppercase; background: var(--acid); color: var(--acidInk); transform: rotate(-3deg); white-space: nowrap; }
+
+.ring { flex: 0 0 auto; width: 112px; height: 112px; display: block; overflow: visible; }
+.seatNum { font-size: 10px; font-weight: 900; }
+.centre { font-size: 12px; font-weight: 900; fill: var(--acid); }
+.open circle { stroke-dasharray: 3 2.4; }
+
+.text { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.headline { font-size: clamp(18px, 1.6vw, 22px); font-weight: 900; line-height: 1.15; letter-spacing: -.01em; overflow-wrap: anywhere; text-wrap: balance; }
+.detail { font-size: 12.5px; font-weight: 700; opacity: .8; }
+.bigNum { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; text-transform: uppercase;
+  line-height: .85; letter-spacing: -.01em; }
+
+/* hero: the largest tile, across the top. The circle page's own ring has a column of its own, the tile's full height. */
+/* the hero is the circle page's hero colour, the accent, which no seat ever takes (circle-view.ts seatFill), so every
+   seat reads against it; the ring stands on the left, the words on the right */
+.dHero .fill { background: var(--acid); color: var(--acidInk); }
+/* Fit: the tile's content at its design size, scaled as a whole to the tile */
+.fit { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.fit { display: block; }
+.fitInner { position: absolute; top: 0; left: 0; transform-origin: 0 0; display: flex; flex-direction: column; gap: 10px; }
+.heroArt { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 40px; }
+.dHero .cardTop, .dHero .cardBody, .dHero .foot { grid-column: 2; }
+.dHero .sticker { background: #0B0B0B; color: #FBF9F2; }
+.dHero .decoRings { right: auto; left: -12%; bottom: -46%; width: 42%; }
+/*
+ * The circle page's ring, drawn at the page's own size (440px, so the pot and the seat labels keep their proportions)
+ * and zoomed as a whole to the tile's height; padding-top (zoomed too) leaves about 30px for its "Receives" marker.
+ */
+/* the hero's design is laid out about as wide as it is shown (2.5:1), so Fit scales it, not spreads it */
+.ringHero { grid-column: 1; grid-row: 1 / -1; align-self: center; width: 440px; zoom: .74; padding-top: 34px; box-sizing: content-box; }
+/* the page's caption repeats the headline here */
+.ringHero :global(figcaption) { display: none; }
+
+/* every tile: the words at the top, the figures at the bottom */
+/* each tile's content as one group, centred in the space between its top line and its foot */
+.cardBody { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; }
+.dHero .cardBody { gap: 14px; }
+/* the hero's words side: step, pot and figures on the left; seats, action and link on the right */
+.heroGrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(220px, 1fr); grid-template-rows: auto auto auto;
+  grid-template-areas: "head seats" "pot seats" "stk seats" "link ."; align-content: center; align-items: start; column-gap: 36px;
+  padding-bottom: 0; }
+.hHead { grid-area: head; display: flex; flex-direction: column; gap: 6px; }
+.hPot { grid-area: pot; margin-top: 16px; }
+.hStk { grid-area: stk; margin-top: 8px; }
+/* the seats sit at the bottom, level with the stickers beside them (Joshua 2026-10-06) */
+.hSeats { grid-area: seats; align-self: end; }
+.hLink { grid-area: link; margin-top: 10px; }
+/* design sizes: Fit scales the whole tile, so these stay fixed */
+.dHero .headline { font-size: 40px; line-height: 1.02; }
+.dHero .detail { font-size: 17px; }
+.dHero .potHuge { font-size: 92px; }
+.dHero .stk { font-size: 15px; padding: 9px 16px; }
+.dHero .stickers { max-width: none; }
+/* the hero's action: the landing page's main button, solid, the amount in it; the glint on hover only */
+.heroAction { position: absolute; z-index: 1; right: clamp(16px, 1.6vw, 22px); bottom: clamp(16px, 1.6vw, 22px); overflow: hidden; display: inline-flex; align-items: center; gap: 11px; min-height: 54px; border: 3px solid #0B0B0B;
+  border-radius: 999px; background-color: #0B0B0B; color: #FBF9F2 !important; padding: 0 28px; font-size: 17px; font-weight: 800;
+  letter-spacing: -.01em; white-space: nowrap; text-decoration: none; transition: transform .12s;
+  background-image: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, .28) 50%, transparent 62%); background-size: 240% 100%;
+  background-repeat: no-repeat; background-position: -140% 0; }
+.heroAction:hover { transform: translateY(-2px); animation: buttonSheen .85s ease-out; }
+.heroAction:active { transform: translateY(1px); }
+.heroAction:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
+@keyframes buttonSheen { from { background-position: -140% 0; } to { background-position: 240% 0; } }
+
+.bigNum { font-size: 64px; }
+.membersHead { display: flex; align-items: flex-end; gap: 10px; }
+
+/* hero figures: the pot as one huge number, the rest as tilted stickers (the landing page's pills) */
+.potBlock { display: flex; flex-direction: column; gap: 4px; }
+.potLabel { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+.potHuge, .potBig { font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900;
+  text-transform: uppercase; line-height: .85; letter-spacing: -.015em; }
+.potHuge { font-size: 100px; }
+.stickers { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-bottom: 6px; max-width: 420px; }
+.stk { display: inline-flex; align-items: center; gap: 7px; border: 2.5px solid #0B0B0B; border-radius: 999px; padding: 8px 15px;
+  font-size: 13px; font-weight: 800; white-space: nowrap; }
+.stkPaper { background: var(--paper); color: var(--ink); transform: rotate(-3deg); }
+.stkInk { background: #0B0B0B; color: #FBF9F2; transform: rotate(2deg); }
+.stkCobalt { background: var(--cobalt); color: var(--cobaltInk); transform: rotate(-1.5deg); }
+
+/* the pot tile: the pot as the big number, then who has paid as the asset page's bar */
+.paidBar { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.paidLine { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.paidLine > span { opacity: .8; }
+.bar { display: flex; height: 18px; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--paper); overflow: hidden; }
+.bar > span { border-right: 3px solid #0B0B0B; border-radius: 999px; background: #0B0B0B; }
+/* no grow-in here, unlike the asset page: inside a size container whose queries can hide the bar, Chrome re-ran the
+   animation every time it ended (measured 2026-10-06: it never stopped) */
+.potBig { font-size: 80px; }
+
+.dots { display: flex; align-items: center; padding: 4px 0; }
+.dot { width: 44px; height: 44px; flex: 0 0 auto; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--paper); color: var(--ink);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 900; }
+.dot + .dot { margin-left: -10px; }
+.dotYou { position: relative; z-index: 1; outline: 3px solid var(--acid); outline-offset: 1px; }
+.dotOpen { border-style: dashed; }
+
+
+.foot { position: relative; margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.addr { font-size: 12px; font-weight: 800; opacity: .8; text-decoration: underline; text-underline-offset: 3px; font-variant-numeric: tabular-nums; }
+.action { display: inline-flex; align-items: center; gap: 8px; min-height: 46px; border: 3px solid #0B0B0B; border-radius: 999px; padding: 0 22px;
+  font-size: 12.5px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; background: var(--ink); color: var(--paper) !important;
+  text-decoration: none; }
+.action:hover { background: var(--acid); color: var(--acidInk) !important; }
+
+/* the finished circles: one card, with the layers of a pile under it */
+.stackWrap { position: relative; isolation: isolate; display: flex; padding-bottom: 20px; min-width: 0; }
+.layer { position: absolute; height: 60px; border: 3px solid #0B0B0B; border-radius: 30px; background: var(--paper); }
+.layer1 { left: 16px; right: 16px; bottom: 10px; z-index: -1; }
+.layer2 { left: 34px; right: 34px; bottom: 0; z-index: -2; background: var(--greyFill); }
+.finished { flex: 1 1 auto; border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit !important; text-align: left;
+  text-decoration: none; cursor: pointer; }
+.tokens { display: flex; align-items: center; }
+.token, .more { width: 56px; height: 56px; flex: 0 0 auto; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--paper); padding: 2px; }
+.token + .token, .token + .more { margin-left: -12px; }
+.more { display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; color: var(--ink); }
+
+.tile:focus-visible, .action:focus-visible, .addr:focus-visible, .start:focus-visible, .notchBtn:focus-visible, .cornerBtn:focus-visible,
+.rowAction:focus-visible, .close:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
+
+/* pop-ups */
+.dialog { margin: auto; border: 3px solid #0B0B0B; border-radius: 30px; background: var(--paper); color: var(--ink); padding: 0;
+  width: min(640px, calc(100vw - 32px)); max-height: min(80vh, 720px); overflow: hidden; flex-direction: column; }
+.dialog[open] { display: flex; }
+.dialog::backdrop { background: rgb(0 0 0 / .55); }
+.dialogHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 16px 22px; border-bottom: 3px solid #0B0B0B; }
+.dialogTitle { margin: 0; font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900;
+  text-transform: uppercase; font-size: 30px; line-height: .9; }
+.close { width: 46px; height: 46px; flex: 0 0 auto; border: 3px solid #0B0B0B; border-radius: 999px; background: var(--paper); color: var(--ink);
+  font-size: 24px; font-weight: 900; line-height: 1; cursor: pointer; }
+.dialogList { list-style: none; margin: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 14px; border: 3px solid #0B0B0B; border-radius: 22px;
+  padding: 10px 12px; background: var(--greyFill); }
+.ringRow { width: 64px; height: 64px; }
+.rowText { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rowText b { font-size: 16px; font-weight: 900; line-height: 1.2; }
+.rowAction { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 3px solid #0B0B0B; border-radius: 999px; padding: 0 18px;
+  font-size: 12px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; background: var(--paper); color: var(--ink) !important;
+  text-decoration: none; white-space: nowrap; }
+.rowHot { background: var(--acid); color: var(--acidInk) !important; }
+
+@media (max-width: 699px) {
+  /* the hero on a phone: its top line below the Needs-you notch, then the ring, then the words */
+  .dHero .fill { grid-template-columns: minmax(0, 1fr); }
+  .dHero .cardTop, .dHero .cardBody, .dHero .foot { grid-column: 1; }
+  .notchedWide .cardTop { padding-right: 0; padding-top: 64px; grid-row: 1; }
+  .ringHero { grid-column: 1; grid-row: 2; justify-self: center; zoom: .7; padding-top: 40px; }
+  .dHero .cardBody { grid-row: 3; }
+  .dHero .headline { font-size: 24px; }
+  .tile { min-height: 230px; }
+}
+@media (max-width: 560px) {
+  .headActions { width: 100%; }
+  .pillSvg { width: 196px; }
+  .start { min-height: 46px; padding: 0 16px; font-size: 11px; gap: 8px; }
+  .heroBody { grid-template-columns: minmax(0, 1fr); }
+  .row { grid-template-columns: 52px minmax(0, 1fr); }
+  .ringRow { width: 52px; height: 52px; }
+  .rowAction { grid-column: 1 / -1; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile { animation: none; }
+  .tile:hover .glint, .heroAction:hover { animation: none; }
+  .tile, .tile:hover, .pill, .pill:hover, .notchBtn:hover, .cornerBtn:hover, .finished:hover .notchBtn { transition: none; transform: none; }
+  .pillHot .pillBubble { animation: none; }
+}
+
+/* the hero's seats: overlapping dots, then who receives and who still owes (Joshua 2026-10-06) */
+.seatSummary { margin: 6px 0 0; display: flex; flex-direction: column; gap: 4px; font-size: 15px; line-height: 1.3; }
+.seatSummary b { font-weight: 900; }
+.seatSummary span { font-weight: 700; opacity: .85; }
+.dotsBig { width: 100%; }
+.dotsRow { list-style: none; margin: 0; padding: 14px 0 6px; display: flex; }
+.bigDot { position: relative; width: 54px; aspect-ratio: 1; border: 3px solid #0B0B0B; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%;
+  font-weight: 900; font-size: 22px; }
+.bigDot + .bigDot { margin-left: -12px; }
+.bigDotNow { z-index: 2; transform: scale(1.18); outline: 3px solid #0B0B0B; outline-offset: 2px; }
+.bigDotPaid { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border: 2px solid #0B0B0B; border-radius: 999px; background: #FBF9F2; color: #0B0B0B;
+  display: flex; align-items: center; justify-content: center; font-family: var(--font-jakarta), sans-serif; font-style: normal; font-size: 10px; }
+.bigDotYou { position: absolute; top: -16px; border-radius: 999px; background: #0B0B0B; color: #FBF9F2; padding: 1px 6px; font-family: var(--font-jakarta), sans-serif;
+  font-style: normal; font-size: 8.5px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.dotsNow { margin: 10px 0 0; font-size: 15px; font-weight: 900; }

@@ -1,5 +1,6 @@
 "use client";
 
+import type { LiveCircleKey } from "@/lib/devnet";
 import Link from "next/link";
 
 import Shell from "@/components/othello/Shell";
@@ -41,7 +42,7 @@ export default function Position({
   seat: number;
   now: number;
   /** Where its links point: a fixture state, or "demo" for the live devnet circle (T18). */
-  stateKey: CircleStateKey | "demo";
+  stateKey: CircleStateKey | LiveCircleKey;
   /** The money word. The live demo's money is test USDC and must never read as real USDC. */
   usdcWord?: string;
 }) {

@@ -2,11 +2,9 @@
  * Plain-language copy for every OthelloCircle refusal, keyed by machine name (ARB-DESIGN r9 section 4.1).
  * Amounts arrive as USDG base units (6 dp). No em-dashes; the voice is Othello's.
  */
-export const fmtUsdg = (v: bigint): string => {
-  const whole = v / 1_000_000n;
-  const frac = (v % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
-  return `${whole.toLocaleString("en-US")}${frac ? `.${frac}` : ""} USDG`;
-};
+import { fmtUsdg } from "../core/money";
+
+export { fmtUsdg };
 
 const u = (x: unknown) => fmtUsdg(BigInt(x as bigint));
 

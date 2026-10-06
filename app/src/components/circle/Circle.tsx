@@ -1,5 +1,6 @@
 "use client";
 
+import type { LiveCircleKey } from "@/lib/devnet";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -54,7 +55,7 @@ export type CircleProps = {
   /** The clock this screen reads. Fixtures carry their own, so the countdown
    *  runs from the fixture's moment rather than from today. */
   startNow: number;
-  stateKey: CircleStateKey | "demo";
+  stateKey: CircleStateKey | LiveCircleKey;
   live?: LiveProps;
 };
 

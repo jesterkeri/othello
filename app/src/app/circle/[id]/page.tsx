@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import Circle from "@/components/circle/Circle";
 import LiveCircle from "@/components/live/LiveCircle";
+import { parseAddress } from "@/lib/sol-address";
 import RobinhoodCircle from "@/components/robinhood/RobinhoodCircle";
 import {
   CIRCLE_STATES,
@@ -42,6 +43,13 @@ export default async function CirclePage({ params }: Params) {
   }
 
   if (id === "demo") return <LiveCircle />;
+
+  // any other Solana circle, opened from the shared circles list (Joshua 2026-10-06)
+  if (id.startsWith("sol:")) {
+    const address = parseAddress(id.slice(4));
+    if (!address) notFound();
+    return <LiveCircle address={address} />;
+  }
 
   const key = id as CircleStateKey;
   const circle = CIRCLE_STATES[key];
