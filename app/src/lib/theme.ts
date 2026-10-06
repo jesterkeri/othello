@@ -118,12 +118,22 @@ export function preview(set: { brand: string; dark: string[] }, dark: boolean) {
   return { desk: grounds(set.brand, dark).desk, tile: hues[0], tileAlt: hues[1], deep: hues[2], btn: hues[4] };
 }
 
+/** A hue the picker can produce: six-digit hex. Anything else in storage is dropped (it reaches CSS). */
+const HUE = /^#[0-9A-Fa-f]{6}$/;
+
 export function loadTheme(): StoredTheme | null {
   if (!('window' in globalThis)) return null; // server render; same check as typeof window, without DOM types (root tsc)
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!s) return null;
-    return { choice: s.choice || 'r0', theme: s.theme ?? null, custom: Array.isArray(s.custom) ? s.custom.filter((c: CustomProfile) => Array.isArray(c.hues)) : [] };
+    const custom: CustomProfile[] = Array.isArray(s.custom)
+      ? s.custom.filter((c: CustomProfile) => Array.isArray(c?.hues) && c.hues.length === 5 && c.hues.every((h) => typeof h === 'string' && HUE.test(h)))
+        .map((c: CustomProfile) => ({ name: typeof c.name === 'string' ? c.name : '', hues: c.hues }))
+      : [];
+    // a choice that names no palette is the first built-in, on every screen, so they all resolve (and cache) the same one
+    const choice = typeof s.choice === 'string' && (/^r[0-3]$/.test(s.choice) || (/^c\d+$/.test(s.choice) && Number(s.choice.slice(1)) < custom.length))
+      ? s.choice : 'r0';
+    return { choice, theme: s.theme === 'light' || s.theme === 'dark' ? s.theme : null, custom };
   } catch { return null; }
 }
 
@@ -176,12 +186,21 @@ export function innerVars(set: { brand: string; dark: string[] }, dark: boolean)
   return v;
 }
 
+/**
+ * What may go into a head rule: a custom-property name, and a hex or rgb()/rgba() colour, the only values the theme
+ * produces. Anything else, from a tampered store, is left out (adversary on f51734a: a stored hue closed its block).
+ * lib/theme-boot.ts's head script applies the same two patterns.
+ */
+export const VAR_NAME = /^--[A-Za-z]+$/;
+export const VAR_VALUE = /^(#[0-9A-Fa-f]{3,8}|rgba?\([0-9., ]+\))$/;
+export const safeVar = (name: string, value: string) => VAR_NAME.test(name) && VAR_VALUE.test(value);
+
 /** The head rules for a resolved theme: :root and Landing's root, the shell's root and Landing's wallet control, and the
  * shell's panel behind the page. lib/theme-boot.ts's head script writes the same rules. */
 export function themeRules(inner: Record<string, string>, landing: Record<string, string>): string {
-  const css = (v: Record<string, string>) => Object.entries(v).map(([k, x]) => `${k}:${x};`).join('');
+  const css = (v: Record<string, string>) => Object.entries(v).filter(([k, x]) => safeVar(k, x)).map(([k, x]) => `${k}:${x};`).join('');
   return `:root{${css(landing)}}[data-tk=landing]{${css(landing)}}[data-tk=inner]{${css(inner)}}[data-tk=wallet]{${css(inner)}}`
-    + (inner['--panel'] ? `body:has([data-tk=inner]){background:${inner['--panel']}}` : '');
+    + (safeVar('--panel', inner['--panel'] ?? '') ? `body:has([data-tk=inner]){background:${inner['--panel']}}` : '');
 }
 
 /** The id of the head stylesheet that holds the stored theme's rules. */

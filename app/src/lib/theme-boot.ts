@@ -5,7 +5,7 @@
  * visitor's stored theme. Without this every page first drew the default palette, then switched to the visitor's
  * (Joshua 2026-10-06).
  */
-import { PALETTES, STORAGE_KEY, THEME_STYLE_ID, VARS_KEY, innerVars, themeVars } from "./theme";
+import { PALETTES, STORAGE_KEY, THEME_STYLE_ID, VARS_KEY, VAR_NAME, VAR_VALUE, innerVars, themeVars } from "./theme";
 
 export const cssVars = (vars: Record<string, string>) => Object.entries(vars).map(([key, value]) => `${key}:${value}`).join(";");
 
@@ -25,7 +25,7 @@ const BUILT_IN = Object.fromEntries(PALETTES.map((p, i) => [`r${i}`, {
  * a visitor whose theme was stored before the cache existed also opens in it (adversary on 8f0db93). A custom palette
  * with no cache yet keeps the defaults until its first visit caches it. Paints the variables onto :root and every
  * screen root, the shell's panel onto the body, and the mode onto <html> (the shell's light rules read it before
- * hydration). Only custom-property names and plain colour values pass; anything else in storage is ignored.
+ * hydration). Only custom-property names and hex or rgb() colours pass (lib/theme safeVar); anything else in storage is ignored.
  * The mode follows each screen's own fallback for a stored theme without one: the shell dark, Landing the system's.
  */
 export const paintStoredTheme = `(function(){try{
@@ -34,10 +34,10 @@ var t=JSON.parse(raw);if(!t||typeof t!=="object")return;
 var c=null;try{c=JSON.parse(localStorage.getItem(${JSON.stringify(VARS_KEY)})||"null")}catch(e){}
 var inner,landing,im,lm;
 if(c&&c.key===raw&&c.inner&&c.landing){inner=c.inner;landing=c.landing;im=lm=c.mode==="light"?"light":"dark"}
-else{var B=${JSON.stringify(BUILT_IN)};var p=B[typeof t.choice==="string"&&t.choice?t.choice:"r0"];if(!p)return;
+else{var B=${JSON.stringify(BUILT_IN)};var p=Object.prototype.hasOwnProperty.call(B,t.choice)?B[t.choice]:B.r0;
 im=t.theme==="light"?"light":"dark";lm=t.theme==="light"||t.theme==="dark"?t.theme:(window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
 inner=p[im].inner;landing=p[lm].landing}
-var ok=function(k,x){return /^--[A-Za-z]+$/.test(k)&&/^[#0-9A-Za-z(),. %-]+$/.test(x)};
+var ok=function(k,x){return ${VAR_NAME}.test(k)&&${VAR_VALUE}.test(x)};
 var f=function(v){var o="";for(var k in v){var x=String(v[k]);if(ok(k,x))o+=k+":"+x+";"}return o};
 var pn=String(inner["--panel"]);
 var s=document.createElement("style");s.id=${JSON.stringify(THEME_STYLE_ID)};

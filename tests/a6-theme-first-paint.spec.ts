@@ -56,11 +56,20 @@ describe("a6 theme first paint", () => {
   });
 
   it("leaves the defaults alone for a first visit, a cleared cache or a broken one", () => {
-    for (const stored of [{}, { [VARS_KEY]: "not json" }, { [STORAGE_KEY]: "not json" }, { [STORAGE_KEY]: JSON.stringify({ choice: "c4", theme: "light", custom: [] }) }]) {
+    const cases: Record<string, string>[] = [{}, { [VARS_KEY]: "not json" }, { [STORAGE_KEY]: "not json" }, { [STORAGE_KEY]: "null" }];
+    for (const stored of cases) {
       const b = browser(stored);
       assert.doesNotThrow(() => b.run());
       assert.equal(b.appended.length, 0, JSON.stringify(stored));
       assert.equal(b.html.dataset["mode"], undefined);
+    }
+  });
+
+  it("paints the first built-in palette for a choice that names none, as every screen resolves it", () => {
+    for (const choice of ["c4", "__proto__", "toString", 7]) {
+      const b = browser({ [STORAGE_KEY]: JSON.stringify({ choice, theme: "light", custom: [] }) });
+      b.run();
+      assert.ok(b.appended[0]!.textContent.includes(`--acid:${innerVars(PALETTES[0]!, false)["--acid"]};`), String(choice));
     }
   });
 
