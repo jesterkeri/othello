@@ -214,7 +214,9 @@ function ModalBody() {
   }[stage as 'connecting' | 'rejected' | 'failed'];
 
   return (
-    <div className={s.overlay} style={t.vars} onMouseDown={(e) => { if (e.target === e.currentTarget) w.close(); }}>
+    // until useTheme has read the stored theme, the overlay takes the head rules ([data-tk=inner], kept current by
+    // cacheThemeVars), not the shell's default (adversary on b187f79)
+    <div className={s.overlay} data-tk="inner" style={t.ready ? t.vars : undefined} onMouseDown={(e) => { if (e.target === e.currentTarget) w.close(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby="wc-title" className={s.dialog}>
         <div className={s.head} style={head}>
           <span aria-hidden className={s.ring1} />

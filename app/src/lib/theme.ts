@@ -219,9 +219,19 @@ export function cacheThemeVars(profile: { brand: string; dark: string[] }, mode:
   try {
     localStorage.setItem(VARS_KEY, JSON.stringify({ key: localStorage.getItem(STORAGE_KEY), mode, inner, landing }));
   } catch { /* storage unavailable */ }
-  if (!('document' in globalThis)) return;
-  let el = document.getElementById?.(THEME_STYLE_ID) as HTMLStyleElement | null | undefined;
-  if (!el) { el = document.createElement('style'); el.id = THEME_STYLE_ID; document.head.appendChild(el); }
+  // the root tsc has no DOM types (see loadTheme), so the document is typed by the few members used here
+  const doc = (globalThis as { document?: ThemeDocument }).document;
+  if (!doc) return;
+  let el = doc.getElementById?.(THEME_STYLE_ID);
+  if (!el) { el = doc.createElement('style'); el.id = THEME_STYLE_ID; doc.head.appendChild(el); }
   el.textContent = themeRules(inner, landing);
-  document.documentElement.dataset['mode'] = mode;
+  doc.documentElement.dataset['mode'] = mode;
 }
+
+type ThemeStyle = { id: string; textContent: string | null };
+type ThemeDocument = {
+  getElementById?(id: string): ThemeStyle | null;
+  createElement(tag: 'style'): ThemeStyle;
+  head: { appendChild(node: ThemeStyle): unknown };
+  documentElement: { dataset: Record<string, string | undefined> };
+};
