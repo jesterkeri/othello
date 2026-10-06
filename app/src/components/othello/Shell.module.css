@@ -10,7 +10,8 @@
 
 /* The floating rail (desktop). Its glass follows the MODE, not the palette. */
 .rail { position: fixed; left: 18px; top: 18px; bottom: 18px; width: 76px; z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0 12px; border: 3px solid #0B0B0B; border-radius: 999px; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5); background: rgba(11, 11, 11, .82); color: #FBF9F2; }
-.root[data-mode='light'] .rail { background: rgba(251, 249, 242, .82); color: #0B0B0B; }
+/* before hydration the mode is on <html> (layout.tsx's head script), after it on the root */
+.root[data-mode='light'] .rail, :global(html[data-mode='light']) .root:not([data-mode]) .rail { background: rgba(251, 249, 242, .82); color: #0B0B0B; }
 .logo { flex: 0 0 auto; width: 46px; height: 46px; margin-bottom: 10px; border: 3px solid var(--line); border-radius: 999px; background: var(--teal); color: var(--tealInk); display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo, Archivo), sans-serif; font-stretch: 82%; font-weight: 900; font-size: 20px; }
 .railNav { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .railBtn { width: 46px; height: 46px; border: 3px solid transparent; border-radius: 16px; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; padding: 0; }
@@ -106,7 +107,7 @@
   .tip { display: none; }
   /* Phone: the bottom nav pill, 14px inset; the active item is a wide clay pill with its label. */
   .rail { top: auto; left: 14px; right: 14px; bottom: 14px; width: auto; flex-direction: row; gap: 0; padding: 6px; background: #0B0B0B; color: #FBF9F2; }
-  .root[data-mode='light'] .rail { background: #0B0B0B; color: #FBF9F2; }
+  .root[data-mode='light'] .rail, :global(html[data-mode='light']) .root:not([data-mode]) .rail { background: #0B0B0B; color: #FBF9F2; }
   .rail > .logo, .railBottom { display: none; }
   .railNav { flex: 1 1 auto; flex-direction: row; justify-content: space-between; gap: 4px; }
   .railBtn { min-width: 44px; width: auto; flex: 0 1 52px; border-radius: 999px; }

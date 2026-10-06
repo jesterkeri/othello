@@ -7,7 +7,7 @@ import { SIDE_HOME, sideName, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
-  PALETTES, SLOT_LABELS, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
+  PALETTES, SLOT_LABELS, STORAGE_KEY, cacheThemeVars, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
   type CustomProfile, type Profile, type ThemeMode,
 } from '@/lib/theme';
 
@@ -105,13 +105,20 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
   const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
-    const saved = loadTheme();
-    if (saved) {
+    const read = () => {
+      const saved = loadTheme();
+      if (!saved) return;
       setChoice(saved.choice);
       setCustom(saved.custom);
       setMode(saved.theme ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-    }
+    };
+    read();
     setHydrated(true);
+    // follow a change made in another tab, as the shell does, so this page and the head rules it keeps (the connect
+    // modal opens on them) stay on the current choice (adversary on 24e044d)
+    const onStorage = (e: StorageEvent) => { if (e.key === STORAGE_KEY) read(); };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   useEffect(() => {
@@ -130,8 +137,10 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
   // they need the same variables or dark mode leaves a light strip behind the
   // frame at both ends of the page.
   useEffect(() => {
+    if (!hydrated) return;
     applyThemeToDocument(vars, mode);
-  }, [vars, mode]);
+    cacheThemeVars(active, mode);
+  }, [hydrated, vars, mode, active]);
 
   const draftHues = huesFor({ dark: draft }, dark);
   const draftDesk = preview({ brand: draft[2]!, dark: draft }, dark).desk;
@@ -172,8 +181,9 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
     setRenameValue('');
   }
 
+  // until the stored theme is read, the variables come from layout.tsx's head rules ([data-tk=landing])
   return (
-    <div className={s.root} data-theme={mode} style={vars as CSSProperties}>
+    <div className={s.root} data-tk="landing" data-theme={mode} style={hydrated ? (vars as CSSProperties) : undefined}>
       <div className={s.frame}>
 
         <header className={s.nav}>
@@ -293,7 +303,7 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
             {/* Connected: the shared address pill, whose menu is where you
                 disconnect. A plain "Connected" label here left no way out. */}
             {walletConnected
-              ? <span style={walletVars}><WalletControl side={side ?? undefined} /></span>
+              ? <span data-tk="wallet" style={hydrated ? walletVars : { display: 'contents' }}><WalletControl side={side ?? undefined} /></span>
               : <button className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}
           </div>
         </header>

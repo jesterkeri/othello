@@ -4,6 +4,7 @@ import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 import { WalletModal } from "@/components/othello/WalletConnect";
 import { EvmWalletProvider } from "@/lib/robinhood/wallet";
 import { PALETTES, themeVars } from "@/lib/theme";
+import { cssVars, paintStoredTheme, screenDefaults } from "@/lib/theme-boot";
 import { WalletProviders } from "@/lib/wallet";
 
 import "./globals.css";
@@ -41,15 +42,15 @@ export const viewport: Viewport = { themeColor: "#E4E8FF" };
  * itself, and the overscroll area above and below the frame. Signal in light is
  * the first-visit default in theme.ts, so the two agree on first paint.
  */
-const baseVars = Object.entries(themeVars(PALETTES[0]!, false))
-  .map(([key, value]) => `${key}:${value}`)
-  .join(";");
+const baseVars = cssVars(themeVars(PALETTES[0]!, false));
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${archivo.variable} ${jakarta.variable}`}>
+    // suppressHydrationWarning: the head script sets data-mode and color-scheme on <html> before React hydrates
+    <html lang="en" className={`${archivo.variable} ${jakarta.variable}`} suppressHydrationWarning>
       <head>
-        <style dangerouslySetInnerHTML={{ __html: `:root{${baseVars}}` }} />
+        <style dangerouslySetInnerHTML={{ __html: `:root{${baseVars}}${screenDefaults}` }} />
+        <script dangerouslySetInnerHTML={{ __html: paintStoredTheme }} />
       </head>
       <body>
         {/* One wallet of each kind and one connect modal for every page, so
