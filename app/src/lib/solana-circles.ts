@@ -30,28 +30,40 @@ export const namesFor = (circle: string): readonly string[] => (circle === DEMO_
 
 export { parseAddress } from "./sol-address";
 
-type Listed = { address: string; circle: Pick<DecodedCircle, "creator" | "members" | "n" | "circleId" | "status" | "joinedBitmap" | "withdrawnBitmap"> };
+type Listed = {
+  address: string;
+  circle: Pick<DecodedCircle, "creator" | "members" | "n" | "circleId" | "status" | "round" | "joinedBitmap" | "paidBitmap" | "defaultedBitmap" | "withdrawnBitmap">;
+};
 
 /**
- * Where a circle sits in the list, lowest first, so the MAX_LISTED cap never drops one the wallet has to act in
- * (adversary passes on 51bc786 and 92b2ab7). A creator names the members and picks the circle id without their
- * consent, so neither a Forming invitation nor the id may outrank a circle the wallet has joined:
- *   0 Active (every seat joined, so the wallet chose to be in it): it may owe a payment or a claim
- *   1 finished, and this wallet's seat is owed and not yet collected
- *   2 Forming, and the wallet has joined or created it
+ * Where a circle sits in the list, lowest first, so the MAX_LISTED cap never drops one the wallet has something to do
+ * in for one where it has nothing (adversary passes on 51bc786, 92b2ab7 and 092c768). A creator names the members and
+ * picks the circle id without their consent, so an unjoined invitation never outranks a circle the wallet chose:
+ *   0 something to do: Active and its seat unpaid (pay) or receiving this round (claim); finished and its seat owed
+ *     and not collected (collect); Forming, created by it, every seat joined (start)
+ *   1 Active, nothing to do this round
+ *   2 Forming, joined or created by it, waiting for others
  *   3 Forming, an invitation it has not joined
- *   4 finished, nothing left for this wallet
+ *   4 finished, nothing left for it
+ * Claim is ranked whenever its seat receives this round: the cap is about not losing a circle, and the card itself
+ * still says Claim only when the release would be accepted.
  */
 export function listRank({ circle }: Listed, wallet: string): number {
   const turn = circle.members.slice(0, circle.n).findIndex((m) => m.toBase58() === wallet);
   const bit = (bitmap: number) => turn >= 0 && (bitmap & (1 << turn)) !== 0;
   const s = circle.status;
-  if ("active" in s) return 0;
+  if ("active" in s) {
+    const pay = turn >= 0 && !bit(circle.paidBitmap) && !bit(circle.defaultedBitmap);
+    return pay || (turn >= 0 && turn === circle.round) ? 0 : 1;
+  }
   if ("completed" in s || "cancelled" in s) {
     const owed = turn >= 0 && ("completed" in s || bit(circle.joinedBitmap));
-    return owed && !bit(circle.withdrawnBitmap) ? 1 : 4;
+    return owed && !bit(circle.withdrawnBitmap) ? 0 : 4;
   }
-  return bit(circle.joinedBitmap) || circle.creator.toBase58() === wallet ? 2 : 3;
+  const creator = circle.creator.toBase58() === wallet;
+  const full = circle.n > 0 && (circle.joinedBitmap & ((1 << circle.n) - 1)) === (1 << circle.n) - 1;
+  if (creator && full) return 0;
+  return bit(circle.joinedBitmap) || creator ? 2 : 3;
 }
 
 /** The circles in `accounts` that `wallet` created or holds a seat in, by listRank, then circle id, highest first. */
