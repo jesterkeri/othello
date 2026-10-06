@@ -16,6 +16,7 @@ export function rhToList(v: RhCircleView, me: string | null): ListCircle {
     n: v.n, c: v.c, status: v.status, round: v.round, deadline: v.deadline, graceSecs: v.graceSecs, chainTime: v.chainTime,
     escrow: v.escrow, reserveTotal: v.reserveTotal, seats: v.seats, money: USDG, collateral: "USDG",
     releasable: Boolean(release?.enabled),
+    pausedShortBy: v.nextGateShortBy,
     closeOut: close && {
       collected: close.collected, owedCount: close.owedCount,
       mine: close.mine && { owed: close.mine.owed, collected: close.mine.collected, amount: close.mine.total },

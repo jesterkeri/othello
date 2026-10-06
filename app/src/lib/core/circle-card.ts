@@ -58,6 +58,13 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       const late = v.chainTime > v.deadline + v.graceSecs;
       return card("needs", "Your move", `Pay ${fmt(v.c)} for round ${v.round + 1}${late ? ": late" : ""}`, "Pay");
     }
+    // paused at the chain's last coverage check (adversary on af41248: Claim was offered while releasePot reverted
+    // ReserveOvercommitted): the list names the top-up instead; the circle page still lets anyone try the release
+    if (v.releasable && v.pausedShortBy > 0n) {
+      return turn === v.round
+        ? card("needs", "Your move", `Payouts paused: top up ${fmt(v.pausedShortBy)} of reserve to release your pot`, "Top up")
+        : card("active", "Paused", `Payouts paused: the reserve is ${fmt(v.pausedShortBy)} short`);
+    }
     if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
     return card("active", "Active", `Round ${v.round + 1} of ${v.n}: ${seatLabel(v.round)} receives ${fmt(pot)}`);
   }

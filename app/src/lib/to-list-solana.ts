@@ -48,6 +48,7 @@ export function solToList(live: LiveCircle, me: string | null): ListCircle {
     money: USDC,
     collateral: c.stockSymbol,
     releasable: releaseBlock(c, live.readAt) === null,
+    pausedShortBy: big(c.nextGateShortBy),
     closeOut: finished
       ? {
           collected: seats.filter((s) => owes(s) && s.withdrawn).length,

@@ -25,6 +25,12 @@ export type ListCircle = RingSource & {
   collateral: string;
   /** This round's pot can be released now, by the chain's own rules (anyone may release it on both chains). */
   releasable: boolean;
+  /**
+   * The chain's own stored "Paused" figure (nextGateShortBy on both chains): how much reserve the next payout was
+   * short at the last coverage check, 0 when it was not. The UI never computes the gate (SPEC.md, payout gate); the
+   * circle page still lets anyone try the release, and the chain re-checks.
+   */
+  pausedShortBy: bigint;
   /** Finished circles only: who has collected, and this wallet's own share (amount null when the chain gives none). */
   closeOut: { collected: number; owedCount: number; mine: { owed: boolean; collected: boolean; amount: bigint | null } | null } | null;
 };
