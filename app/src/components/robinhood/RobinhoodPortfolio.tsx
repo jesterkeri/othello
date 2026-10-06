@@ -17,7 +17,7 @@ import Shell from "@/components/othello/Shell";
 import { TokenChip, TokenChips } from "@/components/assets/TokenChip";
 import { ARROW_RIGHT, Arrow, AssetRow, CircleSummary, PortfolioFooter, PortfolioHeader, RingsDecor, TestTokenStrip, TotalDecor } from "@/components/portfolio/parts";
 import portfolio from "@/components/portfolio/Portfolio.module.css";
-import { checkFactory, listMyCircles, readCircle, type CircleSummary as Summary, type RhCircleView } from "@/lib/robinhood/adapter";
+import { checkFactory, listMyCircles, MY_CIRCLES_PAGE, readCircle, type CircleSummary as Summary, type RhCircleView } from "@/lib/robinhood/adapter";
 import { USDG } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { circleCard, pickCircle } from "@/lib/robinhood/portfolio-circle";
@@ -31,7 +31,7 @@ const SLOTS = ["acid", "sky", "cobalt", "clay", "teal"] as const;
 
 type TokenRead = bigint | "failed" | null;
 /** The circle card's read: the factory not open, a failed read, or the chosen circle (null: none running). */
-type CircleRead = { kind: "reading" } | { kind: "closed" } | { kind: "failed" } | { kind: "ready"; view: RhCircleView | null; count: number };
+type CircleRead = { kind: "reading" } | { kind: "closed" } | { kind: "failed" } | { kind: "ready"; view: RhCircleView | null; count: number; more: boolean };
 
 function fmtStock(amount: bigint): string {
   const [whole, fraction = ""] = formatUnits(amount, TESTNET_STOCK_DECIMALS).split(".");
@@ -44,17 +44,27 @@ const trimZeros = (x: string) => (x.includes(".") ? x.replace(/0+$/, "").replace
 const usdgNumber = (v: bigint) => fmtUsdg(v).replace(/ USDG$/, "");
 const shown = (r: TokenRead, f: (v: bigint) => string) => (r === null ? "Reading…" : r === "failed" ? "Unavailable" : f(r));
 
-/** Every circle this wallet created or joined, page by page, then a read of each running one. */
-async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCircleView[]; count: number }> {
+/**
+ * The wallet's newest circles, at most MAX_PAGES pages of listMyCircles (newest first), then a read of each running one.
+ * The reads are bounded by the page cap, never by how many circles the wallet has ever had (adversary on d82d67e: a
+ * wallet with 240 circles cost 2000 reads before the card drew). A running circle is among the newest: a member is in
+ * at most three at a time (Joshua 2026-10-06). `count` is every circle in the factory's index for this wallet (its
+ * own creates and joins); `more` says older ones exist that were not read.
+ */
+const MAX_PAGES = 3;
+async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCircleView[]; count: number; more: boolean }> {
   const all: Summary[] = [];
   let before: number | undefined;
-  do {
-    const page = await listMyCircles(robinhoodPublicClient, account, before);
-    all.push(...page.circles);
-    before = page.before ?? undefined;
-  } while (before !== undefined);
+  let count = 0;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const next = await listMyCircles(robinhoodPublicClient, account, before);
+    all.push(...next.circles);
+    count = next.total;
+    before = next.before ?? undefined;
+    if (before === undefined) break;
+  }
   const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) => readCircle(robinhoodPublicClient, c.address)));
-  return { views, count: all.length };
+  return { views, count, more: before !== undefined };
 }
 
 export default function RobinhoodPortfolio() {
@@ -94,8 +104,8 @@ export default function RobinhoodPortfolio() {
     void checkFactory(robinhoodPublicClient)
       .then(async (factory) => {
         if (!factory.ok) { if (live) setCircles({ kind: "closed" }); return; }
-        const { views, count } = await readRunningCircles(account);
-        if (live) setCircles({ kind: "ready", view: pickCircle(views, account), count });
+        const { views, count, more } = await readRunningCircles(account);
+        if (live) setCircles({ kind: "ready", view: pickCircle(views, account), count, more });
       })
       .catch(() => { if (live) setCircles({ kind: "failed" }); });
     return () => { live = false; };
@@ -197,7 +207,9 @@ export default function RobinhoodPortfolio() {
                   <span>
                     {circles.count === 0
                       ? "This wallet hasn't started or joined a circle yet. Start one, or open the link someone sent you."
-                      : `This wallet is in ${circles.count === 1 ? "1 circle" : `${circles.count} circles`}, and none is running right now.`}
+                      : circles.more
+                        ? `This wallet is in ${circles.count} circles, and none of its ${MAX_PAGES * MY_CIRCLES_PAGE} newest is running right now.`
+                        : `This wallet is in ${circles.count === 1 ? "1 circle" : `${circles.count} circles`}, and none is running right now.`}
                   </span>
                   <Link href={circles.count === 0 ? "/robinhood/new" : "/robinhood"} className={portfolio.btnCream}>
                     {circles.count === 0 ? "Start a circle" : "Open your circles"}<Arrow d={ARROW_RIGHT} />
