@@ -296,7 +296,7 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
             {/* Connected: the shared address pill, whose menu is where you
                 disconnect. A plain "Connected" label here left no way out. */}
             {walletConnected
-              ? <span data-tk="inner" style={hydrated ? walletVars : { display: 'contents' }}><WalletControl side={side ?? undefined} /></span>
+              ? <span data-tk="wallet" style={hydrated ? walletVars : { display: 'contents' }}><WalletControl side={side ?? undefined} /></span>
               : <button className={s.connect} onClick={onConnectWallet}>Connect wallet</button>}
           </div>
         </header>

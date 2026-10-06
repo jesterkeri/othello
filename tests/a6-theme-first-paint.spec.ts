@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 
-import { PALETTES, VARS_KEY, cacheThemeVars, innerVars, themeVars } from "../app/src/lib/theme.ts";
+import { PALETTES, STORAGE_KEY, VARS_KEY, cacheThemeVars, innerVars, saveTheme, themeVars } from "../app/src/lib/theme.ts";
 import { paintStoredTheme, screenDefaults } from "../app/src/lib/theme-boot.ts";
 
 type FakeStyle = { id: string; textContent: string };
@@ -37,9 +37,11 @@ describe("a6 theme first paint", () => {
   it("paints a returning visitor's palette and mode, for both kinds of screen", () => {
     const newsprint = PALETTES[3]!;
     const b = browser();
+    saveTheme({ choice: "r3", theme: "light", custom: [] });
     cacheThemeVars(newsprint, "light");
     assert.equal(b.html.dataset["mode"], "light", "cacheThemeVars marks the document's mode");
     b.html.dataset = {};
+    b.appended.length = 0;
     b.run();
     assert.equal(b.appended.length, 1);
     const css = b.appended[0]!.textContent;
@@ -54,7 +56,7 @@ describe("a6 theme first paint", () => {
   });
 
   it("leaves the defaults alone for a first visit, a cleared cache or a broken one", () => {
-    for (const stored of [{}, { [VARS_KEY]: "not json" }, { [VARS_KEY]: JSON.stringify({ mode: "light" }) }]) {
+    for (const stored of [{}, { [VARS_KEY]: "not json" }, { [STORAGE_KEY]: "not json" }, { [STORAGE_KEY]: JSON.stringify({ choice: "c4", theme: "light", custom: [] }) }]) {
       const b = browser(stored);
       assert.doesNotThrow(() => b.run());
       assert.equal(b.appended.length, 0, JSON.stringify(stored));
@@ -63,8 +65,11 @@ describe("a6 theme first paint", () => {
   });
 
   it("paints only custom-property names with plain colour values", () => {
+    const theme = JSON.stringify({ choice: "c0", theme: "dark", custom: [{ name: "x", hues: ["#123456", "#123456", "#123456", "#123456", "#123456"] }] });
     const b = browser({
+      [STORAGE_KEY]: theme,
       [VARS_KEY]: JSON.stringify({
+        key: theme,
         mode: "dark<script>",
         inner: { "--acid": "#123456", "--teal": "red;}body{display:none", "--panel": "#000;}x{", "color": "#fff" },
         landing: { "--ink": "#FBF9F2", "--sky": "url(https://example.com/x)" },
@@ -81,7 +86,23 @@ describe("a6 theme first paint", () => {
 
   it("gives each screen its own first-visit default", () => {
     assert.ok(screenDefaults.startsWith(`[data-tk=inner]{--line:#0B0B0B;`));
+    assert.ok(screenDefaults.includes(`[data-tk=wallet]{--line:#0B0B0B;`), "Landing's wallet control takes the shell's variables");
     assert.ok(screenDefaults.includes(`--acid:${innerVars(PALETTES[1]!, true)["--acid"]}`), "the shell: Bubblegum dark");
     assert.ok(screenDefaults.includes(`[data-tk=landing]{--ink:#0B0B0B;`), "Landing: Signal light");
+  });
+
+  it("ignores a cache made from a different stored theme and resolves the stored one", () => {
+    const harbour = PALETTES[2]!;
+    const b = browser();
+    saveTheme({ choice: "r3", theme: "light", custom: [] });
+    cacheThemeVars(PALETTES[3]!, "light");
+    // the theme changes somewhere that did not refresh the cache (an older tab, a hand edit)
+    saveTheme({ choice: "r2", theme: "dark", custom: [] });
+    b.appended.length = 0;
+    b.run();
+    const css = b.appended[0]!.textContent;
+    assert.ok(css.includes(`--panel:${innerVars(harbour, true)["--panel"]};`), css);
+    assert.ok(css.includes(`--desk:${themeVars(harbour, true)["--desk"]};`), css);
+    assert.equal(b.html.dataset["mode"], "dark");
   });
 });

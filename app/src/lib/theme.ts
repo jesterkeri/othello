@@ -176,13 +176,33 @@ export function innerVars(set: { brand: string; dark: string[] }, dark: boolean)
   return v;
 }
 
+/** The head rules for a resolved theme: :root and Landing's root, the shell's root and Landing's wallet control, and the
+ * shell's panel behind the page. lib/theme-boot.ts's head script writes the same rules. */
+export function themeRules(inner: Record<string, string>, landing: Record<string, string>): string {
+  const css = (v: Record<string, string>) => Object.entries(v).map(([k, x]) => `${k}:${x};`).join('');
+  return `:root{${css(landing)}}[data-tk=landing]{${css(landing)}}[data-tk=inner]{${css(inner)}}[data-tk=wallet]{${css(inner)}}`
+    + (inner['--panel'] ? `body:has([data-tk=inner]){background:${inner['--panel']}}` : '');
+}
+
+/** The id of the head stylesheet that holds the stored theme's rules. */
+export const THEME_STYLE_ID = 'othello-theme';
+
 /**
- * Caches the stored theme's resolved variables for both kinds of screen (inner pages, Landing), so layout.tsx's head
- * script can paint them before React runs: without it every page first drew the default palette, then switched
- * (Joshua 2026-10-06). Also marks the document's mode, which the shell's light-mode rules read before hydration.
+ * Caches the stored theme's resolved variables for both kinds of screen (inner pages, Landing), keyed to the stored
+ * theme they came from, so layout.tsx's head script can paint them before React runs: without it every page first drew
+ * the default palette, then switched (Joshua 2026-10-06). Also rewrites the head stylesheet, so a screen that mounts
+ * after a client-side navigation takes the theme just picked, and marks the document's mode, which the shell's light
+ * rules read before hydration. Call it after saveTheme.
  */
 export function cacheThemeVars(profile: { brand: string; dark: string[] }, mode: ThemeMode) {
   const dark = mode === 'dark';
-  try { localStorage.setItem(VARS_KEY, JSON.stringify({ mode, inner: innerVars(profile, dark), landing: themeVars(profile, dark) })); } catch { /* storage unavailable */ }
-  if ('document' in globalThis) document.documentElement.dataset['mode'] = mode;
+  const inner = innerVars(profile, dark), landing = themeVars(profile, dark);
+  try {
+    localStorage.setItem(VARS_KEY, JSON.stringify({ key: localStorage.getItem(STORAGE_KEY), mode, inner, landing }));
+  } catch { /* storage unavailable */ }
+  if (!('document' in globalThis)) return;
+  let el = document.getElementById?.(THEME_STYLE_ID) as HTMLStyleElement | null | undefined;
+  if (!el) { el = document.createElement('style'); el.id = THEME_STYLE_ID; document.head.appendChild(el); }
+  el.textContent = themeRules(inner, landing);
+  document.documentElement.dataset['mode'] = mode;
 }
