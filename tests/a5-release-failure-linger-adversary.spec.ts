@@ -181,7 +181,7 @@ const base: Omit<RhCircleView, "round" | "seats" | "heldContributions"> = {
   coverageBps: 10000, warnBps: 10000 - 1, roundSecs: 86_400, graceSecs: 3_600, status: "Active", deadline: now + 86_000,
   reserveTotal: 6n * U, reserveLosses: 0n, reserveAllocated: 0n, escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n,
   collateralReturned: 0n, depositsTotal: 6n * U, forfeitedTotal: 0n, nextGateShortBy: 0n, lastCoverageAt: 0,
-  balance: 36n * U, surplus: 0n, readAt: now, chainTime: now,
+  balance: 36n * U, surplus: 0n, readAt: now, chainTime: now, block: 1,
 } as never;
 // round 1 (index 0): every seat has paid; the pot (6 USDG) goes to seat 1
 const round1 = { ...base, round: 0, heldContributions: 6n * U, seats: [seat(0, {}), seat(1, {}), seat(2, {})] } as RhCircleView;

@@ -22,7 +22,7 @@ function circle(n: number, over: Partial<RhCircleView> = {}, seats?: RhSeat[]): 
   return { address: W(9), factory: W(8), creator: W(0), n, c: 2n * U, g: U, minStockCover: 10n * U, haircutBps: 1000, coverageBps: 10000, warnBps: 0,
     roundSecs: 86_400, graceSecs: 3_600, status: "Active", round: 0, deadline: 0, reserveTotal: 0n, reserveLosses: 0n, reserveAllocated: 0n,
     escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n, collateralReturned: 0n, depositsTotal: 0n, forfeitedTotal: 0n, nextGateShortBy: 0n,
-    heldContributions: 0n, lastCoverageAt: 0, balance: 0n, surplus: 0n, seats: seats ?? Array.from({ length: n }, (_, i) => seat(i)), readAt: 0, chainTime: 0, ...over };
+    heldContributions: 0n, lastCoverageAt: 0, balance: 0n, surplus: 0n, seats: seats ?? Array.from({ length: n }, (_, i) => seat(i)), readAt: 0, chainTime: 0, block: 1, ...over };
 }
 const ok: ReleaseContext = { hasWallet: true, connected: true, onRobinhood: true, busy: false, me: W(7) };
 

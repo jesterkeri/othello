@@ -33,7 +33,7 @@ const active: RhCircleView = {
   warnBps: 10000 - 1, roundSecs: 86_400, graceSecs, status: "Active", round: 0, deadline,
   reserveTotal: 3n * U, reserveLosses: 0n, reserveAllocated: 0n, escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n,
   collateralReturned: 0n, depositsTotal: 3n * U, forfeitedTotal: 0n, nextGateShortBy: 0n, heldContributions: 2n * U, lastCoverageAt: 0,
-  balance: 35n * U, surplus: 0n, seats: [seat(0, true), seat(1, false), seat(2, false)], readAt: chainTime, chainTime,
+  balance: 35n * U, surplus: 0n, seats: [seat(0, true), seat(1, false), seat(2, false)], readAt: chainTime, chainTime, block: 1,
 };
 
 describe("A5 adversary: an unpaid seat past the grace period shows as late on the ring", () => {

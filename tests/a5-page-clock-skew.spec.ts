@@ -180,7 +180,7 @@ function readAt(chainTime: number, graceEnds: number): RhCircleView {
     coverageBps: 10000, warnBps: 10000 - 1, roundSecs: 86_400, graceSecs, status: "Active", round: 1, deadline: graceEnds - graceSecs,
     reserveTotal: 6n * U, reserveLosses: 0n, reserveAllocated: 0n, escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n,
     collateralReturned: 0n, depositsTotal: 8n * U, forfeitedTotal: 0n, nextGateShortBy: 0n, heldContributions: 2n * U, lastCoverageAt: 0,
-    balance: 32n * U, surplus: 0n, readAt: device, chainTime,
+    balance: 32n * U, surplus: 0n, readAt: device, chainTime, block: chainTime,
     seats: [seat(0, { received: true }), seat(1, { paid: false }), seat(2, { paid: false })],
   } as RhCircleView;
 }

@@ -114,7 +114,9 @@ export default function RobinhoodCircle({ address }: { address: string }) {
       if (!t.ok) return;
       const v = await readCircle(robinhoodPublicClient, circle);
       if (mine !== latest.current) return;
-      setView(v);
+      // never back to an earlier block: a read that fell back a block (or a lagging RPC node) must not make a payment,
+      // a released pot or a cancellation un-happen on screen (adversary on de3c654)
+      setView((prev) => (prev && same(prev.address, v.address) && v.block < prev.block ? prev : v));
       setReadFailed(false);
     } catch {
       // the RPC's own error (its URL, the request body) is not for the screen

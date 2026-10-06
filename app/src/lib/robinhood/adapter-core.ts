@@ -84,6 +84,8 @@ export type RhCircleView = {
   surplus: bigint;
   seats: RhSeat[];
   readAt: number;
+  /** The block every field was read at (its number); the page never replaces a view with one from an earlier block. */
+  block: number;
   /** The chain's latest block time at this read. Time-based buttons follow the chain, not the device clock. */
   chainTime: number;
 };
@@ -137,7 +139,7 @@ export async function readCircle(
       if (head.number === null) throw new Error("Robinhood Chain returned a block without a number.");
       const block = back === 0n ? head : await client.getBlock({ blockNumber: head.number - back });
       if (block.hash === null) throw new Error("Robinhood Chain returned a block without a hash.");
-      return await readCircleAt(client, circle, usdg, block.hash, Number(block.timestamp));
+      return await readCircleAt(client, circle, usdg, block.hash, Number(block.timestamp), Number(block.number));
     } catch (e) {
       last = e;
     }
@@ -151,6 +153,7 @@ async function readCircleAt(
   usdg: Address,
   blockHash: `0x${string}`,
   chainTime: number,
+  block: number,
 ): Promise<RhCircleView> {
   const at = { blockHash, requireCanonical: true };
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
@@ -209,6 +212,7 @@ async function readCircleAt(
     })),
     readAt: Math.floor(Date.now() / 1000),
     chainTime,
+    block,
   };
 }
 

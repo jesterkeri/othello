@@ -68,7 +68,7 @@ const completed: RhCircleView = {
   collateralReturned: 0n, depositsTotal: 6n * U, forfeitedTotal: 2n * U, nextGateShortBy: 0n, heldContributions: 0n, lastCoverageAt: 0,
   balance: 23n * U, surplus: 0n,
   seats: [seat(0, { collateral: 0n, forfeited: 2n * U, defaulted: true, delinquentMarks: 1 }), seat(1, {}), seat(2, {})],
-  readAt: 0, chainTime: 0,
+  readAt: 0, chainTime: 0, block: 1,
 };
 
 /** OthelloCircle.withdraw() in Completed, written out independently of the app. */

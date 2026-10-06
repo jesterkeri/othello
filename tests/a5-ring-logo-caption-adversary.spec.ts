@@ -63,7 +63,7 @@ const read: RhCircleView = {
   roundSecs: 86_400, graceSecs: 3_600, status: "Active", round: 1, deadline: 2_000_000, reserveTotal: 0n, reserveLosses: 0n, reserveAllocated: 0n,
   escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n, collateralReturned: 0n, depositsTotal: 0n, forfeitedTotal: 0n, nextGateShortBy: 0n,
   heldContributions: 0n, lastCoverageAt: 0, balance: 0n, surplus: 0n, seats: [0, 1, 2].map((t) => seat(t, t < 1)), readAt: 1_000_000,
-  chainTime: 1_000_000,
+  chainTime: 1_000_000, block: 1,
 };
 
 const scoped = (mod: string, css: string) => css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\.([a-zA-Z_][\w-]*)/g, `.${mod}_$1`);

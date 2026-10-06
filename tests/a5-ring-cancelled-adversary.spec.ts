@@ -27,7 +27,7 @@ const cancelled: RhCircleView = {
   warnBps: 10000 - 1, roundSecs: 86_400, graceSecs: 3_600, status: "Cancelled", round: 0, deadline: 0,
   reserveTotal: 2n * U, reserveLosses: 0n, reserveAllocated: 0n, escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n,
   collateralReturned: 0n, depositsTotal: 2n * U, forfeitedTotal: 0n, nextGateShortBy: 0n, heldContributions: 0n, lastCoverageAt: 0,
-  balance: 22n * U, surplus: 0n, seats: [seat(0, true), seat(1, false), seat(2, true)], readAt: 0, chainTime: 0,
+  balance: 22n * U, surplus: 0n, seats: [seat(0, true), seat(1, false), seat(2, true)], readAt: 0, chainTime: 0, block: 1,
 };
 
 describe("A5 adversary: a cancelled circle's seats are not told they will receive a pot", () => {

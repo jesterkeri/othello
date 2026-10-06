@@ -67,7 +67,7 @@ const read: RhCircleView = {
   address: W(9), factory: W(8), creator: W(0), n: 3, c: 2n * U, g: U, minStockCover: 10n * U, haircutBps: 1000, coverageBps: 10000, warnBps: 0,
   roundSecs: 86_400, graceSecs: 3_600, status: "Active", round: 0, deadline: 2_000_000, reserveTotal: 0n, reserveLosses: 0n, reserveAllocated: 0n,
   escrow: 0n, escrowDeficit: 0n, withdrawnFromReserve: 0n, collateralReturned: 0n, depositsTotal: 0n, forfeitedTotal: 0n, nextGateShortBy: 0n,
-  heldContributions: 0n, lastCoverageAt: 0, balance: 0n, surplus: 0n, seats: [seat(0), seat(1), seat(2)], readAt: 1_000_000, chainTime: 1_000_000,
+  heldContributions: 0n, lastCoverageAt: 0, balance: 0n, surplus: 0n, seats: [seat(0), seat(1), seat(2)], readAt: 1_000_000, chainTime: 1_000_000, block: 1,
 };
 
 async function ringMarkup(): Promise<string> {
