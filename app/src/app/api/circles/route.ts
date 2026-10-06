@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 const CACHE_SECONDS = 10;
 const MAX_CACHED = 64;
-const cache = new Map<string, { at: number; body: { circles: LiveCircle[]; total: number } }>();
+const cache = new Map<string, { at: number; body: { circles: LiveCircle[]; failed: string[]; total: number } }>();
 
 export async function GET(req: NextRequest) {
   const wallet = parseAddress(req.nextUrl.searchParams.get("wallet"));

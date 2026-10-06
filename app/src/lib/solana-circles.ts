@@ -76,8 +76,12 @@ export function circlesOf(accounts: Listed[], wallet: string) {
     .map(({ x }) => x);
 }
 
-/** The Othello circles `wallet` created or holds a seat in, the first MAX_LISTED read in full, and how many it has. */
-export async function solanaCirclesOf(connection: Connection, wallet: string): Promise<{ circles: LiveCircle[]; total: number }> {
+/**
+ * The Othello circles `wallet` created or holds a seat in: the first MAX_LISTED read in full, each on its own, so one
+ * circle that cannot be read (a third party's circle with an id or amount past 2^53, say; adversary on 3e5d468) is
+ * listed as failed instead of failing the rest; and how many there are.
+ */
+export async function solanaCirclesOf(connection: Connection, wallet: string): Promise<{ circles: LiveCircle[]; failed: string[]; total: number }> {
   const coder = accountsCoder();
   const filter = coder.memcmp("circle");
   const raw = await connection.getProgramAccounts(new PublicKey(PROGRAM_ID), {
@@ -91,6 +95,9 @@ export async function solanaCirclesOf(connection: Connection, wallet: string): P
     }
   });
   const all = circlesOf(decoded, wallet);
-  const circles = await Promise.all(all.slice(0, MAX_LISTED).map(({ address }) => readLiveCircle(connection, address, stockWord, namesFor(address))));
-  return { circles, total: all.length };
+  const shown = all.slice(0, MAX_LISTED);
+  const reads = await Promise.allSettled(shown.map(({ address }) => readLiveCircle(connection, address, stockWord, namesFor(address))));
+  const circles = reads.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  const failed = shown.filter((_, i) => reads[i]!.status === "rejected").map(({ address }) => address);
+  return { circles, failed, total: all.length };
 }

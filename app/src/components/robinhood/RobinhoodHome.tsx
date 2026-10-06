@@ -26,6 +26,9 @@ export function useRobinhoodCircles(): CirclesSource {
   const [list, dispatch] = useReducer(myCircles, EMPTY);
   // Each request carries the wallet it was for; a reply for an earlier wallet (or an unmounted page) is dropped.
   const req = useRef(0);
+  // the wallet the list below was started for: after a switch, nothing read for the last wallet is shown, not even for
+  // the one render before the reset effect runs (adversary on 3e5d468)
+  const [listedFor, setListedFor] = useState<string | null>(null);
 
   useEffect(() => {
     void checkFactory(robinhoodPublicClient).then(setFactory).catch(() => setFactory({ ok: false, reason: "factory-code" }));
@@ -42,6 +45,7 @@ export function useRobinhoodCircles(): CirclesSource {
   useEffect(() => {
     req.current += 1;
     dispatch({ type: "reset" });
+    setListedFor(w.address ?? null);
     if (!w.address || !factory?.ok) return;
     load(w.address, undefined);
     return () => {
@@ -49,7 +53,8 @@ export function useRobinhoodCircles(): CirclesSource {
     };
   }, [w.address, factory?.ok, load]);
 
-  const circles = list.started ? list.circles : null;
+  const fresh = listedFor === (w.address ?? null);
+  const circles = fresh && list.started ? list.circles : null;
 
   // Each listed circle's full read, by address: a view, or "failed" (that card links to the page instead).
   const [views, setViews] = useState<Record<string, RhCircleView | "failed">>({});
@@ -97,7 +102,7 @@ export function useRobinhoodCircles(): CirclesSource {
     failed: (circles ?? [])
       .filter((c) => views[c.address.toLowerCase()] === "failed")
       .map((c) => ({ address: c.address, href: `/circle/rh:${c.address}` })),
-    error: list.error,
+    error: fresh ? list.error : null,
     retry: w.address ? () => w.address && load(w.address, nextBefore(list)) : null,
     more: w.address && hasMore(list) ? { loading: list.loading, load: () => w.address && load(w.address, nextBefore(list)) } : null,
   };
