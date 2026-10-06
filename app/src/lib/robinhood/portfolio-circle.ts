@@ -9,7 +9,9 @@
  * them). With no running circle, null: the page says so.
  *
  * "You owe" is the contract's own figure (evm/src/OthelloCircle.sol: a seat that has received the pot owes
- * c x (n - roundsPaid); one that has not owes nothing yet), the same rule as the Solana card's obligations().
+ * c x (n - roundsPaid); one that has not owes nothing yet). A seat settled in default owes nothing more: declareDefault
+ * moved that whole amount into the escrow and contribute() refuses it (AlreadyDefaulted), so the card says "Prepaid",
+ * as SPEC.md:70 words it (adversary on 08285a1).
  */
 import type { RhCircleView, RhSeat } from "./adapter";
 import { fmtUsdg } from "./copy";
@@ -70,11 +72,13 @@ export function circleCard(v: RhCircleView, me?: string | null): CircleCard | nu
       { label: "Locked", value: fmtUsdg(seat.collateral) },
       ...(active ? [{ label: `Round ${v.round + 1}`, value: roundState }] : []),
       { label: "Guarantee", value: fmtUsdg(seat.g) },
-      {
-        label: "You owe",
-        value: fmtUsdg(owe),
-        title: "After you receive the pot, the payments for the rounds left. Nothing before then.",
-      },
+      seat.defaulted
+        ? { label: "You owe", value: "Prepaid", title: "Settled in default: your locked USDG already covers the rounds left." }
+        : {
+          label: "You owe",
+          value: fmtUsdg(owe),
+          title: "After you receive the pot, the payments for the rounds left. Nothing before then.",
+        },
     ],
   };
 }

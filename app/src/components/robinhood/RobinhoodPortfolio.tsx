@@ -60,16 +60,20 @@ async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCi
 export default function RobinhoodPortfolio() {
   const wallet = useEvmWallet();
   const walletUi = useWalletUi();
-  const [usdg, setUsdg] = useState<TokenRead>(null);
-  const [eth, setEth] = useState<TokenRead>(null);
-  const [stocks, setStocks] = useState<Record<string, TokenRead>>({});
-  const [circles, setCircles] = useState<CircleRead>({ kind: "reading" });
+  const [usdgRead, setUsdg] = useState<TokenRead>(null);
+  const [ethRead, setEth] = useState<TokenRead>(null);
+  const [stocksState, setStocks] = useState<Record<string, TokenRead>>({});
+  const [circlesRead, setCircles] = useState<CircleRead>({ kind: "reading" });
+  // the wallet the reads above were started for: after a switch, nothing read for the last wallet is drawn, not even
+  // for the one render before the reset below runs (adversary on 08285a1)
+  const [readFor, setReadFor] = useState<string | null>(null);
 
   useEffect(() => {
     setUsdg(null);
     setEth(null);
     setStocks({});
     setCircles({ kind: "reading" });
+    setReadFor(wallet.address ?? null);
     if (!wallet.address) return;
     const account = wallet.address as `0x${string}`;
     let live = true;
@@ -96,6 +100,12 @@ export default function RobinhoodPortfolio() {
       .catch(() => { if (live) setCircles({ kind: "failed" }); });
     return () => { live = false; };
   }, [wallet.address]);
+
+  const fresh = readFor === (wallet.address ?? null);
+  const usdg = fresh ? usdgRead : null;
+  const eth = fresh ? ethRead : null;
+  const stocks = fresh ? stocksState : {};
+  const circles: CircleRead = fresh ? circlesRead : { kind: "reading" };
 
   const stockReads = TESTNET_STOCK_TOKENS.map((token) => stocks[token.symbol] ?? null);
   const anyDown = usdg === "failed" || eth === "failed" || stockReads.includes("failed") || circles.kind === "failed";
