@@ -40,6 +40,11 @@
 .big, .bigMuted { position: relative; font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 68%; font-weight: 900; text-transform: uppercase; letter-spacing: -.02em; line-height: .85; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .big { font-size: clamp(60px, 9vw, 140px); }
 .bigMuted { font-size: clamp(34px, 4vw, 56px); opacity: .7; }
+.bigUnit { margin-left: .18em; font-size: .36em; letter-spacing: 0; }
+/* The Robinhood portfolio's wrong-network note: theme colours only, so it reads on the light and dark panel. */
+.notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; border: 3px dashed var(--onPanel); border-radius: clamp(20px, 2.4vw, 30px); color: var(--onPanel); padding: clamp(12px, 1.4vw, 16px) clamp(14px, 1.6vw, 20px); font-size: 13px; font-weight: 700; line-height: 1.45; }
+.notice > span { flex: 1 1 260px; min-width: 0; }
+.btnLine { display: inline-flex; align-items: center; gap: 8px; border: 3px solid var(--onPanel); border-radius: 999px; min-height: 44px; padding: 0 18px; background: var(--onPanel); color: var(--panel); font-size: 13px; font-weight: 800; cursor: pointer; }
 .holdLabel { position: relative; font-size: clamp(13px, 1.1vw, 15px); font-weight: 700; }
 .bar { position: relative; display: flex; gap: 5px; height: 26px; }
 .bar span { min-width: 26px; border: 3px solid #0B0B0B; border-radius: 999px; transform-origin: left center; animation: grow .7s cubic-bezier(.2, 1.3, .35, 1) backwards; }
@@ -75,6 +80,8 @@
 .how span { font-size: 13px; line-height: 1.45; font-weight: 600; }
 .allStocks { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 800; color: var(--onPanel); }
 .row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto auto; align-items: center; gap: clamp(10px, 1.4vw, 22px); border: 3px solid #0B0B0B; border-radius: 999px; background: var(--raised); color: var(--onPanel); padding: clamp(8px, .9vw, 10px); text-decoration: none; animation: rise .45s cubic-bezier(.2, .9, .2, 1) backwards; transition: transform .45s cubic-bezier(.2, 1.5, .35, 1), box-shadow .45s cubic-bezier(.2, 1.5, .35, 1); }
+/* Rows with only a value cell (the Robinhood portfolio's test tokens): badge, name, value, arrow. */
+.rowShort { grid-template-columns: auto minmax(0, 1fr) auto auto; }
 .badge { width: clamp(52px, 4.6vw, 64px); height: clamp(52px, 4.6vw, 64px); border: 3px solid #0B0B0B; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-family: var(--font-archivo), Archivo, sans-serif; font-style: italic; font-stretch: 70%; font-weight: 900; font-size: clamp(17px, 1.5vw, 21px); text-transform: uppercase; transition: transform .5s cubic-bezier(.2, 1.6, .35, 1); }
 .name { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .name b { font-size: clamp(16px, 1.4vw, 19px); font-weight: 800; letter-spacing: -.02em; }
