@@ -73,7 +73,7 @@ export function circleCard(v: RhCircleView, me?: string | null): CircleCard | nu
       ...(active ? [{ label: `Round ${v.round + 1}`, value: roundState }] : []),
       { label: "Guarantee", value: fmtUsdg(seat.g) },
       seat.defaulted
-        ? { label: "You owe", value: "Prepaid", title: "Settled in default: your locked USDG already covers the rounds left." }
+        ? { label: "You owe", value: "Prepaid", title: "Settled in default: the rounds left were covered from your seized USDG and, where it fell short, the circle's reserve. Nothing more can be paid." }
         : {
           label: "You owe",
           value: fmtUsdg(owe),

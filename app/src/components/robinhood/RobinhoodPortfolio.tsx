@@ -36,6 +36,8 @@ type CircleRead = { kind: "reading" } | { kind: "closed" } | { kind: "failed" } 
 function fmtStock(amount: bigint): string {
   const [whole, fraction = ""] = formatUnits(amount, TESTNET_STOCK_DECIMALS).split(".");
   const shown = fraction.slice(0, 4).replace(/0+$/, "");
+  // a balance below the fourth decimal is still held: never print it as 0 (adversary on a1496e6)
+  if (amount > 0n && whole === "0" && !shown) return "<0.0001";
   return shown ? `${whole}.${shown}` : whole!;
 }
 /** Exact digits, trailing zeros dropped (nothing rounded). */
