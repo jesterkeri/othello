@@ -33,6 +33,8 @@ export type ListCircle = RingSource & {
    * circle page still lets anyone try the release, and the chain re-checks.
    */
   pausedShortBy: bigint;
+  /** When that figure was last checked (lastCoverageAt, chain seconds): SPEC.md shows its age next to Paused. */
+  pausedCheckedAt: number;
   /** Finished circles only: who has collected, and this wallet's own share (amount null when the chain gives none). */
   closeOut: { collected: number; owedCount: number; mine: { owed: boolean; collected: boolean; amount: bigint | null } | null } | null;
 };

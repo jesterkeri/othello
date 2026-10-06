@@ -105,7 +105,10 @@ export function PillShape({ text, bubble, hot }: { text: string; bubble: ReactNo
 
 /** Each seat as a segment, filled in its ring colour once it has paid this round (joined, while forming). */
 function SeatDots({ v, me }: { v: ListCircle; me: string }) {
-  const shown = v.seats.slice(0, 6);
+  // six dots fit; past six, the wallet's own seat keeps its dot (adversary suspicion on dd59b76: seats 7 and 8 were
+  // folded into "+N" and never marked as the wallet's)
+  const mine = v.seats.find((s) => same(s.wallet, me));
+  const shown = v.seats.length <= 6 || !mine || mine.turn < 5 ? v.seats.slice(0, 6) : [...v.seats.slice(0, 5), mine];
   return (
     <span className={c.dots} aria-hidden>
       {shown.map((s) => {

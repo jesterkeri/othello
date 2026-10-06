@@ -101,9 +101,12 @@ describe("A6: the shared circles list on Solana", () => {
       // paused at the chain's last coverage check: the list names the top-up, not Claim (the page still allows a try)
       const paused = { ...allPaid, nextGateShortBy: 5_000_000 };
       const recipient = circleCard(solToList(live(paused), seatWallet(v, 1)), seatWallet(v, 1));
-      assert.deepEqual([recipient.group, recipient.action, recipient.headline], ["needs", "Top up", "Payouts paused: top up 5 USDC of reserve to release your pot"]);
+      // the fixture's last coverage check was 46 s before the read: shown as at least a minute
+      assert.equal(FIXTURE_NOW - paused.lastCoverageAt, 46);
+      const age = "checked 1m ago";
+      assert.deepEqual([recipient.group, recipient.action, recipient.headline], ["needs", "Top up", `Payouts paused (${age}): top up 5 USDC to release your pot`]);
       const other = circleCard(solToList(live(paused), seatWallet(v, 2)), seatWallet(v, 2));
-      assert.deepEqual([other.group, other.band, other.headline], ["active", "Paused", "Payouts paused: the reserve is 5 USDC short"]);
+      assert.deepEqual([other.group, other.band, other.headline], ["active", "Paused", `Payouts paused (${age}): 5 USDC short`]);
       assert.equal(circleCard(solToList(live(allPaid), seatWallet(v, 2)), seatWallet(v, 2)).group, "active");
       const forming = CIRCLE_STATES.forming;
       const notJoined = forming.members.find((m) => !((forming.joinedBitmap >> m.turn) & 1));

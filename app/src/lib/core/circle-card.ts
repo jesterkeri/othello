@@ -59,11 +59,15 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       return card("needs", "Your move", `Pay ${fmt(v.c)} for round ${v.round + 1}${late ? ": late" : ""}`, "Pay");
     }
     // paused at the chain's last coverage check (adversary on af41248: Claim was offered while releasePot reverted
-    // ReserveOvercommitted): the list names the top-up instead; the circle page still lets anyone try the release
+    // ReserveOvercommitted): the list names the top-up instead; the circle page still lets anyone try the release.
+    // The figure is as of that check, which adding collateral or a price move does not refresh, so its age is shown
+    // (SPEC.md payout gate; adversary on dd59b76). It may include missed payments' escrow deficit, which top-ups fill
+    // first, so it is "short", not "the reserve is short".
     if (v.releasable && v.pausedShortBy > 0n) {
+      const age = `checked ${span(v.chainTime - v.pausedCheckedAt)} ago`;
       return turn === v.round
-        ? card("needs", "Your move", `Payouts paused: top up ${fmt(v.pausedShortBy)} of reserve to release your pot`, "Top up")
-        : card("active", "Paused", `Payouts paused: the reserve is ${fmt(v.pausedShortBy)} short`);
+        ? card("needs", "Your move", `Payouts paused (${age}): top up ${fmt(v.pausedShortBy)} to release your pot`, "Top up")
+        : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short`);
     }
     if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
     return card("active", "Active", `Round ${v.round + 1} of ${v.n}: ${seatLabel(v.round)} receives ${fmt(pot)}`);
@@ -97,8 +101,14 @@ export function dueIn(v: Pick<ListCircle, "status" | "deadline" | "graceSecs" | 
   if (v.status !== "Active") return null;
   const left = v.deadline - v.chainTime;
   if (left <= 0) return v.chainTime > v.deadline + v.graceSecs ? "Late" : "Grace period";
-  const d = Math.floor(left / 86_400);
-  const h = Math.floor((left % 86_400) / 3_600);
-  const m = Math.floor((left % 3_600) / 60);
+  return span(left);
+}
+
+/** A length of time in words: "2d 4h", "3h 10m", "5m" (at least 1m). */
+function span(seconds: number): string {
+  const s = Math.max(0, seconds);
+  const d = Math.floor(s / 86_400);
+  const h = Math.floor((s % 86_400) / 3_600);
+  const m = Math.floor((s % 3_600) / 60);
   return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${Math.max(1, m)}m`;
 }
