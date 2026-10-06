@@ -39,7 +39,8 @@ export function useRobinhoodCircles(): CirclesSource {
     dispatch({ type: "start" });
     listMyCircles(robinhoodPublicClient, address, before)
       .then((page) => id === req.current && dispatch({ type: "page", page }))
-      .catch((e) => id === req.current && dispatch({ type: "fail", message: e instanceof Error ? e.message : String(e) }));
+      // a fixed sentence: viem's own message carries the RPC URL and the request body (adversary on b1cb461)
+      .catch(() => id === req.current && dispatch({ type: "fail", message: "Robinhood Chain testnet did not answer. Try again in a moment." }));
   }, []);
 
   useEffect(() => {

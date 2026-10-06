@@ -6,7 +6,7 @@
  */
 import type { ChainSide } from "../chains";
 import type { Money } from "./money";
-import type { RingSource } from "./ring";
+import { sameAddress, type RingSource } from "./ring";
 
 export type ListSeat = RingSource["seats"][number];
 
@@ -35,11 +35,8 @@ export type ListCircle = RingSource & {
   closeOut: { collected: number; owedCount: number; mine: { owed: boolean; collected: boolean; amount: bigint | null } | null } | null;
 };
 
-// EVM addresses compare case-insensitively (checksum casing); anything else, such as base58, exactly
-const same = (a?: string | null, b?: string | null) =>
-  Boolean(a && b && (a.startsWith("0x") && b.startsWith("0x") ? a.toLowerCase() === b.toLowerCase() : a === b));
+const same = sameAddress;
 
-/** The seat this wallet holds, if any. */
 export const mySeat = (c: ListCircle, me: string | null | undefined): ListSeat | null => c.seats.find((s) => same(s.wallet, me)) ?? null;
 export const isCreator = (c: ListCircle, me: string | null | undefined) => same(c.creator, me);
 

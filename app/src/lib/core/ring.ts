@@ -55,7 +55,14 @@ export type Ring = {
   caption: string;
 };
 
-const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+/**
+ * Whether two wallet addresses are the same: EVM addresses case-insensitively (checksum casing), anything else, such as
+ * base58, exactly (adversary on b1cb461: a Solana seat naming the wallet's address with one letter's case changed was
+ * drawn as the wallet's own).
+ */
+export const sameAddress = (a?: string | null, b?: string | null) =>
+  Boolean(a && b && (a.startsWith("0x") && b.startsWith("0x") ? a.toLowerCase() === b.toLowerCase() : a === b));
+const same = sameAddress;
 export const seatLabel = (turn: number) => `Seat ${turn + 1}`;
 
 /** "Seat 2", "Seat 2 and Seat 3", "Seat 1, Seat 2 and Seat 4". */

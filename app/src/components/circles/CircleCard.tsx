@@ -9,7 +9,7 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 import type { ListCircle } from "@/lib/core/circle-list";
 import { dueIn, type CircleCard as Card } from "@/lib/core/circle-card";
-import { ringOf, seatFill, seatSize, type RingSeat, type RingWords } from "@/lib/core/ring";
+import { ringOf, sameAddress, seatFill, seatSize, type RingSeat, type RingWords } from "@/lib/core/ring";
 import { fmtMoney } from "@/lib/core/money";
 
 import c from "./CircleCard.module.css";
@@ -18,7 +18,7 @@ import CircleRing from "@/components/robinhood/CircleRing";
 export const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 /** How this circle's amounts and collateral are named (USDG on Robinhood; USDC and the stock on Solana). */
 export const wordsOf = (v: ListCircle): RingWords => ({ fmt: (x) => fmtMoney(v.money, x), collateral: v.collateral });
-const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+const same = sameAddress;
 
 /** Two decimals: the server and the browser can print the same float differently (a hydration mismatch). */
 const f2 = (n: number) => Number(n.toFixed(2));
