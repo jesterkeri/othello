@@ -31,8 +31,11 @@ export function mustAct(v: RhCircleView, me?: string | null): boolean {
 export function pickCircle(views: readonly RhCircleView[], me?: string | null): RhCircleView | null {
   const running = views.filter((v) => v.status === "Active" && seatOf(v, me));
   const acting = running.filter((v) => mustAct(v, me));
-  // the earliest deadline wins; on a tie the newer circle (earlier in the list) stays
-  if (acting.length) return acting.reduce((best, v) => (v.deadline < best.deadline ? v : best));
+  // the payment that turns late first wins (deadline plus that circle's own grace), so a circle already late, where
+  // markDelinquent is open, comes before one still in its grace (adversary on c0f5b95); on a tie the newer circle
+  // (earlier in the list) stays
+  const lateAt = (v: RhCircleView) => v.deadline + v.graceSecs;
+  if (acting.length) return acting.reduce((best, v) => (lateAt(v) < lateAt(best) ? v : best));
   return running[0] ?? null;
 }
 
