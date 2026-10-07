@@ -43,6 +43,11 @@ export type ListCircle = RingSource & {
   escrowDeficit: bigint;
   /** The chain would accept a join now, apart from the seat itself (Solana: price set, fresh, not repricing). */
   joinable: boolean;
+  /**
+   * The price conditions a release checks hold (Solana release_pot: price set, fresh, not repricing; Robinhood has
+   * none), so a release blocked only by the escrow would pass once it is refilled.
+   */
+  priceReady: boolean;
   /** Finished circles only: who has collected, and this wallet's own share (amount null when the chain gives none). */
   closeOut: { collected: number; owedCount: number; mine: { owed: boolean; collected: boolean; amount: bigint | null } | null } | null;
 };

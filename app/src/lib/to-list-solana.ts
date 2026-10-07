@@ -30,6 +30,7 @@ export function solToList(live: LiveCircle, me: string | null): ListCircle {
   // Completed: every seat collects; Cancelled: only the seats that joined (they locked stock)
   const owes = (s: (typeof seats)[number]) => c.status === "Completed" || s.joined;
   const mine = seats.find((s) => same(s.wallet, me)) ?? null;
+  const priceReady = c.feed.wrapperPrice > 0 && c.feed.sharePrice > 0 && !isStale(c, live.readAt) && !isRepricing(c);
   return {
     side: "solana",
     address: live.accounts.circle,
@@ -53,7 +54,9 @@ export function solToList(live: LiveCircle, me: string | null): ListCircle {
     pausedCheckedAt: c.lastCoverageAt,
     escrowDeficit: big(c.escrowDeficit),
     // join_and_lock values the stock: it refuses an unset, stale or repricing price (SPEC.md join_and_lock)
-    joinable: c.feed.wrapperPrice > 0 && c.feed.sharePrice > 0 && !isStale(c, live.readAt) && !isRepricing(c),
+    joinable: priceReady,
+    // release_pot checks the same price conditions (SPEC.md release_pot: price fresh, not repricing)
+    priceReady,
     closeOut: finished
       ? {
           collected: seats.filter((s) => owes(s) && s.withdrawn).length,

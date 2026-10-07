@@ -93,6 +93,9 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       const shortBy = v.pausedShortBy > escrowGap ? v.pausedShortBy : escrowGap;
       const since = v.chainTime - v.pausedCheckedAt;
       const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
+      // release_pot also needs a fresh, settled price (Solana): until then a top-up refills the escrow but releases
+      // nothing, so no release is promised (adversary on e8b9c40)
+      if (!v.priceReady) return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}. The pot can move once the ${v.collateral} price is updated`);
       if (turn === v.round) return card("needs", "Your move", `Missed payments left the pot short (${age}): top up ${fmt(shortBy)} to release your pot`, "Top up");
       if (mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}. Any member can top up`, "Top up");
       return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}`);
