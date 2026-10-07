@@ -106,7 +106,10 @@ describe("A6: the shared circles list on Solana", () => {
       const age = "checked 1m ago";
       assert.deepEqual([recipient.group, recipient.action, recipient.headline], ["needs", "Top up", `Payouts paused (${age}): top up 5 USDC to release your pot`]);
       const other = circleCard(solToList(live(paused), seatWallet(v, 2)), seatWallet(v, 2));
-      assert.deepEqual([other.group, other.band, other.headline], ["active", "Paused", `Payouts paused (${age}): 5 USDC short`]);
+      assert.deepEqual([other.group, other.band, other.headline, other.action], ["active", "Paused", `Payouts paused (${age}): 5 USDC short. Any member can top up`, "Top up"]);
+      // a funded round: anyone may release it (release_pot has no caller check); only the recipient's Claim is Needs-you
+      const funded = circleCard(solToList(live(allPaid), seatWallet(v, 2)), seatWallet(v, 2));
+      assert.deepEqual([funded.group, funded.band, funded.headline, funded.action], ["active", "Funded", "Round 2 is funded: anyone can release 250 USDC to Seat 2", "Release"]);
       assert.equal(circleCard(solToList(live(allPaid), seatWallet(v, 2)), seatWallet(v, 2)).group, "active");
       const forming = CIRCLE_STATES.forming;
       const notJoined = forming.members.find((m) => !((forming.joinedBitmap >> m.turn) & 1));

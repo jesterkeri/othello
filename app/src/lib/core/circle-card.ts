@@ -67,9 +67,12 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       const age = `checked ${span(v.chainTime - v.pausedCheckedAt)} ago`;
       return turn === v.round
         ? card("needs", "Your move", `Payouts paused (${age}): top up ${fmt(v.pausedShortBy)} to release your pot`, "Top up")
-        : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short`);
+        : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short. Any member can top up`, "Top up");
     }
     if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
+    // anyone may release a funded round on both chains (releasePot / release_pot have no caller check): the card says
+    // so, while the recipient's own Claim is what Needs-you counts (adversary on 60f4a3b)
+    if (v.releasable) return card("active", "Funded", `Round ${v.round + 1} is funded: anyone can release ${fmt(pot)} to ${seatLabel(v.round)}`, "Release");
     return card("active", "Active", `Round ${v.round + 1} of ${v.n}: ${seatLabel(v.round)} receives ${fmt(pot)}`);
   }
 
