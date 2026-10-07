@@ -37,6 +37,9 @@ import SolanaPanel from "./SolanaPanel";
 
 const REFRESH_MS = 5_000;
 const USDC_WORD = "test USDC";
+// what pays a defaulted seat's share of a round: the escrow its default prepaid (declare_default sells the stock only
+// up to the debt and the reserve pays the rest, SPEC.md section 6), never "the locked stock"
+const COVERED = "the escrow its default prepaid";
 /** Solana's money in its own words: base units of test USDC (6 decimals). */
 const usdc = (base: bigint) => `${formatUsdc(Number(base))} ${USDC_WORD}`;
 
@@ -423,7 +426,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const words: ChainWords = { fmt: usdc, txUrl: (h) => explorer("tx", h), chain: "Solana devnet", locked: stockUnit, testNote: "Test USDC only; it has no value.", payer: "program" };
   const listed = solToList(live, you);
   const pot = BigInt(c.contribution) * BigInt(c.n);
-  const ring = ringOf(listed, you, now, { fmt: usdc, collateral: stockUnit });
+  const ring = ringOf(listed, you, now, { fmt: usdc, collateral: stockUnit, covered: COVERED });
   const gateNeeded = dv.remains + c.nextGateShortBy;
   const joinedCount = dv.joined;
 
@@ -501,8 +504,14 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
 
   // the clock: what is due now, by the chain's last read
   const defaultableNow = active && dv.toGraceEnd < 0 ? c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.receivedBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn)) : [];
-  const clock = !active
-    ? [{ label: "Seats joined", value: `${joinedCount} of ${c.n}` }, { label: "Round length", value: formatDuration(c.roundSecs) }, { label: "Pot this round", value: usdc(pot) }]
+  // no round runs outside Active: a forming circle's pot is what each round will pay, a completed one's what each paid,
+  // and a cancelled one never ran a round (cancel_circle runs only while Forming; adversary on 401fac3)
+  const clock = c.status === "Cancelled"
+    ? [{ label: "Seats joined", value: `${joinedCount} of ${c.n}` }, { label: "Rounds run", value: "None" }]
+    : c.status === "Completed"
+      ? [{ label: "Rounds paid out", value: `${c.n} of ${c.n}` }, { label: "Pot each round", value: usdc(pot) }]
+    : !active
+    ? [{ label: "Seats joined", value: `${joinedCount} of ${c.n}` }, { label: "Round length", value: formatDuration(c.roundSecs) }, { label: "Pot each round", value: usdc(pot) }]
     : dv.toDeadline <= 0
       ? [{ label: "Paid this round", value: `${c.n - dv.missing} of ${c.n}` },
           defaultableNow.length > 0 ? { label: "Can be declared in default", value: defaultableNow.map((m) => m.name).join(", "), over: true } : { label: dv.toGraceEnd > 0 ? "Grace ends in" : "Deadline passed", value: dv.toGraceEnd > 0 ? formatDuration(dv.toGraceEnd) : "Late still counts", over: dv.toGraceEnd <= 0 },
@@ -528,7 +537,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         : <span className={s.coverLine}>Not joined yet: nothing locked.</span>,
       chips: [
         { label: "This round", value: defaulted ? "Defaulted" : !joined ? "Not joined" : !active ? (withdrawn ? "Withdrawn" : ended ? "To withdraw" : "Joined") : paid ? "Paid" : "Due", tone: defaulted ? "clay" : !joined || !active ? "" : paid ? "teal" : "acid" },
-        { label: "Pot", value: received ? "Received" : isNow ? "Receiving" : "Waiting", tone: received ? "teal" : isNow ? "cobalt" : "" },
+        { label: "Pot", value: received ? "Received" : isNow ? "Receiving" : c.status === "Cancelled" ? "None (cancelled)" : "Waiting", tone: received ? "teal" : isNow ? "cobalt" : "" },
         // a defaulted seat's remaining payments are prepaid (SPEC.md Member.last_coverage_bps), whatever rounds_paid says
         { label: "Owed", value: !joined ? "—" : seatSet(c.defaultedBitmap, m.turn) ? "Prepaid" : `${formatUsdc(obligations(c, m))} ${USDC_WORD}`, tone: "" },
         { label: "Coverage", value: !joined ? "—" : dv.repricing ? "Not countable" : coverageLabel(c, m), tone: "" },
@@ -562,6 +571,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       round={c.round}
       fmt={usdc}
       collateral={stockUnit}
+      covered={COVERED}
       status={repricing ? "Repricing" : dv.paused ? "Paused" : c.status}
       moneyPill={`Test USDC on Solana devnet · ${stockUnit} as cover`}
       heading={`A savings circle of ${c.n}`}
@@ -585,7 +595,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         rounds: ordered.map((m) => {
           const done = seatSet(c.receivedBitmap, m.turn);
           const nowRound = active && m.turn === c.round;
-          return { turn: m.turn, name: m.name, note: done ? "Pot paid" : nowRound ? "Receiving now" : "Upcoming", state: nowRound ? "now" : done ? "done" : "" };
+          return { turn: m.turn, name: m.name, note: done ? "Pot paid" : nowRound ? "Receiving now" : c.status === "Cancelled" ? "Did not run" : "Upcoming", state: nowRound ? "now" : done ? "done" : "" };
         }),
       }}
       reserve={{

@@ -45,6 +45,8 @@ export type CirclePageProps = {
   fmt: (base: bigint) => string;
   /** What a seat locks, in the ring's legend ("USDG", the circle's stock). */
   collateral: string;
+  /** What pays a defaulted seat's share, in the ring (lib/core/ring.ts RingWords.covered). */
+  covered?: string;
   status: PageStatus;
   /** The money pill beside the status, e.g. "Test USDG on Robinhood Chain". */
   moneyPill: string;
@@ -123,7 +125,7 @@ export default function CirclePage(p: CirclePageProps) {
         <section className={`${s.hero} ${rh.ringHero}`} aria-label="This savings circle">
           {/* a finished circle lists its seats once, in the close-out panel */}
           <div className={rh.ringCol}>
-            <CircleRing ring={p.ring} pot={p.pot} round={p.round} showList={!finished} fmt={p.fmt} collateral={p.collateral} />
+            <CircleRing ring={p.ring} pot={p.pot} round={p.round} showList={!finished} fmt={p.fmt} collateral={p.collateral} covered={p.covered} />
             {finished && p.act}
           </div>
           <div className={s.heroMain}>
