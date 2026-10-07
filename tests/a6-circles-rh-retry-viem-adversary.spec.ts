@@ -35,6 +35,7 @@ import {
   createPublicClient, createWalletClient, defineChain, encodeFunctionData, getAddress, http, keccak256,
   type Abi, type Address, type Hex, type PublicClient, type WalletClient,
 } from "viem";
+import { robinhoodHttp } from "../app/src/lib/robinhood/transport.ts";
 import { mnemonicToAccount } from "viem/accounts";
 
 import { REPO } from "./artifacts.ts";
@@ -235,7 +236,7 @@ describe("A6 adversary on bdc3a1c: a failed listing attempt's transport retry st
     await new Promise<void>((r) => relay!.listen(RELAY_PORT, "127.0.0.1", () => r()));
 
     // the app's own client shape (lib/robinhood/wallet.ts): viem http with batching and viem's default retries
-    g.__a6tClient = createPublicClient({ chain, transport: http(RELAY, { batch: true }) });
+    g.__a6tClient = createPublicClient({ chain, transport: robinhoodHttp(RELAY) /* the app's own transport (lib/robinhood/transport.ts), as lib/robinhood/wallet.ts builds it */ });
     g.__a6tWallet = A;
     g.__a6t = hooks();
     const { useRobinhoodCircles } = await import(pathToFileURL(resolve(SRC, "components/robinhood/RobinhoodHome.tsx")).href);

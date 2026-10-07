@@ -186,17 +186,9 @@ export function readCircleInTurn(
  * (and viem's own retries of them) on the RPC, so it must not count as over while they run, or the next queued circle
  * read overlaps them (adversary on cbdba79). Rejects with the first failure, in call order.
  */
-const SETTLE_DEADLINE_MS = 45_000;
 async function allSettledOrThrow<T extends readonly unknown[] | []>(calls: T): Promise<{ -readonly [K in keyof T]: Awaited<T[K]> }> {
-  // The wait is bounded: viem's timeout covers a response's headers, not its body, so a call whose body never
-  // arrives would hold the page forever (adversary on 949f7dc). 45 s is past viem's worst case for one call (four
-  // tries of 10 s plus its backoff); a call still pending then is a stalled body, not one still sending requests.
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Robinhood Chain did not finish answering.")), SETTLE_DEADLINE_MS);
-  });
-  const all = Promise.allSettled(calls as readonly unknown[]);
-  const settled = await Promise.race([all, deadline]).finally(() => clearTimeout(timer));
+  // bounded because every call is (lib/robinhood/transport.ts aborts each request whole), not by a deadline here
+  const settled = await Promise.allSettled(calls as readonly unknown[]);
   for (const x of settled) if (x.status === "rejected") throw x.reason;
   return settled.map((x) => (x as PromiseFulfilledResult<unknown>).value) as never;
 }
