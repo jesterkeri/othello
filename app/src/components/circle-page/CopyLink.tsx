@@ -5,11 +5,12 @@ import { useState } from "react";
 
 import s from "@/components/circle/Circle.module.css";
 
-export default function CopyLink({ title, text, label }: { title: string; text: string; label: string }) {
+/** `path`: the circle's own page, so a seat page copies the circle's link, not its own. */
+export default function CopyLink({ path, title, text, label }: { path: string; title: string; text: string; label: string }) {
   const [copy, setCopy] = useState<"idle" | "copied" | "failed">("idle");
   const run = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(new URL(path, window.location.origin).toString());
       setCopy("copied");
     } catch {
       setCopy("failed");

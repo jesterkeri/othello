@@ -136,7 +136,7 @@ async function buttons(view: CircleView, props: Record<string, unknown> = {}, po
 import { payoutSteps, type ChainWords } from "../app/src/lib/core/circle-page.ts";
 import { RH_WORDS } from "../app/src/lib/robinhood/circle-view.ts";
 
-const SOL_WORDS: ChainWords = { fmt: (b) => `${Number(b) / 1e6} test USDC`, txUrl: (h) => h, chain: "Solana devnet", locked: "NFLXx devnet mirror", testNote: "" };
+const SOL_WORDS: ChainWords = { fmt: (b) => `${Number(b) / 1e6} test USDC`, txUrl: (h) => h, chain: "Solana devnet", locked: "NFLXx devnet mirror", testNote: "", payer: "program" };
 const ROBINHOOD_WORDS = /USDG|Robinhood|MetaMask|EVM wallet/;
 
 describe("A7: the shared single-circle page", () => {
@@ -149,20 +149,20 @@ describe("A7: the shared single-circle page", () => {
   describe("payout steps, in each chain's words", () => {
     const seats = [0, 1, 2].map((turn) => ({ turn, paid: true, defaulted: false, received: false }));
     it("every seat paid: says so, and names the chain that includes the transaction", () => {
-      const sol = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 0n }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
+      const sol = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 0n, checked: true }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
       assert.equal(sol[0]!.detail, "Every seat has paid round 2");
       assert.equal(sol.find((s) => s.key === "pending")!.detail, "Solana devnet includes the transaction");
-      const rh = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 0n }, { kind: "idle" }, RH_WORDS, { coverRefused: false, unfunded: false });
+      const rh = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 0n, checked: true }, { kind: "idle" }, RH_WORDS, { coverRefused: false, unfunded: false });
       assert.equal(rh.find((s) => s.key === "pending")!.detail, "Robinhood Chain includes the transaction");
     });
     it("a seat settled in default is not called paid", () => {
       const withDefault = seats.map((s) => (s.turn === 0 ? { ...s, paid: false, defaulted: true } : s));
-      const steps = payoutSteps({ n: 3, round: 1, seats: withDefault, gateShortBy: 0n }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
+      const steps = payoutSteps({ n: 3, round: 1, seats: withDefault, gateShortBy: 0n, checked: true }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
       assert.equal(steps[0]!.detail, "Every seat is in for round 2: 2 paid, 1 settled in default");
       assert.equal(steps[0]!.status, "done");
     });
     it("the last check's short figure is shown, in the chain's unit, without blocking the release", () => {
-      const steps = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 12_000_000n }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
+      const steps = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 12_000_000n, checked: true }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
       assert.match(steps[1]!.detail, /12 test USDC short\. Releasing checks it again\./);
     });
   });

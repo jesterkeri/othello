@@ -21,6 +21,8 @@ export type ChainWords = {
   locked: string;
   /** The closing note on every money panel, e.g. "Test USDG only; it has no value." */
   testNote: string;
+  /** What pays out on chain: "contract" (Robinhood), "program" (Solana). */
+  payer: string;
 };
 
 export type ReleaseButton = { label: string; enabled: boolean; blocker: string | null; recipientTurn: number; amount: bigint };
@@ -44,6 +46,8 @@ export type PayoutInput = {
   seats: readonly { turn: number; paid: boolean; defaulted: boolean; received: boolean }[];
   /** The stored "short by" of the last coverage check (0 when the gate passed). */
   gateShortBy: bigint;
+  /** Whether any coverage check has run (Solana: last_coverage_at > 0; until then the stored figure is just 0). */
+  checked: boolean;
 };
 
 /**
@@ -77,16 +81,23 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
         : !settled ? `${paidCount} of ${v.n} paid; waiting for ${seatList(unpaid)}`
         : coveredCount > 0 ? `Every seat is in for round ${round + 1}: ${v.n - coveredCount} paid, ${coveredCount} settled in default`
         : `Every seat has paid round ${round + 1}` },
-    { key: "safety", label: "Payout safety", status: coverFailed ? "blocked" : done || inFlight ? "done" : reserveShort > 0n ? "blocked" : settled ? "done" : "todo",
+    // ticked only once the chain has said so: a release in the wallet or on its way has not been checked yet (the
+    // release itself checks the reserve again), and a circle never checked has no figure to trust (adversary on
+    // 74ce48b)
+    { key: "safety", label: "Payout safety",
+      status: coverFailed ? "blocked" : done ? "done" : phase.kind === "sent" ? "now" : phase.kind === "wallet" ? "todo" : reserveShort > 0n ? "blocked" : !v.checked ? "todo" : settled ? "done" : "todo",
       detail: coverFailed ? "The reserve would not cover the next rounds. Top up the reserve, then check payout safety."
-        : reserveShort > 0n && !done && !inFlight ? `Last check found the reserve ${fmt(reserveShort)} short. Releasing checks it again.`
-        : "The reserve covers the next rounds" },
+        : done ? "The reserve covered the next rounds when the pot was released"
+        : inFlight ? `${reserveShort > 0n ? `Last check found the reserve ${fmt(reserveShort)} short. ` : ""}The release checks the reserve again`
+        : reserveShort > 0n ? `Last check found the reserve ${fmt(reserveShort)} short. Releasing checks it again.`
+        : !v.checked ? "Not checked yet. Releasing checks the reserve"
+        : "At the last check the reserve covered the next rounds" },
     { key: "wallet", label: "Wallet confirmation", status: phase.kind === "wallet" ? "now" : phase.kind === "sent" || done ? "done" : failedAt ? "blocked" : "todo",
       detail: phase.kind === "wallet" ? "Confirm the release in your wallet" : failedAt ? (phase as { message: string }).message : "Your wallet asks you to confirm" },
     { key: "pending", label: "Pending on chain", status: phase.kind === "sent" ? "now" : done ? "done" : "todo",
       detail: phase.kind === "sent" ? `Sent. Waiting for ${chain} to include it` : `${chain} includes the transaction` },
     { key: "released", label: "Pot released", status: done ? "done" : "todo",
-      detail: done ? `${fmt(phase.amount)} left the pot in a successful transaction` : "The contract pays the pot" },
+      detail: done ? `${fmt(phase.amount)} left the pot in a successful transaction` : `The ${words.payer} pays the pot` },
     { key: "confirmed", label: "Confirmed", status: confirmed ? "done" : done ? "now" : "todo",
       detail: confirmed ? `${seatLabel(phase.recipientTurn)} received ${fmt(phase.amount)}` : done ? "Reading the circle again to confirm" : "The circle shows the recipient as paid" },
   ];
@@ -105,7 +116,7 @@ export type CloseOut = {
   collected: number;
   owedCount: number;
   /** The connected member's seat and what withdraw pays it, when the chain's read gives the amounts. */
-  mine: { turn: number; collected: boolean; owed: boolean; locked: bigint | null; pooled: bigint | null; total: bigint | null } | null;
+  mine: { turn: number; collected: boolean; owed: boolean; locked: bigint | null; pooled: bigint | null; total: bigint | null; lockedLeft?: boolean } | null;
 };
 
 /** The phase to show for this read: a failure from an earlier round does not carry into the next (no lingering). */

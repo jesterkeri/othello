@@ -174,7 +174,7 @@ describe("A7 adversary: the shared single-circle page", () => {
     const released = { kind: "released" as const, hash: "0xabc", round: 1, recipientTurn: 1, amount: 30_000_000n };
 
     it("shared steps: do not say every seat paid", () => {
-      const steps = payoutSteps({ n: 3, round: 2, seats: after, gateShortBy: 0n }, released, RH_WORDS, { coverRefused: false, unfunded: false });
+      const steps = payoutSteps({ n: 3, round: 2, seats: after, gateShortBy: 0n, checked: true }, released, RH_WORDS, { coverRefused: false, unfunded: false });
       assert.doesNotMatch(steps[0]!.detail, /^Every seat has paid round \d+$/, `seat 1 paid nothing in round 2, yet: "${steps[0]!.detail}"`);
     });
 

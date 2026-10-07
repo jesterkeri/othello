@@ -122,12 +122,14 @@ describe("A5: the payout steps follow the real transaction", () => {
 
   it("a stale reserve shortfall shows as the safety step's blocker until a release is tried", () => {
     assert.equal(releaseSteps({ ...settled, nextGateShortBy: 5n * U }, { kind: "idle" })[1]!.status, "blocked");
-    assert.equal(releaseSteps({ ...settled, nextGateShortBy: 5n * U }, { kind: "wallet" })[1]!.status, "done");
+    // a release in the wallet has not been checked yet: the release itself checks the reserve again (A7 adversary on
+    // 74ce48b: the step was ticked before the chain had checked anything)
+    assert.equal(releaseSteps({ ...settled, nextGateShortBy: 5n * U }, { kind: "wallet" })[1]!.status, "todo");
   });
 
   it("wallet, then sent, then released; confirmed only after a read shows the recipient as received", () => {
-    assert.deepEqual(status(releaseSteps(settled, { kind: "wallet" })), ["done", "done", "now", "todo", "todo", "todo"]);
-    assert.deepEqual(status(releaseSteps(settled, { kind: "sent", hash: "0xab" })), ["done", "done", "done", "now", "todo", "todo"]);
+    assert.deepEqual(status(releaseSteps(settled, { kind: "wallet" })), ["done", "todo", "now", "todo", "todo", "todo"]);
+    assert.deepEqual(status(releaseSteps(settled, { kind: "sent", hash: "0xab" })), ["done", "now", "done", "now", "todo", "todo"]);
     const released = { kind: "released", hash: "0xab", round: 1, recipientTurn: 1, amount: 6n * U } as const;
     // the receipt is in, but the read still shows the old round: not confirmed yet
     assert.deepEqual(status(releaseSteps(settled, released)), ["done", "done", "done", "done", "done", "now"]);

@@ -386,7 +386,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
 
   // ---------------------------------------------------------------- the shared circle page, in Solana's words
   const stockUnit = `${c.stockSymbol.replace(/\s*mirror$/i, "")} devnet mirror`;
-  const words: ChainWords = { fmt: usdc, txUrl: (h) => explorer("tx", h), chain: "Solana devnet", locked: stockUnit, testNote: "Test USDC only; it has no value." };
+  const words: ChainWords = { fmt: usdc, txUrl: (h) => explorer("tx", h), chain: "Solana devnet", locked: stockUnit, testNote: "Test USDC only; it has no value.", payer: "program" };
   const listed = solToList(live, you);
   const pot = BigInt(c.contribution) * BigInt(c.n);
   const ring = ringOf(listed, you, now, { fmt: usdc, collateral: stockUnit });
@@ -405,7 +405,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   // a failure from a round the read has already left is not shown (two members releasing at once)
   const shownRelease: ReleasePhase = releasePhase.kind === "failed" && releasePhase.round !== c.round ? { kind: "idle" } : releasePhase;
   const coverRefused = shownRelease.kind === "failed" && /CoverageTooLow|ReserveOvercommitted/.test(shownRelease.error);
-  const steps = payoutSteps({ n: c.n, round: c.round, seats: listed.seats, gateShortBy: BigInt(c.nextGateShortBy) }, shownRelease, words,
+  const steps = payoutSteps({ n: c.n, round: c.round, seats: listed.seats, gateShortBy: BigInt(c.nextGateShortBy), checked: c.lastCoverageAt > 0 }, shownRelease, words,
     { coverRefused, unfunded: shownRelease.kind === "failed" && /RoundNotFunded/.test(shownRelease.error) });
   const releaseLabel = `Release pot${recipient ? ` to ${recipient.name}` : ""}`;
   const payout = active || shownRelease.kind === "released" ? (
@@ -440,7 +440,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     seats: ordered.map((m) => ({ turn: m.turn, label: seatLabel(m.turn), wallet: m.address, you: m.address === you, collected: seatSet(c.withdrawnBitmap, m.turn), owed: owes(m.turn), amount: null })),
     collected: owedSeats.filter((m) => seatSet(c.withdrawnBitmap, m.turn)).length,
     owedCount: owedSeats.length,
-    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null } : null,
+    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null, lockedLeft: (c.members.find((m) => m.turn === yourTurn)?.lockedRaw ?? 0) > 0 } : null,
   } : null;
   const closeOut = close ? (
     <CloseOutPanel
@@ -533,7 +533,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       act={
         <NextStep>
           {focus}
-          <CopyLink title="Share this circle" text="Copy the permanent circle link to share its live state. A joinable invite is available only while a circle is forming." label="Copy circle link" />
+          <CopyLink path={address === DEMO_CIRCLE ? "/circle/demo" : `/circle/sol:${address}`} title="Share this circle" text="Copy the permanent circle link to share its live state. A joinable invite is available only while a circle is forming." label="Copy circle link" />
           {action}
           {memberTools}
           {anyone}

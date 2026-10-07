@@ -25,6 +25,7 @@ export const RH_WORDS: ChainWords = {
   chain: "Robinhood Chain",
   locked: "USDG",
   testNote: "Test USDG only; it has no value.",
+  payer: "contract",
 };
 
 // the ring moved to lib/core/ring.ts (one frontend for both chains); re-exported for the Robinhood page
@@ -61,7 +62,7 @@ export function releaseButton(v: RhCircleView, ctx: ReleaseContext): ReleaseButt
  */
 export function releaseSteps(v: RhCircleView, phase: ReleasePhase): FlowStep[] {
   const error = phase.kind === "failed" ? phase.error : "";
-  return payoutSteps({ n: v.n, round: v.round, seats: v.seats, gateShortBy: v.nextGateShortBy }, phase, RH_WORDS, {
+  return payoutSteps({ n: v.n, round: v.round, seats: v.seats, gateShortBy: v.nextGateShortBy, checked: true }, phase, RH_WORDS, {
     coverRefused: ["CoverageTooLow", "ReserveOvercommitted"].includes(error),
     unfunded: error === "RoundNotFunded",
   });
