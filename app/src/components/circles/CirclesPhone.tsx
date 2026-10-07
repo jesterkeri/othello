@@ -84,11 +84,11 @@ export default function CirclesPhone({ side, running, done, needsCount, waitingC
             onKeyDown={done.length > 1 ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onDone(); } } : undefined}>
             <span className={p.cardTop}>
               <span className={p.round}>Finished</span>
-              {toCollect > 0 && <span className={p.sticker}>{toCollect} to collect</span>}
+              {toCollect > 0 && <span className={p.sticker}>{toCollect}{unread ? "+" : ""} to collect</span>}
             </span>
             <span className={p.finishedRow}>
-              <span className={p.pot}>{done.length}</span>
-              <span className={p.status}>{done.length === 1 ? "circle paid out or cancelled" : "circles paid out or cancelled"}</span>
+              <span className={p.pot}>{done.length}{unread ? "+" : ""}</span>
+              <span className={p.status}>{done.length === 1 && !unread ? "circle paid out or cancelled" : "circles paid out or cancelled"}{unread ? ", more not read yet" : ""}</span>
               <span className={p.arrow} aria-hidden><Arrow /></span>
             </span>
           </a>

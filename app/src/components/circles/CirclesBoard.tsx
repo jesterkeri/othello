@@ -76,7 +76,9 @@ function ListDialog({ dialog, title, items, me }: { dialog: React.RefObject<HTML
  * The finished circles as one card with the layers of a pile under it. One circle opens it; more open the list. It
  * shows in every state (Joshua 2026-10-06): with none yet, it says where finished circles will go.
  */
-function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpen: () => void }) {
+function FinishedStack({ items, me, unread, onOpen }: { items: Item[]; me: string; unread: number; onOpen: () => void }) {
+  // with circles unread, the pile's counts are "at least" (adversary on cbdba79)
+  const more = unread > 0 ? "+" : "";
   if (items.length === 0) {
     return (
       <div className={c.stackWrap} style={{ gridArea: "f" }}>
@@ -89,8 +91,8 @@ function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpe
               <Trim deco="stripes" />
               <span className={c.cardTop}><span className={c.stage}>Finished</span></span>
               <span className={c.cardBody}>
-                <b className={c.headline}>Your completed circles come here.</b>
-                <span className={c.detail}>When a circle pays out its last round, it moves here, and you collect what you locked from it.</span>
+                <b className={c.headline}>{unread ? "Not every circle is read yet." : "Your completed circles come here."}</b>
+                <span className={c.detail}>{unread ? "Any finished ones among them come here once they are read." : "When a circle pays out its last round, it moves here, and you collect what you locked from it."}</span>
               </span>
             </span>
           </span>
@@ -107,12 +109,12 @@ function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpe
           <Fit as="span">
             <span className={c.cardTop}>
               <span className={c.stage}>Finished</span>
-              {toCollect > 0 && <span className={c.sticker}>{toCollect} to collect</span>}
+              {toCollect > 0 && <span className={c.sticker}>{toCollect}{more} to collect</span>}
             </span>
             <span className={c.cardBody}>
               <span className={c.membersHead}>
-                <span className={c.bigNum}>{items.length}</span>
-                <span className={c.potLabel}>{items.length === 1 ? "circle paid out or cancelled" : "circles paid out or cancelled"}</span>
+                <span className={c.bigNum}>{items.length}{more}</span>
+                <span className={c.potLabel}>{items.length === 1 && !more ? "circle paid out or cancelled" : "circles paid out or cancelled"}{more && ", more not read yet"}</span>
               </span>
               <span className={c.tokens}>
                 {items.slice(0, 4).map(({ v }) => <MiniRing key={v.address} v={v} me={me} className={c.token} />)}
@@ -207,7 +209,7 @@ export default function CirclesBoard({ items, me, side, unread = 0 }: { items: I
             <a className={c.heroAction} href={CHAIN_PAGE[side].startHref}>Start a circle <span aria-hidden>→</span></a>
           </div>
         )}
-        <FinishedStack items={done} me={me} onOpen={() => doneDialog.current?.showModal()} />
+        <FinishedStack items={done} me={me} unread={unread} onOpen={() => doneDialog.current?.showModal()} />
       </div>
       <ListDialog dialog={needsDialog} title="Waiting on you" items={waiting} me={me} />
       <ListDialog dialog={doneDialog} title="Finished circles" items={done} me={me} />

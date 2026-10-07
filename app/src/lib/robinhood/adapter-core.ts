@@ -179,6 +179,17 @@ export function readCircleInTurn(
   return run;
 }
 
+/**
+ * Promise.all that rejects only once every call has settled: a read that failed on one call still had its other calls
+ * (and viem's own retries of them) on the RPC, so it must not count as over while they run, or the next queued circle
+ * read overlaps them (adversary on cbdba79). Rejects with the first failure, in call order.
+ */
+async function allSettledOrThrow<T extends readonly unknown[] | []>(calls: T): Promise<{ -readonly [K in keyof T]: Awaited<T[K]> }> {
+  const settled = (await Promise.allSettled(calls)) as PromiseSettledResult<unknown>[];
+  for (const x of settled) if (x.status === "rejected") throw x.reason;
+  return settled.map((x) => (x as PromiseFulfilledResult<unknown>).value) as never;
+}
+
 async function readCircleAt(
   client: Pick<PublicClient, "readContract">,
   circle: Address,
@@ -195,7 +206,7 @@ async function readCircleAt(
     status, round, deadline, paid, joined, withdrawn, received, defaulted, marked,
     reserveTotal, reserveLosses, reserveAllocated, escrow, escrowDeficit, withdrawnFromReserve,
     collateralReturned, depositsTotal, forfeitedTotal, nextGateShortBy, heldContributions, lastCoverageAt, accounted,
-  ] = await Promise.all([
+  ] = await allSettledOrThrow([
     r<Address>("factory"), r<Address>("creator"), r<bigint>("n"), r<bigint>("c"), r<bigint>("g"),
     r<bigint>("minStockCover"), r<bigint>("haircutBps"), r<bigint>("coverageBps"), r<bigint>("warnBps"),
     r<bigint>("roundSecs"), r<bigint>("graceSecs"),
@@ -207,9 +218,9 @@ async function readCircleAt(
     r<bigint>("heldContributions"), r<bigint>("lastCoverageAt"), r<bigint>("accounted"),
   ]);
   const count = Number(n);
-  const [members, seats, balance] = await Promise.all([
-    Promise.all(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
-    Promise.all(
+  const [members, seats, balance] = await allSettledOrThrow([
+    allSettledOrThrow(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
+    allSettledOrThrow(
       Array.from({ length: count }, (_, t) =>
         r<{
           collateral: bigint; g: bigint; topUps: bigint; forfeited: bigint; allocated: bigint;

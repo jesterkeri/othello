@@ -69,6 +69,8 @@ export function useSolanaCircles(): CirclesSource {
     failed: (found?.failed ?? []).map((address) => ({ address, href: `/circle/sol:${address}` })),
     error,
     retry: me ? () => load(me) : null,
+    // a circle the server could not read is read again with the whole list (the server reads every circle)
+    retryFailed: me ? () => load(me) : null,
     more: null,
   };
 }
