@@ -56,6 +56,9 @@ export default function PayoutPanel({ words, button, steps, phase, showSafetyChe
           {/* a release that was sent and then refused or not confirmed: its transaction, to check (adversary on a76dfd8) */}
           {phase.kind === "failed" && phase.hash && <a className={r.link} href={words.txUrl(phase.hash)} target="_blank" rel="noreferrer">See the transaction on the explorer</a>}
           {hash && phase.kind === "sent" && <a className={r.link} href={words.txUrl(hash)} target="_blank" rel="noreferrer">Watch it on the explorer</a>}
+          {/* released, and the read has not yet shown the recipient paid: its transaction, from the moment it is done
+              (adversary on 115079f) */}
+          {hash && phase.kind === "released" && <a className={r.link} href={words.txUrl(hash)} target="_blank" rel="noreferrer">See the transaction on the explorer</a>}
         </>
       )}
       {showSafetyCheck && (

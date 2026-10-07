@@ -249,3 +249,25 @@ describe("A7: one transaction at a time across wallets; an outcome stays in its 
     assert.doesNotMatch(t, /waiting for Seat/);
   });
 });
+
+describe("A7: the close-out's withdrawal in flight, in true words (adversary r7 suspicions)", () => {
+  beforeEach(() => {
+    g.__sets = [];
+    g.__conn = {};
+  });
+  const withdrawing = { phase: "confirming", what: "Withdraw", sig: SIG, round: 4, status: "Completed", by: wallets[0]! };
+
+  it("the sender: once sent, the button no longer asks for the wallet, and the status line follows it on devnet", async () => {
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(wallets[0]!), sendTransaction: async () => "x" };
+    const t = text(await renderHtml(completed, withdrawing, null));
+    assert.match(t, /Withdraw: sent\. Confirming on devnet/);
+    assert.doesNotMatch(t, /Confirm in your wallet/);
+  });
+
+  it("another member: told it is another wallet's transaction, not their own wallet's", async () => {
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(wallets[1]!), sendTransaction: async () => "x" };
+    const t = text(await renderHtml(completed, withdrawing, null));
+    assert.match(t, /Another wallet's transaction is still waiting for its wallet or for devnet/);
+    assert.doesNotMatch(t, /waiting for your wallet/);
+  });
+});

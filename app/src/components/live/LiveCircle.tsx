@@ -471,8 +471,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       close={close}
       completed={completed}
       canWrite={canSend}
-      blocker={!wallet.publicKey ? "Connect the devnet wallet of your seat to collect." : busy ? "A transaction is already waiting for your wallet or for devnet." : null}
-      busy={(pay.phase === "wallet" || pay.phase === "confirming") && pay.what === "Withdraw"}
+      blocker={!wallet.publicKey ? "Connect the devnet wallet of your seat to collect." : busy ? `${othersInFlight ? "Another wallet's" : "A"} transaction is still waiting for its wallet or for devnet.` : null}
+      // the button asks for the wallet only while the wallet asks; once sent, the status line follows it on devnet
+      busy={pay.phase === "wallet" && pay.what === "Withdraw"}
       onWithdraw={() => void send("Withdraw", (me) => withdrawIx(me, keys))}
     />
   ) : null;
