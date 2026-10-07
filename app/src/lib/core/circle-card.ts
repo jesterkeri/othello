@@ -96,7 +96,9 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
     // anyone may release a funded round on both chains (releasePot / release_pot have no caller check): the card says
     // so, while the recipient's own Claim is what Needs-you counts (adversary on 60f4a3b)
     if (v.releasable) return card("active", "Funded", `Round ${v.round + 1} is funded: anyone can release ${fmt(pot)} to ${seatLabel(v.round)}`, "Release");
-    if (!v.priceReady) return card("active", "Active", `Round ${v.round + 1} is paid: ${fmt(pot)} moves to ${seatLabel(v.round)} once the ${v.collateral} price is updated`);
+    // every seat is in, but a seat settled in default is paid from the escrow only by the release itself, so the round
+    // is not called "paid" (adversary on 8c00fff)
+    if (!v.priceReady) return card("active", "Active", `Round ${v.round + 1}: every seat is in. ${fmt(pot)} moves to ${seatLabel(v.round)} once the ${v.collateral} price is updated`);
     return card("active", "Active", `Round ${v.round + 1} of ${v.n}: ${seatLabel(v.round)} receives ${fmt(pot)}`);
   }
 
