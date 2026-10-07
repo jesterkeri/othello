@@ -46,6 +46,8 @@ export type CirclesSource = {
   retry: (() => void) | null;
   /** Circles found but not read (a cap): the page says so instead of dropping them silently. */
   notShown?: number;
+  /** Which circles were shown first when some are not (Solana: by what needs the wallet; Robinhood: newest). */
+  shownFirst?: string;
   /** Older circles exist (Robinhood lists a page at a time). */
   more: { loading: boolean; load: () => void } | null;
 };
@@ -78,7 +80,7 @@ export default function CirclesHome({ source }: { source: CirclesSource }) {
         {source.notShown ? (
           <p className={s.muted}>
             Showing {source.circles.length + source.failed.length} of {source.circles.length + source.failed.length + source.notShown} circles:
-            the ones you have to act in first.
+            {source.shownFirst ?? "the ones you have to act in first"}.
           </p>
         ) : null}
         {source.failed.map((c) => (

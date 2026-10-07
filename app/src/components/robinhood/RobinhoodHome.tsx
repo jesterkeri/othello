@@ -128,6 +128,10 @@ export function useRobinhoodCircles(): CirclesSource {
     failed: (circles ?? [])
       .filter((c) => views[c.address.toLowerCase()] === "failed")
       .map((c) => ({ address: c.address, href: `/circle/rh:${c.address}` })),
+    // older circles behind Show more are not read: counted, so the board claims nothing exact about them (adversary
+    // on 774ca7d). `before` is where the next older page ends in the factory's index: the count of older entries.
+    notShown: circles && list.before !== null ? list.before : 0,
+    shownFirst: "the newest first; Show more reads older ones",
     retryFailed: fresh ? retryFailed : null,
     error: factoryFailed ? "Othello's factory on Robinhood Chain testnet could not be verified just now." : fresh ? list.error : null,
     // both page from the list read for this wallet only: before the reset runs, `list` is still the last wallet's

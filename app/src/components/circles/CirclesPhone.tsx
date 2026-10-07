@@ -75,7 +75,7 @@ export default function CirclesPhone({ side, running, done, needsCount, waitingC
         {done.length === 0 ? (
           <div className={`${p.card} ${p.finished}`}>
             <span className={p.round}>Finished</span>
-            <b className={p.headline}>Your completed circles come here.</b>
+            <b className={p.headline}>{unread ? "Finished circles come here once read." : "Your completed circles come here."}</b>
           </div>
         ) : (
           <a className={`${p.card} ${p.finished}`} href={done.length === 1 ? done[0]!.v.href : undefined}

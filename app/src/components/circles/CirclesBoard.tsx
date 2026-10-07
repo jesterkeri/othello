@@ -183,7 +183,7 @@ export default function CirclesBoard({ items, me, side, unread = 0 }: { items: I
     <div ref={screen} className={`${c.screen} ${shown.length >= 2 ? c.screenFit : ""}`}>
       <CirclesTitle side={side} action={shown.length === 0 ? <span className={c.deskOnly}>{pill}</span> : extra.length > 0 ? (
         <button type="button" className={c.start} onClick={() => moreDialog.current?.showModal()} aria-haspopup="dialog">
-          {extra.length} more running
+          {extra.length}{unread ? "+" : ""} more running
         </button>
       ) : null} />
       {/* a phone gets its own layout (CirclesPhone), not this bento squeezed (Joshua 2026-10-06) */}
