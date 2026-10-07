@@ -1,18 +1,19 @@
 "use client";
 
 /**
- * Releasing a round's pot (Joshua, 2026-10-05): one button whose label says truly who receives (lib/robinhood/
- * circle-view.ts releaseButton), the exact blocker when it cannot run, and six steps that follow the real
- * transaction (releaseSteps). Nothing shows as paid before the receipt, and "Confirmed" waits for a fresh read.
+ * Releasing a round's pot (Joshua, 2026-10-05), on either chain (the shared circle page, 2026-10-07): one button whose
+ * label says truly who receives, the exact blocker when it cannot run, and six steps that follow the real transaction
+ * (lib/core/circle-page.ts payoutSteps). Nothing shows as paid before the receipt, and "Confirmed" waits for a fresh
+ * read.
  */
-import { explorerTx } from "@/lib/robinhood/chain";
-import type { FlowStep, ReleaseButton, ReleasePhase } from "@/lib/robinhood/circle-view";
+import type { ChainWords, FlowStep, ReleaseButton, ReleasePhase } from "@/lib/core/circle-page";
 
 import r from "./PayoutPanel.module.css";
 
 const MARK = { done: "✓", now: "", todo: "", blocked: "!" } as const;
 
-export default function PayoutPanel({ button, steps, phase, showSafetyCheck, canWrite, onRelease, onCheckSafety, onClose }: {
+export default function PayoutPanel({ words, button, steps, phase, showSafetyCheck, canWrite, onRelease, onCheckSafety, onClose }: {
+  words: ChainWords;
   button: ReleaseButton;
   steps: FlowStep[];
   phase: ReleasePhase;
@@ -42,7 +43,7 @@ export default function PayoutPanel({ button, steps, phase, showSafetyCheck, can
       {confirmed && phase.kind === "released" ? (
         <div className={r.final}>
           <b>{steps.find((s) => s.key === "confirmed")!.detail}</b>
-          <span><a className={r.link} href={explorerTx(phase.hash)} target="_blank" rel="noreferrer">See the transaction on the explorer</a></span>
+          <span><a className={r.link} href={words.txUrl(phase.hash)} target="_blank" rel="noreferrer">See the transaction on the explorer</a></span>
           <button type="button" className={r.quiet} onClick={onClose}>Done</button>
         </div>
       ) : (
@@ -52,13 +53,13 @@ export default function PayoutPanel({ button, steps, phase, showSafetyCheck, can
           </button>
           {button.blocker && phase.kind !== "wallet" && phase.kind !== "sent" && <p className={r.blocker}>{button.blocker}</p>}
           {phase.kind === "failed" && <p className={r.blocker} role="alert">{phase.message}</p>}
-          {hash && phase.kind === "sent" && <a className={r.link} href={explorerTx(hash)} target="_blank" rel="noreferrer">Watch it on the explorer</a>}
+          {hash && phase.kind === "sent" && <a className={r.link} href={words.txUrl(hash)} target="_blank" rel="noreferrer">Watch it on the explorer</a>}
         </>
       )}
       {showSafetyCheck && (
         <button type="button" className={r.quiet} disabled={!canWrite} onClick={onCheckSafety}>Check payout safety</button>
       )}
-      <p className={r.note}>Any member can release a settled pot; it always goes to the seat whose turn it is. Test USDG only; it has no value.</p>
+      <p className={r.note}>Any member can release a settled pot; it always goes to the seat whose turn it is. {words.testNote}</p>
     </section>
   );
 }

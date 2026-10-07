@@ -35,8 +35,10 @@ const BEFORE_UNFOLD: Stage[] = ["logo", "grow"];
 const BEFORE_DRAW: Stage[] = ["logo", "grow", "unfold"];
 const BEFORE_SPIN: Stage[] = ["logo", "grow", "unfold", "draw"];
 
-export default function CircleRing({ ring, pot, round, showList = true, entrance = true, fmt = fmtUsdg }: {
+export default function CircleRing({ ring, pot, round, showList = true, entrance = true, fmt = fmtUsdg, collateral = "USDG" }: {
   ring: Ring; pot: bigint; round: number; showList?: boolean;
+  /** What a seat locks, in the legend: USDG (default) on Robinhood, the circle's stock on Solana. */
+  collateral?: string;
   /** How the pot is written: USDG (default) on Robinhood, USDC on Solana (the shared circles list). */
   fmt?: (base: bigint) => string;
   /** Play the logo-unfold entrance on mount (false: render the settled ring, e.g. for a static layout check). */
@@ -140,7 +142,7 @@ export default function CircleRing({ ring, pot, round, showList = true, entrance
           ))}
         </ol>
       )}
-      {showList && <p className={r.legend} aria-hidden><span>✓ paid</span><span>◐ covered by locked USDG</span><span>! late or cover short</span><span>no mark: due</span></p>}
+      {showList && <p className={r.legend} aria-hidden><span>✓ paid</span><span>◐ covered by locked {collateral}</span><span>! late or cover short</span><span>no mark: due</span></p>}
     </figure>
   );
 }

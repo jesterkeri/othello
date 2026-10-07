@@ -10,8 +10,22 @@
  * result, not treated as a refusal.
  */
 import type { RhCircleView } from "./adapter";
+import { explorerTx } from "./chain";
 import { fmtUsdg } from "./copy";
+import { currentPhase as phaseFor, payoutSteps, type ChainWords, type CloseOut as CoreCloseOut, type FlowStep, type ReleaseButton, type ReleasePhase } from "../core/circle-page";
 import { seatLabel, seatList } from "../core/ring";
+
+// the payout and close-out shapes moved to lib/core/circle-page.ts (one circle page for both chains)
+export type { FlowStep, ReleaseButton, ReleasePhase, StepStatus } from "../core/circle-page";
+
+/** The Robinhood page's words for the shared panels. */
+export const RH_WORDS: ChainWords = {
+  fmt: fmtUsdg,
+  txUrl: explorerTx,
+  chain: "Robinhood Chain",
+  locked: "USDG",
+  testNote: "Test USDG only; it has no value.",
+};
 
 // the ring moved to lib/core/ring.ts (one frontend for both chains); re-exported for the Robinhood page
 export { ringOf, seatFill, seatLabel, seatList, seatSize, type Ring, type RingSeat, type RingSource, type SeatPayment, type SeatRole } from "../core/ring";
@@ -19,7 +33,6 @@ export { ringOf, seatFill, seatLabel, seatList, seatSize, type Ring, type RingSe
 const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
 
 export type ReleaseContext = { hasWallet: boolean; connected: boolean; onRobinhood: boolean; busy: boolean; me: string | null };
-export type ReleaseButton = { label: string; enabled: boolean; blocker: string | null; recipientTurn: number; amount: bigint };
 
 
 /** The pay-out control, or null when the circle is not active. Its label says truly who receives. */
@@ -42,61 +55,22 @@ export function releaseButton(v: RhCircleView, ctx: ReleaseContext): ReleaseButt
   return { label, enabled: true, blocker: null, recipientTurn, amount };
 }
 
-/** Where a release stands. "sent" carries the hash from the wallet; "released" the confirmed receipt's. */
-export type ReleasePhase =
-  | { kind: "idle" }
-  | { kind: "wallet" }
-  | { kind: "sent"; hash: string }
-  | { kind: "released"; hash: string; round: number; recipientTurn: number; amount: bigint }
-  /** A refusal belongs to the round it was tried in; once the read has moved on it no longer applies. */
-  | { kind: "failed"; message: string; error: string; round: number };
-
-export type StepStatus = "done" | "now" | "todo" | "blocked";
-export type FlowStep = { key: string; label: string; status: StepStatus; detail: string };
-
 /**
- * The six steps of a payout, each from real state: payments and the reserve from the chain read, the wallet and
- * pending steps from the action in flight, "released" from a successful receipt, "confirmed" only once a fresh read
- * shows the recipient's seat as received. Nothing is marked done before the chain says so.
+ * The six steps of a payout (lib/core/circle-page.ts payoutSteps) for a Robinhood circle: the contract refuses an
+ * unfunded round with RoundNotFunded and the payout gate with CoverageTooLow or ReserveOvercommitted.
  */
 export function releaseSteps(v: RhCircleView, phase: ReleasePhase): FlowStep[] {
-  const done = phase.kind === "released";
-  // the round this flow is about: once released, the read may already show the next round
-  const round = done ? phase.round : v.round;
-  const unpaid = v.seats.filter((s) => !s.paid && !s.defaulted).map((s) => s.turn);
-  const settled = done || unpaid.length === 0;
-  const paidCount = v.seats.filter((s) => s.paid || s.defaulted).length;
-  const reserveShort = v.nextGateShortBy;
-  const coverFailed = phase.kind === "failed" && ["CoverageTooLow", "ReserveOvercommitted"].includes(phase.error);
-  const confirmed = done && Boolean(v.seats[phase.recipientTurn]?.received);
-  const inFlight = phase.kind === "wallet" || phase.kind === "sent";
-  const failedAt = phase.kind === "failed" && !coverFailed && phase.error !== "RoundNotFunded";
-  return [
-    { key: "payments", label: "Payments", status: settled ? "done" : "blocked",
-      detail: settled ? `Every seat has paid or been settled for round ${round + 1}` : `${paidCount} of ${v.n} paid; waiting for ${seatList(unpaid)}` },
-    { key: "safety", label: "Payout safety", status: coverFailed ? "blocked" : done || inFlight ? "done" : reserveShort > 0n ? "blocked" : settled ? "done" : "todo",
-      detail: coverFailed ? "The reserve would not cover the next rounds. Top up the reserve, then check payout safety."
-        : reserveShort > 0n && !done && !inFlight ? `Last check found the reserve ${fmtUsdg(reserveShort)} short. Releasing checks it again.`
-        : "The reserve covers the next rounds" },
-    { key: "wallet", label: "Wallet confirmation", status: phase.kind === "wallet" ? "now" : phase.kind === "sent" || done ? "done" : failedAt ? "blocked" : "todo",
-      detail: phase.kind === "wallet" ? "Confirm the release in your wallet" : failedAt ? (phase as { message: string }).message : "Your wallet asks you to confirm" },
-    { key: "pending", label: "Pending on chain", status: phase.kind === "sent" ? "now" : done ? "done" : "todo",
-      detail: phase.kind === "sent" ? "Sent. Waiting for Robinhood Chain to include it" : "Robinhood Chain includes the transaction" },
-    { key: "released", label: "Pot released", status: done ? "done" : "todo",
-      detail: done ? `${fmtUsdg(phase.amount)} left the pot in a successful transaction` : "The contract pays the pot" },
-    { key: "confirmed", label: "Confirmed", status: confirmed ? "done" : done ? "now" : "todo",
-      detail: confirmed ? `${seatLabel(phase.recipientTurn)} received ${fmtUsdg(phase.amount)}` : done ? "Reading the circle again to confirm" : "The circle shows the recipient as paid" },
-  ];
+  const error = phase.kind === "failed" ? phase.error : "";
+  return payoutSteps({ n: v.n, round: v.round, seats: v.seats, gateShortBy: v.nextGateShortBy }, phase, RH_WORDS, {
+    coverRefused: ["CoverageTooLow", "ReserveOvercommitted"].includes(error),
+    unfunded: error === "RoundNotFunded",
+  });
 }
 
-export type CloseOut = {
-  title: string;
-  body: string;
-  seats: { turn: number; label: string; wallet: string; you: boolean; collected: boolean; owed: boolean; amount: bigint }[];
-  collected: number;
-  owedCount: number;
-  /** The connected member's seat and exactly what withdraw() pays it: its locked USDG plus its reserve share. */
-  mine: { turn: number; collected: boolean; owed: boolean; locked: bigint; pooled: bigint; total: bigint } | null;
+/** A finished Robinhood circle: every amount exact (withdraw()'s own arithmetic) for a seat that has not collected. */
+export type CloseOut = CoreCloseOut & {
+  seats: (CoreCloseOut["seats"][number] & { amount: bigint })[];
+  mine: (NonNullable<CoreCloseOut["mine"]> & { locked: bigint; pooled: bigint; total: bigint }) | null;
 };
 
 /**
@@ -137,5 +111,5 @@ export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null
 
 /** The phase to show for this read: a failure from an earlier round does not carry into the next (spec: no lingering). */
 export function currentPhase(phase: ReleasePhase, v: RhCircleView): ReleasePhase {
-  return phase.kind === "failed" && phase.round !== v.round ? { kind: "idle" } : phase;
+  return phaseFor(phase, v.round);
 }

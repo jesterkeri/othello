@@ -2,7 +2,8 @@
 
 /**
  * T18: the demo circle, live from devnet. Reads through /api/circle (the
- * server reads devnet once and shares it) every REFRESH_MS, renders the ordinary Circle screen in live mode, and gives a
+ * server reads devnet once and shares it) every REFRESH_MS, renders the shared circle page (components/circle-page,
+ * Joshua 2026-10-07: one page for both chains) in Solana's words, and gives a
  * connected member one action: pay this round (`contribute`), signed in their
  * own wallet. T18d: and gives ANY connected wallet the three instructions anyone may send
  * (SPEC §5): release the pot once every seat has paid, update coverage, and declare a seat in
@@ -16,20 +17,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction, type TransactionInstruction } from "@solana/web3.js";
 
-import Circle from "@/components/circle/Circle";
+import CirclePage, { ActionRow, NextStep, type MemberCard, type PageBanner } from "@/components/circle-page/CirclePage";
+import CloseOutPanel from "@/components/circle-page/CloseOutPanel";
+import CopyLink from "@/components/circle-page/CopyLink";
+import PayoutPanel from "@/components/circle-page/PayoutPanel";
 import s from "@/components/circle/Circle.module.css";
 import Shell from "@/components/othello/Shell";
-import { defaultRecovered, derive, formatDuration, formatUsdc, releaseBlock, seatSet } from "@/lib/circle";
+import { coverageLabel, defaultRecovered, derive, execValue, formatDuration, formatRaw, formatUsdc, fundValue, obligations, releaseBlock, seatSet, shortAddress, stockCover } from "@/lib/circle";
+import { payoutSteps, type ChainWords, type CloseOut, type ReleasePhase } from "@/lib/core/circle-page";
+import { ringOf, seatLabel } from "@/lib/core/ring";
+import { solToList } from "@/lib/to-list-solana";
 import { addStockIx, declareDefaultIx, parseUnits, releasePotIx, topUpReserveIx, updateCoverageIx, withdrawIx } from "@/lib/actions";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
 import { multiplierAt } from "@/lib/scaledUi";
 
-import XStocksPanel from "./XStocksPanel";
+import SolanaPanel from "./SolanaPanel";
 
 const REFRESH_MS = 5_000;
 const USDC_WORD = "test USDC";
+/** Solana's money in its own words: base units of test USDC (6 decimals). */
+const usdc = (base: bigint) => `${formatUsdc(Number(base))} ${USDC_WORD}`;
 
 /** One transaction at a time, whichever button sent it; `what` names it in the status line. */
 type Pay =
@@ -45,8 +54,12 @@ function isRejection(e: unknown): boolean {
   return /reject|declin|denied|cancel/i.test(`${e instanceof Error ? e.message : String(e)} ${inner?.message ?? ""}`);
 }
 
-/** `address`: any Othello circle (default the demo; Joshua 2026-10-06, circles opened from the shared list). */
-export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string }) {
+/**
+ * `address`: any Othello circle (default the demo; Joshua 2026-10-06, circles opened from the shared list). `seat`
+ * and `kind`: a seat page (/circle/<id>/position/N, /join/N) is this page with that seat in focus (Joshua
+ * 2026-10-07: the seat pages move onto the shared circle page).
+ */
+export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { address?: string; seat?: number; kind?: "position" | "join" }) {
   const { connection } = useConnection();
   const wallet = useWallet();
   const [live, setLive] = useState<Live | null>(null);
@@ -57,6 +70,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
   const [topAmt, setTopAmt] = useState("10");
   // Only the latest read may write: a slow response must not put an older circle back.
   const latest = useRef(0);
+  // The round, seat and pot a release was sent for: release_pot names its recipient, so a release that succeeds paid
+  // exactly that seat for that round (a stale one is refused); the payout panel confirms it from this.
+  const releasing = useRef<{ round: number; turn: number; amount: bigint } | null>(null);
 
   const refresh = useCallback(async () => {
     const mine = ++latest.current;
@@ -126,7 +142,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
 
   if (!live) {
     return (
-      <Shell active="Circles">
+      <Shell active="Circles" side="solana">
         <div className={s.frame}>
           <div className={s.banners} style={{ padding: 24 }}>
             {error ? (
@@ -151,6 +167,17 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
 
   const c = live.view;
   const now = live.readAt;
+  if (seat !== undefined && seat > c.n) {
+    return (
+      <Shell active="Circles" side="solana">
+        <div className={s.frame}>
+          <div className={s.banners} style={{ padding: 24 }}>
+            <p className={s.panelNote}>This circle has {c.n} seats; there is no seat {seat}.</p>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
   const mirrorNow = multiplierAt(live.split, Math.floor(Date.now() / 1000));
 
   let text: string;
@@ -262,14 +289,6 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
         </p>
       </span>
       <span className={s.actionButtons}>
-        <button
-          type="button"
-          className={s.pay}
-          disabled={!canSend || !canRelease}
-          onClick={() => recipient && void send("Release", (me) => releasePotIx(me, keys, new PublicKey(recipient.address)))}
-        >
-          Release pot{recipient ? ` to ${recipient.name}` : ""}
-        </button>
         {defaults.map(({ m, poolShort }) => (
           <button
             key={m.turn}
@@ -337,11 +356,6 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
           </label>
         </span>
       )}
-      {ended && !mineWithdrawn && (
-        <button type="button" className={s.pay} disabled={!canSend} onClick={() => void send("Withdraw", (me) => withdrawIx(me, keys))}>
-          Withdraw
-        </button>
-      )}
     </div>
   ) : null;
 
@@ -367,28 +381,199 @@ export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string
     </div>
   );
 
-  return (
-    <Circle
-      circle={c}
-      startNow={now}
-      stateKey={liveKeyOf(address)}
-      live={{
-        circleAddress: address,
-        readAt: live.readAt,
-        error,
-        mirrorLabel: LABELS.nflxxMirror,
-        usdcWord: USDC_WORD,
-        yourTurn,
-        split: live.split,
-        action: (
-          <>
-            {action}
-            {memberTools}
-            {anyone}
-          </>
-        ),
-        below: <XStocksPanel mirror={{ multiplierNow: mirrorNow, label: LABELS.nflxxMirror }} />,
+  // ---------------------------------------------------------------- the shared circle page, in Solana's words
+  const stockUnit = `${c.stockSymbol.replace(/\s*mirror$/i, "")} devnet mirror`;
+  const words: ChainWords = { fmt: usdc, txUrl: (h) => explorer("tx", h), chain: "Solana devnet", locked: stockUnit, testNote: "Test USDC only; it has no value." };
+  const listed = solToList(live, you);
+  const pot = BigInt(c.contribution) * BigInt(c.n);
+  const ring = ringOf(listed, you, now, { fmt: usdc, collateral: stockUnit });
+  const gateNeeded = dv.remains + c.nextGateShortBy;
+  const joinedCount = dv.joined;
+
+  // The release, through the shared payout panel (the same six steps as Robinhood's), followed from this page's own
+  // transaction: the wallet, sent (its signature), then the program's answer.
+  const releasePhase: ReleasePhase = pay.phase === "idle" || !pay.what.startsWith("Release")
+    ? { kind: "idle" }
+    : pay.phase === "wallet" ? { kind: "wallet" }
+    : pay.phase === "confirming" ? { kind: "sent", hash: pay.sig }
+    : pay.phase === "done" && releasing.current ? { kind: "released", hash: pay.sig, round: releasing.current.round, recipientTurn: releasing.current.turn, amount: releasing.current.amount }
+    : pay.phase === "failed" ? { kind: "failed", message: pay.reason, error: pay.reason, round: releasing.current?.round ?? c.round }
+    : { kind: "idle" };
+  // a failure from a round the read has already left is not shown (two members releasing at once)
+  const shownRelease: ReleasePhase = releasePhase.kind === "failed" && releasePhase.round !== c.round ? { kind: "idle" } : releasePhase;
+  const coverRefused = shownRelease.kind === "failed" && /CoverageTooLow|ReserveOvercommitted/.test(shownRelease.error);
+  const steps = payoutSteps({ n: c.n, round: c.round, seats: listed.seats, gateShortBy: BigInt(c.nextGateShortBy) }, shownRelease, words,
+    { coverRefused, unfunded: shownRelease.kind === "failed" && /RoundNotFunded/.test(shownRelease.error) });
+  const releaseLabel = `Release pot${recipient ? ` to ${recipient.name}` : ""}`;
+  const payout = active || shownRelease.kind === "released" ? (
+    <PayoutPanel
+      words={words}
+      button={{ label: releaseLabel, enabled: canSend && canRelease, blocker: null, recipientTurn: recipient?.turn ?? c.round, amount: pot }}
+      steps={steps}
+      phase={shownRelease}
+      showSafetyCheck={dv.paused || coverRefused}
+      canWrite={canSend && canCover}
+      onRelease={() => {
+        if (!recipient) return;
+        releasing.current = { round: c.round, turn: recipient.turn, amount: pot };
+        void send(releaseLabel, (me) => releasePotIx(me, keys, new PublicKey(recipient.address)));
       }}
+      onCheckSafety={() => void send("Coverage update", (me) => updateCoverageIx(me, keys))}
+      onClose={() => setPay({ phase: "idle" })}
+    />
+  ) : null;
+
+  // A finished circle: each joined member (every member of a Completed one) withdraws their own seat. The stock is
+  // valued at withdraw time, so no amount is named here.
+  const completed = c.status === "Completed";
+  const owes = (turn: number) => completed || seatSet(c.joinedBitmap, turn);
+  const ordered = [...c.members].sort((a, b) => a.turn - b.turn);
+  const owedSeats = ordered.filter((m) => owes(m.turn));
+  const close: CloseOut | null = ended ? {
+    title: completed ? `All ${c.n} rounds are paid out` : "This circle was cancelled",
+    body: completed
+      ? `Each member now collects their own locked ${stockUnit} plus a share of what is left in the shared reserve. Only the member's own wallet can collect it, and it does not expire.`
+      : `It was cancelled before it started. Each member who joined collects their locked ${stockUnit}, guarantee and any top ups back. Only the member's own wallet can collect it, and it does not expire.`,
+    seats: ordered.map((m) => ({ turn: m.turn, label: seatLabel(m.turn), wallet: m.address, you: m.address === you, collected: seatSet(c.withdrawnBitmap, m.turn), owed: owes(m.turn), amount: null })),
+    collected: owedSeats.filter((m) => seatSet(c.withdrawnBitmap, m.turn)).length,
+    owedCount: owedSeats.length,
+    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null } : null,
+  } : null;
+  const closeOut = close ? (
+    <CloseOutPanel
+      words={words}
+      close={close}
+      completed={completed}
+      canWrite={canSend}
+      blocker={!wallet.publicKey ? "Connect the devnet wallet of your seat to collect." : busy ? "A transaction is already waiting for your wallet or for devnet." : null}
+      busy={(pay.phase === "wallet" || pay.phase === "confirming") && pay.what === "Withdraw"}
+      onWithdraw={() => void send("Withdraw", (me) => withdrawIx(me, keys))}
+    />
+  ) : null;
+
+  const banners: PageBanner[] = [];
+  if (error) banners.push({ kind: "refusal", mark: "?", title: "Live data unavailable", text: `The last read of devnet failed (${error}). Showing the read from ${formatDuration(wallClock - live.readAt)} ago.` });
+  if (dv.repricing) banners.push({ kind: "neutral", mark: "!", title: "Repricing. Price and split disagree.", text: "Payouts wait. The demo admin sets a price for the new multiplier, then anyone can update coverage." });
+  if (dv.stale) banners.push({ kind: "neutral", mark: "?", title: `Prices are ${formatDuration(dv.priceAge)} old`, text: "Recheck after update." });
+  if (dv.paused) banners.push({ kind: "refusal", mark: "!", title: "Payouts paused.", text: `The next payout needs ${formatUsdc(gateNeeded)} ${USDC_WORD} of reserve and ${formatUsdc(dv.remains)} remains. Top up ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD}, returned pro rata at the end, minus any default losses.` });
+  if (active && !dv.funded && !dv.repricing) banners.push({ kind: "neutral", mark: String(dv.missing), title: `${dv.missing} contributions still missing`, text: `Once everyone has paid${dv.paused ? " and the reserve covers the next payout" : ""}${dv.stale ? " and the price is fresh" : ""}, anyone can release the pot${dv.recipient ? ` to ${dv.recipient.name}` : ""}. Paying late still counts.` });
+
+  // the clock: what is due now, by the chain's last read
+  const defaultableNow = active && dv.toGraceEnd < 0 ? c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.receivedBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn)) : [];
+  const clock = !active
+    ? [{ label: "Seats joined", value: `${joinedCount} of ${c.n}` }, { label: "Round length", value: formatDuration(c.roundSecs) }, { label: "Pot this round", value: usdc(pot) }]
+    : dv.toDeadline <= 0
+      ? [{ label: "Paid this round", value: `${c.n - dv.missing} of ${c.n}` },
+          defaultableNow.length > 0 ? { label: "Can be declared in default", value: defaultableNow.map((m) => m.name).join(", "), over: true } : { label: dv.toGraceEnd > 0 ? "Grace ends in" : "Deadline passed", value: dv.toGraceEnd > 0 ? formatDuration(dv.toGraceEnd) : "Late still counts", over: dv.toGraceEnd <= 0 },
+          { label: "Pot this round", value: usdc(pot) }]
+      : [{ label: "Round", value: `${c.round + 1} of ${c.n}` }, { label: "Round closes in", value: formatDuration(dv.toDeadline) }, { label: "Pot this round", value: usdc(pot) }];
+
+  const m0 = ordered.find((m) => seatSet(c.joinedBitmap, m.turn));
+  const cards: MemberCard[] = ordered.map((m) => {
+    const joined = seatSet(c.joinedBitmap, m.turn);
+    const paid = seatSet(c.paidBitmap, m.turn);
+    const received = seatSet(c.receivedBitmap, m.turn);
+    const defaulted = seatSet(c.defaultedBitmap, m.turn);
+    const withdrawn = seatSet(c.withdrawnBitmap, m.turn);
+    const isNow = active && m.turn === c.round;
+    return {
+      turn: m.turn,
+      you: yourTurn === m.turn,
+      wallet: m.address,
+      creator: m.address === c.creator,
+      explorer: explorer("address", m.address),
+      stake: joined
+        ? <span className={s.stake}><span className={s.lockedLine}><span className={s.lockedLabel}>Locked:</span><b className={`${s.display} ${s.lockedAmt}`}>{formatRaw(m.lockedRaw)}</b><span className={s.lockedUnit}>{stockUnit}</span></span><span className={s.coverLine}>{dv.repricing ? "Cover not countable while price and split disagree" : <>Counts as <b>{formatUsdc(stockCover(m, c))} {USDC_WORD}</b> of cover</>}</span></span>
+        : <span className={s.coverLine}>Not joined yet: nothing locked.</span>,
+      chips: [
+        { label: "This round", value: defaulted ? "Defaulted" : !joined ? "Not joined" : !active ? (withdrawn ? "Withdrawn" : ended ? "To withdraw" : "Joined") : paid ? "Paid" : "Due", tone: defaulted ? "clay" : !joined || !active ? "" : paid ? "teal" : "acid" },
+        { label: "Pot", value: received ? "Received" : isNow ? "Receiving" : "Waiting", tone: received ? "teal" : isNow ? "cobalt" : "" },
+        { label: "Owed", value: joined ? `${formatUsdc(obligations(c, m))} ${USDC_WORD}` : "—", tone: "" },
+        { label: "Coverage", value: !joined ? "—" : dv.repricing ? "Not countable" : coverageLabel(c, m), tone: "" },
+      ],
+    };
+  });
+
+  // a seat page: that seat's card first
+  const fm = seat !== undefined ? ordered.find((m) => m.turn === seat - 1) : undefined;
+  const fmJoined = fm ? seatSet(c.joinedBitmap, fm.turn) : false;
+  const focus = fm ? (
+    <ActionRow
+      title={`Seat ${fm.turn + 1}: ${fm.name}${fm.address === you ? " (you)" : ""}`}
+      text={kind === "join" && !fmJoined
+        ? c.status === "Forming"
+          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.`
+          : `This seat never joined, and the circle is ${c.status}: it can no longer be joined.`
+        : !fmJoined
+          ? "This seat has not joined yet: nothing is locked."
+          : `Locked ${formatRaw(fm.lockedRaw)} ${stockUnit}, counting as ${dv.repricing ? "no cover while price and split disagree" : `${formatUsdc(stockCover(fm, c))} ${USDC_WORD} of cover`}. Owes ${formatUsdc(obligations(c, fm))} ${USDC_WORD}. ${seatSet(c.receivedBitmap, fm.turn) ? "Has received the pot." : `Receives the pot in round ${fm.turn + 1}.`}`}
+    />
+  ) : null;
+
+  return (
+    <CirclePage
+      side="solana"
+      topLine={<>Live from devnet: <a className={s.link} href={explorer("address", address)} target="_blank" rel="noreferrer">circle {shortAddress(address)}</a>, read {formatDuration(wallClock - live.readAt)} ago. Collateral is the {LABELS.nflxxMirror}; money is {USDC_WORD}.{live.split.effectiveAt > wallClock && live.split.newMultiplier !== live.split.multiplier ? ` Split scheduled: x${live.split.multiplier} to x${live.split.newMultiplier} in ${formatDuration(live.split.effectiveAt - wallClock)}.` : ""}</>}
+      banners={banners}
+      ring={ring}
+      pot={pot}
+      round={c.round}
+      fmt={usdc}
+      collateral={stockUnit}
+      status={dv.repricing ? "Repricing" : dv.paused ? "Paused" : c.status}
+      moneyPill={`Test USDC on Solana devnet · ${stockUnit} as cover`}
+      heading={`A savings circle of ${c.n}`}
+      sub={<>{usdc(BigInt(c.contribution))} per member each round. One person receives {usdc(pot)} each round, in the agreed order. Every seat locks the {stockUnit} as cover and adds a {usdc(BigInt(c.guaranteePerMember))} reserve guarantee.</>}
+      clock={clock}
+      closeOut={closeOut}
+      payout={payout}
+      act={
+        <NextStep>
+          {focus}
+          <CopyLink title="Share this circle" text="Copy the permanent circle link to share its live state. A joinable invite is available only while a circle is forming." label="Copy circle link" />
+          {action}
+          {memberTools}
+          {anyone}
+        </NextStep>
+      }
+      turns={{
+        forming: c.status === "Forming" ? { title: `Waiting for ${c.n - joinedCount} members to join`, text: `${joinedCount} of ${c.n} have locked their stock and put ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} into the shared reserve. The creator activates the circle when everyone has joined.` } : null,
+        label: "Turn order",
+        note: `${formatDuration(c.roundSecs)} rounds, ${formatDuration(c.graceSecs)} grace`,
+        rounds: ordered.map((m) => {
+          const done = seatSet(c.receivedBitmap, m.turn);
+          const nowRound = active && m.turn === c.round;
+          return { turn: m.turn, name: m.name, note: done ? "Pot paid" : nowRound ? "Receiving now" : "Upcoming", state: nowRound ? "now" : done ? "done" : "" };
+        }),
+      }}
+      reserve={{
+        heading: "Shared reserve, free",
+        amount: formatUsdc(dv.free),
+        unit: USDC_WORD,
+        coins: ordered.filter((m) => seatSet(c.joinedBitmap, m.turn)).map((m) => m.turn),
+        coinNote: `${joinedCount} deposits of ${formatUsdc(c.guaranteePerMember)}, one per seat`,
+        lines: ([["+", "Deposited", c.reserveTotal], ["−", "Spent on defaults", c.reserveLosses], ["−", "Allocated to cover", c.reserveAllocated], ["=", "Remains, the gate's figure", dv.remains], ["→", "Next payout needs", gateNeeded]] as const)
+          .map(([sign, label, amount]) => [sign, label, `${formatUsdc(amount)} ${USDC_WORD}`] as const),
+      }}
+      locks={{
+        label: "Cover per member",
+        kicker: "What each seat locks",
+        intro: m0 ? <>How {m0.name}&apos;s locked {stockUnit} becomes cover.</> : "Nobody has locked stock yet.",
+        steps: m0 ? [
+          [formatRaw(m0.lockedRaw), `${stockUnit} locked`],
+          [formatUsdc(Math.min(fundValue(m0, c), execValue(m0, c))), `${USDC_WORD}, lower of market and share price`],
+          [`−${c.haircutBps / 100}%`, "safety margin"],
+          [dv.repricing ? "Not countable" : formatUsdc(stockCover(m0, c), 0), dv.repricing ? "price and split disagree" : `${USDC_WORD} of cover`],
+        ] : [],
+        chips: [["Minimum to join", `${formatUsdc(c.minStockCover)} ${USDC_WORD} of cover`], ["Coverage target", `${c.coverageBps / 100}%`], ["Held this round", `${formatUsdc(c.heldContributions)} ${USDC_WORD}`]],
+      }}
+      members={{
+        head: `Members (${joinedCount} of ${c.n} joined)`,
+        note: <><b>Each stake is still its owner&apos;s.</b> Returned when the circle ends, unless they default after taking the pot.</>,
+        cards,
+      }}
+      extras={<SolanaPanel c={c} now={wallClock} split={live.split} pool={live.pool} stockUnit={stockUnit} mirror={{ multiplierNow: mirrorNow, label: LABELS.nflxxMirror }} />}
+      footer={<p className={s.helper}>{c.lastCoverageAt === 0 ? "Coverage has not been computed yet: it is first computed when a pot is released or coverage is updated." : `Coverage uses prices from ${formatDuration(dv.coverageAge)} ago.`} Counted at the lower of its market price and its share price, minus a {c.haircutBps / 100}% safety margin. Testnet only: test USDC and the devnet mirror have no value.</p>}
     />
   );
 }

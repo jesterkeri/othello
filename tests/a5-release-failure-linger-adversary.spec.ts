@@ -200,7 +200,14 @@ function find(el: unknown, pred: (e: El) => boolean): El | null {
   }
   const e = el as El;
   if (e.props && pred(e)) return e;
-  return e.props ? find(e.props.children, pred) : null;
+  // the shared circle page (components/circle-page/CirclePage.tsx) takes panels as named props (payout, closeOut,
+  // act, ...), not only as children: search every prop that holds elements, and plain objects' values
+  const inner = e.props ? [e.props.children, ...Object.entries(e.props).filter(([k, v]) => k !== "children" && v && typeof v === "object").map(([, v]) => v)] : Object.values(e);
+  for (const x of inner) {
+    const hit = find(x, pred);
+    if (hit) return hit;
+  }
+  return null;
 }
 const payoutPanel = () => find(mini.tree, (e) => "phase" in e.props && "steps" in e.props && "onRelease" in e.props);
 const settle = async () => {
