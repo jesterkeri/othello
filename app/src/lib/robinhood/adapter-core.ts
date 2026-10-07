@@ -139,8 +139,10 @@ export async function readCircle(
   for (let back = 0n; back < 3n; back++) {
     // a retry waits first: the public RPC answers a burst with 429 or a short batch, and an instant retry meets the
     // same limit (Joshua's preview, 2026-10-07)
+    // a queued read whose page has moved on stops between tries, before and after the wait, so it frees the queue
+    // (adversary suspicions on e68c802 and 6941dff)
+    if (back > 0n && stale()) throw new StaleRead();
     if (back > 0n) await new Promise((r) => setTimeout(r, 400 * Number(back)));
-    // a queued read whose page has moved on stops between tries, so it frees the queue (adversary suspicion on e68c802)
     if (back > 0n && stale()) throw new StaleRead();
     try {
       const head = await client.getBlock({ blockTag: "latest" });

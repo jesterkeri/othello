@@ -79,7 +79,8 @@ export default function CirclesHome({ source }: { source: CirclesSource }) {
         )}
         {source.notShown ? (
           <p className={s.muted}>
-            Showing {source.circles.length + source.failed.length} of {source.circles.length + source.failed.length + source.notShown} circles:
+            {/* circles still reading are listed too (adversary on 6941dff: "Showing 0 of 1" for a wallet with 11) */}
+            Showing {source.circles.length + source.failed.length + source.reading} of {source.circles.length + source.failed.length + source.reading + source.notShown} circles:
             {source.shownFirst ?? "the ones you have to act in first"}.
           </p>
         ) : null}
