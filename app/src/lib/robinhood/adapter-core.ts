@@ -127,6 +127,7 @@ export async function readCircle(
   client: Pick<PublicClient, "readContract" | "getBlock">,
   circle: Address,
   usdg: Address = USDG,
+  stale: () => boolean = () => false,
 ): Promise<RhCircleView> {
   // One block for everything: its timestamp is the page's chain time, and every read is pinned to its HASH (EIP-1898,
   // requireCanonical), so a deadline and a paid bitmap are never paired with another block's time or state. Adversary
@@ -136,6 +137,13 @@ export async function readCircle(
   // not found", adversary on 9343ef9) still answers. Robinhood Chain makes several blocks a second.
   let last: unknown;
   for (let back = 0n; back < 3n; back++) {
+    // a retry waits first: the public RPC answers a burst with 429 or a short batch, and an instant retry meets the
+    // same limit (Joshua's preview, 2026-10-07)
+    // a queued read whose page has moved on stops between tries, before and after the wait, so it frees the queue
+    // (adversary suspicions on e68c802 and 6941dff)
+    if (back > 0n && stale()) throw new StaleRead();
+    if (back > 0n) await new Promise((r) => setTimeout(r, 400 * Number(back)));
+    if (back > 0n && stale()) throw new StaleRead();
     try {
       const head = await client.getBlock({ blockTag: "latest" });
       if (head.number === null) throw new Error("Robinhood Chain returned a block without a number.");
@@ -147,6 +155,42 @@ export async function readCircle(
     }
   }
   throw new Error("Robinhood Chain did not answer the circle read.", { cause: last });
+}
+
+/**
+ * readCircle, one at a time across the page. Each read is about 40 calls in one batch, and the public Robinhood
+ * testnet RPC rate-limits: two circles read together (about 66 calls) came back 429 "Too Many Requests" or with a
+ * short batch, so every circle on the list failed (Joshua's preview, 2026-10-07: "Couldn't read circle ..." for both
+ * of a wallet's circles, each of which reads fine alone). Lists read their circles through this queue.
+ * `stale` is asked when the read's turn comes: a read for a wallet or page that has moved on is skipped (rejected
+ * with StaleRead) instead of spending the RPC's limit ahead of the new wallet's reads (adversary on afa5aaa).
+ */
+export class StaleRead extends Error {
+  constructor() { super("This read was no longer needed."); }
+}
+let readQueue: Promise<unknown> = Promise.resolve();
+export function readCircleInTurn(
+  client: Pick<PublicClient, "readContract" | "getBlock">,
+  circle: Address,
+  stale: () => boolean = () => false,
+  usdg: Address = USDG,
+): Promise<RhCircleView> {
+  const next = () => (stale() ? Promise.reject(new StaleRead()) : readCircle(client, circle, usdg, stale));
+  const run = readQueue.then(next, next);
+  readQueue = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * Promise.all that rejects only once every call has settled: a read that failed on one call still had its other calls
+ * (and viem's own retries of them) on the RPC, so it must not count as over while they run, or the next queued circle
+ * read overlaps them (adversary on cbdba79). Rejects with the first failure, in call order.
+ */
+async function allSettledOrThrow<T extends readonly unknown[] | []>(calls: T): Promise<{ -readonly [K in keyof T]: Awaited<T[K]> }> {
+  // bounded because every call is (lib/robinhood/transport.ts aborts each request whole), not by a deadline here
+  const settled = await Promise.allSettled(calls as readonly unknown[]);
+  for (const x of settled) if (x.status === "rejected") throw x.reason;
+  return settled.map((x) => (x as PromiseFulfilledResult<unknown>).value) as never;
 }
 
 async function readCircleAt(
@@ -165,7 +209,7 @@ async function readCircleAt(
     status, round, deadline, paid, joined, withdrawn, received, defaulted, marked,
     reserveTotal, reserveLosses, reserveAllocated, escrow, escrowDeficit, withdrawnFromReserve,
     collateralReturned, depositsTotal, forfeitedTotal, nextGateShortBy, heldContributions, lastCoverageAt, accounted,
-  ] = await Promise.all([
+  ] = await allSettledOrThrow([
     r<Address>("factory"), r<Address>("creator"), r<bigint>("n"), r<bigint>("c"), r<bigint>("g"),
     r<bigint>("minStockCover"), r<bigint>("haircutBps"), r<bigint>("coverageBps"), r<bigint>("warnBps"),
     r<bigint>("roundSecs"), r<bigint>("graceSecs"),
@@ -177,9 +221,9 @@ async function readCircleAt(
     r<bigint>("heldContributions"), r<bigint>("lastCoverageAt"), r<bigint>("accounted"),
   ]);
   const count = Number(n);
-  const [members, seats, balance] = await Promise.all([
-    Promise.all(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
-    Promise.all(
+  const [members, seats, balance] = await allSettledOrThrow([
+    allSettledOrThrow(Array.from({ length: count }, (_, t) => r<Address>("members", [BigInt(t)]))),
+    allSettledOrThrow(
       Array.from({ length: count }, (_, t) =>
         r<{
           collateral: bigint; g: bigint; topUps: bigint; forfeited: bigint; allocated: bigint;
@@ -541,13 +585,16 @@ export type CircleSummary = { address: Address; n: number; c: bigint; status: St
 export type CirclePage = { circles: CircleSummary[]; total: number; before: number | null };
 export const MY_CIRCLES_PAGE = 10;
 
-async function summarize(client: Pick<PublicClient, "readContract">, addr: Address, account: Address): Promise<CircleSummary | null> {
+async function summarize(client: Pick<PublicClient, "readContract">, addr: Address, account: Address, check: () => void = () => {}): Promise<CircleSummary | null> {
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
     client.readContract({ address: addr, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
-  const [n, c, status, round, creator] = await Promise.all([
+  // every round settles in full before the listing fails, so no call (or viem's retry of it) is still on the RPC
+  // when the page shows its error and a Try again starts (adversary on bdc3a1c)
+  const [n, c, status, round, creator] = await allSettledOrThrow([
     r<bigint>("n"), r<bigint>("c"), r<number>("status"), r<number>("round"), r<Address>("creator"),
   ]);
-  const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
+  check();
+  const members = await allSettledOrThrow(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
   const turn = members.findIndex((m) => isAddressEqual(m, account));
   return turn >= 0 ? { address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn } : null;
 }
@@ -564,7 +611,11 @@ export async function listCirclesPageWith(
   account: Address,
   before?: number,
   pageSize = MY_CIRCLES_PAGE,
+  stale: () => boolean = () => false,
 ): Promise<CirclePage> {
+  // a page is several rounds of calls; a caller that has moved on (a wallet switch) stops between them, so none of the
+  // later rounds start for it (adversary on 55f8770)
+  const check = () => { if (stale()) throw new StaleRead(); };
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new RangeError("pageSize must be 1 to 50");
   if (before !== undefined && (!Number.isInteger(before) || before < 0)) throw new RangeError("before must be a whole number");
   // no factory yet: nothing to list. A factory whose code no longer matches its pin is a failed read, never an
@@ -572,16 +623,19 @@ export async function listCirclesPageWith(
   if (!factory) return { circles: [], total: 0, before: null };
   const t = await checkTrustedFactory(client, factory);
   if (!t.ok) throw new Error("Othello's factory on Robinhood Chain testnet could not be verified.");
+  check();
   const total = Number(await client.readContract({
     address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfCount", args: [account],
   }));
   const end = before === undefined ? total : Math.min(before, total);
   const start = Math.max(0, end - pageSize);
   if (end <= start) return { circles: [], total, before: null };
+  check();
   const addrs = (await client.readContract({
     address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [account, BigInt(start), BigInt(end - start)],
   })) as readonly Address[];
+  check();
   const out: CircleSummary[] = [];
-  for (const x of await Promise.all([...addrs].reverse().map((a) => summarize(client, a, account)))) if (x) out.push(x);
+  for (const x of await allSettledOrThrow([...addrs].reverse().map((a) => summarize(client, a, account, check)))) if (x) out.push(x);
   return { circles: out, total, before: start > 0 ? start : null };
 }

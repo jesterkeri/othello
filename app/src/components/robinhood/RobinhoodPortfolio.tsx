@@ -17,7 +17,7 @@ import Shell from "@/components/othello/Shell";
 import { TokenChip, TokenChips } from "@/components/assets/TokenChip";
 import { ARROW_RIGHT, Arrow, AssetRow, CircleSummary, PortfolioFooter, PortfolioHeader, RingsDecor, TestTokenStrip, TotalDecor } from "@/components/portfolio/parts";
 import portfolio from "@/components/portfolio/Portfolio.module.css";
-import { checkFactory, listMyCircles, MY_CIRCLES_PAGE, readCircle, type CircleSummary as Summary, type RhCircleView } from "@/lib/robinhood/adapter";
+import { checkFactory, listMyCircles, MY_CIRCLES_PAGE, readCircleInTurn, StaleRead, type CircleSummary as Summary, type RhCircleView } from "@/lib/robinhood/adapter";
 import { USDG } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { circleCard, pickCircle } from "@/lib/robinhood/portfolio-circle";
@@ -58,18 +58,26 @@ const shown = (r: TokenRead, f: (v: bigint) => string) => (r === null ? "Reading
  */
 const MAX_PAGES = 3;
 const READ_LIMIT = MAX_PAGES * MY_CIRCLES_PAGE;
-async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCircleView[]; count: number; more: boolean }> {
+async function readRunningCircles(account: `0x${string}`, stale: () => boolean): Promise<{ views: RhCircleView[]; count: number; more: boolean }> {
   const all: Summary[] = [];
   let before: number | undefined;
   let count = 0;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const next = await listMyCircles(robinhoodPublicClient, account, before);
+    // a card that has moved on (a wallet switch, Try again) stops listing (adversary suspicion on d9a3db1)
+    if (stale()) throw new StaleRead();
+    const next = await listMyCircles(robinhoodPublicClient, account, before, stale);
     if (page === 0) count = next.total;
     all.push(...next.circles);
     before = next.before ?? undefined;
     if (before === undefined) break;
   }
-  const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) => readCircle(robinhoodPublicClient, c.address)));
+  // reads still waiting are skipped once the card has moved on (a wallet switch, Try again) or one has failed, so
+  // they do not hold up the next wallet's reads (adversary on afa5aaa)
+  let gaveUp = false;
+  const skip = () => gaveUp || stale();
+  // each read marks the give-up itself, so it is set before the next waiting read's turn comes (adversary on eea3f01)
+  const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) =>
+    readCircleInTurn(robinhoodPublicClient, c.address, skip).catch((e: unknown) => { gaveUp = true; throw e; })));
   return { views, count, more: before !== undefined };
 }
 
@@ -88,7 +96,6 @@ export default function RobinhoodPortfolio() {
     setUsdg(null);
     setEth(null);
     setStocks({});
-    setCircles({ kind: "reading" });
     setReadFor(wallet.address ?? null);
     if (!wallet.address) return;
     const account = wallet.address as `0x${string}`;
@@ -107,17 +114,28 @@ export default function RobinhoodPortfolio() {
         .then((amount) => { if (live) setStocks((current) => ({ ...current, [token.symbol]: amount })); })
         .catch(() => { if (live) setStocks((current) => ({ ...current, [token.symbol]: "failed" })); });
     }
+    return () => { live = false; };
+  }, [wallet.address]);
+
+  // The circle card's read has its own effect, so "Try again" re-runs only it (adversary on 432dfb5: a failed read
+  // left the card on "Live data unavailable" with no way back but a page reload).
+  const [circlesTry, setCirclesTry] = useState(0);
+  useEffect(() => {
+    setCircles({ kind: "reading" });
+    if (!wallet.address) return;
+    const account = wallet.address as `0x${string}`;
+    let live = true;
     void checkFactory(robinhoodPublicClient)
       .then(async (factory) => {
         // "closed" only when no factory is configured; a configured factory whose code read fails or does not match
         // is a failed read, never "not open yet" (adversary on 12fdfe9)
         if (!factory.ok) { if (live) setCircles(factory.reason === "not-deployed" ? { kind: "closed" } : { kind: "failed" }); return; }
-        const { views, count, more } = await readRunningCircles(account);
+        const { views, count, more } = await readRunningCircles(account, () => !live);
         if (live) setCircles({ kind: "ready", view: pickCircle(views, account), count, more });
       })
       .catch(() => { if (live) setCircles({ kind: "failed" }); });
     return () => { live = false; };
-  }, [wallet.address]);
+  }, [wallet.address, circlesTry]);
 
   const fresh = readFor === (wallet.address ?? null);
   const usdg = fresh ? usdgRead : null;
@@ -198,7 +216,11 @@ export default function RobinhoodPortfolio() {
               {circles.kind === "reading" ? (
                 <div className={portfolio.skel} />
               ) : circles.kind === "failed" ? (
-                <div className={portfolio.down}><b>Live data unavailable</b><span>We could not read your circles on Robinhood Chain testnet, so no numbers are shown.</span></div>
+                <div className={portfolio.down}>
+                  <b>Live data unavailable</b>
+                  <span>We could not read your circles on Robinhood Chain testnet, so no numbers are shown.</span>
+                  <button type="button" className={portfolio.btnCream} onClick={() => setCirclesTry((n) => n + 1)}>Try again</button>
+                </div>
               ) : circles.kind === "closed" ? (
                 <div className={portfolio.down}><b>Circles aren&apos;t open yet</b><span>Othello&apos;s contracts on Robinhood Chain testnet are waiting for their final review.</span></div>
               ) : card ? (

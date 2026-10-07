@@ -35,8 +35,10 @@ const BEFORE_UNFOLD: Stage[] = ["logo", "grow"];
 const BEFORE_DRAW: Stage[] = ["logo", "grow", "unfold"];
 const BEFORE_SPIN: Stage[] = ["logo", "grow", "unfold", "draw"];
 
-export default function CircleRing({ ring, pot, round, showList = true, entrance = true }: {
+export default function CircleRing({ ring, pot, round, showList = true, entrance = true, fmt = fmtUsdg }: {
   ring: Ring; pot: bigint; round: number; showList?: boolean;
+  /** How the pot is written: USDG (default) on Robinhood, USDC on Solana (the shared circles list). */
+  fmt?: (base: bigint) => string;
   /** Play the logo-unfold entrance on mount (false: render the settled ring, e.g. for a static layout check). */
   entrance?: boolean;
 }) {
@@ -120,9 +122,9 @@ export default function CircleRing({ ring, pot, round, showList = true, entrance
         </div>
         <span className={r.pot}>
           <span className={r.potLabel}>{ring.receiving !== null ? "Pot this round" : "Pot each round"}</span>
-          <b className={r.potAmt}>{fmtUsdg(pot)}</b>
+          <b className={r.potAmt}>{fmt(pot)}</b>
         </span>
-        {flight > 0 && <span key={flight} className={r.flying} aria-hidden>{fmtUsdg(pot)}</span>}
+        {flight > 0 && <span key={flight} className={r.flying} aria-hidden>{fmt(pot)}</span>}
       </div>
       <figcaption className={r.caption}>{ring.caption}</figcaption>
       {showList && (

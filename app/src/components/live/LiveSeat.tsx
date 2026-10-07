@@ -12,15 +12,17 @@ import s from "@/components/circle/Circle.module.css";
 import Join from "@/components/join/Join";
 import Position from "@/components/position/Position";
 import Shell from "@/components/othello/Shell";
+import { DEMO_CIRCLE, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle } from "@/lib/live";
 
-export default function LiveSeat({ kind, seat }: { kind: "position" | "join"; seat: number }) {
+/** `address`: any Othello circle (default the demo; Joshua 2026-10-06, circles opened from the shared list). */
+export default function LiveSeat({ kind, seat, address = DEMO_CIRCLE }: { kind: "position" | "join"; seat: number; address?: string }) {
   const [live, setLive] = useState<LiveCircle | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/circle", { cache: "no-store" })
+    fetch(liveCircleUrl(address), { cache: "no-store" })
       .then((r) => r.json() as Promise<LiveCircle | { error: string }>)
       .then((b) => {
         if (!alive) return;
@@ -31,14 +33,14 @@ export default function LiveSeat({ kind, seat }: { kind: "position" | "join"; se
     return () => {
       alive = false;
     };
-  }, []);
+  }, [address]);
 
   if (!live) {
     return (
       <Shell active="Circles">
         <div className={s.frame}>
           <div className={s.banners} style={{ padding: 24 }}>
-            <p className={s.panelNote}>{error ? `Live data unavailable: ${error}` : "Reading the demo circle from devnet…"}</p>
+            <p className={s.panelNote}>{error ? `Live data unavailable: ${error}` : `Reading the ${address === DEMO_CIRCLE ? "demo " : ""}circle from devnet…`}</p>
           </div>
         </div>
       </Shell>
@@ -46,10 +48,21 @@ export default function LiveSeat({ kind, seat }: { kind: "position" | "join"; se
   }
 
   const c = live.view;
+  if (seat > c.n) {
+    return (
+      <Shell active="Circles">
+        <div className={s.frame}>
+          <div className={s.banners} style={{ padding: 24 }}>
+            <p className={s.panelNote}>This circle has {c.n} seats; there is no seat {seat}.</p>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
   const lock = c.members[seat - 1]?.lockedRaw || c.members.find((m) => m.lockedRaw > 0)?.lockedRaw || 0;
   return kind === "position" ? (
-    <Position circle={c} seat={seat} now={live.readAt} stateKey="demo" usdcWord="test USDC" />
+    <Position circle={c} seat={seat} now={live.readAt} stateKey={liveKeyOf(address)} usdcWord="test USDC" />
   ) : (
-    <Join circle={c} seat={seat} now={live.readAt} stateKey="demo" usdcWord="test USDC" suggestedLockRaw={lock} />
+    <Join circle={c} seat={seat} now={live.readAt} stateKey={liveKeyOf(address)} usdcWord="test USDC" suggestedLockRaw={lock} />
   );
 }

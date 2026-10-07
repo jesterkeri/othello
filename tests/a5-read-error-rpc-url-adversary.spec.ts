@@ -278,6 +278,9 @@ describe("adversary 9343ef9: a read error reaches the page with the RPC URL and 
     io.read = () => realReadCircle(page, circle, usdg).catch((e: Error) => { rejected = e; throw e; });
     mini.slots = []; mini.effects = []; mini.tree = null; io.intervals = [];
     rerender();
+    // readCircle now waits before each retry (400 ms, then 800 ms: the public RPC rate-limits bursts), so the read
+    // takes over a second to give up; wait for it to, then let the page settle
+    for (let k = 0; k < 100 && !rejected; k++) await new Promise((r) => setTimeout(r, 50));
     await settle();
 
     assert.ok(rejected, "precondition: the failing call node made readCircle fail");

@@ -76,6 +76,17 @@ export default function HowItWorksNeutral({ side }: { side: Extract<ChainSide, '
             stops before their turn has taken nothing; in this version the circle waits for them, and they can still pay late.
           </p>
         </section>
+
+        {/* moved here from the Robinhood circles page (Joshua 2026-10-06: it is the mainnet plan, not about your circles) */}
+        <section className={`${s.card} ${s.wide}`} aria-labelledby="mainnet-plan">
+          <h2 id="mainnet-plan" className={s.title}>Planned for mainnet: interest on idle USDG</h2>
+          <p className={s.body}>
+            On Robinhood Chain mainnet, USDG in your wallet could earn interest from borrowers through a USDG lending
+            vault on Morpho, already live there. The rate moves with demand and nothing is promised. Lending carries
+            risk: money can be lost, and a withdrawal can wait while the vault&apos;s USDG is lent out. Circle money
+            stays out of it. Not built yet: nothing on this testnet earns.
+          </p>
+        </section>
       </div>
     </Shell>
   );

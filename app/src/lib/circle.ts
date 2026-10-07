@@ -221,6 +221,26 @@ export type CircleDerived = {
   priceAge: number;
 };
 
+/**
+ * Why this round's pot cannot be released now, by every condition a read already knows release_pot checks (Codex T18d
+ * r1), or null when it can: the circle must be Active, every seat paid or declared in default, the escrow able to pay
+ * every defaulted seat's share of this round (release_pot.rs RoundNotFunded: escrow >= contribution x defaulted unpaid
+ * seats; adversary on 51bc786), a recipient set, and a price set, fresh and stamped for the mint's current multiplier. Paused never blocks (release_pot recomputes the gate
+ * itself, SPEC.md:129). One rule for the circle page (LiveCircle) and the circles list (lib/to-list-solana.ts).
+ */
+export type ReleaseBlock = "inactive" | "unpaid" | "escrow-short" | "no-recipient" | "no-price" | "stale" | "repricing";
+export function releaseBlock(c: CircleView, now: number): ReleaseBlock | null {
+  if (c.status !== "Active") return "inactive";
+  if (c.members.some((m) => !seatSet(c.paidBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn))) return "unpaid";
+  const covered = c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.defaultedBitmap, m.turn)).length;
+  if (c.escrow < c.contribution * covered) return "escrow-short";
+  if (!recipient(c)) return "no-recipient";
+  if (c.feed.wrapperPrice === 0 || c.feed.sharePrice === 0) return "no-price";
+  if (isStale(c, now)) return "stale";
+  if (isRepricing(c)) return "repricing";
+  return null;
+}
+
 export function derive(c: CircleView, now: number): CircleDerived {
   return {
     paused: isPaused(c),

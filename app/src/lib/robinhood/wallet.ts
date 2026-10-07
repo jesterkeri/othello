@@ -8,13 +8,14 @@
  * when the person picks a wallet, and asks the wallet to switch to Robinhood Chain testnet.
  */
 import { createContext, createElement, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { createPublicClient, createWalletClient, custom, http, type EIP1193Provider } from "viem";
+import { createPublicClient, createWalletClient, custom, type EIP1193Provider } from "viem";
 
 import { ROBINHOOD_TESTNET_ID, robinhoodTestnet } from "./chain";
 import { discoverEvmWallets } from "./eip6963";
 import { createEvmSession, type EvmSession, type EvmSnapshot, type RememberedWallet } from "./evm-session";
+import { robinhoodHttp } from "./transport";
 
-export const robinhoodPublicClient = createPublicClient({ chain: robinhoodTestnet, transport: http(undefined, { batch: true }) });
+export const robinhoodPublicClient = createPublicClient({ chain: robinhoodTestnet, transport: robinhoodHttp() });
 
 /** The remembered wallet's rdns (not an address, not a key): a per-browser convenience, safe to lose. */
 const REMEMBER_KEY = "othello.evmWallet";

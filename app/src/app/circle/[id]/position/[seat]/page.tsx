@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import LiveSeat from "@/components/live/LiveSeat";
+import { parseAddress } from "@/lib/sol-address";
 
 import Position from "@/components/position/Position";
 import {
@@ -35,6 +36,13 @@ export default async function PositionPage({
     const n = Number(seat);
     if (!Number.isInteger(n) || n < 1 || n > 5) notFound();
     return <LiveSeat kind="position" seat={n} />;
+  }
+  // any other Solana circle (seats 1 to 8, the program's most); LiveSeat refuses a seat the circle does not have
+  if (id.startsWith("sol:")) {
+    const address = parseAddress(id.slice(4));
+    const n = Number(seat);
+    if (!address || !Number.isInteger(n) || n < 1 || n > 8) notFound();
+    return <LiveSeat kind="position" seat={n} address={address} />;
   }
   const key = id as CircleStateKey;
   const circle = CIRCLE_STATES[key];

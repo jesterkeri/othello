@@ -23,7 +23,7 @@ export const NAV_HREF: Record<string, string> = {
 };
 
 const SIDE_HREF: Record<ChainSide, Record<string, string>> = {
-  solana: { "Split lab": "/split-lab", Create: "/circle/new", Circles: "/circle/demo", Portfolio: "/portfolio", Assets: "/assets", xStocks: "/assets", Stocks: "/assets" },
+  solana: { "Split lab": "/split-lab", Create: "/circle/new", Circles: "/solana", Portfolio: "/portfolio", Assets: "/assets", xStocks: "/assets", Stocks: "/assets" },
   robinhood: { "Split lab": "/robinhood", Create: "/robinhood/new", Circles: "/robinhood", Portfolio: "/robinhood/portfolio", Assets: "/robinhood/assets", xStocks: "/robinhood/assets", Stocks: "/robinhood/assets" },
 };
 

@@ -11,96 +11,16 @@
  */
 import type { RhCircleView } from "./adapter";
 import { fmtUsdg } from "./copy";
+import { seatLabel, seatList } from "../core/ring";
 
-export type SeatRole = "receiving" | "received" | "upcoming" | "joined" | "open";
-export type SeatPayment = "paid" | "covered" | "short" | "late" | "due" | null;
-
-export type RingSeat = {
-  turn: number;
-  /** "Seat 1" for turn 0: seat N receives round N. */
-  label: string;
-  wallet: string;
-  you: boolean;
-  role: SeatRole;
-  payment: SeatPayment;
-  /** Plain words for the seat's state, read by screen readers and shown under the seat. */
-  status: string;
-  /** Where the seat sits on the ring, clockwise from the top, before the ring turns. */
-  angle: number;
-};
-
-export type Ring = {
-  n: number;
-  seats: RingSeat[];
-  /** The seat receiving this round (null unless the circle is active). */
-  receiving: number | null;
-  /** Degrees the ring turns so the receiving seat sits at the top: seat r's angle, undone. */
-  rotation: number;
-  /** One line under the pot. */
-  caption: string;
-};
+// the ring moved to lib/core/ring.ts (one frontend for both chains); re-exported for the Robinhood page
+export { ringOf, seatFill, seatLabel, seatList, seatSize, type Ring, type RingSeat, type RingSource, type SeatPayment, type SeatRole } from "../core/ring";
 
 const same = (a?: string | null, b?: string | null) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
-export const seatLabel = (turn: number) => `Seat ${turn + 1}`;
-
-/** "Seat 2", "Seat 2 and Seat 3", "Seat 1, Seat 2 and Seat 4". */
-export function seatList(turns: number[]): string {
-  const l = turns.map(seatLabel);
-  return l.length <= 1 ? (l[0] ?? "") : `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}`;
-}
-
-/**
- * `now` is chain time (the page's chainNow: the last block's time plus the seconds since that read); it defaults to
- * the read's own chain time. A seat is late once it is unpaid after deadline + grace, recorded or not.
- */
-export function ringOf(v: RhCircleView, me?: string | null, now: number = v.chainTime): Ring {
-  const n = v.n;
-  const step = 360 / n;
-  const active = v.status === "Active";
-  const finished = v.status === "Completed" || v.status === "Cancelled";
-  const receiving = active ? v.round : null;
-  const pot = BigInt(n) * v.c;
-  const pastGrace = active && now > v.deadline + v.graceSecs;
-  // defaulted seats' payments come from the escrow; it may not yet hold enough (RoundNotFunded)
-  const coverOk = v.escrow >= BigInt(v.seats.filter((x) => x.defaulted && !x.paid).length) * v.c;
-  const seats: RingSeat[] = v.seats.map((seat) => {
-    const role: SeatRole =
-      v.status === "Forming" || v.status === "Cancelled" ? (seat.joined ? "joined" : "open")
-      : seat.received ? "received"
-      : active && seat.turn === v.round ? "receiving"
-      : "upcoming";
-    const payment: SeatPayment = !active ? null
-      : seat.paid ? "paid"
-      : seat.defaulted ? (coverOk ? "covered" : "short")
-      : seat.marked || pastGrace ? "late"
-      : "due";
-    const cancelled = v.status === "Cancelled";
-    const roleWords = { receiving: "receives this round", received: "has received a pot", upcoming: `receives in round ${seat.turn + 1}`,
-      joined: cancelled ? "joined before the circle was cancelled" : "joined", open: cancelled ? "did not join" : "not joined yet" }[role];
-    const payWords = payment === null
-      ? (finished && (v.status === "Completed" || seat.joined) ? (seat.withdrawn ? ", collected their share" : ", has not collected their share yet") : "")
-      : { paid: ", paid this round", covered: ", settled in default: covered by locked USDG", short: ", settled in default: cover short", late: seat.marked ? ", late: payment recorded as missed" : ", late: unpaid after the grace period", due: ", payment due this round" }[payment];
-    return {
-      turn: seat.turn,
-      label: seatLabel(seat.turn),
-      wallet: seat.wallet,
-      you: same(seat.wallet, me),
-      role,
-      payment,
-      status: `${roleWords}${payWords}`,
-      angle: seat.turn * step,
-    };
-  });
-  const caption =
-    v.status === "Forming" ? `${v.seats.filter((s) => s.joined).length} of ${n} seats joined`
-    : active ? `Round ${v.round + 1} of ${n}: ${seatLabel(v.round)} receives ${fmtUsdg(pot)}`
-    : v.status === "Completed" ? `All ${n} rounds paid out`
-    : "This circle was cancelled";
-  return { n, seats, receiving, rotation: receiving ? -receiving * step : 0, caption };
-}
 
 export type ReleaseContext = { hasWallet: boolean; connected: boolean; onRobinhood: boolean; busy: boolean; me: string | null };
 export type ReleaseButton = { label: string; enabled: boolean; blocker: string | null; recipientTurn: number; amount: bigint };
+
 
 /** The pay-out control, or null when the circle is not active. Its label says truly who receives. */
 export function releaseButton(v: RhCircleView, ctx: ReleaseContext): ReleaseButton | null {
@@ -188,8 +108,9 @@ export type CloseOut = {
 export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null {
   if (v.status !== "Completed" && v.status !== "Cancelled") return null;
   const completed = v.status === "Completed";
-  // withdraw()'s own arithmetic: none of these inputs change once the circle is finished (withdraw moves only
-  // withdrawnFromReserve and collateralReturned), so every seat's amount is exact (CircleMath.pooledShare, floor).
+  // withdraw()'s own arithmetic (CircleMath.pooledShare, floor). The pool inputs do not change once the circle is
+  // finished, but withdraw() sets the seat's collateral to 0: an amount is exact only for a seat that has not
+  // collected yet. For a collected seat it is what is left, not what was paid (adversary on 67d3214).
   const poolLeft = v.reserveTotal - v.reserveLosses + v.escrow;
   const denom = v.depositsTotal - v.forfeitedTotal;
   const pays = (seat: RhCircleView["seats"][number]) => {
@@ -218,24 +139,3 @@ export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null
 export function currentPhase(phase: ReleasePhase, v: RhCircleView): ReleasePhase {
   return phase.kind === "failed" && phase.round !== v.round ? { kind: "idle" } : phase;
 }
-
-/**
- * Seat colours, never the hero's own: the hero is the palette's accent (--acid), so seats take the palette's other four
- * colours in turn, then white and black, and reuse them for larger circles (Joshua, 2026-10-05).
- */
-const FILLS = [
-  { fill: "var(--teal)", ink: "var(--tealInk)" },
-  { fill: "var(--sky)", ink: "var(--skyInk)" },
-  { fill: "var(--cobalt)", ink: "var(--cobaltInk)" },
-  { fill: "var(--clay)", ink: "var(--clayInk)" },
-  { fill: "#FBF9F2", ink: "#0B0B0B" },
-  { fill: "#0B0B0B", ink: "#FBF9F2" },
-] as const;
-// seats 7 and 8 reuse sky and cobalt: a plain wrap would put seat 7 (teal) next to seat 1 (teal) in a circle of 7
-export const seatFill = (turn: number) => FILLS[turn < FILLS.length ? turn : (turn - 5) % FILLS.length]!;
-
-/**
- * A seat's diameter as a percentage of the ring: 20% up to four seats; from five, about 10% smaller for each seat
- * more, so eight never crowd (Joshua, 2026-10-05: "after 4 people ... the circles should start shrinking by percentage").
- */
-export const seatSize = (n: number) => (n <= 4 ? 20 : 20 * 0.9 ** (n - 4));

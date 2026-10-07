@@ -16,6 +16,15 @@ export const PROGRAM_ID = "DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT";
 export const DEMO_CIRCLE = "8uGgNmog9gbwDMFMB2EKHXBSQ43YcUaB8eAPhgGsXT3Q";
 
 /**
+ * A live circle's id in its URL: "demo" for the demo circle, "sol:<address>" for any other circle read from the chain
+ * (Joshua 2026-10-06: Solana circles in the shared list open their own page).
+ */
+export type LiveCircleKey = "demo" | `sol:${string}`;
+export const liveKeyOf = (address: string): LiveCircleKey => (address === DEMO_CIRCLE ? "demo" : `sol:${address}`);
+/** The /api/circle URL that reads it. */
+export const liveCircleUrl = (address: string) => (address === DEMO_CIRCLE ? "/api/circle" : `/api/circle?address=${address}`);
+
+/**
  * Display names for the demo circle's five seats, in turn order: the same cast the design
  * fixtures use (fixtures/circles.ts), so every screen tells one story. The chain stores only
  * addresses; these are labels, and a connected member's own seat still shows "You".

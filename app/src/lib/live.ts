@@ -37,7 +37,7 @@ export function memberAddress(programId: PublicKeyT, circle: PublicKeyT, wallet:
   )[0];
 }
 
-type DecodedCircle = {
+export type DecodedCircle = {
   creator: PublicKeyT;
   circleId: BNLike;
   stockMint: PublicKeyT;
@@ -180,7 +180,8 @@ export type LiveCircle = {
 export async function readLiveCircle(
   connection: anchor.web3.Connection,
   circleAddress: string,
-  stockSymbol: string,
+  /** The stock's display word, or a function naming it from the circle's stock mint. */
+  stockSymbol: string | ((stockMint: string) => string),
   names: readonly string[] = [],
 ): Promise<LiveCircle> {
   const programId = new anchor.web3.PublicKey(IDL.address);
@@ -209,7 +210,7 @@ export async function readLiveCircle(
   const now = Math.floor(Date.now() / 1000);
   const view = decodeLive(
     { circle: circleInfo.data, feed: feedInfo.data, mint: mintInfo.data, members: memberInfos.map((m) => m?.data ?? null) },
-    stockSymbol,
+    typeof stockSymbol === "string" ? stockSymbol : stockSymbol(c.stockMint.toBase58()),
     now,
     names,
   );

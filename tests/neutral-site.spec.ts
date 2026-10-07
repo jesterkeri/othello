@@ -57,7 +57,8 @@ describe("neutral site: the connected wallet decides the side", () => {
     assert.deepEqual(gateDecision("solana", "Assets", evm), { show: "redirect", to: "/robinhood/assets" });
     assert.deepEqual(gateDecision("solana", "Portfolio", evm), { show: "redirect", to: "/robinhood/portfolio" });
     assert.deepEqual(gateDecision("solana", "Circles", evm), { show: "redirect", to: "/robinhood" });
-    assert.deepEqual(gateDecision("robinhood", "Circles", sol), { show: "redirect", to: "/circle/demo" });
+    // Solana's circles list (Joshua 2026-10-06: the shared circles page; the demo circle is one of its circles)
+    assert.deepEqual(gateDecision("robinhood", "Circles", sol), { show: "redirect", to: "/solana" });
     assert.deepEqual(gateDecision("robinhood", "Assets", sol), { show: "redirect", to: "/assets" });
     assert.deepEqual(gateDecision("robinhood", "Circles", none), { show: "connect" });
     assert.deepEqual(gateDecision("robinhood", "Circles", evm), { show: "page" });

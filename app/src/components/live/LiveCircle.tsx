@@ -19,10 +19,10 @@ import { PublicKey, Transaction, type TransactionInstruction } from "@solana/web
 import Circle from "@/components/circle/Circle";
 import s from "@/components/circle/Circle.module.css";
 import Shell from "@/components/othello/Shell";
-import { defaultRecovered, derive, formatDuration, formatUsdc, seatSet } from "@/lib/circle";
+import { defaultRecovered, derive, formatDuration, formatUsdc, releaseBlock, seatSet } from "@/lib/circle";
 import { addStockIx, declareDefaultIx, parseUnits, releasePotIx, topUpReserveIx, updateCoverageIx, withdrawIx } from "@/lib/actions";
 import { contributeIx, explainFailure } from "@/lib/contribute";
-import { DEMO_CIRCLE, LABELS, explorer } from "@/lib/devnet";
+import { DEMO_CIRCLE, LABELS, explorer, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
 import { multiplierAt } from "@/lib/scaledUi";
 
@@ -45,7 +45,8 @@ function isRejection(e: unknown): boolean {
   return /reject|declin|denied|cancel/i.test(`${e instanceof Error ? e.message : String(e)} ${inner?.message ?? ""}`);
 }
 
-export default function LiveCircle() {
+/** `address`: any Othello circle (default the demo; Joshua 2026-10-06, circles opened from the shared list). */
+export default function LiveCircle({ address = DEMO_CIRCLE }: { address?: string }) {
   const { connection } = useConnection();
   const wallet = useWallet();
   const [live, setLive] = useState<Live | null>(null);
@@ -60,7 +61,7 @@ export default function LiveCircle() {
   const refresh = useCallback(async () => {
     const mine = ++latest.current;
     try {
-      const res = await fetch("/api/circle", { cache: "no-store" });
+      const res = await fetch(liveCircleUrl(address), { cache: "no-store" });
       const body = (await res.json()) as Live | { error: string };
       if (mine !== latest.current) return;
       if ("error" in body) throw new Error(body.error);
@@ -69,7 +70,7 @@ export default function LiveCircle() {
     } catch (e) {
       if (mine === latest.current) setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [address]);
 
   useEffect(() => {
     void refresh();
@@ -140,7 +141,7 @@ export default function LiveCircle() {
                 </span>
               </div>
             ) : (
-              <p className={s.panelNote}>Reading the demo circle from devnet…</p>
+              <p className={s.panelNote}>Reading the {address === DEMO_CIRCLE ? "demo " : ""}circle from devnet…</p>
             )}
           </div>
         </div>
@@ -221,7 +222,8 @@ export default function LiveCircle() {
   // it: the program refuses with numbers if the gate fails". release_pot recomputes the gate itself
   // (adversary pass 3 proved a Paused circle whose release the program accepts), so Paused only
   // adds a note here, never a disabled button.
-  const canRelease = active && owing.length === 0 && !priceBlock && !!recipient;
+  // the shared rule (lib/circle.ts releaseBlock), which the circles list uses too
+  const canRelease = releaseBlock(c, wallClock) === null;
   const canCover = active && !priceBlock;
   const defaults = defaultable.map((m) => {
     const needs = defaultRecovered(c, m, live.pool.discountBps);
@@ -231,6 +233,8 @@ export default function LiveCircle() {
     ? `The circle is ${c.status}; these open while it is Active.`
     : owing.length > 0
       ? `The pot can be released once every seat has paid or been declared in default. Still to pay: ${owing.map((m) => m.name).join(", ")}.`
+      : releaseBlock(c, wallClock) === "escrow-short"
+        ? `Every seat is settled, but the escrow holds ${formatUsdc(c.escrow)} ${USDC_WORD} and the defaulted seats' share of this round is ${formatUsdc(c.contribution * covered.length)}: the program refuses the release until the escrow can pay it.`
       : priceBlock
         ? `Every seat is settled, but the pot waits. ${priceBlock}`
         : dv.paused
@@ -367,9 +371,9 @@ export default function LiveCircle() {
     <Circle
       circle={c}
       startNow={now}
-      stateKey="demo"
+      stateKey={liveKeyOf(address)}
       live={{
-        circleAddress: DEMO_CIRCLE,
+        circleAddress: address,
         readAt: live.readAt,
         error,
         mirrorLabel: LABELS.nflxxMirror,
