@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
   try {
     const body = await solanaCirclesOf(new Connection(url, "confirmed"), wallet);
     cache.delete(wallet);
-    cache.set(wallet, { at: now, body });
+    // an answer with circles that could not be read is not kept: Try again must scan again (adversary on d9a3db1)
+    if (body.failed.length === 0) cache.set(wallet, { at: now, body });
     if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
     return NextResponse.json(body, { headers });
   } catch (e) {

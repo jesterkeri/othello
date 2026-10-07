@@ -193,7 +193,7 @@ export default function CirclesBoard({ items, me, side, unread = 0 }: { items: I
         {shown.length === 0 && (
           <div className={c.empty} style={{ gridArea: "e" }}>
             <b className={c.headline}>{unread ? "Not every circle is read yet." : "No circles running right now."}</b>
-            <span className={c.detail}>{unread ? "The circles still reading, or that couldn't be read, are listed below." : "Start one and invite the people you save with, or open a link someone sent you."}</span>
+            <span className={c.detail}>{unread ? "Some of your circles are still reading, couldn't be read, or are behind Show more: see below." : "Start one and invite the people you save with, or open a link someone sent you."}</span>
             <a className={c.heroAction} href={CHAIN_PAGE[side].startHref}>Start a circle <span aria-hidden>→</span></a>
           </div>
         )}

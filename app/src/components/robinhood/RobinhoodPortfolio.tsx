@@ -17,7 +17,7 @@ import Shell from "@/components/othello/Shell";
 import { TokenChip, TokenChips } from "@/components/assets/TokenChip";
 import { ARROW_RIGHT, Arrow, AssetRow, CircleSummary, PortfolioFooter, PortfolioHeader, RingsDecor, TestTokenStrip, TotalDecor } from "@/components/portfolio/parts";
 import portfolio from "@/components/portfolio/Portfolio.module.css";
-import { checkFactory, listMyCircles, MY_CIRCLES_PAGE, readCircleInTurn, type CircleSummary as Summary, type RhCircleView } from "@/lib/robinhood/adapter";
+import { checkFactory, listMyCircles, MY_CIRCLES_PAGE, readCircleInTurn, StaleRead, type CircleSummary as Summary, type RhCircleView } from "@/lib/robinhood/adapter";
 import { USDG } from "@/lib/robinhood/chain";
 import { fmtUsdg } from "@/lib/robinhood/copy";
 import { circleCard, pickCircle } from "@/lib/robinhood/portfolio-circle";
@@ -63,6 +63,8 @@ async function readRunningCircles(account: `0x${string}`, stale: () => boolean):
   let before: number | undefined;
   let count = 0;
   for (let page = 0; page < MAX_PAGES; page++) {
+    // a card that has moved on (a wallet switch, Try again) stops listing (adversary suspicion on d9a3db1)
+    if (stale()) throw new StaleRead();
     const next = await listMyCircles(robinhoodPublicClient, account, before);
     if (page === 0) count = next.total;
     all.push(...next.circles);
