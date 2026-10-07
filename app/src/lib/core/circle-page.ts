@@ -71,7 +71,10 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
     { key: "payments", label: "Payments", status: settled ? "done" : "blocked",
       // exact about a seat settled in default: its share is paid from the escrow by the release itself, so it has not
       // "paid" (T18d adversary)
-      detail: !settled ? `${paidCount} of ${v.n} paid; waiting for ${seatList(unpaid)}`
+      // once released the read has moved to the next round and no longer says who paid the released one, so the step
+      // names both ways a seat is in (adversary on fd9d764)
+      detail: done ? `Every seat paid or was settled in default for round ${round + 1}`
+        : !settled ? `${paidCount} of ${v.n} paid; waiting for ${seatList(unpaid)}`
         : coveredCount > 0 ? `Every seat is in for round ${round + 1}: ${v.n - coveredCount} paid, ${coveredCount} settled in default`
         : `Every seat has paid round ${round + 1}` },
     { key: "safety", label: "Payout safety", status: coverFailed ? "blocked" : done || inFlight ? "done" : reserveShort > 0n ? "blocked" : settled ? "done" : "todo",

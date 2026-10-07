@@ -30,7 +30,9 @@ export default async function PositionPage({
 }: {
   params: Promise<{ id: string; seat: string }>;
 }) {
-  const { id, seat } = await params;
+  const { id: raw, seat } = await params;
+  // as /circle/[id]: a link may carry the "sol:" prefix encoded (sol%3A...)
+  const id = decodeURIComponent(raw);
   // The live demo circle reads the chain, like /circle/demo itself (T18).
   if (id === "demo") {
     const n = Number(seat);

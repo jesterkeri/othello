@@ -199,7 +199,10 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   }
 
   const busy = pay.phase === "wallet" || pay.phase === "confirming";
-  const status =
+  // a release's progress, refusal and transaction link are the shared payout panel's, which shows a refusal only in
+  // the round it was sent for (adversary on fd9d764: a refusal from a round the read had left stayed here)
+  const isRelease = pay.phase !== "idle" && pay.what.startsWith("Release");
+  const status = isRelease ? null :
     pay.phase === "wallet"
       ? `${pay.what}: approve it in your wallet.`
       : pay.phase === "confirming"
@@ -207,7 +210,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         : pay.phase === "failed"
           ? `${pay.what}: ${pay.reason}`
           : null;
-  const sig = pay.phase === "confirming" || pay.phase === "done" ? pay.sig : pay.phase === "failed" ? (pay.sig ?? null) : null;
+  const sig = isRelease ? null : pay.phase === "confirming" || pay.phase === "done" ? pay.sig : pay.phase === "failed" ? (pay.sig ?? null) : null;
 
   // The anyone-may-send actions (SPEC §5), enabled only when the program's own conditions hold
   // by this read; the program still checks, and a refusal is shown in its own words.
