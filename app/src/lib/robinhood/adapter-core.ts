@@ -136,6 +136,9 @@ export async function readCircle(
   // not found", adversary on 9343ef9) still answers. Robinhood Chain makes several blocks a second.
   let last: unknown;
   for (let back = 0n; back < 3n; back++) {
+    // a retry waits first: the public RPC answers a burst with 429 or a short batch, and an instant retry meets the
+    // same limit (Joshua's preview, 2026-10-07)
+    if (back > 0n) await new Promise((r) => setTimeout(r, 400 * Number(back)));
     try {
       const head = await client.getBlock({ blockTag: "latest" });
       if (head.number === null) throw new Error("Robinhood Chain returned a block without a number.");
@@ -147,6 +150,24 @@ export async function readCircle(
     }
   }
   throw new Error("Robinhood Chain did not answer the circle read.", { cause: last });
+}
+
+/**
+ * readCircle, one at a time across the page. Each read is about 40 calls in one batch, and the public Robinhood
+ * testnet RPC rate-limits: two circles read together (about 66 calls) came back 429 "Too Many Requests" or with a
+ * short batch, so every circle on the list failed (Joshua's preview, 2026-10-07: "Couldn't read circle ..." for both
+ * of a wallet's circles, each of which reads fine alone). Lists read their circles through this queue.
+ */
+let readQueue: Promise<unknown> = Promise.resolve();
+export function readCircleInTurn(
+  client: Pick<PublicClient, "readContract" | "getBlock">,
+  circle: Address,
+  usdg: Address = USDG,
+): Promise<RhCircleView> {
+  const next = () => readCircle(client, circle, usdg);
+  const run = readQueue.then(next, next);
+  readQueue = run.catch(() => undefined);
+  return run;
 }
 
 async function readCircleAt(

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import CirclesHome, { type CirclesSource } from "@/components/circles/CirclesHome";
 import Shell from "@/components/othello/Shell";
-import { checkFactory, listMyCircles, readCircle, type RhCircleView, type TrustResult } from "@/lib/robinhood/adapter";
+import { checkFactory, listMyCircles, readCircleInTurn, type RhCircleView, type TrustResult } from "@/lib/robinhood/adapter";
 import { EMPTY, hasMore, myCircles, nextBefore } from "@/lib/robinhood/my-circles";
 import { rhToList } from "@/lib/robinhood/to-list";
 import { robinhoodPublicClient, useEvmWallet } from "@/lib/robinhood/wallet";
@@ -82,7 +82,7 @@ export function useRobinhoodCircles(): CirclesSource {
       const key = c.address.toLowerCase();
       if (asked.current.has(key)) continue;
       asked.current.add(key);
-      readCircle(robinhoodPublicClient, c.address)
+      readCircleInTurn(robinhoodPublicClient, c.address)
         .then((v) => id === req.current && setViews((m) => ({ ...m, [key]: v })))
         .catch(() => id === req.current && setViews((m) => ({ ...m, [key]: "failed" })));
     }

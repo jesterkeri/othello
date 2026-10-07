@@ -32,6 +32,7 @@ export {
   type CircleSummary,
   type CreateResult,
   readCircle,
+  readCircleInTurn,
   topUpFill,
   withHeadroom,
   type RhCircleView,
