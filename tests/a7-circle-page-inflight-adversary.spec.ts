@@ -238,4 +238,14 @@ describe("A7: one transaction at a time across wallets; an outcome stays in its 
     assert.doesNotMatch(t, /Payment: done\./);
     assert.ok(!t.includes(SIG), "the payment's transaction is not linked on the finished circle");
   });
+
+  it("completed: the last round's release that failed while the circle ran is not shown on the finished circle", async () => {
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(wallets[0]!), sendTransaction: async () => "x" };
+    const reason = "sent, but not confirmed: block height exceeded. Check the transaction below.";
+    const pay = { phase: "failed", what: "Release pot to Nneka", reason, sig: SIG, round: 4, status: "Active", by: wallets[0]! };
+    const t = text(await renderHtml(completed, pay, { round: 4, turn: 4, amount: POT }));
+    assert.match(t, /All 5 rounds are paid out/, "precondition: the circle reads Completed");
+    assert.ok(!t.includes("block height exceeded"), `the failure belongs to the running circle: "${t.slice(t.indexOf("Payments"), t.indexOf("Payments") + 200)}"`);
+    assert.doesNotMatch(t, /waiting for Seat/);
+  });
 });

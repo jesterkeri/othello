@@ -48,6 +48,11 @@ export type PayoutInput = {
   gateShortBy: bigint;
   /** Whether any coverage check has run (Solana: last_coverage_at > 0; until then the stored figure is just 0). */
   checked: boolean;
+  /**
+   * The circle has completed: its last pot is paid out, so every seat paid or was settled in default for the last
+   * round, whatever the read's paid flags say (Solana's last release_pot clears paid_bitmap without moving the round).
+   */
+  finished?: boolean;
 };
 
 /**
@@ -59,12 +64,13 @@ export type PayoutInput = {
  */
 export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWords, refusal: { coverRefused: boolean; unfunded: boolean }): FlowStep[] {
   const done = phase.kind === "released";
+  const over = done || Boolean(v.finished);
   // the round this flow is about: once released, the read may already show the next round
   const round = done ? phase.round : v.round;
   const unpaid = v.seats.filter((s) => !s.paid && !s.defaulted).map((s) => s.turn);
-  const settled = done || unpaid.length === 0;
+  const settled = over || unpaid.length === 0;
   const paidCount = v.seats.filter((s) => s.paid || s.defaulted).length;
-  const coveredCount = done ? 0 : v.seats.filter((s) => s.defaulted && !s.paid).length;
+  const coveredCount = over ? 0 : v.seats.filter((s) => s.defaulted && !s.paid).length;
   const reserveShort = v.gateShortBy;
   const coverFailed = phase.kind === "failed" && refusal.coverRefused;
   const confirmed = done && Boolean(v.seats.find((s) => s.turn === phase.recipientTurn)?.received);
@@ -77,7 +83,7 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
       // "paid" (T18d adversary)
       // once released the read has moved to the next round and no longer says who paid the released one, so the step
       // names both ways a seat is in (adversary on fd9d764)
-      detail: done ? `Every seat paid or was settled in default for round ${round + 1}`
+      detail: over ? `Every seat paid or was settled in default for round ${round + 1}`
         : !settled ? `${paidCount} of ${v.n} paid; waiting for ${seatList(unpaid)}`
         : coveredCount > 0 ? `Every seat is in for round ${round + 1}: ${v.n - coveredCount} paid, ${coveredCount} settled in default`
         : `Every seat has paid round ${round + 1}` },

@@ -165,6 +165,15 @@ describe("A7: the shared single-circle page", () => {
       const steps = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 12_000_000n, checked: true }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
       assert.match(steps[1]!.detail, /12 test USDC short\. Releasing checks it again\./);
     });
+    it("a completed circle whose read clears the paid flags: every seat is in for the last round, never 'waiting for'", () => {
+      // Solana's last release_pot sets Completed and clears paid_bitmap without moving the round
+      const cleared = seats.map((s) => ({ ...s, paid: false, received: true }));
+      for (const phase of [{ kind: "wallet" }, { kind: "sent", hash: "h" }] as const) {
+        const steps = payoutSteps({ n: 3, round: 2, seats: cleared, gateShortBy: 0n, checked: true, finished: true }, phase, SOL_WORDS, { coverRefused: false, unfunded: false });
+        assert.equal(steps[0]!.detail, "Every seat paid or was settled in default for round 3");
+        assert.equal(steps[0]!.status, "done");
+      }
+    });
   });
 
   describe("a live Solana circle on the shared page", () => {

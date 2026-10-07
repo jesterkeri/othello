@@ -221,7 +221,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   // a finished action's outcome (done, declined, refused) from a round the read has left is not shown here
   // (or from a state it has left: the last round's payment once the circle has completed)
   const stale = (pay.phase === "done" || pay.phase === "failed") && (pay.round !== c.round || pay.status !== c.status);
-  const status = othersInFlight ? "Another wallet's transaction is still waiting for its wallet or for devnet. Sending opens again once it settles." :
+  const status = othersInFlight ? `${you ? "Another wallet's" : "A"} transaction is still waiting for its wallet or for devnet. Sending opens again once it settles.` :
     isRelease || stale ? null :
     pay.phase === "wallet"
       ? `${pay.what}: approve it in your wallet.`
@@ -422,10 +422,11 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     : pay.phase === "done" && releasing.current ? { kind: "released", hash: pay.sig, round: releasing.current.round, recipientTurn: releasing.current.turn, amount: releasing.current.amount }
     : pay.phase === "failed" ? { kind: "failed", message: pay.reason, error: pay.reason, round: releasing.current?.round ?? c.round, hash: pay.sig }
     : { kind: "idle" };
-  // a failure from a round the read has already left is not shown (two members releasing at once)
-  const shownRelease: ReleasePhase = releasePhase.kind === "failed" && releasePhase.round !== c.round ? { kind: "idle" } : releasePhase;
+  // a failure from a round or a circle state the read has already left is not shown (two members releasing at once;
+  // the last round's release refused or unconfirmed after the circle completed: adversary on 2781941)
+  const shownRelease: ReleasePhase = releasePhase.kind === "failed" && (releasePhase.round !== c.round || (pay.phase === "failed" && pay.status !== c.status)) ? { kind: "idle" } : releasePhase;
   const coverRefused = shownRelease.kind === "failed" && /CoverageTooLow|ReserveOvercommitted/.test(shownRelease.error);
-  const steps = payoutSteps({ n: c.n, round: c.round, seats: listed.seats, gateShortBy: BigInt(c.nextGateShortBy), checked: c.lastCoverageAt > 0 }, shownRelease, words,
+  const steps = payoutSteps({ n: c.n, round: c.round, seats: listed.seats, gateShortBy: BigInt(c.nextGateShortBy), checked: c.lastCoverageAt > 0, finished: c.status === "Completed" }, shownRelease, words,
     { coverRefused, unfunded: shownRelease.kind === "failed" && /RoundNotFunded/.test(shownRelease.error) });
   const releaseLabel = `Release pot${recipient ? ` to ${recipient.name}` : ""}`;
   // drawn while the circle runs, and while a release from this page is in flight or has an outcome in this round:
