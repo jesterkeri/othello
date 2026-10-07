@@ -567,8 +567,11 @@ export async function listCirclesPageWith(
 ): Promise<CirclePage> {
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new RangeError("pageSize must be 1 to 50");
   if (before !== undefined && (!Number.isInteger(before) || before < 0)) throw new RangeError("before must be a whole number");
+  // no factory yet: nothing to list. A factory whose code no longer matches its pin is a failed read, never an
+  // empty list (adversary on c2b6549: the portfolio told a wallet with circles it had none)
+  if (!factory) return { circles: [], total: 0, before: null };
   const t = await checkTrustedFactory(client, factory);
-  if (!t.ok || !factory) return { circles: [], total: 0, before: null };
+  if (!t.ok) throw new Error("Othello's factory on Robinhood Chain testnet could not be verified.");
   const total = Number(await client.readContract({
     address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfCount", args: [account],
   }));
