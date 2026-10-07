@@ -1,46 +1,50 @@
 /**
- * A6 adversary on ac23c88 (PR #25, the shared circles list). Spec item 1: "After a wallet switch, a page leave or a
- * Try again, no listing or circle-read call for the old state starts, and nothing read for it is drawn or acted on."
+ * A6 adversary on bdc3a1c (PR #25, the shared circles list). Spec item 1: "After Try again, Show more, a wallet
+ * switch or a page leave, no listing call for an earlier attempt starts, and nothing from it is drawn or acted on."
  *
- * useRobinhoodCircles (app/src/components/robinhood/RobinhoodHome.tsx) now hands listMyCircles the stale check
- * `() => id !== req.current`, and listCirclesPageWith (lib/robinhood/adapter-core.ts) asks it between its rounds and
- * inside summarize, before each circle's seat reads. But the list's "Try again" (`source.retry`, drawn beside
- * "Couldn't read your circles") calls load() again without moving req.current, so the attempt it replaces never turns
- * stale. One page's summaries run side by side under Promise.all: when one circle's read fails, the page rejects and
- * the error is drawn, while the other circles' first rounds are still on the wire. After Try again, each of those
- * still passes its check and starts its seat reads ("members") for the failed attempt, beside the new attempt's own,
- * on the rate-limited public RPC.
+ * useRobinhoodCircles (app/src/components/robinhood/RobinhoodHome.tsx) now gives each load its own attempt number and
+ * hands listMyCircles `() => !current()`, which listCirclesPageWith (lib/robinhood/adapter-core.ts) asks between its
+ * rounds. But inside a round, summarize's first five reads (n, c, status, round, creator) run under Promise.all: when
+ * one fails, the page rejects and the error with its Try again is drawn while the round's other reads are still on
+ * the transport. viem's http transport retries a read that the RPC answers with a retryable error (-32603, 429,
+ * -32005: a rate-limited RPC) after its own backoff, and no stale check reaches that retry. So a read for the failed
+ * attempt starts again after Try again has started the next one, beside the new attempt's reads. readCircle already
+ * guards the same shape with allSettledOrThrow (adversary on cbdba79); the listing page does not.
  *
- * Harness: real MockUSDG and OthelloFactory on a local anvil (chain 46630); wallet A creates two circles with
- * createCircle; TRUSTED_FACTORY points at the anvil factory with its real code hash; the real useRobinhoodCircles run
- * by the hook runner of tests/a6-circles-rh-switch-more-adversary.spec.ts. Two injected faults, on the first attempt
- * only: the older circle's "n" read fails (as an RPC error would), and the newer circle's first-round reads are held
- * until after Try again (as a slow RPC would hold them). Listing reads are told apart from the full circle reads by
- * the blockHash every readCircle call is pinned to.
+ * Harness: real MockUSDG and OthelloFactory on a local anvil (chain 46630); wallet A creates one circle with
+ * createCircle; TRUSTED_FACTORY points at the anvil factory with its real code hash; the real useRobinhoodCircles,
+ * run by the hook runner of tests/a6-circles-rh-retry-stale-adversary.spec.ts, reads through a real viem http client
+ * (batch on, as in lib/robinhood/wallet.ts) pointed at a local JSON-RPC relay in front of anvil. Before Try again the
+ * relay answers the circle's listing "n" read with a non-retryable error (-32000) and its "c" read with -32603 (as a
+ * rate-limited RPC would); from Try again on it relays everything unchanged. It counts every listing "c" request for
+ * the circle (eth_call at "latest": readCircle's reads are pinned to a block hash) that reaches it after Try again.
  *
- *   cd evm && forge build --force && cd .. && npx mocha --import=tsx --timeout 300000 tests/a6-circles-rh-retry-stale-adversary.spec.ts
+ *   cd evm && forge build --force && cd .. && npx mocha --import=tsx --timeout 300000 tests/a6-circles-rh-retry-viem-adversary.spec.ts
  * Hook-installing spec: run it in its own process.
  */
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { createRequire, registerHooks } from "node:module";
+import { createServer, type Server } from "node:http";
+import { registerHooks } from "node:module";
 import { resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
 import {
-  createPublicClient, createWalletClient, defineChain, getAddress, http, keccak256,
+  createPublicClient, createWalletClient, defineChain, encodeFunctionData, getAddress, http, keccak256,
   type Abi, type Address, type Hex, type PublicClient, type WalletClient,
 } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
 import { REPO } from "./artifacts.ts";
-import { othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
+import { othelloCircleAbi, othelloFactoryAbi } from "../app/src/lib/robinhood/abi.generated.ts";
 
 const SRC = resolve(REPO, "app/src");
-const PORT = 8693;
+const PORT = 8697;
+const RELAY_PORT = 8698;
 const ANVIL = `http://127.0.0.1:${PORT}`;
+const RELAY = `http://127.0.0.1:${RELAY_PORT}`;
 const U = 1_000_000n;
 const chain = defineChain({
   id: 46630, name: "Robinhood Chain Testnet (local anvil)",
@@ -146,9 +150,13 @@ registerHooks({
   },
 });
 
-describe("A6 adversary on ac23c88: the /robinhood list's Try again leaves the failed attempt's reads running", function () {
+type RpcItem = { jsonrpc: "2.0"; id: number; method: string; params?: unknown[] };
+type RpcReply = { jsonrpc: "2.0"; id: number; result?: unknown; error?: { code: number; message: string } };
+
+describe("A6 adversary on bdc3a1c: a failed listing attempt's transport retry starts after Try again", function () {
   this.timeout(180_000);
   let anvil: ChildProcess;
+  let relay: Server | undefined;
   let pub: PublicClient;
   const accounts = [0, 1, 2, 3].map((i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }));
   let w0: WalletClient;
@@ -168,57 +176,66 @@ describe("A6 adversary on ac23c88: the /robinhood list's Try again leaves the fa
   });
   after(() => {
     anvil?.kill();
+    relay?.close();
   });
 
-  it("starts no seat read for the failed attempt once Try again has started the next one", async () => {
+  it("starts no listing read for the failed attempt once Try again has started the next one", async () => {
     const usdg = await deploy(w0, artifact("MockUSDG.sol", "MockUSDG"));
     const factory = await deploy(w0, artifact("OthelloFactory.sol", "OthelloFactory"), [usdg]);
-    for (let k = 0; k < 2; k++) {
-      const { request } = await pub.simulateContract({
-        address: factory, abi: othelloFactoryAbi as Abi, functionName: "createCircle", account: w0.account!,
-        args: [
-          { n: 3n, c: 100n * U, g: 87n * U, minStockCover: 0n, haircutBps: 0n, coverageBps: 13000n, warnBps: 11000n,
-            roundSecs: 60n, graceSecs: 30n },
-          accounts.slice(0, 3).map((a) => a.address),
-        ],
-      } as never);
-      await pub.waitForTransactionReceipt({ hash: await w0.writeContract({ ...(request as object), chain } as never) });
-    }
+    const { request } = await pub.simulateContract({
+      address: factory, abi: othelloFactoryAbi as Abi, functionName: "createCircle", account: w0.account!,
+      args: [
+        { n: 3n, c: 100n * U, g: 87n * U, minStockCover: 0n, haircutBps: 0n, coverageBps: 13000n, warnBps: 11000n,
+          roundSecs: 60n, graceSecs: 30n },
+        accounts.slice(0, 3).map((a) => a.address),
+      ],
+    } as never);
+    await pub.waitForTransactionReceipt({ hash: await w0.writeContract({ ...(request as object), chain } as never) });
     const A = getAddress(accounts[0]!.address);
     const page = (await pub.readContract({
-      address: factory, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [A, 0n, 2n],
+      address: factory, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [A, 0n, 1n],
     } as never)) as readonly Address[];
-    const older = getAddress(page[0]!);
-    const newer = getAddress(page[1]!);
+    const circle = page[0]!.toLowerCase();
     const code = await pub.getCode({ address: factory });
     g.__a6tFactory = Object.freeze({ address: factory, codeHash: keccak256(code!) });
 
-    // every listing read (no blockHash: summarize's, not readCircle's), with the attempt it was sent in
-    let attempt = 1;
-    const listing: { attempt: number; fn: string; to: Address }[] = [];
-    let release: () => void = () => {};
-    const gate = new Promise<void>((r) => { release = r; });
-    let failedOnce = false;
-    const real = createPublicClient({ chain, transport: http(ANVIL, { batch: true }) });
-    g.__a6tClient = new Proxy(real, {
-      get(target, key, receiver) {
-        const v = Reflect.get(target, key, receiver);
-        if (key !== "readContract" || typeof v !== "function") return v;
-        return async (args: { functionName: string; address: Address; blockHash?: Hex }) => {
-          const to = getAddress(args.address);
-          if (args.blockHash === undefined && (to === older || to === newer)) {
-            const at = attempt;
-            listing.push({ attempt: at, fn: args.functionName, to });
-            if (at === 1 && to === older && args.functionName === "n" && !failedOnce) {
-              failedOnce = true;
-              throw new Error("injected: the RPC refused this call");
-            }
-            if (at === 1 && to === newer) await gate;
-          }
-          return (v as (a: unknown) => unknown).call(target, args);
-        };
-      },
+    const selN = encodeFunctionData({ abi: othelloCircleAbi as Abi, functionName: "n" }).slice(0, 10).toLowerCase();
+    const selC = encodeFunctionData({ abi: othelloCircleAbi as Abi, functionName: "c" }).slice(0, 10).toLowerCase();
+    // before Try again the relay refuses the circle's listing n and c reads; from Try again on it relays everything
+    let afterRetry = false;
+    let cBefore = 0;
+    let cAfter = 0;
+    const listingCall = (x: RpcItem, sel: string) => {
+      if (x.method !== "eth_call") return false;
+      const [tx, tag] = (x.params ?? []) as [{ to?: string; data?: string; input?: string } | undefined, unknown];
+      const data = (tx?.data ?? tx?.input ?? "").toLowerCase();
+      return tx?.to?.toLowerCase() === circle && data.startsWith(sel) && (tag === undefined || tag === "latest");
+    };
+    relay = createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => { body += d; });
+      req.on("end", async () => {
+        const parsed = JSON.parse(body) as RpcItem | RpcItem[];
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        for (const x of items) if (listingCall(x, selC)) { if (afterRetry) cAfter++; else cBefore++; }
+        const refuse = !afterRetry;
+        const up = await fetch(ANVIL, { method: "POST", headers: { "content-type": "application/json" }, body });
+        const answered = (await up.json()) as RpcReply | RpcReply[];
+        const replies = Array.isArray(answered) ? answered : [answered];
+        const out = replies.map((r) => {
+          const x = items.find((i) => i.id === r.id)!;
+          if (refuse && listingCall(x, selN)) return { jsonrpc: "2.0", id: r.id, error: { code: -32000, message: "injected: refused" } };
+          if (refuse && listingCall(x, selC)) return { jsonrpc: "2.0", id: r.id, error: { code: -32603, message: "injected: busy" } };
+          return r;
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(Array.isArray(answered) ? out : out[0]));
+      });
     });
+    await new Promise<void>((r) => relay!.listen(RELAY_PORT, "127.0.0.1", () => r()));
+
+    // the app's own client shape (lib/robinhood/wallet.ts): viem http with batching and viem's default retries
+    g.__a6tClient = createPublicClient({ chain, transport: http(RELAY, { batch: true }) });
     g.__a6tWallet = A;
     g.__a6t = hooks();
     const { useRobinhoodCircles } = await import(pathToFileURL(resolve(SRC, "components/robinhood/RobinhoodHome.tsx")).href);
@@ -231,35 +248,27 @@ describe("A6 adversary on ac23c88: the /robinhood list's Try again leaves the fa
     };
 
     let source = step();
-    for (let k = 0; k < 100 && !source.error; k++) {
-      await sleep(100);
-      // since the fix on bdc3a1c the listing fails only once every call of the attempt has settled, so the error
-      // waits for the held round: the slow RPC answers after a second, and Try again then starts a clean attempt
-      if (k === 10) release();
+    for (let k = 0; k < 4000 && !source.error; k++) {
+      await sleep(5);
       source = step();
     }
     assert.ok(source.error, "precondition: the first attempt fails and the list draws its error");
     assert.ok(source.retry, "precondition: the list draws Try again");
-    assert.ok(
-      listing.some((c) => c.attempt === 1 && c.to === newer && c.fn === "n"),
-      "precondition: the newer circle's first-round reads were sent by the first attempt",
-    );
+    assert.ok(cBefore >= 1, "precondition: the first attempt sent the circle's listing c read");
 
-    // the user presses Try again; then the slow first-round answers of the failed attempt arrive
-    attempt = 2;
+    // the user presses Try again as soon as it is drawn
+    afterRetry = true;
     source.retry();
-    release();
-    for (let k = 0; k < 100 && !(source.found === 2 && source.reading === 0); k++) {
-      await sleep(100);
+    for (let k = 0; k < 200 && !(source.found === 1 && source.reading === 0); k++) {
+      await sleep(50);
       source = step();
     }
-    assert.equal(source.found, 2, "precondition: the attempt started by Try again lists both circles");
-    await sleep(1_000);
+    assert.equal(source.found, 1, "precondition: the attempt started by Try again lists the circle");
+    await sleep(2_000);
 
-    // the attempt Try again started reads each circle's 3 seats once; anything more is the failed attempt's
-    const seatReads = listing.filter((c) => c.attempt === 2 && c.fn === "members" && c.to === newer).length;
-    assert.equal(seatReads, 3,
-      `after Try again, ${seatReads} seat reads ("members") went out for the newer circle; the new attempt needs 3, ` +
-      `so ${seatReads - 3} were started for the failed attempt`);
+    // the attempt Try again started sends one listing c read; anything more was started for the failed attempt
+    assert.equal(cAfter, 1,
+      `after Try again, ${cAfter} listing "c" reads for the circle reached the RPC; the new attempt sends 1, ` +
+      `so ${cAfter - 1} were started for the failed attempt (viem's retry of its refused read)`);
   });
 });

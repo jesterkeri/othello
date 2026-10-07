@@ -587,11 +587,13 @@ export const MY_CIRCLES_PAGE = 10;
 async function summarize(client: Pick<PublicClient, "readContract">, addr: Address, account: Address, check: () => void = () => {}): Promise<CircleSummary | null> {
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
     client.readContract({ address: addr, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
-  const [n, c, status, round, creator] = await Promise.all([
+  // every round settles in full before the listing fails, so no call (or viem's retry of it) is still on the RPC
+  // when the page shows its error and a Try again starts (adversary on bdc3a1c)
+  const [n, c, status, round, creator] = await allSettledOrThrow([
     r<bigint>("n"), r<bigint>("c"), r<number>("status"), r<number>("round"), r<Address>("creator"),
   ]);
   check();
-  const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
+  const members = await allSettledOrThrow(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
   const turn = members.findIndex((m) => isAddressEqual(m, account));
   return turn >= 0 ? { address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn } : null;
 }
@@ -633,6 +635,6 @@ export async function listCirclesPageWith(
   })) as readonly Address[];
   check();
   const out: CircleSummary[] = [];
-  for (const x of await Promise.all([...addrs].reverse().map((a) => summarize(client, a, account, check)))) if (x) out.push(x);
+  for (const x of await allSettledOrThrow([...addrs].reverse().map((a) => summarize(client, a, account, check)))) if (x) out.push(x);
   return { circles: out, total, before: start > 0 ? start : null };
 }
