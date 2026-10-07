@@ -147,7 +147,13 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
   useLayoutEffect(() => {
     const el = screen.current;
     if (!el) return;
-    const measure = () => el.style.setProperty("--top", `${Math.round(el.getBoundingClientRect().top + window.scrollY)}px`);
+    const measure = () => {
+      el.style.setProperty("--top", `${Math.round(el.getBoundingClientRect().top + window.scrollY)}px`);
+      // and the padding below it (the page's and the shell's), so three tiles end inside the window on desktop
+      let below = 0;
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) below += parseFloat(getComputedStyle(p).paddingBottom) || 0;
+      el.style.setProperty("--below", `${Math.round(below)}px`);
+    };
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);

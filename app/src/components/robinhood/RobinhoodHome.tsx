@@ -30,9 +30,20 @@ export function useRobinhoodCircles(): CirclesSource {
   // the one render before the reset effect runs (adversary on 3e5d468)
   const [listedFor, setListedFor] = useState<string | null>(null);
 
+  // a refused or failed factory check: only "not-deployed" (no factory configured) means circles are not open; any
+  // other refusal is a read that failed, shown as an error with a retry (adversary suspicion on ac343d8, as the
+  // portfolio decides it)
+  const [factoryTry, setFactoryTry] = useState(0);
   useEffect(() => {
-    void checkFactory(robinhoodPublicClient).then(setFactory).catch(() => setFactory({ ok: false, reason: "factory-code" }));
-  }, []);
+    let live = true;
+    setFactory(null);
+    void checkFactory(robinhoodPublicClient)
+      .then((f) => live && setFactory(f))
+      .catch(() => live && setFactory({ ok: false, reason: "factory-code" }));
+    return () => { live = false; };
+  }, [factoryTry]);
+  const closed = factory && !factory.ok && factory.reason === "not-deployed";
+  const factoryFailed = Boolean(factory && !factory.ok && !closed);
 
   const load = useCallback((address: `0x${string}`, before: number | undefined) => {
     const id = req.current;
@@ -88,7 +99,7 @@ export function useRobinhoodCircles(): CirclesSource {
       connectLabel: "Connect an EVM wallet (MetaMask)",
       installHint: "Install MetaMask or another EVM wallet to see your circles.",
     },
-    blocked: factory && !factory.ok ? (
+    blocked: closed ? (
       <section className={`${s.banner} ${s.refusal}`} role="alert">
         <h2 className={s.bannerTitle}>Robinhood circles aren&apos;t open yet</h2>
         <p className={s.bannerText}>Othello&apos;s contracts on Robinhood Chain testnet are waiting for their final review.</p>
@@ -103,10 +114,10 @@ export function useRobinhoodCircles(): CirclesSource {
     failed: (circles ?? [])
       .filter((c) => views[c.address.toLowerCase()] === "failed")
       .map((c) => ({ address: c.address, href: `/circle/rh:${c.address}` })),
-    error: fresh ? list.error : null,
+    error: factoryFailed ? "Othello's factory on Robinhood Chain testnet could not be verified just now." : fresh ? list.error : null,
     // both page from the list read for this wallet only: before the reset runs, `list` is still the last wallet's
     // (adversary on b37ba45: its "Show more" was drawn for one render after a switch)
-    retry: w.address && fresh ? () => w.address && load(w.address, nextBefore(list)) : null,
+    retry: factoryFailed ? () => setFactoryTry((n) => n + 1) : w.address && fresh ? () => w.address && load(w.address, nextBefore(list)) : null,
     more: w.address && fresh && hasMore(list) ? { loading: list.loading, load: () => w.address && load(w.address, nextBefore(list)) } : null,
   };
 }

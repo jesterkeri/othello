@@ -11,9 +11,10 @@
  * row, then the board filling the rest of the viewport; with fewer, a set height. The first running circle is the largest tile across the top, the others beneath it, and the
  * finished stack bottom right. Six columns so the bottom row can split in halves or thirds.
  */
-/* --top is where the screen starts on the page, measured by CirclesBoard; 20px leaves the bottom edge in view */
+/* --top is where the screen starts on the page and --below the padding under it, both measured by CirclesBoard;
+   4px leaves the bottom edge in view */
 .screen { display: flex; flex-direction: column; gap: 12px; }
-.screenFit { height: calc(100dvh - var(--top, 190px) - 20px); min-height: 600px; }
+.screenFit { height: calc(100dvh - var(--top, 190px) - var(--below, 80px) - 4px); min-height: 600px; }
 .board { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px;
   grid-template-rows: minmax(410px, 1.5fr) minmax(270px, 1fr); }
 /* below those heights (a small laptop) the page scrolls a little rather than shrink the text past reading size */

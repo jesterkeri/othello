@@ -48,7 +48,7 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       // the chain refuses a join it cannot value (adversary on 4e64417): the invitation waits, not counted as a move
       return v.joinable
         ? card("needs", "Your move", `Join and lock your ${v.collateral}`, "Join")
-        : card("active", "Invited", `You're invited: joining reopens once the ${v.collateral} price is updated`);
+        : card("active", isCreator(v, me) ? "Forming" : "Invited", `${isCreator(v, me) ? "Joining" : "You're invited: joining"} reopens once the ${v.collateral} price is updated`);
     }
     if (joined === v.n) {
       return isCreator(v, me)
@@ -81,6 +81,18 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
           : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short`);
     }
     if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
+    // every seat paid or settled in default, but the escrow holds less than the defaulted seats' share of this round
+    // (RoundNotFunded): a top-up's first part refills the escrow, up to the deficit (topUpReserve / top_up_reserve),
+    // so the recipient's pot is unblocked by topping up the gap when the deficit covers it (SPEC.md copy, "Round not
+    // funded: escrow short"; adversary on 1417e60). A seat settled in default cannot top up.
+    const settled = v.seats.filter((s) => s.defaulted && !s.paid).length;
+    const escrowGap = BigInt(settled) * v.c - v.escrow;
+    if (v.seats.every((s) => s.paid || s.defaulted) && escrowGap > 0n) {
+      const curable = escrowGap <= v.escrowDeficit;
+      if (curable && turn === v.round) return card("needs", "Your move", `Missed payments are ${fmt(escrowGap)} short: top up ${fmt(escrowGap)} to release your pot`, "Top up");
+      if (curable && mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments are ${fmt(escrowGap)} short. Any member can top up`, "Top up");
+      return card("active", "Escrow short", `Missed payments are ${fmt(escrowGap)} short: the pot waits`);
+    }
     // anyone may release a funded round on both chains (releasePot / release_pot have no caller check): the card says
     // so, while the recipient's own Claim is what Needs-you counts (adversary on 60f4a3b)
     if (v.releasable) return card("active", "Funded", `Round ${v.round + 1} is funded: anyone can release ${fmt(pot)} to ${seatLabel(v.round)}`, "Release");
