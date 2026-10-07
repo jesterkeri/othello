@@ -5,7 +5,7 @@
  */
 import type { ChainSide } from "@/lib/chains";
 import { CHAIN_PAGE, type ListCircle } from "@/lib/core/circle-list";
-import { dueIn, type CircleCard as Card } from "@/lib/core/circle-card";
+import { dueIn, needsWords, type CircleCard as Card } from "@/lib/core/circle-card";
 import { fmtMoney } from "@/lib/core/money";
 
 import { Arrow, short, stage } from "./CircleCard";
@@ -55,13 +55,13 @@ export default function CirclesPhone({ side, running, done, needsCount, waitingC
     <div className={p.phone}>
       <button type="button" className={`${p.needs} ${needsCount > 0 ? p.needsHot : ""}`} onClick={onNeeds} disabled={waitingCount === 0}
         aria-haspopup="dialog">
-        <span>{needsCount === 0 ? (unread ? "Not every circle is read yet" : "All caught up") : needsCount === 1 ? "1 circle needs you" : `${needsCount} circles need you`}</span>
-        <b className={p.needsCount}>{needsCount === 0 ? (unread ? "…" : "✓") : needsCount}</b>
+        <span>{needsWords(needsCount, unread).label}</span>
+        <b className={p.needsCount}>{needsWords(needsCount, unread).bubble}</b>
       </button>
 
       {running.map(({ v, card }, i) => <CircleCardPhone key={v.address} v={v} card={card} index={i} />)}
 
-      {running.length < 3 && (
+      {running.length < 3 && (running.length === 0 || !unread) && (
         <a className={p.room} href={CHAIN_PAGE[side].startHref}>
           <span>
             <b>{running.length === 0 ? (unread ? "Not every circle is read yet" : "No circles running right now") : "Room for another circle"}</b>

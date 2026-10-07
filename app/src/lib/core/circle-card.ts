@@ -141,3 +141,10 @@ function span(seconds: number): string {
   const m = Math.floor((s % 3_600) / 60);
   return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${Math.max(1, m)}m`;
 }
+
+/** What the Needs-you count says, honest about circles not read yet (adversary passes on eea3f01 and e68c802). */
+export function needsWords(count: number, unread: number): { label: string; bubble: string } {
+  const need = count === 1 ? "1 circle needs you" : `${count} circles need you`;
+  if (unread > 0) return count === 0 ? { label: "Not every circle is read yet", bubble: "…" } : { label: `${need}, ${unread} not read yet`, bubble: `${count}+` };
+  return count === 0 ? { label: "All caught up", bubble: "✓" } : { label: need, bubble: String(count) };
+}

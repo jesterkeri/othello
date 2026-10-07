@@ -127,6 +127,7 @@ export async function readCircle(
   client: Pick<PublicClient, "readContract" | "getBlock">,
   circle: Address,
   usdg: Address = USDG,
+  stale: () => boolean = () => false,
 ): Promise<RhCircleView> {
   // One block for everything: its timestamp is the page's chain time, and every read is pinned to its HASH (EIP-1898,
   // requireCanonical), so a deadline and a paid bitmap are never paired with another block's time or state. Adversary
@@ -139,6 +140,8 @@ export async function readCircle(
     // a retry waits first: the public RPC answers a burst with 429 or a short batch, and an instant retry meets the
     // same limit (Joshua's preview, 2026-10-07)
     if (back > 0n) await new Promise((r) => setTimeout(r, 400 * Number(back)));
+    // a queued read whose page has moved on stops between tries, so it frees the queue (adversary suspicion on e68c802)
+    if (back > 0n && stale()) throw new StaleRead();
     try {
       const head = await client.getBlock({ blockTag: "latest" });
       if (head.number === null) throw new Error("Robinhood Chain returned a block without a number.");
@@ -170,7 +173,7 @@ export function readCircleInTurn(
   stale: () => boolean = () => false,
   usdg: Address = USDG,
 ): Promise<RhCircleView> {
-  const next = () => (stale() ? Promise.reject(new StaleRead()) : readCircle(client, circle, usdg));
+  const next = () => (stale() ? Promise.reject(new StaleRead()) : readCircle(client, circle, usdg, stale));
   const run = readQueue.then(next, next);
   readQueue = run.catch(() => undefined);
   return run;

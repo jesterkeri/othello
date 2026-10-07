@@ -17,7 +17,7 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 
 import type { ChainSide } from "@/lib/chains";
 import { CHAIN_PAGE, isCreator, mySeat, type ListCircle } from "@/lib/core/circle-list";
-import type { CircleCard as Card } from "@/lib/core/circle-card";
+import { needsWords, type CircleCard as Card } from "@/lib/core/circle-card";
 
 import CircleCard, { Arrow, Fit, MiniRing, PillShape, Trim, short, type Design } from "./CircleCard";
 import c from "./CircleCard.module.css";
@@ -33,12 +33,13 @@ const AREAS = ["a", "b", "c"];
 const TONES: Record<Design, string | undefined> = { hero: undefined, pot: c.toneSky, members: c.toneCobalt };
 
 /** The Needs-you pill: the bubble counts every circle waiting on this wallet and opens them in a pop-up. */
-function NeedsPill({ count, waiting, unread, onOpen }: { count: number; waiting: number; unread: boolean; onOpen: () => void }) {
-  const label = count === 0 && unread ? "Some circles are not read yet" : count === 0 ? "Nothing waiting on you" : count === 1 ? "1 circle needs you" : `${count} circles need you`;
+function NeedsPill({ count, waiting, unread, onOpen }: { count: number; waiting: number; unread: number; onOpen: () => void }) {
+  const words = needsWords(count, unread);
+  const label = count === 0 && !unread ? "Nothing waiting on you" : words.label;
   return (
     <button type="button" className={c.pill} onClick={onOpen} disabled={waiting === 0} aria-label={label} aria-haspopup="dialog">
       {/* "All caught up" only once every circle is read (adversary on eea3f01: a failed read showed it) */}
-      <PillShape text={count === 0 ? (unread ? "Not all read" : "All caught up") : "Needs you"} bubble={count === 0 ? (unread ? "…" : "✓") : count} hot={count > 0} />
+      <PillShape text={count === 0 ? (unread ? "Not all read" : "All caught up") : "Needs you"} bubble={words.bubble} hot={count > 0} />
     </button>
   );
 }
@@ -175,7 +176,7 @@ export default function CirclesBoard({ items, me, side, unread = 0 }: { items: I
   const waiting = items.filter((x) => x.card.group === "needs" || invite(x.v));
   const layout = c[`n${shown.length}`];
   // the Needs-you pill sits in the largest tile's notched corner; with no running circle, in the title row
-  const pill = <NeedsPill count={needs.length} waiting={waiting.length} unread={unread > 0} onOpen={() => needsDialog.current?.showModal()} />;
+  const pill = <NeedsPill count={needs.length} waiting={waiting.length} unread={unread} onOpen={() => needsDialog.current?.showModal()} />;
   return (
     <div ref={screen} className={`${c.screen} ${shown.length >= 2 ? c.screenFit : ""}`}>
       <CirclesTitle side={side} action={shown.length === 0 ? <span className={c.deskOnly}>{pill}</span> : extra.length > 0 ? (
@@ -197,8 +198,9 @@ export default function CirclesBoard({ items, me, side, unread = 0 }: { items: I
         {shown.map(({ v, card }, i) => (
           <CircleCard key={v.address} v={v} me={me} card={card} design={DESIGNS[i]!} area={AREAS[i]!} tone={TONES[DESIGNS[i]!] ?? ""} corner={i === 0 ? pill : null} index={i} />
         ))}
-        {shown.length === 1 && (
-          // one running circle: the free slot invites another (up to three at once)
+        {shown.length === 1 && !unread && (
+          // one running circle: the free slot invites another (up to three at once); not while a circle is unread, which
+          // may be running (adversary on e68c802)
           <div className={c.empty} style={{ gridArea: "s" }}>
             <b className={c.headline}>Room for another circle.</b>
             <span className={c.detail}>You can be in up to three circles at once.</span>
