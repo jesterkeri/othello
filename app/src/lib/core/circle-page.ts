@@ -53,6 +53,11 @@ export type PayoutInput = {
    * round, whatever the read's paid flags say (Solana's last release_pot clears paid_bitmap without moving the round).
    */
   finished?: boolean;
+  /**
+   * How far the escrow is short of the defaulted seats' share of this round (0 or absent when it holds it): the
+   * release refuses the round as not funded until a reserve top-up funds it (Solana round_not_funded, SPEC.md:109).
+   */
+  escrowShortBy?: bigint;
 };
 
 /**
@@ -68,7 +73,9 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
   // the round this flow is about: once released, the read may already show the next round
   const round = done ? phase.round : v.round;
   const unpaid = v.seats.filter((s) => !s.paid && !s.defaulted).map((s) => s.turn);
-  const settled = over || unpaid.length === 0;
+  const escrowShort = !over && (v.escrowShortBy ?? 0n) > 0n;
+  // settled: every seat paid or in default, and the escrow holds the defaulted seats' share (adversary on b28e8d2)
+  const settled = over || (unpaid.length === 0 && !escrowShort);
   const paidCount = v.seats.filter((s) => s.paid).length;
   const coveredCount = over ? 0 : v.seats.filter((s) => s.defaulted && !s.paid).length;
   const reserveShort = v.gateShortBy;
@@ -85,7 +92,8 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
       // names both ways a seat is in (adversary on fd9d764)
       detail: over ? `Every seat paid or was settled in default for round ${round + 1}`
         // a seat in default is counted as settled, never as paid (adversary on af399a9)
-        : !settled ? `${paidCount} of ${v.n} paid${coveredCount > 0 ? `, ${coveredCount} settled in default` : ""}; waiting for ${seatList(unpaid)}`
+        : unpaid.length > 0 ? `${paidCount} of ${v.n} paid${coveredCount > 0 ? `, ${coveredCount} settled in default` : ""}; waiting for ${seatList(unpaid)}${escrowShort ? `. The escrow is also ${fmt(v.escrowShortBy!)} short of the defaulted seats' share` : ""}`
+        : escrowShort ? `Every seat is in for round ${round + 1}, but the escrow is ${fmt(v.escrowShortBy!)} short of the defaulted seats' share: a reserve top-up funds it`
         : coveredCount > 0 ? `Every seat is in for round ${round + 1}: ${v.n - coveredCount} paid, ${coveredCount} settled in default`
         : `Every seat has paid round ${round + 1}` },
     // ticked only once the chain has said so: a release in the wallet or on its way has not been checked yet (the
