@@ -123,6 +123,11 @@ async function renderHtml(view: CircleView, pay: unknown, releasing: unknown): P
   if (pay && typeof pay === "object" && (pay as { phase?: string }).phase !== "idle" && !("by" in pay)) {
     pay = { ...(pay as object), by: (g.__wallet as { publicKey: { toBase58(): string } }).publicKey.toBase58() };
   }
+  // and the status of the read it was sent from (a finished outcome belongs to that state of the circle); a seed
+  // without one was sent from the read shown
+  if (pay && typeof pay === "object" && (pay as { phase?: string }).phase !== "idle" && !("status" in pay)) {
+    pay = { ...(pay as object), status: view.status };
+  }
   const React = appRequire("react");
   const { renderToStaticMarkup } = appRequire("react-dom/server");
   g.React = React;
@@ -202,5 +207,35 @@ describe("A7 adversary: an action's outcome stays with the wallet that sent it",
     // precondition: the connected wallet is seat 2 and owes round 1
     assert.match(t, /Seat 2: your 50 test USDC for round 1 is due\./);
     assert.doesNotMatch(t, /Payment: done\./, "the previous wallet's payment is shown as done under this wallet's due payment");
+  });
+});
+
+/**
+ * The fix for the fifth pass (tests/a7-circle-page-wallet-switch-adversary.spec.ts) and its suspicion: the page follows
+ * one transaction at a time, whichever wallet sent it, and a finished outcome belongs to the state of the circle it
+ * was sent from.
+ */
+describe("A7: one transaction at a time across wallets; an outcome stays in its circle's state", () => {
+  beforeEach(() => {
+    g.__sets = [];
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(wallets[1]!), sendTransaction: async () => "x" };
+    g.__conn = {};
+  });
+
+  it("seat 1's payment in flight: seat 2's wallet is told sending waits for it, and its own payment is not shown as sent", async () => {
+    const round1: CircleView = { ...base, round: 0, paidBitmap: 0, receivedBitmap: 0, defaultedBitmap: 0, roundDeadline: NOW + 600 };
+    const t = text(await renderHtml(round1, { phase: "confirming", what: "Payment", sig: SIG, round: 0, status: "Active", by: wallets[0]! }, null));
+    assert.match(t, /Seat 2: your 50 test USDC for round 1 is due\./, "precondition: seat 2 owes round 1");
+    assert.match(t, /Another wallet's transaction is still waiting for its wallet or for devnet/);
+    assert.doesNotMatch(t, /Payment: sent/, "seat 1's transaction is not shown to seat 2 as its own");
+  });
+
+  it("completed: the last round's payment outcome, sent while the circle ran, is not shown on the finished circle", async () => {
+    const done: CircleView = { ...base, status: "Completed", round: 4, paidBitmap: 0, receivedBitmap: 0b11111, defaultedBitmap: 0, withdrawnBitmap: 0 };
+    g.__wallet = { publicKey: new anchor.web3.PublicKey(wallets[0]!), sendTransaction: async () => "x" };
+    const t = text(await renderHtml(done, { phase: "done", what: "Payment", sig: SIG, round: 4, status: "Active", by: wallets[0]! }, null));
+    assert.match(t, /Withdraw/, "precondition: the finished circle offers the withdrawal");
+    assert.doesNotMatch(t, /Payment: done\./);
+    assert.ok(!t.includes(SIG), "the payment's transaction is not linked on the finished circle");
   });
 });

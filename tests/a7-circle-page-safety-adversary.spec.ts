@@ -121,6 +121,11 @@ async function render(view: CircleView, pay: unknown, releasing: unknown): Promi
   if (pay && typeof pay === "object" && (pay as { phase?: string }).phase !== "idle" && !("by" in pay)) {
     pay = { ...(pay as object), by: (g.__wallet as { publicKey: { toBase58(): string } }).publicKey.toBase58() };
   }
+  // and the status of the read it was sent from (a finished outcome belongs to that state of the circle); a seed
+  // without one was sent from the read shown
+  if (pay && typeof pay === "object" && (pay as { phase?: string }).phase !== "idle" && !("status" in pay)) {
+    pay = { ...(pay as object), status: view.status };
+  }
   const React = appRequire("react");
   const { renderToStaticMarkup } = appRequire("react-dom/server");
   g.React = React;

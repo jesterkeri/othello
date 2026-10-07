@@ -23,7 +23,7 @@ import CopyLink from "@/components/circle-page/CopyLink";
 import PayoutPanel from "@/components/circle-page/PayoutPanel";
 import s from "@/components/circle/Circle.module.css";
 import Shell from "@/components/othello/Shell";
-import { coverageLabel, defaultRecovered, derive, execValue, formatDuration, formatRaw, formatUsdc, fundValue, obligations, releaseBlock, seatSet, shortAddress, stockCover } from "@/lib/circle";
+import { type CircleStatus, coverageLabel, defaultRecovered, derive, execValue, formatDuration, formatRaw, formatUsdc, fundValue, obligations, releaseBlock, seatSet, shortAddress, stockCover } from "@/lib/circle";
 import { payoutSteps, type ChainWords, type CloseOut, type ReleasePhase } from "@/lib/core/circle-page";
 import { ringOf, seatLabel } from "@/lib/core/ring";
 import { solToList } from "@/lib/to-list-solana";
@@ -46,12 +46,15 @@ const usdc = (base: bigint) => `${formatUsdc(Number(base))} ${USDC_WORD}`;
  * (adversary on a76dfd8: round 1's "Payment: done." showed under round 2's payment due); `by` is the wallet that
  * sent it, and another wallet is never shown it (adversary on 84686f9).
  */
+// Each transaction carries the wallet that sent it (`by`) and the round and status of the read it was sent from: its
+// outcome belongs to that wallet, that round and that state of the circle.
+type Sent = { what: string; round: number; status: CircleStatus; by: string };
 type Pay =
   | { phase: "idle" }
-  | { phase: "wallet"; what: string; round: number; by: string }
-  | { phase: "confirming"; what: string; sig: string; round: number; by: string }
-  | { phase: "done"; what: string; sig: string; round: number; by: string }
-  | { phase: "failed"; what: string; reason: string; sig?: string; round: number; by: string };
+  | ({ phase: "wallet" } & Sent)
+  | ({ phase: "confirming"; sig: string } & Sent)
+  | ({ phase: "done"; sig: string } & Sent)
+  | ({ phase: "failed"; reason: string; sig?: string } & Sent);
 
 function isRejection(e: unknown): boolean {
   const inner = (e as { error?: { code?: number; message?: string } }).error;
@@ -102,14 +105,18 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const you = wallet.publicKey?.toBase58() ?? null;
   // only the wallet that sent a transaction sees it (in flight or finished), never the next wallet connected here
   const pay: Pay = payState.phase !== "idle" && payState.by !== you ? { phase: "idle" } : payState;
+  // but the page follows one transaction at a time, whichever wallet sent it: a second send would overwrite the first's
+  // progress while it is still in flight (adversary on 8e069e5), so every send waits for it
+  const busy = payState.phase === "wallet" || payState.phase === "confirming";
+  const othersInFlight = busy && payState.by !== you;
   const yourTurn = live && you ? (live.view.members.find((m) => m.address === you)?.turn ?? null) : null;
 
   const send = useCallback(
     async (what: string, build: (me: PublicKey) => Promise<TransactionInstruction>) => {
       if (!live || !wallet.publicKey) return;
-      const round = live.view.round;
+      const { round, status } = live.view;
       const by = wallet.publicKey.toBase58();
-      setPay({ phase: "wallet", what, round, by });
+      setPay({ phase: "wallet", what, round, status, by });
       // Once the wallet returns a signature the transaction was sent, and the fee is spent, even
       // if the chain then refuses it: the screen must never say "not sent" after that point.
       let sent: string | null = null;
@@ -119,13 +126,13 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         const tx = new Transaction({ feePayer: wallet.publicKey, blockhash, lastValidBlockHeight }).add(ix);
         const sig = await wallet.sendTransaction(tx, connection);
         sent = sig;
-        setPay({ phase: "confirming", what, sig, round, by });
+        setPay({ phase: "confirming", what, sig, round, status, by });
         const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
         if (res.value.err) {
           const t = await connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
           throw Object.assign(new Error(JSON.stringify(res.value.err)), { logs: t?.meta?.logMessages ?? [], onChain: true });
         }
-        setPay({ phase: "done", what, sig, round, by });
+        setPay({ phase: "done", what, sig, round, status, by });
         await refresh();
       } catch (e) {
         const reason = !sent
@@ -135,7 +142,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
           : (e as { onChain?: boolean }).onChain
             ? `sent, and the program refused it. ${explainFailure(e)}`
             : `sent, but not confirmed: ${explainFailure(e)}. Check the transaction below.`;
-        setPay(sent ? { phase: "failed", what, reason, sig: sent, round, by } : { phase: "failed", what, reason, round, by });
+        setPay(sent ? { phase: "failed", what, reason, sig: sent, round, status, by } : { phase: "failed", what, reason, round, status, by });
         if (sent) await refresh();
       }
     },
@@ -205,16 +212,17 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     button = { label: "Paid", enabled: false };
   } else {
     text = `Seat ${yourTurn + 1}: your ${formatUsdc(c.contribution, 0)} ${USDC_WORD} for round ${c.round + 1} is due.`;
-    button = { label: `Pay ${formatUsdc(c.contribution, 0)} ${USDC_WORD}`, enabled: pay.phase === "idle" || pay.phase === "failed" || pay.phase === "done" };
+    button = { label: `Pay ${formatUsdc(c.contribution, 0)} ${USDC_WORD}`, enabled: !busy };
   }
 
-  const busy = pay.phase === "wallet" || pay.phase === "confirming";
   // a release's progress, refusal and transaction link are the shared payout panel's, which shows a refusal only in
   // the round it was sent for (adversary on fd9d764: a refusal from a round the read had left stayed here)
   const isRelease = pay.phase !== "idle" && pay.what.startsWith("Release");
   // a finished action's outcome (done, declined, refused) from a round the read has left is not shown here
-  const stale = (pay.phase === "done" || pay.phase === "failed") && pay.round !== c.round;
-  const status = isRelease || stale ? null :
+  // (or from a state it has left: the last round's payment once the circle has completed)
+  const stale = (pay.phase === "done" || pay.phase === "failed") && (pay.round !== c.round || pay.status !== c.status);
+  const status = othersInFlight ? "Another wallet's transaction is still waiting for its wallet or for devnet. Sending opens again once it settles." :
+    isRelease || stale ? null :
     pay.phase === "wallet"
       ? `${pay.what}: approve it in your wallet.`
       : pay.phase === "confirming"
