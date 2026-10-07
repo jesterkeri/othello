@@ -75,6 +75,20 @@ export function useRobinhoodCircles(): CirclesSource {
     setViews({});
     asked.current = new Set();
   }, [w.address]);
+  // the list's Try again for circles whose read failed: forget them, then read them again (adversary suspicion on
+  // afa5aaa: a failed row offered only "Open it")
+  const [readTry, setReadTry] = useState(0);
+  const retryFailed = useCallback(() => {
+    setViews((m) => {
+      const kept: Record<string, RhCircleView | "failed"> = {};
+      for (const [k, v] of Object.entries(m)) {
+        if (v === "failed") asked.current.delete(k);
+        else kept[k] = v;
+      }
+      return kept;
+    });
+    setReadTry((n) => n + 1);
+  }, []);
   useEffect(() => {
     if (!circles) return;
     const id = req.current;
@@ -82,11 +96,11 @@ export function useRobinhoodCircles(): CirclesSource {
       const key = c.address.toLowerCase();
       if (asked.current.has(key)) continue;
       asked.current.add(key);
-      readCircleInTurn(robinhoodPublicClient, c.address)
+      readCircleInTurn(robinhoodPublicClient, c.address, () => id !== req.current)
         .then((v) => id === req.current && setViews((m) => ({ ...m, [key]: v })))
         .catch(() => id === req.current && setViews((m) => ({ ...m, [key]: "failed" })));
     }
-  }, [circles]);
+  }, [circles, readTry]);
   const me = w.address ?? null;
 
   return {
@@ -114,6 +128,7 @@ export function useRobinhoodCircles(): CirclesSource {
     failed: (circles ?? [])
       .filter((c) => views[c.address.toLowerCase()] === "failed")
       .map((c) => ({ address: c.address, href: `/circle/rh:${c.address}` })),
+    retryFailed: fresh ? retryFailed : null,
     error: factoryFailed ? "Othello's factory on Robinhood Chain testnet could not be verified just now." : fresh ? list.error : null,
     // both page from the list read for this wallet only: before the reset runs, `list` is still the last wallet's
     // (adversary on b37ba45: its "Show more" was drawn for one render after a switch)

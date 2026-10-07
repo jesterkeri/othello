@@ -39,6 +39,8 @@ export type CirclesSource = {
   reading: number;
   /** Circles found whose read failed: the card links to the page instead. */
   failed: { address: string; href: string }[];
+  /** Reads those circles again (chains that read each circle in the browser). */
+  retryFailed?: (() => void) | null;
   /** Finding the circles failed. */
   error: string | null;
   retry: (() => void) | null;
@@ -84,6 +86,9 @@ export default function CirclesHome({ source }: { source: CirclesSource }) {
             Couldn&apos;t read circle {short(c.address)} just now. <a className={s.addr} href={c.href}>Open it</a>
           </p>
         ))}
+        {source.failed.length > 0 && source.retryFailed && (
+          <button type="button" className={s.btnQuiet} onClick={source.retryFailed}>Try again</button>
+        )}
         {source.error && (
           <p className={s.error} role="alert">
             Couldn&apos;t read your circles: {source.error}{" "}

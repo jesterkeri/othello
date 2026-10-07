@@ -58,7 +58,7 @@ const shown = (r: TokenRead, f: (v: bigint) => string) => (r === null ? "Reading
  */
 const MAX_PAGES = 3;
 const READ_LIMIT = MAX_PAGES * MY_CIRCLES_PAGE;
-async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCircleView[]; count: number; more: boolean }> {
+async function readRunningCircles(account: `0x${string}`, stale: () => boolean): Promise<{ views: RhCircleView[]; count: number; more: boolean }> {
   const all: Summary[] = [];
   let before: number | undefined;
   let count = 0;
@@ -69,7 +69,12 @@ async function readRunningCircles(account: `0x${string}`): Promise<{ views: RhCi
     before = next.before ?? undefined;
     if (before === undefined) break;
   }
-  const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) => readCircleInTurn(robinhoodPublicClient, c.address)));
+  // reads still waiting are skipped once the card has moved on (a wallet switch, Try again) or one has failed, so
+  // they do not hold up the next wallet's reads (adversary on afa5aaa)
+  let gaveUp = false;
+  const skip = () => gaveUp || stale();
+  const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) => readCircleInTurn(robinhoodPublicClient, c.address, skip)))
+    .catch((e: unknown) => { gaveUp = true; throw e; });
   return { views, count, more: before !== undefined };
 }
 
@@ -122,7 +127,7 @@ export default function RobinhoodPortfolio() {
         // "closed" only when no factory is configured; a configured factory whose code read fails or does not match
         // is a failed read, never "not open yet" (adversary on 12fdfe9)
         if (!factory.ok) { if (live) setCircles(factory.reason === "not-deployed" ? { kind: "closed" } : { kind: "failed" }); return; }
-        const { views, count, more } = await readRunningCircles(account);
+        const { views, count, more } = await readRunningCircles(account, () => !live);
         if (live) setCircles({ kind: "ready", view: pickCircle(views, account), count, more });
       })
       .catch(() => { if (live) setCircles({ kind: "failed" }); });

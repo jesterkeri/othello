@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 
-import { readCircleInTurn } from "../app/src/lib/robinhood/adapter-core.ts";
+import { readCircleInTurn, StaleRead } from "../app/src/lib/robinhood/adapter-core.ts";
 
 describe("readCircleInTurn: circle reads never overlap", () => {
   it("starts each read only after the one before it has settled, failed reads included", async () => {
@@ -34,4 +34,21 @@ describe("readCircleInTurn: circle reads never overlap", () => {
     assert.equal(most, 1, "two circle reads were in flight at once");
     assert.deepEqual(order, ["1 failed", "2 failed", "3 failed"], "each read settles in order and a failure does not stop the next");
   });
+
+  it("skips a waiting read whose page has moved on, without touching the RPC", async () => {
+    let calls = 0;
+    const client = {
+      getBlock: async () => { calls += 1; await new Promise((r) => setTimeout(r, 5)); throw new Error("refused"); },
+      readContract: async () => { throw new Error("unused"); },
+    };
+    let moved = false;
+    const first = readCircleInTurn(client as never, "0x0000000000000000000000000000000000000001", () => moved).catch((e) => e);
+    const second = readCircleInTurn(client as never, "0x0000000000000000000000000000000000000002", () => moved).catch((e) => e);
+    while (calls === 0) await new Promise((r) => setTimeout(r, 1)); // the first read has reached the RPC
+    moved = true; // the wallet switched while the first read was running and the second was waiting
+    assert.ok(!((await first) instanceof StaleRead), "the read already running finishes as it would");
+    assert.ok((await second) instanceof StaleRead, "the waiting read is skipped");
+    assert.equal(calls, 3, "only the first read's three tries reached the RPC");
+  });
 });
+

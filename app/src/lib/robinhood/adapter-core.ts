@@ -157,14 +157,20 @@ export async function readCircle(
  * testnet RPC rate-limits: two circles read together (about 66 calls) came back 429 "Too Many Requests" or with a
  * short batch, so every circle on the list failed (Joshua's preview, 2026-10-07: "Couldn't read circle ..." for both
  * of a wallet's circles, each of which reads fine alone). Lists read their circles through this queue.
+ * `stale` is asked when the read's turn comes: a read for a wallet or page that has moved on is skipped (rejected
+ * with StaleRead) instead of spending the RPC's limit ahead of the new wallet's reads (adversary on afa5aaa).
  */
+export class StaleRead extends Error {
+  constructor() { super("This read was no longer needed."); }
+}
 let readQueue: Promise<unknown> = Promise.resolve();
 export function readCircleInTurn(
   client: Pick<PublicClient, "readContract" | "getBlock">,
   circle: Address,
+  stale: () => boolean = () => false,
   usdg: Address = USDG,
 ): Promise<RhCircleView> {
-  const next = () => readCircle(client, circle, usdg);
+  const next = () => (stale() ? Promise.reject(new StaleRead()) : readCircle(client, circle, usdg));
   const run = readQueue.then(next, next);
   readQueue = run.catch(() => undefined);
   return run;
