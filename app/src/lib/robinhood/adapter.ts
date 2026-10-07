@@ -88,6 +88,7 @@ export function listMyCircles(
   client: Pick<PublicClient, "readContract" | "getCode">,
   account: Address,
   before?: number,
+  stale?: () => boolean,
 ): Promise<CirclePage> {
-  return listCirclesPageWith(client, TRUSTED_FACTORY, account, before);
+  return listCirclesPageWith(client, TRUSTED_FACTORY, account, before, undefined, stale);
 }

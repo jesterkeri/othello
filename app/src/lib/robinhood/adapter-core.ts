@@ -584,12 +584,13 @@ export type CircleSummary = { address: Address; n: number; c: bigint; status: St
 export type CirclePage = { circles: CircleSummary[]; total: number; before: number | null };
 export const MY_CIRCLES_PAGE = 10;
 
-async function summarize(client: Pick<PublicClient, "readContract">, addr: Address, account: Address): Promise<CircleSummary | null> {
+async function summarize(client: Pick<PublicClient, "readContract">, addr: Address, account: Address, check: () => void = () => {}): Promise<CircleSummary | null> {
   const r = <T,>(functionName: string, args: readonly unknown[] = []) =>
     client.readContract({ address: addr, abi: othelloCircleAbi, functionName, args } as never) as Promise<T>;
   const [n, c, status, round, creator] = await Promise.all([
     r<bigint>("n"), r<bigint>("c"), r<number>("status"), r<number>("round"), r<Address>("creator"),
   ]);
+  check();
   const members = await Promise.all(Array.from({ length: Number(n) }, (_, k) => r<Address>("members", [BigInt(k)])));
   const turn = members.findIndex((m) => isAddressEqual(m, account));
   return turn >= 0 ? { address: getAddress(addr), n: Number(n), c, status: STATUS[status] ?? "Forming", round, creator, turn } : null;
@@ -607,7 +608,11 @@ export async function listCirclesPageWith(
   account: Address,
   before?: number,
   pageSize = MY_CIRCLES_PAGE,
+  stale: () => boolean = () => false,
 ): Promise<CirclePage> {
+  // a page is several rounds of calls; a caller that has moved on (a wallet switch) stops between them, so none of the
+  // later rounds start for it (adversary on 55f8770)
+  const check = () => { if (stale()) throw new StaleRead(); };
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new RangeError("pageSize must be 1 to 50");
   if (before !== undefined && (!Number.isInteger(before) || before < 0)) throw new RangeError("before must be a whole number");
   // no factory yet: nothing to list. A factory whose code no longer matches its pin is a failed read, never an
@@ -615,16 +620,19 @@ export async function listCirclesPageWith(
   if (!factory) return { circles: [], total: 0, before: null };
   const t = await checkTrustedFactory(client, factory);
   if (!t.ok) throw new Error("Othello's factory on Robinhood Chain testnet could not be verified.");
+  check();
   const total = Number(await client.readContract({
     address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfCount", args: [account],
   }));
   const end = before === undefined ? total : Math.min(before, total);
   const start = Math.max(0, end - pageSize);
   if (end <= start) return { circles: [], total, before: null };
+  check();
   const addrs = (await client.readContract({
     address: factory.address, abi: othelloFactoryAbi, functionName: "circlesOfPage", args: [account, BigInt(start), BigInt(end - start)],
   })) as readonly Address[];
+  check();
   const out: CircleSummary[] = [];
-  for (const x of await Promise.all([...addrs].reverse().map((a) => summarize(client, a, account)))) if (x) out.push(x);
+  for (const x of await Promise.all([...addrs].reverse().map((a) => summarize(client, a, account, check)))) if (x) out.push(x);
   return { circles: out, total, before: start > 0 ? start : null };
 }

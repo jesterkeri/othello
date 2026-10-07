@@ -65,7 +65,7 @@ async function readRunningCircles(account: `0x${string}`, stale: () => boolean):
   for (let page = 0; page < MAX_PAGES; page++) {
     // a card that has moved on (a wallet switch, Try again) stops listing (adversary suspicion on d9a3db1)
     if (stale()) throw new StaleRead();
-    const next = await listMyCircles(robinhoodPublicClient, account, before);
+    const next = await listMyCircles(robinhoodPublicClient, account, before, stale);
     if (page === 0) count = next.total;
     all.push(...next.circles);
     before = next.before ?? undefined;
