@@ -107,6 +107,9 @@ describe("A6: the shared circles list on Solana", () => {
       assert.deepEqual([recipient.group, recipient.action, recipient.headline], ["needs", "Top up", `Payouts paused (${age}): top up 5 USDC to release your pot`]);
       const other = circleCard(solToList(live(paused), seatWallet(v, 2)), seatWallet(v, 2));
       assert.deepEqual([other.group, other.band, other.headline, other.action], ["active", "Paused", `Payouts paused (${age}): 5 USDC short. Any member can top up`, "Top up"]);
+      // the stored figure is only the escrow deficit: the gate compares needs with the reserve, so the release passes
+      const deficitOnly = { ...allPaid, nextGateShortBy: 5_000_000, escrowDeficit: 5_000_000 };
+      assert.equal(circleCard(solToList(live(deficitOnly), seatWallet(v, 1)), seatWallet(v, 1)).action, "Claim");
       // a funded round: anyone may release it (release_pot has no caller check); only the recipient's Claim is Needs-you
       const funded = circleCard(solToList(live(allPaid), seatWallet(v, 2)), seatWallet(v, 2));
       assert.deepEqual([funded.group, funded.band, funded.headline, funded.action], ["active", "Funded", "Round 2 is funded: anyone can release 250 USDC to Seat 2", "Release"]);
@@ -115,6 +118,12 @@ describe("A6: the shared circles list on Solana", () => {
       const notJoined = forming.members.find((m) => !((forming.joinedBitmap >> m.turn) & 1));
       if (notJoined) {
         assert.equal(circleCard(solToList(live(forming), notJoined.address), notJoined.address).headline, "Join and lock your NFLXx");
+      }
+      // join_and_lock refuses a stale or repricing price: the invitation waits, outside Needs-you's count
+      if (notJoined) {
+        const stale = { ...forming, feed: { ...forming.feed, updatedAt: FIXTURE_NOW - forming.maxPriceAge - 1 } };
+        const waits = circleCard(solToList(live(stale), notJoined.address), notJoined.address);
+        assert.deepEqual([waits.group, waits.band, waits.action], ["active", "Invited", "Open circle"]);
       }
       const done = CIRCLE_STATES.completed;
       const card = circleCard(solToList(live(done), seatWallet(done, 2)), seatWallet(done, 2));

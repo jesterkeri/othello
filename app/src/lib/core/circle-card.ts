@@ -44,7 +44,12 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
 
   if (v.status === "Forming") {
     const joined = v.seats.filter((s) => s.joined).length;
-    if (mine && !mine.joined) return card("needs", "Your move", `Join and lock your ${v.collateral}`, "Join");
+    if (mine && !mine.joined) {
+      // the chain refuses a join it cannot value (adversary on 4e64417): the invitation waits, not counted as a move
+      return v.joinable
+        ? card("needs", "Your move", `Join and lock your ${v.collateral}`, "Join")
+        : card("active", "Invited", `You're invited: joining reopens once the ${v.collateral} price is updated`);
+    }
     if (joined === v.n) {
       return isCreator(v, me)
         ? card("needs", "Your move", "Everyone has joined: start the circle", "Start")
@@ -63,7 +68,9 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
     // The figure is as of that check, which adding collateral or a price move does not refresh, so its age is shown
     // (SPEC.md payout gate; adversary on dd59b76). It may include missed payments' escrow deficit, which top-ups fill
     // first, so it is "short", not "the reserve is short".
-    if (v.releasable && v.pausedShortBy > 0n) {
+    // paused by the gate only when the stored figure is more than the escrow deficit it includes: a deficit alone
+    // does not stop the release (releasePot / release_pot compare needs with the reserve; adversary on 4e64417)
+    if (v.releasable && v.pausedShortBy > v.escrowDeficit) {
       const since = v.chainTime - v.pausedCheckedAt;
       const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
       return turn === v.round

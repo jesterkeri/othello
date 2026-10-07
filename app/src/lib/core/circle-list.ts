@@ -35,6 +35,14 @@ export type ListCircle = RingSource & {
   pausedShortBy: bigint;
   /** When that figure was last checked (lastCoverageAt, chain seconds): SPEC.md shows its age next to Paused. */
   pausedCheckedAt: number;
+  /**
+   * Missed payments' escrow deficit, which pausedShortBy includes and top-ups fill first. The release gate itself
+   * compares only the reserve, so it was short at that check only when pausedShortBy exceeds this (SPEC.md copy:
+   * "if needed is 0 and a deficit exists, use the escrow-short wording").
+   */
+  escrowDeficit: bigint;
+  /** The chain would accept a join now, apart from the seat itself (Solana: price set, fresh, not repricing). */
+  joinable: boolean;
   /** Finished circles only: who has collected, and this wallet's own share (amount null when the chain gives none). */
   closeOut: { collected: number; owedCount: number; mine: { owed: boolean; collected: boolean; amount: bigint | null } | null } | null;
 };

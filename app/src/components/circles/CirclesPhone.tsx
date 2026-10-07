@@ -47,13 +47,13 @@ function CircleCardPhone({ v, card, index }: { v: ListCircle; card: Card; index:
   );
 }
 
-export default function CirclesPhone({ side, running, done, needsCount, onNeeds, onDone }: {
-  side: ChainSide; running: Item[]; done: Item[]; needsCount: number; onNeeds: () => void; onDone: () => void;
+export default function CirclesPhone({ side, running, done, needsCount, waitingCount, onNeeds, onDone }: {
+  side: ChainSide; running: Item[]; done: Item[]; needsCount: number; waitingCount: number; onNeeds: () => void; onDone: () => void;
 }) {
   const toCollect = done.filter((x) => x.card.group === "needs").length;
   return (
     <div className={p.phone}>
-      <button type="button" className={`${p.needs} ${needsCount > 0 ? p.needsHot : ""}`} onClick={onNeeds} disabled={needsCount === 0}
+      <button type="button" className={`${p.needs} ${needsCount > 0 ? p.needsHot : ""}`} onClick={onNeeds} disabled={waitingCount === 0}
         aria-haspopup="dialog">
         <span>{needsCount === 0 ? "All caught up" : needsCount === 1 ? "1 circle needs you" : `${needsCount} circles need you`}</span>
         <b className={p.needsCount}>{needsCount === 0 ? "✓" : needsCount}</b>

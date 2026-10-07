@@ -18,6 +18,9 @@ export function rhToList(v: RhCircleView, me: string | null): ListCircle {
     releasable: Boolean(release?.enabled),
     pausedShortBy: v.nextGateShortBy,
     pausedCheckedAt: v.lastCoverageAt,
+    escrowDeficit: v.escrowDeficit,
+    // joinAndLock has no price check on this chain
+    joinable: true,
     closeOut: close && {
       collected: close.collected, owedCount: close.owedCount,
       // once collected, the seat's locked USDG reads 0 (withdraw() zeroes it), so no amount is named

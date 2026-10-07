@@ -183,7 +183,9 @@ describe("A6 adversary: strangers' invitations push the wallet's own running cir
 
     const feed = await coder.encode("priceFeed", {
       authority: pk(), stockMint: mintKey, bump: 255, wrapperPrice: new BN(150 * USDC), sharePrice: new BN(150 * USDC),
-      pricedForMultiplier: new BN("1000000000"), updatedAt: new BN(900),
+      // a fresh price, as the read sees it (readLiveCircle stamps readAt with the wall clock): join_and_lock refuses a
+      // stale one, and the list now says so instead of offering Join
+      pricedForMultiplier: new BN("1000000000"), updatedAt: new BN(Math.floor(Date.now() / 1000)),
     });
     const pool = await coder.encode("liquidationPool", { authority: pk(), bump: 255, discountBps: 500 });
     const poolVault = Buffer.alloc(165);

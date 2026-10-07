@@ -5,7 +5,7 @@
  * circle. The program's withdraw pays a member their stock, unused guarantee and top ups; the page does not compute
  * that amount yet, so the card names it in words (amount null).
  */
-import { releaseBlock, seatSet } from "./circle";
+import { isRepricing, isStale, releaseBlock, seatSet } from "./circle";
 import type { ListCircle } from "./core/circle-list";
 import { USDC } from "./core/money";
 import type { LiveCircle } from "./live";
@@ -51,6 +51,9 @@ export function solToList(live: LiveCircle, me: string | null): ListCircle {
     releasable: releaseBlock(c, live.readAt) === null,
     pausedShortBy: big(c.nextGateShortBy),
     pausedCheckedAt: c.lastCoverageAt,
+    escrowDeficit: big(c.escrowDeficit),
+    // join_and_lock values the stock: it refuses an unset, stale or repricing price (SPEC.md join_and_lock)
+    joinable: c.feed.wrapperPrice > 0 && c.feed.sharePrice > 0 && !isStale(c, live.readAt) && !isRepricing(c),
     closeOut: finished
       ? {
           collected: seats.filter((s) => owes(s) && s.withdrawn).length,
