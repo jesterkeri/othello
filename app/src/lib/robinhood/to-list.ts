@@ -20,7 +20,8 @@ export function rhToList(v: RhCircleView, me: string | null): ListCircle {
     pausedCheckedAt: v.lastCoverageAt,
     closeOut: close && {
       collected: close.collected, owedCount: close.owedCount,
-      mine: close.mine && { owed: close.mine.owed, collected: close.mine.collected, amount: close.mine.total },
+      // once collected, the seat's locked USDG reads 0 (withdraw() zeroes it), so no amount is named
+      mine: close.mine && { owed: close.mine.owed, collected: close.mine.collected, amount: close.mine.collected ? null : close.mine.total },
     },
   };
 }

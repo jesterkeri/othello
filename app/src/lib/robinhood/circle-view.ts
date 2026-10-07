@@ -108,8 +108,9 @@ export type CloseOut = {
 export function closeOutOf(v: RhCircleView, me?: string | null): CloseOut | null {
   if (v.status !== "Completed" && v.status !== "Cancelled") return null;
   const completed = v.status === "Completed";
-  // withdraw()'s own arithmetic: none of these inputs change once the circle is finished (withdraw moves only
-  // withdrawnFromReserve and collateralReturned), so every seat's amount is exact (CircleMath.pooledShare, floor).
+  // withdraw()'s own arithmetic (CircleMath.pooledShare, floor). The pool inputs do not change once the circle is
+  // finished, but withdraw() sets the seat's collateral to 0: an amount is exact only for a seat that has not
+  // collected yet. For a collected seat it is what is left, not what was paid (adversary on 67d3214).
   const poolLeft = v.reserveTotal - v.reserveLosses + v.escrow;
   const denom = v.depositsTotal - v.forfeitedTotal;
   const pays = (seat: RhCircleView["seats"][number]) => {

@@ -170,7 +170,10 @@ function HeroSeats({ v, me }: { v: ListCircle; me: string }) {
   const seats = ringOf(v, me, v.chainTime, wordsOf(v)).seats;
   const active = v.status === "Active";
   const now = seats.find((x) => x.role === "receiving");
-  const paid = seats.filter((x) => x.payment === "paid" || x.payment === "covered").length;
+  // paid is the chain's paid bit, as the sticker, the pot bar and the phone card count it; a seat settled in default
+  // is covered from the escrow only inside the release, so it is named apart (adversary on 67d3214)
+  const paid = seats.filter((x) => x.payment === "paid").length;
+  const settled = seats.filter((x) => x.payment === "covered" || x.payment === "short").length;
   const owe = owingWords(seats);
   return (
     <div className={c.dotsBig}>
@@ -181,7 +184,7 @@ function HeroSeats({ v, me }: { v: ListCircle; me: string }) {
             <li key={x.turn} className={`${c.bigDot} ${x.role === "receiving" ? c.bigDotNow : ""}`} style={{ background: colour.fill, color: colour.ink }}
               aria-label={`${x.label}${x.you ? " (you)" : ""}: ${x.status}`}>
               <span aria-hidden>{x.turn + 1}</span>
-              {active && (x.payment === "paid" || x.payment === "covered") && <span className={c.bigDotPaid} aria-hidden>✓</span>}
+              {active && x.payment === "paid" && <span className={c.bigDotPaid} aria-hidden>✓</span>}
               {x.you && <span className={c.bigDotYou} aria-hidden>You</span>}
             </li>
           );
@@ -190,7 +193,7 @@ function HeroSeats({ v, me }: { v: ListCircle; me: string }) {
       {now && <p className={c.dotsNow}>Seat {now.turn + 1}{now.you ? " (you)" : ""} gets the pot this round.</p>}
       {active && (
         <p className={c.seatSummary}>
-          <b>{paid} of {seats.length} paid this round</b>
+          <b>{paid} of {seats.length} paid this round{settled ? ` · ${settled} settled in default` : ""}</b>
           {owe && <span>Still to pay: {owe}</span>}
         </p>
       )}

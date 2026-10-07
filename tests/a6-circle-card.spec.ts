@@ -86,15 +86,16 @@ describe("A6: a circle card's group and next step", () => {
 
   it("completed, this wallet has not collected: needs you, Collect your exact withdraw() amount", () => {
     // withdraw: collateral 20 + pooled (15 reserve * 5 / 15 deposits) = 25 USDG
-    const v = circle({ status: "Completed", round: 2 }, [seat(0, { received: true, withdrawn: true }), seat(1, { received: true }), seat(2, { received: true, withdrawn: true })]);
+    const v = circle({ status: "Completed", round: 2 }, [seat(0, { received: true, withdrawn: true, collateral: 0n }), seat(1, { received: true }), seat(2, { received: true, withdrawn: true, collateral: 0n })]);
     const c = circleCard(v, W(1));
     assert.deepEqual([c.group, c.headline, c.action, c.yourTurn], ["needs", "Collect your 25 USDG", "Collect", "You received the pot in round 2"]);
   });
 
-  it("completed, this wallet has collected: finished, says what it collected and how many have", () => {
-    const v = circle({ status: "Completed", round: 2 }, [seat(0, { received: true, withdrawn: true }), seat(1, { received: true, withdrawn: true }), seat(2, { received: true })]);
+  it("completed, this wallet has collected: finished, says it collected (no amount: withdraw() zeroed its locked USDG) and how many have", () => {
+    // withdraw() sets a collected seat's collateral to 0 (evm/src/OthelloCircle.sol), so the read after it shows 0
+    const v = circle({ status: "Completed", round: 2 }, [seat(0, { received: true, withdrawn: true, collateral: 0n }), seat(1, { received: true, withdrawn: true, collateral: 0n }), seat(2, { received: true })]);
     const c = circleCard(v, W(1));
-    assert.deepEqual([c.group, c.band, c.headline], ["finished", "Finished", "You collected 25 USDG · 2 of 3 collected"]);
+    assert.deepEqual([c.group, c.band, c.headline], ["finished", "Finished", "You collected your share · 2 of 3 collected"]);
   });
 
   it("cancelled: a joined member who has not collected needs to; an unjoined one is finished with nothing owed", () => {
