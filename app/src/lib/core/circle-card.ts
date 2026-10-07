@@ -93,9 +93,15 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       const shortBy = v.pausedShortBy > escrowGap ? v.pausedShortBy : escrowGap;
       const since = v.chainTime - v.pausedCheckedAt;
       const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
-      // release_pot also needs a fresh, settled price (Solana): until then a top-up refills the escrow but releases
-      // nothing, so no release is promised (adversary on e8b9c40)
-      if (!v.priceReady) return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}. The pot can move once the ${v.collateral} price is updated`);
+      // release_pot also needs a fresh, settled price (Solana; adversary on e8b9c40), but top_up_reserve has no price
+      // check and the release needs the top-up as well (adversary on 21ed54f): the card names both, and promises the
+      // release only once both are done
+      if (!v.priceReady) {
+        const then = `then the pot can move once the ${v.collateral} price is updated`;
+        if (turn === v.round) return card("needs", "Your move", `Missed payments left the pot short (${age}): top up ${fmt(shortBy)}, ${then}`, "Top up");
+        if (mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments left the pot short (${age}): any member can top up ${fmt(shortBy)}, ${then}`, "Top up");
+        return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}, ${then}`);
+      }
       if (turn === v.round) return card("needs", "Your move", `Missed payments left the pot short (${age}): top up ${fmt(shortBy)} to release your pot`, "Top up");
       if (mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}. Any member can top up`, "Top up");
       return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}`);
