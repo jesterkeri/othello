@@ -9,7 +9,7 @@
  * Mainnet and devnet are never mixed in one card or one total.
  */
 import Link from 'next/link';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 
 import Shell from '@/components/othello/Shell';
 import { useLiveXStocks } from '@/components/assets/useLiveXStocks';
@@ -22,17 +22,12 @@ import WalletFunds from '@/components/assets/WalletFunds';
 import type { LiveCircle } from '@/lib/live';
 import { useWalletUi } from '@/lib/wallet';
 
+import { ARROW_RIGHT, Arrow, AssetRow, CircleSummary, PortfolioFooter, PortfolioHeader, RingsDecor, TestTokenStrip, TotalDecor } from './parts';
 import s from './Portfolio.module.css';
 
 /** Exact digits, trailing zeros dropped (nothing rounded). */
 const trimZeros = (x: string) => (x.includes('.') ? x.replace(/0+$/, '').replace(/\.$/, '') : x);
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-
-const Arrow = ({ d = 'M7 17 17 7M9 7h8v8' }: { d?: string }) => (
-  <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d={d} />
-  </svg>
-);
 
 export default function Portfolio() {
   const w = useWalletUi();
@@ -80,23 +75,14 @@ export default function Portfolio() {
 
   return (
     <Shell active="Portfolio">
-      <header className={s.head}>
-        <h1 className={s.title}>Portfolio</h1>
-
-        {w.address && (
-          <span className={s.readLine}>
-            <span className={s.read}><span style={{ background: anyDown ? 'var(--clay)' : 'var(--teal)' }} />{anyDown ? 'A read failed' : 'Live · devnet and mainnet'}</span>
-            <span>Read only. Othello never holds your keys.</span>
-          </span>
-        )}
-      </header>
+      <PortfolioHeader status={w.address ? { failed: anyDown, live: 'Live · devnet and mainnet' } : null} />
 
       {!w.address ? (
         <section className={s.connect}>
           <span className={s.tagLine}>Read only</span>
           <h2>Connect a wallet to see what you own and what you have promised.</h2>
           <p>Othello reads your circle seat, your xStocks and your demo tokens. It never holds your keys and cannot move anything. You approve every transaction in your own wallet.</p>
-          <button type="button" className={s.btnInk} onClick={w.openConnect}>Connect wallet<Arrow d="M5 12h14M13 6l6 6-6 6" /></button>
+          <button type="button" className={s.btnInk} onClick={w.openConnect}>Connect wallet<Arrow d={ARROW_RIGHT} /></button>
         </section>
       ) : (
         <>
@@ -104,8 +90,7 @@ export default function Portfolio() {
             {/* Joshua: one card that answers "what do I have": the mainnet total (xStocks + wallet USDC and
                 SOL), the wallet's funds, the xStocks, and the devnet circle funds kept out of the total. */}
             <section aria-label="Your portfolio" className={s.total}>
-              <span aria-hidden className={s.corner} />
-              <span aria-hidden className={s.dashes}><span /><span /><span /></span>
+              <TotalDecor />
               <div className={s.pills}>
                 <span className={s.pillLine}>Your portfolio · mainnet</span>
                 {dayMove !== null && (
@@ -177,7 +162,7 @@ export default function Portfolio() {
             </section>
 
             <section aria-label="Your circle" className={s.circle}>
-              <span aria-hidden className={s.rings}><span /></span>
+              <RingsDecor />
               <div className={s.pillsSpread}>
                 <span className={s.pillLine}>Your circle</span>
                 <span className={s.pillCream}>Devnet · test USDC</span>
@@ -187,35 +172,19 @@ export default function Portfolio() {
               ) : !c ? (
                 <div className={s.skel} />
               ) : me ? (
-                <Link href={`/circle/demo/position/${me.turn + 1}`} className={s.circleLink}>
-                  <span className={s.circleTop}>
-                    <span>
-                      <b className={s.roundBig}>{c.status === 'Active' ? `Round ${c.round + 1} of ${c.n}` : c.status}</b>
-                      <span className={s.circleSub}>
-                        {me.name}, seat {me.turn + 1} ·{' '}
-                        {seatSet(c.receivedBitmap, me.turn) ? 'you have received your pot' : c.round === me.turn ? 'your pot is this round' : `your pot is round ${me.turn + 1}`}
-                      </span>
-                    </span>
-                    <span className={s.tick}><Arrow /></span>
-                  </span>
-                  <span className={s.pips} aria-label="Rounds">
-                    {c.members.map((m) => {
-                      const got = seatSet(c.receivedBitmap, m.turn);
-                      const mine = m.turn === me.turn;
-                      return (
-                        <span key={m.address} title={`Round ${m.turn + 1}: ${m.name}${got ? ', paid out' : ''}`}
-                          style={{ background: mine ? 'var(--acid)' : got ? 'var(--teal)' : 'transparent', borderStyle: got || mine ? 'solid' : 'dashed' }} />
-                      );
-                    })}
-                  </span>
-                  <span className={s.facts}>
-                    <span><span>Locked</span>{formatRaw(me.lockedRaw, 2)} NFLXx devnet mirror</span>
-                    <span><span>Counts as</span>{formatUsdc(stockCover(me, c), 0)} test USDC</span>
-                    <span><span>Round {c.round + 1}</span>{seatSet(c.paidBitmap, me.turn) ? 'paid' : 'due'}</span>
-                    <span><span>Guarantee</span>{formatUsdc(c.guaranteePerMember, 0)} test USDC</span>
-                    <span><span>You owe</span>{formatUsdc(obligations(c, me), 0)} test USDC</span>
-                  </span>
-                </Link>
+                <CircleSummary
+                  href={`/circle/demo/position/${me.turn + 1}`}
+                  headline={c.status === 'Active' ? `Round ${c.round + 1} of ${c.n}` : c.status}
+                  sub={`${me.name}, seat ${me.turn + 1} · ${seatSet(c.receivedBitmap, me.turn) ? 'you have received your pot' : c.round === me.turn ? 'your pot is this round' : `your pot is round ${me.turn + 1}`}`}
+                  pips={c.members.map((m) => ({ key: m.address, title: `Round ${m.turn + 1}: ${m.name}${seatSet(c.receivedBitmap, m.turn) ? ', paid out' : ''}`, mine: m.turn === me.turn, got: seatSet(c.receivedBitmap, m.turn) }))}
+                  facts={[
+                    { label: 'Locked', value: `${formatRaw(me.lockedRaw, 2)} NFLXx devnet mirror` },
+                    { label: 'Counts as', value: `${formatUsdc(stockCover(me, c), 0)} test USDC` },
+                    { label: `Round ${c.round + 1}`, value: seatSet(c.paidBitmap, me.turn) ? 'paid' : 'due' },
+                    { label: 'Guarantee', value: `${formatUsdc(c.guaranteePerMember, 0)} test USDC` },
+                    { label: 'You owe', value: `${formatUsdc(obligations(c, me), 0)} test USDC` },
+                  ]}
+                />
               ) : (
                 <div className={s.down}>
                   <b>Not in a circle yet</b>
@@ -223,10 +192,10 @@ export default function Portfolio() {
                     The demo circle&apos;s five seats are taken. Watch it run: once every seat has paid and the program&apos;s
                     checks pass, anyone can release the pot, and the circle page shows what is possible right now.
                   </span>
-                  <Link href="/circle/demo" className={s.btnCream}>Open the demo circle<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
+                  <Link href="/circle/demo" className={s.btnCream}>Open the demo circle<Arrow d={ARROW_RIGHT} /></Link>
                 </div>
               )}
-              <Link href="/circle/demo" className={s.allLink}>The demo circle<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
+              <Link href="/circle/demo" className={s.allLink}>The demo circle<Arrow d={ARROW_RIGHT} /></Link>
             </section>
           </div>
 
@@ -243,12 +212,10 @@ export default function Portfolio() {
                     </span>
                   )}
                 </span>
-                <Link href="/assets" className={s.allStocks}>All assets<Arrow d="M5 12h14M13 6l6 6-6 6" /></Link>
+                <Link href="/assets" className={s.allStocks}>All assets<Arrow d={ARROW_RIGHT} /></Link>
               </div>
               {rows.map((h) => (
-                <Link key={h.address} href={`/assets/${h.symbol}`} className={s.row} style={{ '--slot': `var(--${h.slot})` } as CSSProperties}>
-                  <span className={s.badge} style={{ background: `var(--${h.slot})`, color: `var(--${h.slot}Ink)` }} aria-hidden>{h.symbol.slice(0, 2)}</span>
-                  <span className={s.name}><b>{h.symbol}</b><span>{h.name}</span></span>
+                <AssetRow key={h.address} href={`/assets/${h.symbol}`} slot={h.slot} symbol={h.symbol} name={h.name}>
                   {/* Exact: the on-chain u64 as a decimal string, never through a JS number (Codex T18d r2). */}
                   <span className={s.math} title="Tokens before the multiplier, times the multiplier, is what your wallet shows">
                     <span>{exactTokens(h.raw, h.decimals)} before the multiplier</span>
@@ -267,14 +234,12 @@ export default function Portfolio() {
                     <b>{h.usdValue !== null ? usd(h.usdValue) : 'Unavailable'}</b>
                     <span>{h.share !== null ? `${(h.share * 100).toFixed(1)}% of total` : 'not valued'}</span>
                   </span>
-                  <span className={s.arrow}><Arrow /></span>
-                </Link>
+                </AssetRow>
               ))}
             </section>
           )}
 
-          <section aria-label="Demo tokens" className={s.demo}>
-            <span className={s.demoHead}><b>Demo tokens</b><span className={s.tagDashed}>Devnet · no real value</span></span>
+          <TestTokenStrip label="Demo tokens" title="Demo tokens" tag="Devnet · no real value">
             {holdErr ? (
               <span>Live data unavailable</span>
             ) : !hold ? (
@@ -285,14 +250,13 @@ export default function Portfolio() {
                 <span><b>{exactTokens(hold.devnet.testUsdc, USDC_DECIMALS)}</b> Othello test USDC (not real USDC)</span>
               </span>
             )}
-          </section>
+          </TestTokenStrip>
         </>
       )}
 
-      <footer className={s.foot}>
-        <span>Your xStocks are real, on Solana mainnet; prices from Jupiter. Circle money is test USDC on devnet.</span>
-        <Link href="/how-it-works">How it works</Link>
-      </footer>
+      <PortfolioFooter href="/how-it-works" link="How it works">
+        Your xStocks are real, on Solana mainnet; prices from Jupiter. Circle money is test USDC on devnet.
+      </PortfolioFooter>
     </Shell>
   );
 }
