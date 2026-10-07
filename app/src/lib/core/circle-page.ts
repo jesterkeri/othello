@@ -69,7 +69,7 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
   const round = done ? phase.round : v.round;
   const unpaid = v.seats.filter((s) => !s.paid && !s.defaulted).map((s) => s.turn);
   const settled = over || unpaid.length === 0;
-  const paidCount = v.seats.filter((s) => s.paid || s.defaulted).length;
+  const paidCount = v.seats.filter((s) => s.paid).length;
   const coveredCount = over ? 0 : v.seats.filter((s) => s.defaulted && !s.paid).length;
   const reserveShort = v.gateShortBy;
   const coverFailed = phase.kind === "failed" && refusal.coverRefused;
@@ -84,7 +84,8 @@ export function payoutSteps(v: PayoutInput, phase: ReleasePhase, words: ChainWor
       // once released the read has moved to the next round and no longer says who paid the released one, so the step
       // names both ways a seat is in (adversary on fd9d764)
       detail: over ? `Every seat paid or was settled in default for round ${round + 1}`
-        : !settled ? `${paidCount} of ${v.n} paid; waiting for ${seatList(unpaid)}`
+        // a seat in default is counted as settled, never as paid (adversary on af399a9)
+        : !settled ? `${paidCount} of ${v.n} paid${coveredCount > 0 ? `, ${coveredCount} settled in default` : ""}; waiting for ${seatList(unpaid)}`
         : coveredCount > 0 ? `Every seat is in for round ${round + 1}: ${v.n - coveredCount} paid, ${coveredCount} settled in default`
         : `Every seat has paid round ${round + 1}` },
     // ticked only once the chain has said so: a release in the wallet or on its way has not been checked yet (the

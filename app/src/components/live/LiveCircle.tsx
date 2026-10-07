@@ -500,7 +500,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   if (repricing) banners.push({ kind: "neutral", mark: "!", title: "Repricing. Price and split disagree.", text: forming ? "Joins wait. The demo admin sets a price for the new multiplier, then seats can join." : "Payouts wait. The demo admin sets a price for the new multiplier, then anyone can update coverage." });
   if (dv.stale) banners.push({ kind: "neutral", mark: "?", title: `Prices are ${formatDuration(dv.priceAge)} old`, text: "Recheck after update." });
   if (dv.paused) banners.push({ kind: "refusal", mark: "!", title: "Payouts paused.", text: `The next payout needs ${formatUsdc(gateNeeded)} ${USDC_WORD} of reserve and ${formatUsdc(dv.remains)} remains. Top up ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD}, returned pro rata at the end, minus any default losses.` });
-  if (active && !dv.funded && !repricing) banners.push({ kind: "neutral", mark: String(dv.missing), title: `${dv.missing} contributions still missing`, text: `Once everyone has paid${dv.paused ? " and the reserve covers the next payout" : ""}${dv.stale ? " and the price is fresh" : ""}, anyone can release the pot${dv.recipient ? ` to ${dv.recipient.name}` : ""}. Paying late still counts.` });
+  // waiting only for the seats that can still pay: a seat in default never pays again (contribute refuses it) and the
+  // release pays its share from the escrow (adversary on af399a9)
+  if (active && owing.length > 0 && !repricing) banners.push({ kind: "neutral", mark: String(owing.length), title: `${owing.length} ${owing.length === 1 ? "contribution" : "contributions"} still missing`, text: `Once ${owing.length === 1 ? owing[0]!.name : `${owing.length} seats`} ${owing.length === 1 ? "has" : "have"} paid${dv.paused ? " and the reserve covers the next payout" : ""}${dv.stale ? " and the price is fresh" : ""}, anyone can release the pot${dv.recipient ? ` to ${dv.recipient.name}` : ""}. Paying late still counts.` });
 
   // the clock: what is due now, by the chain's last read
   const defaultableNow = active && dv.toGraceEnd < 0 ? c.members.filter((m) => !seatSet(c.paidBitmap, m.turn) && seatSet(c.receivedBitmap, m.turn) && !seatSet(c.defaultedBitmap, m.turn)) : [];
@@ -553,7 +555,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       title={`Seat ${fm.turn + 1}: ${fm.name}${fm.address === you ? " (you)" : ""}`}
       text={kind === "join" && !fmJoined
         ? c.status === "Forming"
-          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.${repricing ? " Joining waits until the price is set for the new multiplier." : ""}`
+          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.${repricing ? " Joining waits until the price is set for the new multiplier." : priceBlock ? " Joining waits for a set, fresh price." : ""}`
           : `This seat never joined, and the circle is ${c.status}: it can no longer be joined.`
         : !fmJoined
           ? "This seat has not joined yet: nothing is locked."

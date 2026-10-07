@@ -161,6 +161,16 @@ describe("A7: the shared single-circle page", () => {
       assert.equal(steps[0]!.detail, "Every seat is in for round 2: 2 paid, 1 settled in default");
       assert.equal(steps[0]!.status, "done");
     });
+    it("a seat in default is counted as settled, never as paid, while others still owe", () => {
+      const mixed = [
+        { turn: 0, paid: false, defaulted: true, received: true },
+        { turn: 1, paid: true, defaulted: false, received: false },
+        { turn: 2, paid: false, defaulted: false, received: false },
+      ];
+      const steps = payoutSteps({ n: 3, round: 1, seats: mixed, gateShortBy: 0n, checked: true }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
+      assert.equal(steps[0]!.detail, "1 of 3 paid, 1 settled in default; waiting for Seat 3");
+      assert.equal(steps[0]!.status, "blocked");
+    });
     it("the last check's short figure is shown, in the chain's unit, without blocking the release", () => {
       const steps = payoutSteps({ n: 3, round: 1, seats, gateShortBy: 12_000_000n, checked: true }, { kind: "idle" }, SOL_WORDS, { coverRefused: false, unfunded: false });
       assert.match(steps[1]!.detail, /12 test USDC short\. Releasing checks it again\./);
