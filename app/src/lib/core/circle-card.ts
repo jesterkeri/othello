@@ -82,16 +82,20 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
     }
     if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
     // every seat paid or settled in default, but the escrow holds less than the defaulted seats' share of this round
-    // (RoundNotFunded): a top-up's first part refills the escrow, up to the deficit (topUpReserve / top_up_reserve),
-    // so the recipient's pot is unblocked by topping up the gap when the deficit covers it (SPEC.md copy, "Round not
-    // funded: escrow short"; adversary on 1417e60). A seat settled in default cannot top up.
+    // (RoundNotFunded; adversary on 1417e60). A top-up first refills the escrow up to the deficit and only the rest
+    // reaches the reserve (topUpReserve / top_up_reserve), so the amount that releases the pot is the chain's stored
+    // short_by (next_gate_short_by: the deficit plus the reserve gap at the last check), never the escrow gap alone
+    // (adversary on 12cce85: topping up the gap left the gate short). SPEC.md copy, "Round not funded: escrow short":
+    // "Any member tops up {short_by}". A seat settled in default cannot top up.
     const settled = v.seats.filter((s) => s.defaulted && !s.paid).length;
     const escrowGap = BigInt(settled) * v.c - v.escrow;
     if (v.seats.every((s) => s.paid || s.defaulted) && escrowGap > 0n) {
-      const curable = escrowGap <= v.escrowDeficit;
-      if (curable && turn === v.round) return card("needs", "Your move", `Missed payments are ${fmt(escrowGap)} short: top up ${fmt(escrowGap)} to release your pot`, "Top up");
-      if (curable && mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments are ${fmt(escrowGap)} short. Any member can top up`, "Top up");
-      return card("active", "Escrow short", `Missed payments are ${fmt(escrowGap)} short: the pot waits`);
+      const shortBy = v.pausedShortBy > escrowGap ? v.pausedShortBy : escrowGap;
+      const since = v.chainTime - v.pausedCheckedAt;
+      const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
+      if (turn === v.round) return card("needs", "Your move", `Missed payments left the pot short (${age}): top up ${fmt(shortBy)} to release your pot`, "Top up");
+      if (mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}. Any member can top up`, "Top up");
+      return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}`);
     }
     // anyone may release a funded round on both chains (releasePot / release_pot have no caller check): the card says
     // so, while the recipient's own Claim is what Needs-you counts (adversary on 60f4a3b)
