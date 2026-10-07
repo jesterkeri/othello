@@ -352,10 +352,14 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       <span className={s.actionText}>
         <span className={s.bannerTitle}>Your seat: {mine.name}</span>
         <p className={s.bannerText}>
+          {/* worded from what the seat still holds, as the close-out panel is: a defaulted seat's stock can be sold in full
+              (declare_default sells min(stock, debt); adversary on 487fe28) */}
           {ended
             ? mineWithdrawn
-              ? "You have withdrawn your stock and what was left of your guarantee."
-              : "The circle has ended: withdraw your stock, unused guarantee and top-ups."
+              ? "You have withdrawn what your seat held."
+              : mine.lockedRaw > 0
+                ? "The circle has ended: withdraw your remaining stock and whatever your seat still holds in the reserve."
+                : "The circle has ended. Your locked stock went to cover missed payments: withdraw whatever is left for your seat."
             : mineDefaulted
               ? "This seat has defaulted, so it cannot add stock or top up."
               : "Lock more of the NFLXx devnet mirror to raise your cover (amounts are tokens before the multiplier), or top up the shared reserve in test USDC (it fills any payout shortfall first)."}
@@ -458,7 +462,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const close: CloseOut | null = ended ? {
     title: completed ? `All ${c.n} rounds are paid out` : "This circle was cancelled",
     body: completed
-      ? `Each member now collects their own locked ${stockUnit} plus a share of what is left in the shared reserve. Only the member's own wallet can collect it, and it does not expire.`
+      ? `Each member now collects whatever ${stockUnit} their seat still has locked, plus any share of what is left in the shared reserve. Only the member's own wallet can collect it, and it does not expire.`
       : `It was cancelled before it started. Each member who joined collects their locked ${stockUnit}, guarantee and any top ups back. Only the member's own wallet can collect it, and it does not expire.`,
     seats: ordered.map((m) => ({ turn: m.turn, label: seatLabel(m.turn), wallet: m.address, you: m.address === you, collected: seatSet(c.withdrawnBitmap, m.turn), owed: owes(m.turn), amount: null })),
     collected: owedSeats.filter((m) => seatSet(c.withdrawnBitmap, m.turn)).length,

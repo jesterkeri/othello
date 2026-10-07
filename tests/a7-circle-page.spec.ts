@@ -192,6 +192,7 @@ describe("A7: the shared single-circle page", () => {
       assert.match(text, /All 5 rounds are paid out/);
       assert.match(text, /You collect your locked NFLXx devnet mirror and whatever share of the shared reserve your seat still has/);
       assert.match(text, /1 of 5 shares collected/);
+      assert.match(text, /The circle has ended: withdraw your remaining stock and whatever your seat still holds in the reserve\./);
       assert.doesNotMatch(text, ROBINHOOD_WORDS);
     });
 

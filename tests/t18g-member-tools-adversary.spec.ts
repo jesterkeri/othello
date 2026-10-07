@@ -153,6 +153,6 @@ describe("T18g adversary: member tools for a seat that never joined", () => {
     g.__wallet = { publicKey: new anchor.web3.PublicKey(cancelled.members[1]!.address), sendTransaction: async () => "x" };
     const { on, text } = await buttons(cancelled);
     assert.notEqual(on["Withdraw"], true, "withdraw enabled for a wallet with no Member account (SPEC.md:114)");
-    assert.doesNotMatch(text, /withdraw your stock, unused guarantee and top-ups/);
+    assert.doesNotMatch(text, /withdraw your|withdraw whatever/); // the member row's withdraw wording, any version
   });
 });
