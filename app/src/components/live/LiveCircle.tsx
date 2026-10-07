@@ -43,14 +43,15 @@ const usdc = (base: bigint) => `${formatUsdc(Number(base))} ${USDC_WORD}`;
 /**
  * One transaction at a time, whichever button sent it; `what` names it in the status line, `round` is the round the
  * read showed when it was sent: its outcome belongs to that round and is not shown once the read has moved on
- * (adversary on a76dfd8: round 1's "Payment: done." showed under round 2's payment due).
+ * (adversary on a76dfd8: round 1's "Payment: done." showed under round 2's payment due); `by` is the wallet that
+ * sent it, and another wallet is never shown it (adversary on 84686f9).
  */
 type Pay =
   | { phase: "idle" }
-  | { phase: "wallet"; what: string; round: number }
-  | { phase: "confirming"; what: string; sig: string; round: number }
-  | { phase: "done"; what: string; sig: string; round: number }
-  | { phase: "failed"; what: string; reason: string; sig?: string; round: number };
+  | { phase: "wallet"; what: string; round: number; by: string }
+  | { phase: "confirming"; what: string; sig: string; round: number; by: string }
+  | { phase: "done"; what: string; sig: string; round: number; by: string }
+  | { phase: "failed"; what: string; reason: string; sig?: string; round: number; by: string };
 
 function isRejection(e: unknown): boolean {
   const inner = (e as { error?: { code?: number; message?: string } }).error;
@@ -68,7 +69,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const wallet = useWallet();
   const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pay, setPay] = useState<Pay>({ phase: "idle" });
+  const [payState, setPay] = useState<Pay>({ phase: "idle" });
   // T18g: the member's own amounts, typed as decimals and converted exactly (parseUnits).
   const [lockAmt, setLockAmt] = useState("0.1");
   const [topAmt, setTopAmt] = useState("10");
@@ -99,13 +100,16 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   }, [refresh]);
 
   const you = wallet.publicKey?.toBase58() ?? null;
+  // only the wallet that sent a transaction sees it (in flight or finished), never the next wallet connected here
+  const pay: Pay = payState.phase !== "idle" && payState.by !== you ? { phase: "idle" } : payState;
   const yourTurn = live && you ? (live.view.members.find((m) => m.address === you)?.turn ?? null) : null;
 
   const send = useCallback(
     async (what: string, build: (me: PublicKey) => Promise<TransactionInstruction>) => {
       if (!live || !wallet.publicKey) return;
       const round = live.view.round;
-      setPay({ phase: "wallet", what, round });
+      const by = wallet.publicKey.toBase58();
+      setPay({ phase: "wallet", what, round, by });
       // Once the wallet returns a signature the transaction was sent, and the fee is spent, even
       // if the chain then refuses it: the screen must never say "not sent" after that point.
       let sent: string | null = null;
@@ -115,13 +119,13 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         const tx = new Transaction({ feePayer: wallet.publicKey, blockhash, lastValidBlockHeight }).add(ix);
         const sig = await wallet.sendTransaction(tx, connection);
         sent = sig;
-        setPay({ phase: "confirming", what, sig, round });
+        setPay({ phase: "confirming", what, sig, round, by });
         const res = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
         if (res.value.err) {
           const t = await connection.getTransaction(sig, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
           throw Object.assign(new Error(JSON.stringify(res.value.err)), { logs: t?.meta?.logMessages ?? [], onChain: true });
         }
-        setPay({ phase: "done", what, sig, round });
+        setPay({ phase: "done", what, sig, round, by });
         await refresh();
       } catch (e) {
         const reason = !sent
@@ -131,7 +135,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
           : (e as { onChain?: boolean }).onChain
             ? `sent, and the program refused it. ${explainFailure(e)}`
             : `sent, but not confirmed: ${explainFailure(e)}. Check the transaction below.`;
-        setPay(sent ? { phase: "failed", what, reason, sig: sent, round } : { phase: "failed", what, reason, round });
+        setPay(sent ? { phase: "failed", what, reason, sig: sent, round, by } : { phase: "failed", what, reason, round, by });
         if (sent) await refresh();
       }
     },
@@ -145,7 +149,8 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     [live, send],
   );
 
-  if (!live) {
+  // a read of another circle (the route moved on to a new address) is not drawn while this one's loads
+  if (!live || live.accounts.circle !== address) {
     return (
       <Shell active="Circles" side="solana">
         <div className={s.frame}>
@@ -415,7 +420,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const steps = payoutSteps({ n: c.n, round: c.round, seats: listed.seats, gateShortBy: BigInt(c.nextGateShortBy), checked: c.lastCoverageAt > 0 }, shownRelease, words,
     { coverRefused, unfunded: shownRelease.kind === "failed" && /RoundNotFunded/.test(shownRelease.error) });
   const releaseLabel = `Release pot${recipient ? ` to ${recipient.name}` : ""}`;
-  const payout = active || shownRelease.kind === "released" ? (
+  // drawn while the circle runs, and while a release from this page is in flight or has an outcome in this round:
+  // the last round's release can land (status Completed, same round) before its confirmation (adversary on 84686f9)
+  const payout = active || shownRelease.kind !== "idle" ? (
     <PayoutPanel
       words={words}
       button={{ label: releaseLabel, enabled: canSend && canRelease, blocker: null, recipientTurn: recipient?.turn ?? c.round, amount: pot }}

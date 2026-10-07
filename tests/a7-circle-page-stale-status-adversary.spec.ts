@@ -120,6 +120,11 @@ const base: CircleView = {
 };
 
 async function renderHtml(view: CircleView, pay: unknown, releasing: unknown): Promise<string> {
+  // since 84686f9 each transaction on the page carries the wallet that sent it (`by`); a seed without one was sent
+  // by the wallet connected here
+  if (pay && typeof pay === "object" && (pay as { phase?: string }).phase !== "idle" && !("by" in pay)) {
+    pay = { ...(pay as object), by: (g.__wallet as { publicKey: { toBase58(): string } }).publicKey.toBase58() };
+  }
   const React = appRequire("react");
   const { renderToStaticMarkup } = appRequire("react-dom/server");
   g.React = React;
