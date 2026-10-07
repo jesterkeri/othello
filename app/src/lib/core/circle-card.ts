@@ -64,10 +64,14 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
     // (SPEC.md payout gate; adversary on dd59b76). It may include missed payments' escrow deficit, which top-ups fill
     // first, so it is "short", not "the reserve is short".
     if (v.releasable && v.pausedShortBy > 0n) {
-      const age = `checked ${span(v.chainTime - v.pausedCheckedAt)} ago`;
+      const since = v.chainTime - v.pausedCheckedAt;
+      const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
       return turn === v.round
         ? card("needs", "Your move", `Payouts paused (${age}): top up ${fmt(v.pausedShortBy)} to release your pot`, "Top up")
-        : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short. Any member can top up`, "Top up");
+        // a seat settled in default cannot top up (AlreadyDefaulted on both chains; adversary on ec145a5)
+        : mine && !mine.defaulted
+          ? card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short. Any member can top up`, "Top up")
+          : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short`);
     }
     if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
     // anyone may release a funded round on both chains (releasePot / release_pot have no caller check): the card says
