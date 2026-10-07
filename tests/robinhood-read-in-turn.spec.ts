@@ -50,5 +50,21 @@ describe("readCircleInTurn: circle reads never overlap", () => {
     assert.ok((await second) instanceof StaleRead, "the waiting read is skipped");
     assert.equal(calls, 3, "only the first read's three tries reached the RPC");
   });
+
+  it("a caller that gives up on its first failure starts no further read (the portfolio's pattern)", async () => {
+    const started: string[] = [];
+    const client = {
+      getBlock: async () => { await new Promise((r) => setTimeout(r, 2)); throw new Error("refused"); },
+      readContract: async () => { throw new Error("unused"); },
+    };
+    let gaveUp = false;
+    const addrs = ["0x00000000000000000000000000000000000000a1", "0x00000000000000000000000000000000000000a2", "0x00000000000000000000000000000000000000a3"];
+    // as RobinhoodPortfolio readRunningCircles: each read marks the give-up in its own rejection
+    await Promise.all(addrs.map((a) =>
+      readCircleInTurn(client as never, a as `0x${string}`, () => { if (!gaveUp) started.push(a.slice(-2)); return gaveUp; })
+        .catch((e: unknown) => { gaveUp = true; throw e; }))).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(started, ["a1"], "a read started after the first one failed");
+  });
 });
 

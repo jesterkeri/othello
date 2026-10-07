@@ -73,8 +73,9 @@ async function readRunningCircles(account: `0x${string}`, stale: () => boolean):
   // they do not hold up the next wallet's reads (adversary on afa5aaa)
   let gaveUp = false;
   const skip = () => gaveUp || stale();
-  const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) => readCircleInTurn(robinhoodPublicClient, c.address, skip)))
-    .catch((e: unknown) => { gaveUp = true; throw e; });
+  // each read marks the give-up itself, so it is set before the next waiting read's turn comes (adversary on eea3f01)
+  const views = await Promise.all(all.filter((c) => c.status === "Active").map((c) =>
+    readCircleInTurn(robinhoodPublicClient, c.address, skip).catch((e: unknown) => { gaveUp = true; throw e; })));
   return { views, count, more: before !== undefined };
 }
 

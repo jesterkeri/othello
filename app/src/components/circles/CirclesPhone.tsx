@@ -47,16 +47,16 @@ function CircleCardPhone({ v, card, index }: { v: ListCircle; card: Card; index:
   );
 }
 
-export default function CirclesPhone({ side, running, done, needsCount, waitingCount, onNeeds, onDone }: {
-  side: ChainSide; running: Item[]; done: Item[]; needsCount: number; waitingCount: number; onNeeds: () => void; onDone: () => void;
+export default function CirclesPhone({ side, running, done, needsCount, waitingCount, unread, onNeeds, onDone }: {
+  side: ChainSide; running: Item[]; done: Item[]; needsCount: number; waitingCount: number; unread: number; onNeeds: () => void; onDone: () => void;
 }) {
   const toCollect = done.filter((x) => x.card.group === "needs").length;
   return (
     <div className={p.phone}>
       <button type="button" className={`${p.needs} ${needsCount > 0 ? p.needsHot : ""}`} onClick={onNeeds} disabled={waitingCount === 0}
         aria-haspopup="dialog">
-        <span>{needsCount === 0 ? "All caught up" : needsCount === 1 ? "1 circle needs you" : `${needsCount} circles need you`}</span>
-        <b className={p.needsCount}>{needsCount === 0 ? "✓" : needsCount}</b>
+        <span>{needsCount === 0 ? (unread ? "Not every circle is read yet" : "All caught up") : needsCount === 1 ? "1 circle needs you" : `${needsCount} circles need you`}</span>
+        <b className={p.needsCount}>{needsCount === 0 ? (unread ? "…" : "✓") : needsCount}</b>
       </button>
 
       {running.map(({ v, card }, i) => <CircleCardPhone key={v.address} v={v} card={card} index={i} />)}
@@ -64,7 +64,7 @@ export default function CirclesPhone({ side, running, done, needsCount, waitingC
       {running.length < 3 && (
         <a className={p.room} href={CHAIN_PAGE[side].startHref}>
           <span>
-            <b>{running.length === 0 ? "No circles running right now" : "Room for another circle"}</b>
+            <b>{running.length === 0 ? (unread ? "Not every circle is read yet" : "No circles running right now") : "Room for another circle"}</b>
             <span>You can be in up to three circles at once.</span>
           </span>
           <span className={p.roomGo}>Start <span aria-hidden>→</span></span>

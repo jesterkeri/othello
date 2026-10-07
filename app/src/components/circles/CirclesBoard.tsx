@@ -33,11 +33,12 @@ const AREAS = ["a", "b", "c"];
 const TONES: Record<Design, string | undefined> = { hero: undefined, pot: c.toneSky, members: c.toneCobalt };
 
 /** The Needs-you pill: the bubble counts every circle waiting on this wallet and opens them in a pop-up. */
-function NeedsPill({ count, waiting, onOpen }: { count: number; waiting: number; onOpen: () => void }) {
-  const label = count === 0 ? "Nothing waiting on you" : count === 1 ? "1 circle needs you" : `${count} circles need you`;
+function NeedsPill({ count, waiting, unread, onOpen }: { count: number; waiting: number; unread: boolean; onOpen: () => void }) {
+  const label = count === 0 && unread ? "Some circles are not read yet" : count === 0 ? "Nothing waiting on you" : count === 1 ? "1 circle needs you" : `${count} circles need you`;
   return (
     <button type="button" className={c.pill} onClick={onOpen} disabled={waiting === 0} aria-label={label} aria-haspopup="dialog">
-      <PillShape text={count === 0 ? "All caught up" : "Needs you"} bubble={count === 0 ? "✓" : count} hot={count > 0} />
+      {/* "All caught up" only once every circle is read (adversary on eea3f01: a failed read showed it) */}
+      <PillShape text={count === 0 ? (unread ? "Not all read" : "All caught up") : "Needs you"} bubble={count === 0 ? (unread ? "…" : "✓") : count} hot={count > 0} />
     </button>
   );
 }
@@ -138,7 +139,8 @@ function FinishedStack({ items, me, onOpen }: { items: Item[]; me: string; onOpe
   );
 }
 
-export default function CirclesBoard({ items, me, side }: { items: Item[]; me: string; side: ChainSide }) {
+/** `unread`: circles found but not (yet) read, failed reads included; until it is 0 the board claims nothing empty. */
+export default function CirclesBoard({ items, me, side, unread = 0 }: { items: Item[]; me: string; side: ChainSide; unread?: number }) {
   const needsDialog = useRef<HTMLDialogElement>(null);
   const doneDialog = useRef<HTMLDialogElement>(null);
   const moreDialog = useRef<HTMLDialogElement>(null);
@@ -173,7 +175,7 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
   const waiting = items.filter((x) => x.card.group === "needs" || invite(x.v));
   const layout = c[`n${shown.length}`];
   // the Needs-you pill sits in the largest tile's notched corner; with no running circle, in the title row
-  const pill = <NeedsPill count={needs.length} waiting={waiting.length} onOpen={() => needsDialog.current?.showModal()} />;
+  const pill = <NeedsPill count={needs.length} waiting={waiting.length} unread={unread > 0} onOpen={() => needsDialog.current?.showModal()} />;
   return (
     <div ref={screen} className={`${c.screen} ${shown.length >= 2 ? c.screenFit : ""}`}>
       <CirclesTitle side={side} action={shown.length === 0 ? <span className={c.deskOnly}>{pill}</span> : extra.length > 0 ? (
@@ -182,13 +184,13 @@ export default function CirclesBoard({ items, me, side }: { items: Item[]; me: s
         </button>
       ) : null} />
       {/* a phone gets its own layout (CirclesPhone), not this bento squeezed (Joshua 2026-10-06) */}
-      <CirclesPhone side={side} running={shown} done={done} needsCount={needs.length} waitingCount={waiting.length}
+      <CirclesPhone side={side} running={shown} done={done} needsCount={needs.length} waitingCount={waiting.length} unread={unread}
         onNeeds={() => needsDialog.current?.showModal()} onDone={() => doneDialog.current?.showModal()} />
       <div className={`${c.board} ${layout} ${c.deskOnly}`}>
         {shown.length === 0 && (
           <div className={c.empty} style={{ gridArea: "e" }}>
-            <b className={c.headline}>No circles running right now.</b>
-            <span className={c.detail}>Start one and invite the people you save with, or open a link someone sent you.</span>
+            <b className={c.headline}>{unread ? "Not every circle is read yet." : "No circles running right now."}</b>
+            <span className={c.detail}>{unread ? "The circles still reading, or that couldn't be read, are listed below." : "Start one and invite the people you save with, or open a link someone sent you."}</span>
             <a className={c.heroAction} href={CHAIN_PAGE[side].startHref}>Start a circle <span aria-hidden>→</span></a>
           </div>
         )}

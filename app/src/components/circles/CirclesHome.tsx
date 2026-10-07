@@ -71,7 +71,7 @@ export default function CirclesHome({ source }: { source: CirclesSource }) {
         {source.found === 0 && (
           <p className={s.muted}>This wallet hasn&apos;t started or joined a circle yet. Start one, or open the link someone sent you.</p>
         )}
-        {showBoard && me && <CirclesBoard items={items} me={me} side={source.side} />}
+        {showBoard && me && <CirclesBoard items={items} me={me} side={source.side} unread={source.reading + source.failed.length} />}
         {source.reading > 0 && (
           <p className={s.muted}>Reading {source.reading === 1 ? "1 circle" : `${source.reading} circles`} on {source.chainName}…</p>
         )}
