@@ -45,13 +45,19 @@ export function useRobinhoodCircles(): CirclesSource {
   const closed = factory && !factory.ok && factory.reason === "not-deployed";
   const factoryFailed = Boolean(factory && !factory.ok && !closed);
 
+  // Each listing call is its own attempt: a later one (Try again, Show more) makes an earlier one stale, so a failed
+  // attempt's calls still in flight stop between rounds instead of running beside the retry (adversary on ac23c88).
+  // `req` still marks the wallet and the page; the circle reads keep using it alone.
+  const listReq = useRef(0);
   const load = useCallback((address: `0x${string}`, before: number | undefined) => {
     const id = req.current;
+    const attempt = ++listReq.current;
+    const current = () => id === req.current && attempt === listReq.current;
     dispatch({ type: "start" });
-    listMyCircles(robinhoodPublicClient, address, before, () => id !== req.current)
-      .then((page) => id === req.current && dispatch({ type: "page", page }))
+    listMyCircles(robinhoodPublicClient, address, before, () => !current())
+      .then((page) => current() && dispatch({ type: "page", page }))
       // a fixed sentence: viem's own message carries the RPC URL and the request body (adversary on b1cb461)
-      .catch(() => id === req.current && dispatch({ type: "fail", message: "Robinhood Chain testnet did not answer. Try again in a moment." }));
+      .catch(() => current() && dispatch({ type: "fail", message: "Robinhood Chain testnet did not answer. Try again in a moment." }));
   }, []);
 
   useEffect(() => {
