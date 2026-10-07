@@ -48,7 +48,7 @@ export default function CloseOutPanel({ words, close, completed, canWrite, block
                 ? `Your locked ${locked} went to cover missed payments. Withdrawing pays whatever is left for your seat and closes it.`
                 : !completed
                 ? `You collect your locked ${locked}, guarantee and top ups.`
-                : `You collect your locked ${locked} and your share of what is left in the shared reserve.`
+                : `You collect your locked ${locked} and whatever share of the shared reserve your seat still has (a seat whose guarantee covered a missed payment may have none).`
               : !completed
                 ? `You collect ${fmt(mine.total)}: your locked ${locked}, guarantee and top ups.`
                 : mine.pooled > 0n

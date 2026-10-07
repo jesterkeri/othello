@@ -181,7 +181,7 @@ describe("A7: the shared single-circle page", () => {
       const { on, text } = await buttons(done);
       assert.equal(on["Withdraw"], true);
       assert.match(text, /All 5 rounds are paid out/);
-      assert.match(text, /You collect your locked NFLXx devnet mirror and your share of what is left in the shared reserve/);
+      assert.match(text, /You collect your locked NFLXx devnet mirror and whatever share of the shared reserve your seat still has/);
       assert.match(text, /1 of 5 shares collected/);
       assert.doesNotMatch(text, ROBINHOOD_WORDS);
     });

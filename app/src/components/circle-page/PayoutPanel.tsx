@@ -53,6 +53,8 @@ export default function PayoutPanel({ words, button, steps, phase, showSafetyChe
           </button>
           {button.blocker && phase.kind !== "wallet" && phase.kind !== "sent" && <p className={r.blocker}>{button.blocker}</p>}
           {phase.kind === "failed" && <p className={r.blocker} role="alert">{phase.message}</p>}
+          {/* a release that was sent and then refused or not confirmed: its transaction, to check (adversary on a76dfd8) */}
+          {phase.kind === "failed" && phase.hash && <a className={r.link} href={words.txUrl(phase.hash)} target="_blank" rel="noreferrer">See the transaction on the explorer</a>}
           {hash && phase.kind === "sent" && <a className={r.link} href={words.txUrl(hash)} target="_blank" rel="noreferrer">Watch it on the explorer</a>}
         </>
       )}

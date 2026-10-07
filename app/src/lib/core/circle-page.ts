@@ -34,7 +34,7 @@ export type ReleasePhase =
   | { kind: "sent"; hash: string }
   | { kind: "released"; hash: string; round: number; recipientTurn: number; amount: bigint }
   /** A refusal belongs to the round it was tried in; once the read has moved on it no longer applies. */
-  | { kind: "failed"; message: string; error: string; round: number };
+  | { kind: "failed"; message: string; error: string; round: number; hash?: string };
 
 export type StepStatus = "done" | "now" | "todo" | "blocked";
 export type FlowStep = { key: string; label: string; status: StepStatus; detail: string };
