@@ -206,8 +206,11 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   } else if (c.status !== "Active") {
     text = `Contributions open while the circle is Active. It is ${c.status}.`;
   } else if (seatSet(c.defaultedBitmap, yourTurn)) {
-    // declare_default sells the stock up to what the seat owes and the reserve pays any shortfall (adversary on 3f0dc00)
-    text = "This seat has defaulted. Declaring the default prepaid its remaining payments: its stock was sold, and the shared reserve paid any shortfall.";
+    // declare_default sells the stock up to what the seat owes and the reserve pays the shortfall as far as it can; what
+    // it cannot is the escrow deficit, cured by a top-up (SPEC.md section 6; adversary on 3f0dc00 and cda5631)
+    text = c.escrowDeficit > 0
+      ? `This seat has defaulted. Its stock was sold and the shared reserve paid what it could, but the circle's escrow is still ${formatUsdc(c.escrowDeficit)} ${USDC_WORD} short of the prepaid payments; a reserve top-up cures it.`
+      : "This seat has defaulted. Declaring the default prepaid its remaining payments: its stock was sold, and the shared reserve paid any shortfall.";
   } else if (seatSet(c.paidBitmap, yourTurn)) {
     text = `You have paid round ${c.round + 1}.`;
     button = { label: "Paid", enabled: false };
@@ -259,10 +262,12 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   // Paused (next_gate_short_by > 0) blocks release_pot (reserve_overcommitted); a stale price or a
   // pool without the USDC to buy the stock blocks declare_default (price_stale, pool_insufficient).
   const dv = derive(c, wallClock);
-  // price and split disagreeing holds payouts only while the circle runs: a finished circle has nothing waiting on the
-  // price (update_coverage refuses one that is not Active; adversary on 3f0dc00). Cover figures stay "not countable"
-  // whatever the status: the price is still set for the old multiplier.
-  const repricing = active && dv.repricing;
+  // price and split disagreeing holds payouts while the circle runs and joins while it forms (join_and_lock,
+  // release_pot and update_coverage refuse: SPEC.md I13); a finished circle has nothing waiting on the price (adversary
+  // on 3f0dc00 and cda5631). Cover figures stay "not countable" whatever the status: the price is still set for the old
+  // multiplier.
+  const forming = c.status === "Forming";
+  const repricing = (active || forming) && dv.repricing;
   // A feed that was never priced reads as fresh after touch_prices but prices at 0, which the
   // program refuses as PriceStale (adversary pass 3's suspicion; admin-only, cheap to state).
   const priceBlock = c.feed.wrapperPrice === 0 || c.feed.sharePrice === 0
@@ -489,7 +494,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
 
   const banners: PageBanner[] = [];
   if (error) banners.push({ kind: "refusal", mark: "?", title: "Live data unavailable", text: `The last read of devnet failed (${error}). Showing the read from ${formatDuration(wallClock - live.readAt)} ago.` });
-  if (repricing) banners.push({ kind: "neutral", mark: "!", title: "Repricing. Price and split disagree.", text: "Payouts wait. The demo admin sets a price for the new multiplier, then anyone can update coverage." });
+  if (repricing) banners.push({ kind: "neutral", mark: "!", title: "Repricing. Price and split disagree.", text: forming ? "Joins wait. The demo admin sets a price for the new multiplier, then seats can join." : "Payouts wait. The demo admin sets a price for the new multiplier, then anyone can update coverage." });
   if (dv.stale) banners.push({ kind: "neutral", mark: "?", title: `Prices are ${formatDuration(dv.priceAge)} old`, text: "Recheck after update." });
   if (dv.paused) banners.push({ kind: "refusal", mark: "!", title: "Payouts paused.", text: `The next payout needs ${formatUsdc(gateNeeded)} ${USDC_WORD} of reserve and ${formatUsdc(dv.remains)} remains. Top up ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD}, returned pro rata at the end, minus any default losses.` });
   if (active && !dv.funded && !repricing) banners.push({ kind: "neutral", mark: String(dv.missing), title: `${dv.missing} contributions still missing`, text: `Once everyone has paid${dv.paused ? " and the reserve covers the next payout" : ""}${dv.stale ? " and the price is fresh" : ""}, anyone can release the pot${dv.recipient ? ` to ${dv.recipient.name}` : ""}. Paying late still counts.` });
@@ -539,7 +544,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       title={`Seat ${fm.turn + 1}: ${fm.name}${fm.address === you ? " (you)" : ""}`}
       text={kind === "join" && !fmJoined
         ? c.status === "Forming"
-          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.`
+          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.${repricing ? " Joining waits until the price is set for the new multiplier." : ""}`
           : `This seat never joined, and the circle is ${c.status}: it can no longer be joined.`
         : !fmJoined
           ? "This seat has not joined yet: nothing is locked."

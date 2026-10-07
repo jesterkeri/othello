@@ -25,7 +25,7 @@ export default function SolanaPanel({ c, now, split, pool, stockUnit, mirror }: 
     ["Price", priced ? `${formatUsdc(c.feed.wrapperPrice)} test USDC per ${stockUnit} token, ${formatUsdc(c.feed.sharePrice)} per share` : "Not set yet"],
     ["Price age", priced ? `${formatDuration(age)} old; the program acts on a price up to ${formatDuration(c.maxPriceAge)} old` : "No price yet"],
     ["Split", `x${split.multiplier}${scheduled ? `, changing to x${split.newMultiplier} in ${formatDuration(split.effectiveAt - now)}` : ""}`],
-    ["Price and split", c.feed.pricedForMultiplier === c.effectiveMultiplier ? "Agree" : c.status === "Active" ? "Disagree (repricing): payouts wait for a price set for the new split" : "Disagree (the circle has ended, so nothing waits on it)"],
+    ["Price and split", c.feed.pricedForMultiplier === c.effectiveMultiplier ? "Agree" : c.status === "Active" ? "Disagree (repricing): payouts wait for a price set for the new split" : c.status === "Forming" ? "Disagree (repricing): joins wait for a price set for the new split" : "Disagree (the circle has ended, so nothing waits on it)"],
     ["Liquidation pool", `${formatUsdc(pool.usdc)} test USDC, buys a defaulted seat's stock at ${pool.discountBps / 100}% off`],
   ];
   return (
