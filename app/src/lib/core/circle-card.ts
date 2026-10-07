@@ -63,52 +63,40 @@ export function circleCard(v: ListCircle, me: string): CircleCard {
       const late = v.chainTime > v.deadline + v.graceSecs;
       return card("needs", "Your move", `Pay ${fmt(v.c)} for round ${v.round + 1}${late ? ": late" : ""}`, "Pay");
     }
-    // paused at the chain's last coverage check (adversary on af41248: Claim was offered while releasePot reverted
-    // ReserveOvercommitted): the list names the top-up instead; the circle page still lets anyone try the release.
-    // The figure is as of that check, which adding collateral or a price move does not refresh, so its age is shown
-    // (SPEC.md payout gate; adversary on dd59b76). It may include missed payments' escrow deficit, which top-ups fill
-    // first, so it is "short", not "the reserve is short".
-    // paused by the gate only when the stored figure is more than the escrow deficit it includes: a deficit alone
-    // does not stop the release (releasePot / release_pot compare needs with the reserve; adversary on 4e64417)
-    if (v.releasable && v.pausedShortBy > v.escrowDeficit) {
-      const since = v.chainTime - v.pausedCheckedAt;
-      const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
-      return turn === v.round
-        ? card("needs", "Your move", `Payouts paused (${age}): top up ${fmt(v.pausedShortBy)} to release your pot`, "Top up")
-        // a seat settled in default cannot top up (AlreadyDefaulted on both chains; adversary on ec145a5)
-        : mine && !mine.defaulted
-          ? card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short. Any member can top up`, "Top up")
-          : card("active", "Paused", `Payouts paused (${age}): ${fmt(v.pausedShortBy)} short`);
+    // Until every seat has paid or been settled in default, the next step is that payment: the round's state shows.
+    if (!v.seats.every((s) => s.paid || s.defaulted)) {
+      return card("active", "Active", `Round ${v.round + 1} of ${v.n}: ${seatLabel(v.round)} receives ${fmt(pot)}`);
     }
-    if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
-    // every seat paid or settled in default, but the escrow holds less than the defaulted seats' share of this round
-    // (RoundNotFunded; adversary on 1417e60). A top-up first refills the escrow up to the deficit and only the rest
-    // reaches the reserve (topUpReserve / top_up_reserve), so the amount that releases the pot is the chain's stored
-    // short_by (next_gate_short_by: the deficit plus the reserve gap at the last check), never the escrow gap alone
-    // (adversary on 12cce85: topping up the gap left the gate short). SPEC.md copy, "Round not funded: escrow short":
-    // "Any member tops up {short_by}". A seat settled in default cannot top up.
+    // Every seat is in. What still stands between the round and its release, by the chain's own stored figures (the
+    // UI never computes the gate, SPEC.md payout gate):
+    // - escrow short (RoundNotFunded): the escrow holds less than the defaulted seats' share of this round;
+    // - Paused: the stored next_gate_short_by is more than the escrow deficit it includes (a deficit alone does not
+    //   stop the gate; adversary on 4e64417);
+    // - the price (Solana release_pot: set, fresh, not repricing; Robinhood has none).
+    // A top-up first refills the escrow up to the deficit and only the rest reaches the reserve, and top_up_reserve
+    // has no price check, so whenever the escrow or the gate is short the step is a top-up of the stored short_by
+    // (never less than the escrow gap), named with its age, together with the price update when that is also
+    // needed (SPEC.md copy: "Top up {short_by}"; adversary passes on af41248, dd59b76, ec145a5, 1417e60, 12cce85,
+    // e8b9c40, 21ed54f and 7a9ded2). A seat settled in default cannot top up (AlreadyDefaulted).
     const settled = v.seats.filter((s) => s.defaulted && !s.paid).length;
     const escrowGap = BigInt(settled) * v.c - v.escrow;
-    if (v.seats.every((s) => s.paid || s.defaulted) && escrowGap > 0n) {
+    const gateShort = v.pausedShortBy > v.escrowDeficit;
+    if (escrowGap > 0n || gateShort) {
       const shortBy = v.pausedShortBy > escrowGap ? v.pausedShortBy : escrowGap;
       const since = v.chainTime - v.pausedCheckedAt;
       const age = since < 60 ? "checked under a minute ago" : `checked ${span(since)} ago`;
-      // release_pot also needs a fresh, settled price (Solana; adversary on e8b9c40), but top_up_reserve has no price
-      // check and the release needs the top-up as well (adversary on 21ed54f): the card names both, and promises the
-      // release only once both are done
-      if (!v.priceReady) {
-        const then = `then the pot can move once the ${v.collateral} price is updated`;
-        if (turn === v.round) return card("needs", "Your move", `Missed payments left the pot short (${age}): top up ${fmt(shortBy)}, ${then}`, "Top up");
-        if (mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments left the pot short (${age}): any member can top up ${fmt(shortBy)}, ${then}`, "Top up");
-        return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}, ${then}`);
-      }
-      if (turn === v.round) return card("needs", "Your move", `Missed payments left the pot short (${age}): top up ${fmt(shortBy)} to release your pot`, "Top up");
-      if (mine && !mine.defaulted) return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}. Any member can top up`, "Top up");
-      return card("active", "Escrow short", `Missed payments left the pot short (${age}): ${fmt(shortBy)}`);
+      const why = escrowGap > 0n ? `Missed payments left the pot short (${age})` : `Payouts paused (${age})`;
+      const band = escrowGap > 0n ? "Escrow short" : "Paused";
+      const then = v.priceReady ? "" : `, then the pot can move once the ${v.collateral} price is updated`;
+      if (turn === v.round) return card("needs", "Your move", `${why}: top up ${fmt(shortBy)}${then || " to release your pot"}`, "Top up");
+      if (mine && !mine.defaulted) return card("active", band, `${why}: any member can top up ${fmt(shortBy)}${then}`, "Top up");
+      return card("active", band, `${why}: ${fmt(shortBy)} short${then}`);
     }
+    if (v.releasable && turn === v.round) return card("needs", "Your move", `Claim your ${fmt(pot)} pot`, "Claim");
     // anyone may release a funded round on both chains (releasePot / release_pot have no caller check): the card says
     // so, while the recipient's own Claim is what Needs-you counts (adversary on 60f4a3b)
     if (v.releasable) return card("active", "Funded", `Round ${v.round + 1} is funded: anyone can release ${fmt(pot)} to ${seatLabel(v.round)}`, "Release");
+    if (!v.priceReady) return card("active", "Active", `Round ${v.round + 1} is paid: ${fmt(pot)} moves to ${seatLabel(v.round)} once the ${v.collateral} price is updated`);
     return card("active", "Active", `Round ${v.round + 1} of ${v.n}: ${seatLabel(v.round)} receives ${fmt(pot)}`);
   }
 

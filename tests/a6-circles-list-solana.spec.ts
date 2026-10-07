@@ -106,7 +106,7 @@ describe("A6: the shared circles list on Solana", () => {
       const age = "checked under a minute ago";
       assert.deepEqual([recipient.group, recipient.action, recipient.headline], ["needs", "Top up", `Payouts paused (${age}): top up 5 USDC to release your pot`]);
       const other = circleCard(solToList(live(paused), seatWallet(v, 2)), seatWallet(v, 2));
-      assert.deepEqual([other.group, other.band, other.headline, other.action], ["active", "Paused", `Payouts paused (${age}): 5 USDC short. Any member can top up`, "Top up"]);
+      assert.deepEqual([other.group, other.band, other.headline, other.action], ["active", "Paused", `Payouts paused (${age}): any member can top up 5 USDC`, "Top up"]);
       // the stored figure is only the escrow deficit: the gate compares needs with the reserve, so the release passes
       const deficitOnly = { ...allPaid, nextGateShortBy: 5_000_000, escrowDeficit: 5_000_000 };
       assert.equal(circleCard(solToList(live(deficitOnly), seatWallet(v, 1)), seatWallet(v, 1)).action, "Claim");
