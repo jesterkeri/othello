@@ -109,7 +109,9 @@ export default function RobinhoodPortfolio() {
     }
     void checkFactory(robinhoodPublicClient)
       .then(async (factory) => {
-        if (!factory.ok) { if (live) setCircles({ kind: "closed" }); return; }
+        // "closed" only when no factory is configured; a configured factory whose code read fails or does not match
+        // is a failed read, never "not open yet" (adversary on 12fdfe9)
+        if (!factory.ok) { if (live) setCircles(factory.reason === "not-deployed" ? { kind: "closed" } : { kind: "failed" }); return; }
         const { views, count, more } = await readRunningCircles(account);
         if (live) setCircles({ kind: "ready", view: pickCircle(views, account), count, more });
       })
