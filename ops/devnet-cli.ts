@@ -11,7 +11,7 @@
  * (directory 0700, files 0600). They hold only devnet test tokens, but they are
  * still keys: never committed, never printed.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
@@ -86,14 +86,36 @@ export function demoMembers(n: number): anchor.web3.Keypair[] {
   return keysIn(MEMBER_DIR, n);
 }
 
+/**
+ * Creates `path` with `text`, all at once and only if it does not exist: written to a temp file, then hard-linked
+ * into place (link refuses an existing name, rename would replace it). A process killed mid-write leaves only a temp
+ * file, never a half-written `path`; of two processes creating the same file, exactly one wins. Returns false when
+ * `path` already existed (its content is then the other writer's, untouched).
+ * PR #30 adversary r4: the keys were written with a plain writeFileSync (a kill left an empty key file every rerun
+ * then crashed on), and the binding by rename (a second run could replace another wallet's binding).
+ */
+function createOnce(path: string, text: string): boolean {
+  const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temp, text, { mode: 0o600 });
+  try {
+    linkSync(temp, path);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw e;
+  } finally {
+    unlinkSync(temp);
+  }
+}
+
 function keysIn(dir: string, n: number): anchor.web3.Keypair[] {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
   return Array.from({ length: n }, (_, i) => {
     const path = resolve(dir, `member-${i + 1}.json`);
     if (!existsSync(path)) {
-      const k = anchor.web3.Keypair.generate();
-      writeFileSync(path, JSON.stringify(Array.from(k.secretKey)), { mode: 0o600 });
+      // If another run created it first, theirs is the key: read below.
+      createOnce(path, JSON.stringify(Array.from(anchor.web3.Keypair.generate().secretKey)));
     }
     chmodSync(path, 0o600);
     return anchor.web3.Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
@@ -137,8 +159,8 @@ export function writeDemoRecord(update: Record<string, unknown>): void {
  * ~/.config/othello-demo/devnet-try/ (0700, keys 0600). The binding of those keys to the seats they seed, wallet
  * included, lives IN THE SAME FOLDER (seats.json, public addresses only), not in the checkout: PR #30 adversary r3
  * showed a per-checkout binding let a second checkout (or one recreated after `git worktree remove`) reuse the
- * machine's keys for another wallet. seedTryCircle writes it before its first send, atomically (a temp file renamed
- * over it), so a stopped run can never leave half a record. ops/try-circle.json is only the finished seed's output.
+ * machine's keys for another wallet. seedTryCircle writes it before its first send, through createOnce: never half a
+ * record, and never one run's binding replaced by another's. ops/try-circle.json is only the finished seed's output.
  */
 export const TRY_RECORD = resolve(import.meta.dirname, "try-circle.json");
 const TRY_DIR = resolve(homedir(), ".config/othello-demo/devnet-try");
@@ -148,11 +170,14 @@ export const TRY_BINDING = resolve(TRY_DIR, "seats.json");
 export function tryBinding(): TrySeatsRecord {
   return {
     read: () => (existsSync(TRY_BINDING) ? (JSON.parse(readFileSync(TRY_BINDING, "utf8")) as { members: string[] }).members : null),
+    // Exclusive: creates the binding only if none exists; if another run bound first, its seats must be these.
     write: (members) => {
       mkdirSync(TRY_DIR, { recursive: true, mode: 0o700 });
-      const temp = `${TRY_BINDING}.${process.pid}.tmp`;
-      writeFileSync(temp, JSON.stringify({ members }, null, 2) + "\n", { mode: 0o600 });
-      renameSync(temp, TRY_BINDING);
+      if (createOnce(TRY_BINDING, JSON.stringify({ members }, null, 2) + "\n")) return;
+      const bound = (JSON.parse(readFileSync(TRY_BINDING, "utf8")) as { members: string[] }).members;
+      if (bound.length !== members.length || bound.some((k, i) => k !== members[i])) {
+        throw new Error(`${TRY_BINDING} was just bound to wallet ${bound[bound.length - 1]} by another run. Nothing was sent.`);
+      }
     },
   };
 }

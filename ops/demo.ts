@@ -401,12 +401,24 @@ export const TRY_PRICE_MARGIN_SECS = 3600;
  * the record is written BEFORE the first send, so a run that stops after funding a wallet binds every rerun to that
  * same wallet, whether or not the circle exists yet.
  */
-export type TrySeatsRecord = { read(): string[] | null; write(seats: string[]): void };
+export type TrySeatsRecord = {
+  read(): string[] | null;
+  /** Creates the record if none exists; throws (nothing sent) if another run has recorded other seats meanwhile. */
+  write(seats: string[]): void;
+};
 
 /** A TrySeatsRecord held in memory: the bankrun specs' stand-in for ops/try-circle.json. */
 export function memoryTryRecord(): TrySeatsRecord {
   let seats: string[] | null = null;
-  return { read: () => seats, write: (s) => void (seats = s) };
+  return {
+    read: () => seats,
+    write: (s) => {
+      if (seats && (seats.length !== s.length || seats.some((k, i) => k !== s[i]))) {
+        throw new Error(`the try seed was just bound to wallet ${seats[seats.length - 1]} by another run. Nothing was sent.`);
+      }
+      seats ??= s;
+    },
+  };
 }
 
 export async function seedTryCircle(
