@@ -14,7 +14,7 @@ import type { Connection, PublicKey } from "@solana/web3.js";
 
 import { parseUnits, tokenAccountOf, unitsText } from "@/lib/actions";
 import { countedOfRaw, minJoinStock, type CircleView } from "@/lib/circle";
-import { joinReadiness, STOCK_DECIMALS, type JoinBalances } from "@/lib/solana-join";
+import { joinReadiness, STOCK_DECIMALS, type BalanceRead } from "@/lib/solana-join";
 import s from "@/components/circle/Circle.module.css";
 
 /** The u64 amount of an SPL / Token-2022 token account (bytes 64..72). */
@@ -34,8 +34,10 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
   onJoin: (raw: bigint) => void;
 }) {
   const least = minJoinStock(c);
-  const [amount, setAmount] = useState(least !== null && least > 0n ? unitsText(least, STOCK_DECIMALS) : "");
-  const [balances, setBalances] = useState<JoinBalances | "reading">("reading");
+  // the least, from each new read, until the member types their own amount (adversary on 6587a2b)
+  const [typed, setTyped] = useState<string | null>(null);
+  const amount = typed ?? (least !== null && least > 0n ? unitsText(least, STOCK_DECIMALS) : "");
+  const [balances, setBalances] = useState<BalanceRead>("reading");
   const ownerKey = owner.toBase58();
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
         if (live) setBalances({ stock: stock ? amountOf(stock.data) : null, usdc: usdc ? amountOf(usdc.data) : null });
       },
       () => {
-        if (live) setBalances("reading");
+        if (live) setBalances("failed");
       },
     );
     return () => {
@@ -77,7 +79,7 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
       </span>
       <span className={s.actionButtons}>
         <label className={s.amountRow}>
-          <input className={s.amount} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label={`${words.stock} to lock`} />
+          <input className={s.amount} inputMode="decimal" value={amount} onChange={(e) => setTyped(e.target.value)} aria-label={`${words.stock} to lock`} />
           <button type="button" className={s.pay} disabled={!ready.enabled} onClick={() => raw !== null && onJoin(raw)}>
             Join: lock {raw !== null ? unitsText(raw, STOCK_DECIMALS) : "0"} {words.stockShort} and the {words.usdc(guarantee)} guarantee
           </button>

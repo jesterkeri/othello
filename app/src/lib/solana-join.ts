@@ -11,6 +11,8 @@ export const STOCK_DECIMALS = 8;
 
 /** A wallet's balances as this page last read them: null for a token account that does not exist. */
 export type JoinBalances = { stock: bigint | null; usdc: bigint | null };
+/** Where the page's read of a wallet's balances stands. */
+export type BalanceRead = JoinBalances | "reading" | "failed";
 
 /**
  * Whether this wallet can join with `raw` of stock, by everything the page can know, and if not, why. `blocked` is the
@@ -19,7 +21,7 @@ export type JoinBalances = { stock: bigint | null; usdc: bigint | null };
 export function joinReadiness(
   c: CircleView,
   raw: bigint | null,
-  balances: JoinBalances | "reading",
+  balances: BalanceRead,
   blocked: string | null,
   words: { stock: string; usdc: (base: bigint) => string },
 ): { enabled: boolean; reason: string | null } {
@@ -29,6 +31,7 @@ export function joinReadiness(
   if (raw === null) return { enabled: false, reason: `Type how much ${words.stock} to lock.` };
   if (raw < least) return { enabled: false, reason: `This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` };
   if (balances === "reading") return { enabled: false, reason: "Reading this wallet's balances…" };
+  if (balances === "failed") return { enabled: false, reason: "This wallet's balances could not be read; they are read again with the next circle read." };
   const guarantee = BigInt(c.guaranteePerMember);
   if (balances.stock === null) return { enabled: false, reason: `This wallet has no ${words.stock} account. Get the stock into it first.` };
   if (balances.stock < raw) return { enabled: false, reason: `This wallet holds ${unitsText(balances.stock, STOCK_DECIMALS)} ${words.stock}; joining with this amount needs ${unitsText(raw, STOCK_DECIMALS)}.` };

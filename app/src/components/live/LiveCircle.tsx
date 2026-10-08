@@ -236,8 +236,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const isRelease = pay.phase !== "idle" && pay.what.startsWith("Release");
   // a finished action's outcome (done, declined, refused) from a round the read has left is not shown here
   // (or from a state it has left: the last round's payment once the circle has completed)
-  // except the state a finished action itself caused: a done Start reads Active, a done Cancel reads Cancelled (PR 2)
-  const caused = pay.phase === "done" && pay.status === "Forming" && ((pay.what === START && c.status === "Active") || (pay.what === CANCEL && c.status === "Cancelled"));
+  // except the state a finished action itself caused: a done Start reads Active, a done Cancel reads Cancelled (PR 2),
+  // in the round it opened only (adversary on 6587a2b: a Start lingered into later rounds)
+  const caused = pay.phase === "done" && pay.status === "Forming" && pay.round === c.round && ((pay.what === START && c.status === "Active") || (pay.what === CANCEL && c.status === "Cancelled"));
   const stale = (pay.phase === "done" || pay.phase === "failed") && (pay.round !== c.round || pay.status !== c.status) && !caused;
   const status = othersInFlight ? `${you ? "Another wallet's" : "A"} transaction is still waiting for its wallet or for devnet. Sending opens again once it settles.` :
     isRelease || stale ? null :
@@ -426,6 +427,8 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     <>
       {seatOpen && wallet.publicKey && (
         <SolanaJoin
+          // one join row per wallet: nothing read for the previous wallet is drawn for the next (adversary on 6587a2b)
+          key={wallet.publicKey.toBase58()}
           c={c}
           owner={wallet.publicKey}
           mints={{ stockMint: new PublicKey(live.accounts.stockMint), usdcMint: new PublicKey(live.accounts.usdcMint) }}

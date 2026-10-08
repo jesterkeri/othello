@@ -1,10 +1,18 @@
 /**
- * PR 2 (Joshua 2026-10-08): a forming Solana circle's own steps on the shared page. Who sees "Claim your seat", "Your
- * seat is locked" (leave) and the creator's Start / Cancel, when each is enabled, why it is not, and the outcome of a
- * Start or Cancel shown in the state it caused. joinReadiness (components/live/SolanaJoin.tsx) is tested directly.
- * Harness: tests/a7-circle-page.spec.ts.
+ * B2 adversary on 6587a2b: a done Start stays shown in every later round of the circle it started.
  *
- *   npx mocha --import=tsx --timeout 300000 tests/b2-forming-page.spec.ts     (installs hooks: its own process)
+ *   Spec 4 (PR 2 brief): "every outcome shows only to the wallet that sent it, in the round and circle state it applies
+ *   to (except that a done Start or Cancel stays shown in the Active or Cancelled state it caused), with its
+ *   transaction, and nowhere after".
+ *
+ * The exception relaxes the circle STATE (Forming to Active), not the ROUND. LiveCircle.tsx `caused` is true for a done
+ * Start whenever the read says Active, and `stale` is then forced false, so the round check (pay.round !== c.round) is
+ * skipped too: round 3's page still reads "Start the circle: done." with the Start's transaction, under round 3's
+ * payment due (the same defect a76dfd8 fixed for a payment).
+ *
+ * Harness: tests/b2-forming-page.spec.ts (react-dom/server, LiveCircle's state seeded in call order).
+ *
+ *   npx mocha --import=tsx --timeout 600000 tests/b2-forming-page-start-round-adversary.spec.ts     (installs hooks: its own process)
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -142,90 +150,30 @@ const as = (i: number) => {
 const SIG = "4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirAn";
 const WORDS = { stock: "NFLXx devnet mirror", usdc: (b: bigint) => `${(Number(b) / 1e6).toFixed(2)} test USDC` };
 
-describe("PR 2: a forming Solana circle's own steps", () => {
+describe("B2 adversary: a done Start belongs to the round it opened", () => {
   beforeEach(() => {
     g.__sets = [];
     g.__conn = { getAccountInfo: async () => null };
-    as(1);
-  });
-
-  describe("joinReadiness: the join is enabled only when the program would take it, else it says why", () => {
-    const least = minJoinStock(forming)!;
-    const rich = { stock: least * 10n, usdc: BigInt(forming.guaranteePerMember) };
-    it("enough stock and the guarantee: enabled", () => {
-      assert.deepEqual(joinReadiness(forming, least, rich, null, WORDS), { enabled: true, reason: null });
-    });
-    it("one raw unit under the least: refused, naming the least", () => {
-      const r = joinReadiness(forming, least - 1n, rich, null, WORDS);
-      assert.equal(r.enabled, false);
-      assert.match(r.reason!, /needs at least/);
-    });
-    it("no stock account, too little stock, too little test USDC, still reading, or blocked: refused with the reason", () => {
-      assert.match(joinReadiness(forming, least, { stock: null, usdc: rich.usdc }, null, WORDS).reason!, /no NFLXx devnet mirror account/);
-      assert.match(joinReadiness(forming, least, { stock: least - 1n, usdc: rich.usdc }, null, WORDS).reason!, /holds .* needs/);
-      assert.match(joinReadiness(forming, least, { stock: rich.stock, usdc: rich.usdc - 1n }, null, WORDS).reason!, /the guarantee is 35\.00 test USDC/);
-      assert.match(joinReadiness(forming, least, "reading", null, WORDS).reason!, /Reading/);
-      assert.match(joinReadiness(forming, least, "failed", null, WORDS).reason!, /could not be read/);
-      assert.equal(joinReadiness(forming, least, rich, "The price is 2d old", WORDS).reason, "The price is 2d old");
-    });
-  });
-
-  it("a seat that has not joined sees Claim your seat; a wallet with no seat does not", async () => {
-    const seat = await buttons(forming);
-    assert.match(seat.text, /Claim your seat/);
-    assert.equal(Object.keys(seat.on).some((k) => k.startsWith("Join: lock")), true);
-    g.__wallet = { publicKey: anchor.web3.Keypair.generate().publicKey, sendTransaction: async () => "x" };
-    const stranger = await buttons(forming);
-    assert.doesNotMatch(stranger.text, /Claim your seat/);
-  });
-
-  it("the join waits for a fresh price, and says so", async () => {
-    const stale: CircleView = { ...forming, feed: { ...forming.feed, updatedAt: NOW - forming.maxPriceAge - 60 } };
-    const { text, on } = await buttons(stale);
-    const join = Object.keys(on).find((k) => k.startsWith("Join: lock"))!;
-    assert.equal(on[join], false);
-    assert.match(text, /old, and the program acts only on a fresh one/);
-  });
-
-  it("a joined seat can leave while the circle forms", async () => {
-    const two: CircleView = { ...forming, joinedBitmap: 0b00011 };
-    const { text, on } = await buttons(two);
-    assert.match(text, /Your seat is locked/);
-    assert.equal(on["Leave and take them back"], true);
-  });
-
-  it("the creator: Start waits for every seat, Cancel is open; nobody else sees either", async () => {
     as(0);
-    const early = await buttons(forming);
-    assert.match(early.text, /4 of 5 seats still to join/);
-    assert.equal(early.on["Start the circle"], false);
-    assert.equal(early.on["Cancel the circle"], true);
-    const ready = await buttons(full);
-    assert.match(ready.text, /Every seat has joined: starting opens round 1/);
-    assert.equal(ready.on["Start the circle"], true);
-    as(1);
-    const member = await buttons(full);
-    assert.equal("Start the circle" in member.on, false);
-    assert.equal("Cancel the circle" in member.on, false);
   });
 
-  it("while another wallet's transaction is in flight, nothing here can be sent", async () => {
-    as(0);
-    const inFlight = { phase: "confirming", what: "Join", sig: SIG, round: 0, status: "Forming", by: wallets[3]! };
-    const { text, on } = await buttons(full, {}, inFlight);
-    assert.equal(on["Start the circle"], false);
-    assert.equal(on["Cancel the circle"], false);
-    assert.match(text, /Another wallet's transaction is still waiting/);
+  const startDone = { phase: "done", what: "Start the circle", sig: SIG, round: 0, status: "Forming", by: wallets[0]! };
+  // what the read says once round 1 (index 0) has been released and round 3 (index 2) is open: nobody has paid it yet
+  const laterRound: CircleView = { ...full, status: "Active", round: 2, paidBitmap: 0, receivedBitmap: 0b00011, roundDeadline: NOW + 120 };
+
+  it("control: in the round the Start opened (Active, round 1) its outcome is shown", async () => {
+    const opened = await buttons({ ...full, status: "Active", round: 0, roundDeadline: NOW + 120 }, {}, startDone);
+    assert.match(opened.text, /Start the circle: done\./);
   });
 
-  it("a done Start is still shown once the read says Active, and a done Cancel once it says Cancelled", async () => {
-    as(0);
-    const started = await buttons({ ...full, status: "Active", roundDeadline: NOW + 120 }, {}, { phase: "done", what: "Start the circle", sig: SIG, round: 0, status: "Forming", by: wallets[0]! });
-    assert.match(started.text, /Start the circle: done\./);
-    const cancelled = await buttons({ ...forming, status: "Cancelled" }, {}, { phase: "done", what: "Cancel the circle", sig: SIG, round: 0, status: "Forming", by: wallets[0]! });
-    assert.match(cancelled.text, /Cancel the circle: done\./);
-    // any other finished outcome from the forming circle is still not carried into the running one
-    const joinDone = await buttons({ ...full, status: "Active", roundDeadline: NOW + 120 }, {}, { phase: "done", what: "Join", sig: SIG, round: 0, status: "Forming", by: wallets[0]! });
-    assert.doesNotMatch(joinDone.text, /Join: done\./);
+  it("control: a done payment from round 1 is not shown in round 3", async () => {
+    const paid = await buttons(laterRound, {}, { phase: "done", what: "Payment", sig: SIG, round: 0, status: "Active", by: wallets[0]! });
+    assert.doesNotMatch(paid.text, /Payment: done\./);
+  });
+
+  it("in round 3 the Start's outcome and its transaction are no longer shown", async () => {
+    const later = await buttons(laterRound, {}, startDone);
+    assert.match(later.text, /for round 3 is due/);
+    assert.doesNotMatch(later.text, /Start the circle: done\./);
   });
 });
