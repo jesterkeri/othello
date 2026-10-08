@@ -43,7 +43,9 @@ const COVERED = "the escrow its default prepaid";
 /** An amount a member sends, to the base unit: whole test USDC without decimals, else as many as it has (adversary on b28e8d2). */
 const exactUsdc = (base: number) => formatUsdc(base, base % 1_000_000 === 0 ? 0 : base % 10_000 === 0 ? 2 : 6);
 /** Solana's money in its own words: base units of test USDC (6 decimals). */
-const usdc = (base: bigint) => `${formatUsdc(Number(base))} ${USDC_WORD}`;
+// to the cent, or to the base unit when an amount has more: a shortfall shown rounded down would leave the round unfunded
+// after a top-up of the figure shown (adversary on 5a46c40)
+const usdc = (base: bigint) => `${formatUsdc(Number(base), base % 10_000n === 0n ? 2 : 6)} ${USDC_WORD}`;
 
 /**
  * One transaction at a time, whichever button sent it; `what` names it in the status line, `round` is the round the
@@ -376,7 +378,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
               ? "You have withdrawn what your seat held."
               : mine.lockedRaw > 0
                 ? "The circle has ended: withdraw your remaining stock and whatever your seat still holds in the reserve."
-                : "The circle has ended. Your locked stock went to cover missed payments: withdraw whatever is left for your seat."
+                : mineDefaulted
+                  ? "The circle has ended. Your locked stock went to cover missed payments: withdraw whatever is left for your seat."
+                  : "The circle has ended: withdraw whatever your seat still holds in the reserve."
             : mineDefaulted
               ? "This seat has defaulted, so it cannot add stock or top up."
               : "Lock more of the NFLXx devnet mirror to raise your cover (amounts are tokens before the multiplier), or top up the shared reserve in test USDC (it fills any payout shortfall first)."}
@@ -484,7 +488,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     seats: ordered.map((m) => ({ turn: m.turn, label: seatLabel(m.turn), wallet: m.address, you: m.address === you, collected: seatSet(c.withdrawnBitmap, m.turn), owed: owes(m.turn), amount: null })),
     collected: owedSeats.filter((m) => seatSet(c.withdrawnBitmap, m.turn)).length,
     owedCount: owedSeats.length,
-    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null, lockedLeft: (c.members.find((m) => m.turn === yourTurn)?.lockedRaw ?? 0) > 0 } : null,
+    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null, // "went to cover missed payments" only for a seat in default whose stock is gone: a seat can join with no stock
+    // (join_and_lock takes stock_raw 0 when the guarantee meets min_stock_cover; adversary on 5a46c40)
+    lockedLeft: (c.members.find((m) => m.turn === yourTurn)?.lockedRaw ?? 0) > 0 || !seatSet(c.defaultedBitmap, yourTurn) } : null,
   } : null;
   const closeOut = close ? (
     <CloseOutPanel
@@ -610,8 +616,11 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         unit: USDC_WORD,
         coins: ordered.filter((m) => seatSet(c.joinedBitmap, m.turn)).map((m) => m.turn),
         coinNote: `${joinedCount} deposits of ${formatUsdc(c.guaranteePerMember)}, one per seat`,
-        lines: ([["+", "Deposited", c.reserveTotal], ["−", "Spent on defaults", c.reserveLosses], ["−", "Allocated to cover", c.reserveAllocated], ["=", "Remains, the gate's figure", dv.remains], ["→", "Next payout needs", gateNeeded]] as const)
-          .map(([sign, label, amount]) => [sign, label, `${formatUsdc(amount)} ${USDC_WORD}`] as const),
+        lines: ([["+", "Deposited", c.reserveTotal], ["−", "Spent on defaults", c.reserveLosses], ["−", "Allocated to cover", c.reserveAllocated], ["=", "Remains, the gate's figure", dv.remains]] as const)
+          .map(([sign, label, amount]): readonly [string, string, string] => [sign, label, `${formatUsdc(amount)} ${USDC_WORD}`])
+          // the stored result of the last payout-gate check, as Robinhood's ledger shows it, and only while a payout is
+          // still to come: "remains + short by" is what the gate needs only when it was short (adversary on 5a46c40)
+          .concat(!active ? [] : [["→", "Short of the payout gate, last check", c.lastCoverageAt > 0 ? usdc(BigInt(c.nextGateShortBy)) : "Not checked yet"] as const]),
       }}
       locks={{
         label: "Cover per member",
