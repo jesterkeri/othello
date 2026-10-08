@@ -72,7 +72,8 @@ export default function SolanaJoin({ c: read, split, owner, mints, vaults, conne
         rents.set(space, BigInt(await connection.getMinimumBalanceForRentExemption(space)));
       }
       const solNeeded = joinLamports({ usdcAccount: !usdc, stockVault: !stockVault, usdcVault: !usdcVault }, (space) => rents.get(space)!);
-      return { stock: stock ? amountOf(stock.data) : null, usdc: usdc ? amountOf(usdc.data) : null, sol: BigInt(sol), solNeeded };
+      const solKeep = BigInt(await connection.getMinimumBalanceForRentExemption(0));
+      return { stock: stock ? amountOf(stock.data) : null, usdc: usdc ? amountOf(usdc.data) : null, sol: BigInt(sol), solNeeded, solKeep };
     }).then(
       (read) => {
         if (live) setBalances(read);

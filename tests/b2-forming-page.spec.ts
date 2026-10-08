@@ -151,7 +151,7 @@ describe("PR 2: a forming Solana circle's own steps", () => {
 
   describe("joinReadiness: the join is enabled only when the program would take it, else it says why", () => {
     const least = minJoinStock(forming)!;
-    const rich = { stock: least * 10n, usdc: BigInt(forming.guaranteePerMember), sol: 10_000_000n, solNeeded: 1_724_120n };
+    const rich = { stock: least * 10n, usdc: BigInt(forming.guaranteePerMember), sol: 10_000_000n, solNeeded: 1_724_120n, solKeep: 890_880n };
     it("enough stock and the guarantee: enabled", () => {
       assert.deepEqual(joinReadiness(forming, least, rich, null, WORDS), { enabled: true, reason: null });
     });
@@ -164,7 +164,15 @@ describe("PR 2: a forming Solana circle's own steps", () => {
       assert.match(joinReadiness(forming, least, { ...rich, stock: null }, null, WORDS).reason!, /no NFLXx devnet mirror account/);
       assert.match(joinReadiness(forming, least, { ...rich, stock: least - 1n }, null, WORDS).reason!, /holds .* needs/);
       assert.match(joinReadiness(forming, least, { ...rich, usdc: rich.usdc - 1n }, null, WORDS).reason!, /the guarantee is 35\.00 test USDC/);
-      assert.match(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded - 1n }, null, WORDS).reason!, /joining needs 0\.00172412 for the seat account's rent and the fee/);
+      assert.match(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded - 1n }, null, WORDS).reason!, /joining costs 0\.00172412 \(the seat account's rent and the fee\)/);
+      // the runtime leaves a fee payer at 0 or at least the 0-byte rent minimum, never in between
+      assert.equal(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded }, null, WORDS).enabled, true, "exactly the cost: the wallet ends at 0");
+      assert.equal(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded + 1n }, null, WORDS).enabled, false, "one lamport over: the wallet would be left below the minimum");
+      assert.equal(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded + rich.solKeep - 1n }, null, WORDS).enabled, false);
+      assert.equal(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded + rich.solKeep }, null, WORDS).enabled, true);
+      assert.match(joinReadiness(forming, least, { ...rich, sol: rich.solNeeded + 1n }, null, WORDS).reason!, /hold 0\.002615 or more/);
+      // an amount the program cannot value (ValuationOverflow) is refused with a reason
+      assert.match(joinReadiness(forming, (1n << 64n) - 1n, { ...rich, stock: (1n << 64n) - 1n }, null, WORDS).reason!, /more than the program can value/);
       assert.match(joinReadiness(forming, least, "reading", null, WORDS).reason!, /Reading/);
       assert.match(joinReadiness(forming, least, "failed", null, WORDS).reason!, /could not be read/);
       assert.equal(joinReadiness(forming, least, rich, "The price is 2d old", WORDS).reason, "The price is 2d old");

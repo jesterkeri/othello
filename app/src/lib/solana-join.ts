@@ -5,7 +5,7 @@
  * transaction in flight, the price). Pure. No "@/" imports: tests import it directly.
  */
 import { unitsText } from "./actions";
-import { formatDuration, isStale, minJoinStock, type CircleView } from "./circle";
+import { formatDuration, isStale, minJoinStock, valuationOverflows, type CircleView } from "./circle";
 import { multiplierAt, toFixed1e9, type ScaledUi } from "./scaledUi";
 
 /**
@@ -62,8 +62,12 @@ export function joinLamports(missing: { usdcAccount: boolean; stockVault: boolea
     + (missing.usdcVault ? rent(JOIN_SPACE.usdcVault) : 0n);
 }
 
-/** `sol` / `solNeeded` in lamports: what the wallet holds, and what joinLamports says the join costs it. */
-export type JoinBalances = { stock: bigint | null; usdc: bigint | null; sol: bigint; solNeeded: bigint };
+/**
+ * In lamports: `sol` what the wallet holds, `solNeeded` what joinLamports says the join costs it, and `solKeep` the
+ * least a wallet left with any SOL must keep (the rent-exempt minimum of a 0-byte account): the runtime refuses a
+ * transaction that leaves the fee payer with more than 0 but less than that (adversary on 9268b2e).
+ */
+export type JoinBalances = { stock: bigint | null; usdc: bigint | null; sol: bigint; solNeeded: bigint; solKeep: bigint };
 /** Where the page's read of a wallet's balances stands. */
 export type BalanceRead = JoinBalances | "reading" | "failed";
 
@@ -82,6 +86,7 @@ export function joinReadiness(
   const least = minJoinStock(c);
   if (least === null) return { enabled: false, reason: "No amount of stock reaches this circle's minimum cover at the current price." };
   if (raw === null) return { enabled: false, reason: `Type how much ${words.stock} to lock.` };
+  if (valuationOverflows(c, raw)) return { enabled: false, reason: `That much ${words.stock} is more than the program can value; lock less.` };
   if (raw < least) return { enabled: false, reason: `This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` };
   if (balances === "reading") return { enabled: false, reason: "Reading this wallet's balances…" };
   if (balances === "failed") return { enabled: false, reason: "This wallet's balances could not be read; they are read again with the next circle read." };
@@ -89,8 +94,10 @@ export function joinReadiness(
   if (balances.stock === null) return { enabled: false, reason: `This wallet has no ${words.stock} account. Get the stock into it first.` };
   if (balances.stock < raw) return { enabled: false, reason: `This wallet holds ${unitsText(balances.stock, STOCK_DECIMALS)} ${words.stock}; joining with this amount needs ${unitsText(raw, STOCK_DECIMALS)}.` };
   if ((balances.usdc ?? 0n) < guarantee) return { enabled: false, reason: `This wallet holds ${words.usdc(balances.usdc ?? 0n)}; the guarantee is ${words.usdc(guarantee)}.` };
-  if (balances.sol < balances.solNeeded) {
-    return { enabled: false, reason: `This wallet holds ${unitsText(balances.sol, 9)} devnet SOL; joining needs ${unitsText(balances.solNeeded, 9)} for the seat account's rent and the fee (free from faucet.solana.com).` };
+  // after the join the wallet holds sol - solNeeded: 0 is allowed, otherwise at least solKeep
+  const left = balances.sol - balances.solNeeded;
+  if (left < 0n || (left > 0n && left < balances.solKeep)) {
+    return { enabled: false, reason: `This wallet holds ${unitsText(balances.sol, 9)} devnet SOL; joining costs ${unitsText(balances.solNeeded, 9)} (the seat account's rent and the fee), and a wallet must keep at least ${unitsText(balances.solKeep, 9)} after it: hold ${unitsText(balances.solNeeded + balances.solKeep, 9)} or more (free from faucet.solana.com).` };
   }
   return { enabled: true, reason: null };
 }

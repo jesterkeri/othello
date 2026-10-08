@@ -328,6 +328,14 @@ export function countedOfRaw(c: CircleView, raw: bigint): bigint {
  * (join_and_lock.rs: valuation.h >= circle.min_stock_cover, else CollateralBelowMinimum). H only grows with raw, so a
  * binary search finds it exactly. Null when no amount can reach it at this price (a zero price).
  */
+/** Whether valuation.rs would refuse `raw` with ValuationOverflow (fund_value or exec_value past u64). */
+export function valuationOverflows(c: CircleView, raw: bigint): boolean {
+  const U64 = (1n << 64n) - 1n;
+  const fund = (raw * BigInt(c.effectiveMultiplier) * BigInt(c.feed.sharePrice)) / (ONE_E9 * ONE_E8);
+  const exec = (raw * BigInt(c.feed.wrapperPrice)) / ONE_E8;
+  return fund > U64 || exec > U64;
+}
+
 export function minJoinStock(c: CircleView): bigint | null {
   const target = BigInt(c.minStockCover);
   if (target <= 0n) return 0n;
@@ -342,7 +350,8 @@ export function minJoinStock(c: CircleView): bigint | null {
     if (countedOfRaw(c, mid) >= target) hi = mid;
     else lo = mid;
   }
-  return hi;
+  // a least the program could not value is no least at all (adversary on 9268b2e)
+  return valuationOverflows(c, hi) ? null : hi;
 }
 
 /**
