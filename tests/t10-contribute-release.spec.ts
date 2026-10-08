@@ -36,6 +36,7 @@ import {
   tokenAmount,
   decodeEvent,
   type Harness,
+  APPROVED_USDC,
 } from "./harness.ts";
 
 const USDC = 1_000_000;
@@ -190,7 +191,7 @@ describe("T10 contribute and release_pot", () => {
     h = await harness(["NFLXx"]);
     stockMint = new anchor.web3.PublicKey(FIXTURE_MINTS.NFLXx);
 
-    usdcMint = anchor.web3.Keypair.generate().publicKey;
+    usdcMint = APPROVED_USDC; // SPEC §4b: create_circle takes only the approved USDC mint
     const mint = splMintAccount(6);
     h.putAccount(usdcMint, mint.data, mint.owner);
 

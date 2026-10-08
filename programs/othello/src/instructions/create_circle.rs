@@ -156,6 +156,19 @@ pub fn handle_create_circle(
         OthelloError::MintNotAllowed
     );
 
+    // SPEC §4b [F1]: every new circle is on the one approved USDC mint, owned by classic SPL Token (no transfer fee
+    // or hook can make a vault hold less than the books say). The pool's seeds already bind this mint; this pins it.
+    require_keys_eq!(
+        ctx.accounts.usdc_mint.key(),
+        allowlist::APPROVED_USDC,
+        OthelloError::UsdcMintNotApproved
+    );
+    require_keys_eq!(
+        *ctx.accounts.usdc_mint.to_account_info().owner,
+        anchor_spl::token::ID,
+        OthelloError::UsdcMintNotApproved
+    );
+
     // SPEC §5 parameter ranges, in the order SPEC lists them.
     require!(params.contribution > 0, OthelloError::InvalidParams);
     require!(params.guarantee_per_member > 0, OthelloError::InvalidParams);

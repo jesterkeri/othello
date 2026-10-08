@@ -180,3 +180,41 @@ pub struct Member {
 impl Member {
     pub const SEED: &'static [u8] = b"member";
 }
+
+/// A seat's locked USDC (SPEC §4b; USDC-COLLATERAL-DESIGN r8, Option B), seeds `["seat_usdc", circle, wallet]`.
+///
+/// A separate account so no existing Member or Circle changes size and nothing is migrated. Created the first time
+/// the seat locks USDC; a seat that never does has none, and its address then reads as "absent": owned by the System
+/// Program with no data, whatever its lamports. Absent means `usdc_locked = 0`
+/// (`instructions::usdc_collateral::seat_usdc_locked`).
+#[account]
+#[derive(InitSpace)]
+pub struct SeatCollateral {
+    pub circle: Pubkey,
+    pub wallet: Pubkey,
+    /// USDC base units in the circle's collateral vault behind this seat. I4b: the collateral vault's balance is
+    /// the sum of this over the circle's seats.
+    pub usdc_locked: u64,
+    pub bump: u8,
+}
+
+impl SeatCollateral {
+    pub const SEED: &'static [u8] = b"seat_usdc";
+}
+
+/// The one-way switch that lets USDC be LOCKED (SPEC §4b), seeds `["features"]`. Its existence is the whole of its
+/// meaning: `enable_usdc_collateral` creates it and nothing closes it. It never decides an account shape (design r8,
+/// "Release order").
+#[account]
+#[derive(InitSpace)]
+pub struct Features {
+    pub bump: u8,
+}
+
+impl Features {
+    pub const SEED: &'static [u8] = b"features";
+}
+
+/// Seeds of a circle's collateral vault: an SPL Token account of APPROVED_USDC whose authority is the circle PDA,
+/// separate from `circle_usdc_vault` so I3 keeps its exact form (SPEC §4b).
+pub const COLLATERAL_VAULT_SEED: &[u8] = b"usdc_collateral";

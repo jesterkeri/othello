@@ -24,6 +24,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM, BEFORE_SPLIT, BN, CURRENT, FIXTURE_MINTS, ONE_X, SPL_TOKEN_PROGRAM, TEN_X, TOKEN_2022_PROGRAM,
   ataAddress, call, circleAddress, fetchAccount, harness, initFeed, initPoolIx, poolAddress, priceFeedAddress, seedPoolIx,
   send, setPrices, splMintAccount, tokenAccount, type Harness,
+  APPROVED_USDC,
 } from "./harness.ts";
 import { decodeLive, type LiveCircle } from "../app/src/lib/live.ts";
 import { solToList } from "../app/src/lib/to-list-solana.ts";
@@ -149,7 +150,7 @@ describe("A6 adversary: an escrow-short round with a stale price is offered a to
   it("seat 2 tops up exactly what its card names while the price is stale, and release_pot then releases the pot", async () => {
     h = await harness(["NFLXx"]);
     stockMint = new anchor.web3.PublicKey(FIXTURE_MINTS.NFLXx);
-    usdcMint = anchor.web3.Keypair.generate().publicKey;
+    usdcMint = APPROVED_USDC; // SPEC §4b: create_circle takes only the approved USDC mint
     const mint = splMintAccount(6);
     h.putAccount(usdcMint, mint.data, mint.owner);
     await h.setClock(BEFORE_SPLIT);

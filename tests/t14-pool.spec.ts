@@ -50,6 +50,7 @@ import {
   tokenAmount,
   upgradeableProgram,
   type Harness,
+  APPROVED_USDC,
 } from "./harness.ts";
 
 type Pool = { authority: anchor.web3.PublicKey; bump: number; discountBps: number };
@@ -231,6 +232,10 @@ describe("T14 admin root, init_pool and seed_pool", () => {
     });
 
     it("binds create_circle: a circle is created against the pool init_pool made, and a discount above its haircut is refused", async () => {
+      // SPEC §4b: create_circle takes only the approved USDC mint (init_pool still takes any classic SPL mint).
+      usdcMint = APPROVED_USDC;
+      const m = splMintAccount(6);
+      h.putAccount(usdcMint, m.data, m.owner);
       await initFeed(h, stockMint);
       await setPrices(h, stockMint, { wrapper: 150 * USDC, share: 150 * USDC, stamp: CURRENT, expected: ONE_X });
       await initPoolIx(h, { usdcMint, stockMint, discountBps: DEMO_DISCOUNT }).rpc();

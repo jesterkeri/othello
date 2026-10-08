@@ -64,4 +64,13 @@ pub enum OthelloError {
     PrePayoutDefaultUnsupported,
     #[msg("The liquidation pool needs refilling before this default can settle")]
     PoolInsufficient,
+    // USDC collateral (SPEC §4b, USDC-COLLATERAL-DESIGN r8).
+    #[msg("This circle's USDC can't be used as collateral")]
+    UsdcMintNotApproved,
+    #[msg("The circle changed: read it again")]
+    BadSeatCollateral,
+    #[msg("The circle changed: read it again")]
+    BadCollateralVault,
+    #[msg("USDC collateral is not available yet")]
+    UsdcCollateralNotEnabled,
 }

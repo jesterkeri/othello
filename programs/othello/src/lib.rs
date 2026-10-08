@@ -47,6 +47,26 @@ pub mod othello {
         instructions::join_and_lock::handle_join_and_lock(ctx, stock_raw)
     }
 
+    /// SPEC §4b: a join that may lock USDC as well as, or instead of, stock. Cover = stock part + USDC at face
+    /// value. Locking USDC needs the feature marker and the approved USDC mint.
+    pub fn join_and_lock_v2(
+        ctx: Context<JoinAndLockV2>,
+        stock_raw: u64,
+        usdc_raw: u64,
+    ) -> Result<()> {
+        instructions::join_and_lock::handle_join_and_lock_v2(ctx, stock_raw, usdc_raw)
+    }
+
+    /// SPEC §4b: a joined, not defaulted member locks more USDC behind their seat (Forming or Active).
+    pub fn add_usdc_collateral(ctx: Context<AddUsdcCollateral>, amount: u64) -> Result<()> {
+        instructions::usdc_collateral::handle_add_usdc_collateral(ctx, amount)
+    }
+
+    /// SPEC §4b: the admin's one-way switch that lets USDC be locked. Moves no tokens (I8).
+    pub fn enable_usdc_collateral(ctx: Context<EnableUsdcCollateral>) -> Result<()> {
+        instructions::usdc_collateral::handle_enable_usdc_collateral(ctx)
+    }
+
     /// A member pays their contribution for the current round (T10). No time
     /// check: a late payment before a default is declared is a cure.
     pub fn contribute(ctx: Context<Contribute>) -> Result<()> {

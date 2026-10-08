@@ -34,6 +34,17 @@ pub const ALLOWED_STOCK_MINTS: [Pubkey; 4] = [AAPLX, NFLXX, SPYX, NVDAX];
 #[cfg(feature = "devnet")]
 pub const ALLOWED_STOCK_MINTS: [Pubkey; 1] = [crate::devnet::NFLXX_MIRROR];
 
+/// The one USDC mint a circle may use (SPEC §4b, USDC-COLLATERAL-DESIGN r8 [F1]): owned by SPL Token, so no
+/// transfer-fee, transfer-hook or interest-bearing extension can make a vault hold less than the books say.
+/// `create_circle` requires it of every new circle; the USDC-locking instructions require it of the circle.
+#[cfg(not(feature = "devnet"))]
+pub const APPROVED_USDC: Pubkey =
+    Pubkey::from_str_const("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
+/// The devnet build pins Othello's own test USDC (devnet.rs), never a mainnet mint.
+#[cfg(feature = "devnet")]
+pub const APPROVED_USDC: Pubkey = crate::devnet::TEST_USDC;
+
 pub fn is_allowed(mint: &Pubkey) -> bool {
     // Four entries, compared as 32-byte arrays. A linear scan is the whole cost.
     ALLOWED_STOCK_MINTS.iter().any(|allowed| allowed == mint)
@@ -72,6 +83,22 @@ mod tests {
         // Collateral only. This list says nothing about USDC: the default
         // build's init_pool takes any classic SPL mint (OPEN-QUESTIONS, S2).
         assert!(!is_allowed(&crate::devnet::NFLXX_MIRROR));
+    }
+
+    #[test]
+    #[cfg(not(feature = "devnet"))]
+    fn mainnet_build_pins_mainnet_usdc() {
+        assert_eq!(
+            APPROVED_USDC.to_string(),
+            "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        );
+        assert_ne!(APPROVED_USDC, crate::devnet::TEST_USDC);
+    }
+
+    #[test]
+    #[cfg(feature = "devnet")]
+    fn devnet_build_pins_the_test_usdc() {
+        assert_eq!(APPROVED_USDC, crate::devnet::TEST_USDC);
     }
 
     #[test]
