@@ -13,14 +13,16 @@
  * admin wallet ($ANCHOR_WALLET or ~/.config/solana/id.json) and the script-held keys. Safe to re-run.
  * Proven on the devnet build by tests/b2-devnet-try.spec.ts.
  *
- * Writes ops/try-circle.json: public addresses only.
+ * Binds the keys to the seats in ~/.config/othello-demo/devnet-try/seats.json before its first send (public
+ * addresses only); a run for another wallet is refused there, from any checkout. Writes ops/try-circle.json, the
+ * finished seed's public addresses, at the end.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import * as anchor from "@coral-xyz/anchor";
 
-import { DEMO, seedTryCircle, type TrySeatsRecord } from "./demo.ts";
-import { DEMO_RECORD, TRY_RECORD, devnetChain, tryCircleKeys } from "./devnet-cli.ts";
+import { DEMO, seedTryCircle } from "./demo.ts";
+import { DEMO_RECORD, TRY_RECORD, devnetChain, tryRunFor } from "./devnet-cli.ts";
 
 const args = process.argv.slice(2);
 const at = args.indexOf("--wallet");
@@ -39,31 +41,19 @@ if (existsSync(DEMO_RECORD) && (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as
   console.error(`${wallet.toBase58()} is a seat of the demo circle (ops/demo-circle.json): the try seat must be your own wallet. Nothing was sent.`);
   process.exit(1);
 }
-if (existsSync(TRY_RECORD)) {
-  const recorded = (JSON.parse(readFileSync(TRY_RECORD, "utf8")) as { members: string[] }).members[DEMO.n - 1];
-  if (recorded !== wallet.toBase58()) {
-    console.error(`${TRY_RECORD} records the try circle for wallet ${recorded}, not ${wallet.toBase58()}. Nothing was sent.`);
-    process.exit(1);
-  }
+// The no-send pre-check (the machine-wide binding names this wallet, or none), before any cluster call.
+let run: ReturnType<typeof tryRunFor>;
+try {
+  run = tryRunFor(wallet, DEMO.n - 1);
+} catch (e) {
+  console.error((e as Error).message);
+  process.exit(1);
 }
 
 const { chain, mints } = await devnetChain();
-const scripted = tryCircleKeys(DEMO.n - 1);
+const scripted = run.keys;
 console.log(`Seeding a try circle on devnet as ${chain.admin.publicKey.toBase58()}, seat ${DEMO.n} for ${wallet.toBase58()}`);
-// Written before the first send (seedTryCircle calls write once its no-send checks pass), then completed below.
-const record: TrySeatsRecord = {
-  read: () => (existsSync(TRY_RECORD) ? (JSON.parse(readFileSync(TRY_RECORD, "utf8")) as { members: string[] }).members : null),
-  write: (members) =>
-    writeFileSync(
-      TRY_RECORD,
-      JSON.stringify(
-        { cluster: "devnet", program: chain.program.programId.toBase58(), creator: members[0], members, pending: true },
-        null,
-        2,
-      ) + "\n",
-    ),
-};
-const circle = await seedTryCircle(chain, mints, scripted, wallet, record);
+const circle = await seedTryCircle(chain, mints, scripted, wallet, run.binding);
 
 writeFileSync(
   TRY_RECORD,

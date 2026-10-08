@@ -11,13 +11,13 @@
  * (directory 0700, files 0600). They hold only devnet test tokens, but they are
  * still keys: never committed, never printed.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import * as anchor from "@coral-xyz/anchor";
 
-import type { Chain, Mints } from "./demo.ts";
+import type { Chain, Mints, TrySeatsRecord } from "./demo.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 export const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
@@ -133,15 +133,42 @@ export function writeDemoRecord(update: Record<string, unknown>): void {
 }
 
 /**
- * The try circle (ops/seed-try-circle.ts): its own script-held keys, in ~/.config/othello-demo/devnet-try/, and its own
- * record, ops/try-circle.json, so they never mix with the demo circle's. The keys are made only for the first seed;
- * once the record exists they are loaded only, and must be exactly the seats it recorded.
+ * The try circle (ops/seed-try-circle.ts): its own script-held keys, never mixed with the demo circle's, in
+ * ~/.config/othello-demo/devnet-try/ (0700, keys 0600). The binding of those keys to the seats they seed, wallet
+ * included, lives IN THE SAME FOLDER (seats.json, public addresses only), not in the checkout: PR #30 adversary r3
+ * showed a per-checkout binding let a second checkout (or one recreated after `git worktree remove`) reuse the
+ * machine's keys for another wallet. seedTryCircle writes it before its first send, atomically (a temp file renamed
+ * over it), so a stopped run can never leave half a record. ops/try-circle.json is only the finished seed's output.
  */
 export const TRY_RECORD = resolve(import.meta.dirname, "try-circle.json");
 const TRY_DIR = resolve(homedir(), ".config/othello-demo/devnet-try");
+export const TRY_BINDING = resolve(TRY_DIR, "seats.json");
 
-export function tryCircleKeys(n: number): anchor.web3.Keypair[] {
-  if (!existsSync(TRY_RECORD)) return keysIn(TRY_DIR, n);
-  const { members } = JSON.parse(readFileSync(TRY_RECORD, "utf8")) as { members: string[] };
-  return loadRecordedKeys(TRY_RECORD, TRY_DIR, members.slice(0, n));
+/** The machine-wide binding of the try keys to their seats, as seedTryCircle reads and writes it. */
+export function tryBinding(): TrySeatsRecord {
+  return {
+    read: () => (existsSync(TRY_BINDING) ? (JSON.parse(readFileSync(TRY_BINDING, "utf8")) as { members: string[] }).members : null),
+    write: (members) => {
+      mkdirSync(TRY_DIR, { recursive: true, mode: 0o700 });
+      const temp = `${TRY_BINDING}.${process.pid}.tmp`;
+      writeFileSync(temp, JSON.stringify({ members }, null, 2) + "\n", { mode: 0o600 });
+      renameSync(temp, TRY_BINDING);
+    },
+  };
+}
+
+/**
+ * The try seed's no-send pre-check and its keys, for `wallet`: refuses (before anything is read from a cluster or
+ * sent) if the machine's binding names another wallet; then loads the keys, made only if no binding exists yet, and
+ * loaded only, exactly as bound, once one does. Key files with no binding mean no run ever sent anything (the binding
+ * is written before the first send), so they are reused.
+ */
+export function tryRunFor(wallet: anchor.web3.PublicKey, n: number): { keys: anchor.web3.Keypair[]; binding: TrySeatsRecord } {
+  const binding = tryBinding();
+  const bound = binding.read();
+  if (bound && bound[bound.length - 1] !== wallet.toBase58()) {
+    throw new Error(`${TRY_BINDING} binds the try seed to wallet ${bound[bound.length - 1]}, not ${wallet.toBase58()}. Nothing was sent.`);
+  }
+  const keys = bound ? loadRecordedKeys(TRY_BINDING, TRY_DIR, bound.slice(0, n)) : keysIn(TRY_DIR, n);
+  return { keys, binding };
 }
