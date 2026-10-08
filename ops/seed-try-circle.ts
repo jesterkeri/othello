@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import * as anchor from "@coral-xyz/anchor";
 
 import { DEMO, seedTryCircle } from "./demo.ts";
-import { TRY_RECORD, devnetChain, tryCircleKeys } from "./devnet-cli.ts";
+import { DEMO_RECORD, TRY_RECORD, devnetChain, tryCircleKeys } from "./devnet-cli.ts";
 
 const args = process.argv.slice(2);
 const at = args.indexOf("--wallet");
@@ -32,6 +32,11 @@ try {
 }
 if (args[0] !== "--cluster" || args[1] !== "devnet" || !wallet) {
   console.error("Usage: pnpm tsx ops/seed-try-circle.ts --cluster devnet --wallet <your devnet wallet address>");
+  process.exit(1);
+}
+// The try seat is a person's own wallet, never one of the demo circle's script-held seats.
+if (existsSync(DEMO_RECORD) && (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { members: string[] }).members.includes(wallet.toBase58())) {
+  console.error(`${wallet.toBase58()} is a seat of the demo circle (ops/demo-circle.json): the try seat must be your own wallet. Nothing was sent.`);
   process.exit(1);
 }
 if (existsSync(TRY_RECORD)) {

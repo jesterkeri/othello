@@ -433,8 +433,10 @@ export async function seedTryCircle(chain: Chain, mints: Mints, scripted: Keypai
     );
   }
 
-  // Seats: the script-held keys and the wallet, each funded the same way.
-  for (const [i, w] of seats.entries()) {
+  // Seats: the script-held keys and the wallet, each funded the same way, and only before the circle exists. Funding
+  // comes first, so a circle on chain means every seat was funded. After that a seat's balance is its own: the wallet's
+  // join and leave fees leave it under MEMBER_LAMPORTS, and a re-run must not top it up (PR #30 adversary).
+  for (const [i, w] of existing ? [] : seats.entries()) {
     const ixs = await fundingIxs(chain, mints, a, w);
     if (ixs.length) {
       await chain.send(ixs, [admin]);
