@@ -46,9 +46,12 @@ export default function SolanaJoin({ c: read, split, owner, mints, vaults, conne
     const id = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => window.clearInterval(id);
   }, []);
-  const priceProblem = joinPriceProblem(read, split, now);
+  // never earlier than the read: chain time only moves forward, so a device clock running behind must not make a price
+  // the read found stale look fresh (adversary on ba8bef5)
+  const at = Math.max(now, readAt);
+  const priceProblem = joinPriceProblem(read, split, at);
   // the circle at the multiplier in force (the read itself when that cannot be carried; priceProblem then stops all)
-  const c = joinViewAt(read, split, now) ?? read;
+  const c = joinViewAt(read, split, at) ?? read;
   // no least from a price the program would refuse
   const least = priceProblem ? null : minJoinStock(c);
   // the least, from each new read, until the member types their own amount (adversary on 6587a2b)

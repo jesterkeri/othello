@@ -341,7 +341,7 @@ export function minJoinStock(c: CircleView): bigint | null {
   if (target <= 0n) return 0n;
   let hi = 1n;
   while (countedOfRaw(c, hi) < target) {
-    if (hi > 1n << 62n) return null;
+    if (hi > 1n << 64n) return null; // past u64: no stock amount the program takes
     hi *= 2n;
   }
   let lo = 0n; // countedOfRaw(lo) < target

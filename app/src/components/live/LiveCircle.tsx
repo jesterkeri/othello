@@ -425,7 +425,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const seatOpen = c.status === "Forming" && yourTurn !== null && !seatSet(c.joinedBitmap, yourTurn) && !!wallet.publicKey;
   const allJoined = dv.joined === c.n;
   // join_and_lock values the stock at its own clock: the join row judges the price on its own clock (lib/solana-join.ts)
-  const joinPrice = c.status === "Forming" ? joinPriceProblem(c, live.split, wallClock) : null;
+  const joinPrice = c.status === "Forming" ? joinPriceProblem(c, live.split, Math.max(wallClock, live.readAt)) : null;
   const formingRows = c.status !== "Forming" ? null : (
     <>
       {seatOpen && wallet.publicKey && (
