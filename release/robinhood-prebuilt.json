@@ -1,14 +1,14 @@
 {
-  "commit": "35c6dc97ceb47f5a9b7fdc6a6bade59cb4c793ec",
-  "artifactSha256": "e1812506f9da759afe9a478b211b7e40409e8d1c4d3cd8af371115487cf38fba",
-  "files": 1148,
+  "commit": "b9e432363cbb7eb6d1e1406d966314242f01d24d",
+  "artifactSha256": "7a17520cf8498641785b932721eefef25f6b2f77b807cb2377c86c6922289581",
+  "files": 1173,
   "trustedFactory": "0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5",
-  "scannedAt": "2026-10-06T02:36:56.947Z",
+  "scannedAt": "2026-10-08T05:53:44.298Z",
   "vercelCli": "59.11.7",
   "deploy": "npx tsx ops/release-deploy.ts --record release/robinhood-prebuilt.json",
   "fileList": "release/robinhood-prebuilt.files.txt",
-  "deployStartedAt": "2026-10-06T02:37:01.832Z",
-  "deploymentUrl": "https://othello-chains-26rbheqgp-jesters-projects-340c1a8c.vercel.app",
+  "deployStartedAt": "2026-10-08T05:53:49.958Z",
+  "deploymentUrl": "https://othello-chains-lpfi64h9v-jesters-projects-340c1a8c.vercel.app",
   "target": "production",
-  "deployedAt": "2026-10-06T02:37:34.110Z"
+  "deployedAt": "2026-10-08T05:54:24.761Z"
 }
