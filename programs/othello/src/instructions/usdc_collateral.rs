@@ -143,6 +143,18 @@ pub fn read_collateral_vault(account: &AccountInfo, circle: &Pubkey) -> Result<V
     })
 }
 
+/// Design r8 [R3-1]: a seat whose SeatCollateral holds USDC must have the collateral vault present behind it. An
+/// absent vault there is an invariant failure, refused as BadCollateralVault, never read as zero cover.
+pub fn require_vault_behind_seat(seat: &SeatRead, vault: &VaultRead) -> Result<()> {
+    if seat.usdc_locked > 0 {
+        require!(
+            matches!(vault.state, CollateralVault::Present { .. }),
+            OthelloError::BadCollateralVault
+        );
+    }
+    Ok(())
+}
+
 /// Requires the feature marker: this program's Features account at exactly the `["features"]` PDA, checked at its
 /// stored bump (one create_program_address, not a search).
 pub fn require_usdc_enabled(features: &AccountInfo) -> Result<()> {
@@ -435,6 +447,7 @@ pub fn handle_add_usdc_collateral(ctx: Context<AddUsdcCollateral>, amount: u64) 
         &ctx.accounts.wallet.key(),
     )?;
     let vault = read_collateral_vault(&ctx.accounts.collateral_vault, &ctx.accounts.circle.key())?;
+    require_vault_behind_seat(&seat, &vault)?;
     let usdc_locked = lock_usdc(
         &UsdcLock {
             payer: &ctx.accounts.wallet.to_account_info(),

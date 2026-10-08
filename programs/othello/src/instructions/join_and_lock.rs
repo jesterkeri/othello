@@ -35,7 +35,7 @@ use crate::errors::OthelloError;
 use crate::events::MemberJoined;
 use crate::instructions::usdc_collateral::{
     lock_usdc, read_collateral_vault, read_seat_collateral, require_approved_usdc,
-    require_usdc_enabled, SeatRead, UsdcLock, VaultRead,
+    require_usdc_enabled, require_vault_behind_seat, SeatRead, UsdcLock, VaultRead,
 };
 use crate::state::{Circle, CircleStatus, Member, PriceFeed};
 use crate::valuation::value_position;
@@ -365,6 +365,7 @@ fn join<'a, 'info>(
             );
             let seat = read_seat_collateral(u.seat_collateral, &circle.key(), &j.wallet.key())?;
             let vault = read_collateral_vault(u.collateral_vault, &circle.key())?;
+            require_vault_behind_seat(&seat, &vault)?;
             if u.usdc_raw > 0 {
                 require_usdc_enabled(u.features)?;
                 require_approved_usdc(circle, &j.usdc_token_program.key())?;
