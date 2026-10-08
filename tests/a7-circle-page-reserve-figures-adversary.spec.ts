@@ -198,11 +198,11 @@ describe("A7 adversary on 5a46c40: money figures the chain does not hold", () =>
   // the fix's own checks (5a46c40's follow-up)
   it("the ledger shows the last gate check's stored figure while a payout is to come, and nothing after", async () => {
     const run = await render(running);
-    assert.match(run.text, /Short of the payout gate, last check 0\.00 test USDC/);
+    assert.match(run.text, /Short of the payout gate, as last recorded 0\.00 test USDC/);
     const never = await render({ ...running, lastCoverageAt: 0 });
-    assert.match(never.text, /Short of the payout gate, last check Not checked yet/);
+    assert.match(never.text, /Short of the payout gate, as last recorded Not checked yet/);
     const done = await render({ ...base, status: "Completed", round: 4, paidBitmap: 0, receivedBitmap: 0b11111, nextGateShortBy: 0 });
-    assert.doesNotMatch(done.text, /payout gate, last check|Next payout needs/);
+    assert.doesNotMatch(done.text, /payout gate, as last recorded|Next payout needs/);
   });
 
   it("the shortfall is named to the base unit: 1.234567 and 0.000001", async () => {

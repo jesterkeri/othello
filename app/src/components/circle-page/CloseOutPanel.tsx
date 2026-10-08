@@ -44,8 +44,12 @@ export default function CloseOutPanel({ words, close, completed, canWrite, block
         <>
           <p className={r.blocker}>
             {mine.total === null || mine.locked === null || mine.pooled === null
-              ? mine.lockedLeft === false
+              ? mine.stock === "sold"
                 ? `Your locked ${locked} went to cover missed payments. Withdrawing pays whatever is left for your seat and closes it.`
+                : mine.stock === "none"
+                ? !completed
+                  ? "You collect your guarantee and top ups; your seat locked no stock."
+                  : "You collect whatever share of the shared reserve your seat still has; your seat locked no stock."
                 : !completed
                 ? `You collect your locked ${locked}, guarantee and top ups.`
                 : `You collect your locked ${locked} and whatever share of the shared reserve your seat still has (a seat whose guarantee covered a missed payment may have none).`

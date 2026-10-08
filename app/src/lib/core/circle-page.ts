@@ -131,7 +131,13 @@ export type CloseOut = {
   collected: number;
   owedCount: number;
   /** The connected member's seat and what withdraw pays it, when the chain's read gives the amounts. */
-  mine: { turn: number; collected: boolean; owed: boolean; locked: bigint | null; pooled: bigint | null; total: bigint | null; lockedLeft?: boolean } | null;
+  mine: { turn: number; collected: boolean; owed: boolean; locked: bigint | null; pooled: bigint | null; total: bigint | null;
+    /**
+     * What the seat's locked part holds, when the chain's read gives no amounts: "held" (stock is still locked), "sold"
+     * (in default, and the sale took all of it), "none" (it joined with no stock: join_and_lock takes stock_raw 0 when
+     * the guarantee meets min_stock_cover). Absent: "held".
+     */
+    stock?: "held" | "sold" | "none" } | null;
 };
 
 /** The phase to show for this read: a failure from an earlier round does not carry into the next (no lingering). */

@@ -45,7 +45,8 @@ const exactUsdc = (base: number) => formatUsdc(base, base % 1_000_000 === 0 ? 0 
 /** Solana's money in its own words: base units of test USDC (6 decimals). */
 // to the cent, or to the base unit when an amount has more: a shortfall shown rounded down would leave the round unfunded
 // after a top-up of the figure shown (adversary on 5a46c40)
-const usdc = (base: bigint) => `${formatUsdc(Number(base), base % 10_000n === 0n ? 2 : 6)} ${USDC_WORD}`;
+const amt = (base: number) => formatUsdc(base, base % 10_000 === 0 ? 2 : 6);
+const usdc = (base: bigint) => `${amt(Number(base))} ${USDC_WORD}`;
 
 /**
  * One transaction at a time, whichever button sent it; `what` names it in the status line, `round` is the round the
@@ -216,7 +217,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     // declare_default sells the stock up to what the seat owes and the reserve pays the shortfall as far as it can; what
     // it cannot is the escrow deficit, cured by a top-up (SPEC.md section 6; adversary on 3f0dc00 and cda5631)
     text = c.escrowDeficit > 0
-      ? `This seat has defaulted. Its stock was sold and the shared reserve paid what it could, but the circle's escrow is still ${formatUsdc(c.escrowDeficit)} ${USDC_WORD} short of the prepaid payments; a reserve top-up cures it.`
+      ? `This seat has defaulted. Its stock was sold and the shared reserve paid what it could, but the circle's escrow is still ${usdc(BigInt(c.escrowDeficit))} short of the prepaid payments; a reserve top-up cures it.`
       : "This seat has defaulted. Declaring the default prepaid its remaining payments: its stock was sold, and the shared reserve paid any shortfall.";
   } else if (seatSet(c.paidBitmap, yourTurn)) {
     text = `You have paid round ${c.round + 1}.`;
@@ -303,18 +304,18 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     : owing.length > 0
       ? `The pot can be released once every seat has paid or been declared in default. Still to pay: ${owing.map((m) => m.name).join(", ")}.`
       : releaseBlock(c, wallClock) === "escrow-short"
-        ? `Every seat is settled, but the escrow holds ${formatUsdc(c.escrow)} ${USDC_WORD} and the defaulted seats' share of this round is ${formatUsdc(c.contribution * covered.length)}: the program refuses the release until the escrow can pay it.`
+        ? `Every seat is settled, but the escrow holds ${usdc(BigInt(c.escrow))} and the defaulted seats' share of this round is ${amt(c.contribution * covered.length)}: the program refuses the release until the escrow can pay it.`
       : priceBlock
         ? `Every seat is settled, but the pot waits. ${priceBlock}`
         : dv.paused
-          ? `Every seat is settled. At the last coverage check (${c.lastCoverageAt ? `${formatDuration(wallClock - c.lastCoverageAt)} ago` : "not yet run"}) payouts were paused, ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD} short. Anyone can still try to release the pot to ${recipient?.name ?? "this round's seat"}: the program re-checks the reserve and refuses, with the numbers, if it is still short.`
+          ? `Every seat is settled. At the last coverage check (${c.lastCoverageAt ? `${formatDuration(wallClock - c.lastCoverageAt)} ago` : "not yet run"}) payouts were paused, ${usdc(BigInt(c.nextGateShortBy))} short. Anyone can still try to release the pot to ${recipient?.name ?? "this round's seat"}: the program re-checks the reserve and refuses, with the numbers, if it is still short.`
           : `${covered.length ? `Every other seat has paid, and ${covered.map((m) => m.name).join(", ")} is covered by the default` : "Every seat has paid"}: anyone can release the pot to ${recipient?.name ?? "this round's seat"}.`;
   const defaultText = defaults
     .map(({ m, needs, poolShort }) =>
       dv.stale || c.feed.wrapperPrice === 0
         ? `${m.name} can be declared in default once the stock has a fresh price.`
         : poolShort
-          ? `${m.name} can be declared in default, but the liquidation pool holds ${formatUsdc(live.pool.usdc)} ${USDC_WORD} and buying the stock needs ${formatUsdc(needs)}; it waits until the pool is refilled.`
+          ? `${m.name} can be declared in default, but the liquidation pool holds ${usdc(BigInt(live.pool.usdc))} and buying the stock needs ${amt(needs)}; it waits until the pool is refilled.`
           : `${m.name} took the pot and has not paid after the grace: anyone can declare the default.`,
     )
     .join(" ");
@@ -488,9 +489,10 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     seats: ordered.map((m) => ({ turn: m.turn, label: seatLabel(m.turn), wallet: m.address, you: m.address === you, collected: seatSet(c.withdrawnBitmap, m.turn), owed: owes(m.turn), amount: null })),
     collected: owedSeats.filter((m) => seatSet(c.withdrawnBitmap, m.turn)).length,
     owedCount: owedSeats.length,
-    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null, // "went to cover missed payments" only for a seat in default whose stock is gone: a seat can join with no stock
-    // (join_and_lock takes stock_raw 0 when the guarantee meets min_stock_cover; adversary on 5a46c40)
-    lockedLeft: (c.members.find((m) => m.turn === yourTurn)?.lockedRaw ?? 0) > 0 || !seatSet(c.defaultedBitmap, yourTurn) } : null,
+    // "went to cover missed payments" only for a seat in default whose stock is gone; a seat can join with no stock
+    // (join_and_lock takes stock_raw 0 when the guarantee meets min_stock_cover; adversary on 5a46c40 and dbadb91)
+    mine: yourTurn !== null ? { turn: yourTurn, collected: mineWithdrawn, owed: owes(yourTurn), locked: null, pooled: null, total: null,
+      stock: (c.members.find((m) => m.turn === yourTurn)?.lockedRaw ?? 0) > 0 ? "held" : seatSet(c.defaultedBitmap, yourTurn) ? "sold" : "none" } : null,
   } : null;
   const closeOut = close ? (
     <CloseOutPanel
@@ -509,7 +511,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   if (error) banners.push({ kind: "refusal", mark: "?", title: "Live data unavailable", text: `The last read of devnet failed (${error}). Showing the read from ${formatDuration(wallClock - live.readAt)} ago.` });
   if (repricing) banners.push({ kind: "neutral", mark: "!", title: "Repricing. Price and split disagree.", text: forming ? "Joins wait. The demo admin sets a price for the new multiplier, then seats can join." : "Payouts wait. The demo admin sets a price for the new multiplier, then anyone can update coverage." });
   if (dv.stale) banners.push({ kind: "neutral", mark: "?", title: `Prices are ${formatDuration(dv.priceAge)} old`, text: "Recheck after update." });
-  if (dv.paused) banners.push({ kind: "refusal", mark: "!", title: "Payouts paused.", text: `The next payout needs ${formatUsdc(gateNeeded)} ${USDC_WORD} of reserve and ${formatUsdc(dv.remains)} remains. Top up ${formatUsdc(c.nextGateShortBy)} ${USDC_WORD}, returned pro rata at the end, minus any default losses.` });
+  if (dv.paused) banners.push({ kind: "refusal", mark: "!", title: "Payouts paused.", text: `The next payout needs ${usdc(BigInt(gateNeeded))} of reserve and ${amt(dv.remains)} remains. Top up ${usdc(BigInt(c.nextGateShortBy))}, returned pro rata at the end, minus any default losses.` });
   // waiting only for the seats that can still pay: a seat in default never pays again (contribute refuses it) and the
   // release pays its share from the escrow (adversary on af399a9)
   if (active && owing.length > 0 && !repricing) banners.push({ kind: "neutral", mark: String(owing.length), title: `${owing.length} ${owing.length === 1 ? "contribution" : "contributions"} still missing`, text: `Once ${owing.length === 1 ? owing[0]!.name : `${owing.length} seats`} ${owing.length === 1 ? "has" : "have"} paid${dv.paused ? " and the reserve covers the next payout" : ""}${dv.stale ? " and the price is fresh" : ""}${escrowShortBy > 0n ? ` and a reserve top-up funds the ${usdc(escrowShortBy)} the escrow lacks of the defaulted seats' share` : ""}, anyone can release the pot${dv.recipient ? ` to ${dv.recipient.name}` : ""}. Paying late still counts.` });
@@ -551,7 +553,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         { label: "This round", value: defaulted ? "Defaulted" : !joined ? "Not joined" : !active ? (withdrawn ? "Withdrawn" : ended ? "To withdraw" : "Joined") : paid ? "Paid" : "Due", tone: defaulted ? "clay" : !joined || !active ? "" : paid ? "teal" : "acid" },
         { label: "Pot", value: received ? "Received" : isNow ? "Receiving" : c.status === "Cancelled" ? "None (cancelled)" : "Waiting", tone: received ? "teal" : isNow ? "cobalt" : "" },
         // a defaulted seat's remaining payments are prepaid (SPEC.md Member.last_coverage_bps), whatever rounds_paid says
-        { label: "Owed", value: !joined ? "—" : seatSet(c.defaultedBitmap, m.turn) ? "Prepaid" : `${formatUsdc(obligations(c, m))} ${USDC_WORD}`, tone: "" },
+        { label: "Owed", value: !joined ? "—" : seatSet(c.defaultedBitmap, m.turn) ? "Prepaid" : `${usdc(BigInt(obligations(c, m)))}`, tone: "" },
         { label: "Coverage", value: !joined ? "—" : dv.repricing ? "Not countable" : coverageLabel(c, m), tone: "" },
       ],
     };
@@ -565,11 +567,11 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       title={`Seat ${fm.turn + 1}: ${fm.name}${fm.address === you ? " (you)" : ""}`}
       text={kind === "join" && !fmJoined
         ? c.status === "Forming"
-          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.${repricing ? " Joining waits until the price is set for the new multiplier." : priceBlock ? " Joining waits for a set, fresh price." : ""}`
+          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${usdc(BigInt(c.guaranteePerMember))} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.${repricing ? " Joining waits until the price is set for the new multiplier." : priceBlock ? " Joining waits for a set, fresh price." : ""}`
           : `This seat never joined, and the circle is ${c.status}: it can no longer be joined.`
         : !fmJoined
           ? "This seat has not joined yet: nothing is locked."
-          : `Locked ${formatRaw(fm.lockedRaw)} ${stockUnit}, counting as ${dv.repricing ? "no cover while price and split disagree" : `${formatUsdc(stockCover(fm, c))} ${USDC_WORD} of cover`}. ${seatSet(c.defaultedBitmap, fm.turn) ? "Defaulted: its remaining payments are prepaid." : `Owes ${formatUsdc(obligations(c, fm))} ${USDC_WORD}.`} ${seatSet(c.receivedBitmap, fm.turn) ? "Has received the pot." : c.status === "Cancelled" ? "The circle was cancelled before any round ran." : `Receives the pot in round ${fm.turn + 1}.`}`}
+          : `Locked ${formatRaw(fm.lockedRaw)} ${stockUnit}, counting as ${dv.repricing ? "no cover while price and split disagree" : `${usdc(BigInt(stockCover(fm, c)))} of cover`}. ${seatSet(c.defaultedBitmap, fm.turn) ? "Defaulted: its remaining payments are prepaid." : `Owes ${usdc(BigInt(obligations(c, fm)))}.`} ${seatSet(c.receivedBitmap, fm.turn) ? "Has received the pot." : c.status === "Cancelled" ? "The circle was cancelled before any round ran." : `Receives the pot in round ${fm.turn + 1}.`}`}
     />
   ) : null;
 
@@ -601,7 +603,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         </NextStep>
       }
       turns={{
-        forming: c.status === "Forming" ? { title: `Waiting for ${c.n - joinedCount} members to join`, text: `${joinedCount} of ${c.n} have locked their stock and put ${formatUsdc(c.guaranteePerMember)} ${USDC_WORD} into the shared reserve. The creator activates the circle when everyone has joined.` } : null,
+        forming: c.status === "Forming" ? { title: `Waiting for ${c.n - joinedCount} members to join`, text: `${joinedCount} of ${c.n} have locked their stock and put ${usdc(BigInt(c.guaranteePerMember))} into the shared reserve. The creator activates the circle when everyone has joined.` } : null,
         label: "Turn order",
         note: `${formatDuration(c.roundSecs)} rounds, ${formatDuration(c.graceSecs)} grace`,
         rounds: ordered.map((m) => {
@@ -612,15 +614,15 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       }}
       reserve={{
         heading: "Shared reserve, free",
-        amount: formatUsdc(dv.free),
+        amount: amt(dv.free),
         unit: USDC_WORD,
         coins: ordered.filter((m) => seatSet(c.joinedBitmap, m.turn)).map((m) => m.turn),
-        coinNote: `${joinedCount} deposits of ${formatUsdc(c.guaranteePerMember)}, one per seat`,
+        coinNote: `${joinedCount} deposits of ${amt(c.guaranteePerMember)}, one per seat`,
         lines: ([["+", "Deposited", c.reserveTotal], ["−", "Spent on defaults", c.reserveLosses], ["−", "Allocated to cover", c.reserveAllocated], ["=", "Remains, the gate's figure", dv.remains]] as const)
-          .map(([sign, label, amount]): readonly [string, string, string] => [sign, label, `${formatUsdc(amount)} ${USDC_WORD}`])
+          .map(([sign, label, amount]): readonly [string, string, string] => [sign, label, `${usdc(BigInt(amount))}`])
           // the stored result of the last payout-gate check, as Robinhood's ledger shows it, and only while a payout is
           // still to come: "remains + short by" is what the gate needs only when it was short (adversary on 5a46c40)
-          .concat(!active ? [] : [["→", "Short of the payout gate, last check", c.lastCoverageAt > 0 ? usdc(BigInt(c.nextGateShortBy)) : "Not checked yet"] as const]),
+          .concat(!active ? [] : [["→", "Short of the payout gate, as last recorded", c.lastCoverageAt > 0 ? usdc(BigInt(c.nextGateShortBy)) : "Not checked yet"] as const]),
       }}
       locks={{
         label: "Cover per member",
@@ -632,7 +634,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
           [`−${c.haircutBps / 100}%`, "safety margin"],
           [dv.repricing ? "Not countable" : formatUsdc(stockCover(m0, c), 0), dv.repricing ? "price and split disagree" : `${USDC_WORD} of cover`],
         ] : [],
-        chips: [["Minimum to join", `${formatUsdc(c.minStockCover)} ${USDC_WORD} of cover`], ["Coverage target", `${c.coverageBps / 100}%`], ["Held this round", `${formatUsdc(c.heldContributions)} ${USDC_WORD}`]],
+        chips: [["Minimum to join", `${usdc(BigInt(c.minStockCover))} of cover`], ["Coverage target", `${c.coverageBps / 100}%`], ["Held this round", `${usdc(BigInt(c.heldContributions))}`]],
       }}
       members={{
         head: `Members (${joinedCount} of ${c.n} joined)`,
