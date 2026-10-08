@@ -9,6 +9,7 @@
  * byte against the ones next/font/google downloaded, and six pages screenshotted identical, at 1280 and 390 px.)
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -61,8 +62,23 @@ describe("A9: the fonts are the repo's own", () => {
     const layout = readFileSync(join(APP, "src/app/layout.tsx"), "utf8");
     assert.match(layout, /import "\.\/fonts\.css";/);
     const preloaded = JSON.parse(/const PRELOADED_FONTS = (\[[^\]]*\])/.exec(layout)![1]!) as string[];
-    assert.deepEqual(preloaded.sort(), ["archivo-latin-italic.woff2", "archivo-latin.woff2", "plus-jakarta-sans-latin.woff2"]);
+    assert.deepEqual(
+      preloaded.map((f) => f.replace(/\.[0-9a-f]{10}\.woff2$/, "")).sort(),
+      ["archivo-latin", "archivo-latin-italic", "plus-jakarta-sans-latin"],
+    );
     for (const f of preloaded) assert.ok(existsSync(join(FONTS, f)), `${f} is preloaded but missing`);
+  });
+
+  it("every font is content-addressed and served immutable for a year, as next/font served it (PR #33 adversary)", () => {
+    for (const f of readdirSync(FONTS).filter((n) => n.endsWith(".woff2"))) {
+      const m = /\.([0-9a-f]{10})\.woff2$/.exec(f);
+      assert.ok(m, `${f} carries no content hash in its name`);
+      const sha = createHash("sha256").update(readFileSync(join(FONTS, f))).digest("hex");
+      assert.equal(m[1], sha.slice(0, 10), `${f}'s name does not match its bytes: a changed font must get a new name`);
+    }
+    const config = readFileSync(join(APP, "next.config.mjs"), "utf8");
+    assert.match(config, /source: "\/fonts\/:file\*\.woff2"/);
+    assert.match(config, /"Cache-Control", value: "public, max-age=31536000, immutable"/);
   });
 
   it("the SIL Open Font License ships with each family", () => {

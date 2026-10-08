@@ -15,7 +15,7 @@ import "./globals.css";
  * for tapes and tile headlines, 82% on the logo and the ajo button. The three latin files are preloaded, as
  * next/font/google preloaded them.
  */
-const PRELOADED_FONTS = ["archivo-latin.woff2", "archivo-latin-italic.woff2", "plus-jakarta-sans-latin.woff2"];
+const PRELOADED_FONTS = ["archivo-latin.4c98b9d490.woff2", "archivo-latin-italic.d2a3a083e9.woff2", "plus-jakarta-sans-latin.cd8db90cd9.woff2"];
 
 export const metadata: Metadata = {
   title: "Othello",
