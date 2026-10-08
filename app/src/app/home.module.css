@@ -1,0 +1,12 @@
+/* Joshua, 2026-10-08: no landing page on phones. The landing stays in the page (desktop shows it, and nothing shifts
+   on hydration) but is hidden at the app's phone width, while app/page.tsx sends the phone on to /circles. The
+   breakpoint is PHONE in lib/phone.ts; keep the two equal. */
+.home {
+  display: contents;
+}
+
+@media (max-width: 759px) {
+  .home {
+    display: none;
+  }
+}
