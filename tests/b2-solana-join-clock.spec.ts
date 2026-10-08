@@ -208,7 +208,7 @@ describe("PR 2: Claim your seat keeps its own clock", () => {
       [tokenAccountOf(seat, { stockMint, usdcMint }, "stock").toBase58(), tokenAccount(stockMint, seat, least * 10n)],
       [tokenAccountOf(seat, { stockMint, usdcMint }, "usdc").toBase58(), tokenAccount(usdcMint, seat, BigInt(view.guaranteePerMember))],
     ]);
-    const connection = { getAccountInfo: async (k: anchor.web3.PublicKey) => accounts.get(k.toBase58()) ?? null };
+    const connection = { getAccountInfo: async (k: anchor.web3.PublicKey) => accounts.get(k.toBase58()) ?? null, getBalance: async () => 1_000_000_000, getMinimumBalanceForRentExemption: async (space: number) => (space + 128) * 6960 };
     // real timers for the row's clock
     const timers: ReturnType<typeof setInterval>[] = [];
     g.window = { setInterval: (f: () => void, ms: number) => { const id = setInterval(f, ms); timers.push(id); return id; }, clearInterval: (id: ReturnType<typeof setInterval>) => clearInterval(id) };
@@ -217,7 +217,7 @@ describe("PR 2: Claim your seat keeps its own clock", () => {
       // the feed is priced for x1; a 10-for-1 takes effect 2 s from now
       const split = { multiplier: 1, newMultiplier: 10, effectiveAt: start + 2 };
       const usdc = (b: bigint) => `${(Number(b) / 1e6).toFixed(2)} test USDC`;
-      const props = { c: view, split, owner: seat, mints: { stockMint, usdcMint }, connection, blocked: null, readAt: start, words: { stock: "NFLXx devnet mirror", stockShort: "NFLXx mirror", usdc }, onJoin: () => {} };
+      const props = { c: view, split, owner: seat, mints: { stockMint, usdcMint }, vaults: { stock: anchor.web3.Keypair.generate().publicKey, usdc: anchor.web3.Keypair.generate().publicKey }, connection, blocked: null, readAt: start, words: { stock: "NFLXx devnet mirror", stockShort: "NFLXx mirror", usdc }, onJoin: () => {} };
       mini.slots.length = 0;
       mini.effects.length = 0;
       mini.render = () => SolanaJoin(props);

@@ -226,7 +226,7 @@ async function drawJoin(view: CircleView, opts: { readAt: number; split: { multi
     [tokenAccountOf(me, { stockMint, usdcMint }, "stock").toBase58(), tokenAccount(stockMint, me, 1_000_000_000_000n)],
     [tokenAccountOf(me, { stockMint, usdcMint }, "usdc").toBase58(), tokenAccount(usdcMint, me, BigInt(view.guaranteePerMember))],
   ]);
-  g.__conn = { getAccountInfo: async (k: anchor.web3.PublicKey) => accounts.get(k.toBase58()) ?? null };
+  g.__conn = { getAccountInfo: async (k: anchor.web3.PublicKey) => accounts.get(k.toBase58()) ?? null, getBalance: async () => 1_000_000_000, getMinimumBalanceForRentExemption: async (space: number) => (space + 128) * 6960 };
   const CIRCLE = anchor.web3.Keypair.generate().publicKey.toBase58();
   const live = { view, accounts: { circle: CIRCLE, usdcMint: mints.testUsdc, stockMint: mints.nflxxMirror }, split: opts.split, pool: { discountBps: 2000, usdc: 1_000_000_000 }, readAt: opts.readAt };
   g.fetch = async () => ({ json: async () => live });

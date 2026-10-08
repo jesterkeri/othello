@@ -18,6 +18,7 @@ import { NFLXX_MIRROR_DECIMALS, NFLXX_MIRROR_SPACE, SPL_TOKEN, TEST_USDC_DECIMAL
 import { explainFailure } from "../app/src/lib/contribute.ts";
 import { activateIx, cancelCircleIx, joinAndLockIx, leaveFormingIx, withdrawIx, type CircleKeys } from "../app/src/lib/actions.ts";
 import { countedOfRaw, minJoinStock } from "../app/src/lib/circle.ts";
+import { joinLamports } from "../app/src/lib/solana-join.ts";
 import { decodeLive, memberAddress } from "../app/src/lib/live.ts";
 
 const DEVNET_SO = "target/devnet/othello.so";
@@ -142,7 +143,17 @@ describe("PR 2: join, leave, start and cancel on a forming Solana circle, as the
     assert.ok(short, "joined with less than the minimum cover");
     assert.match(explainFailure(short), /^CollateralBelowMinimum/);
 
+    // the SOL the page tells the joiner the join costs (lib/solana-join.ts joinLamports) is exactly what it spends
+    const solBefore = (await h.context.banksClient.getAccount(members[3]!.publicKey))!.lamports;
+    const rentOf = await h.context.banksClient.getRent();
+    const missing = {
+      usdcAccount: (await raw(ataAddress(MINTS.usdc, members[3]!.publicKey, SPL_TOKEN))) === null,
+      stockVault: (await raw(ataAddress(MINTS.stock, circle, TOKEN_2022))) === null,
+      usdcVault: (await raw(ataAddress(MINTS.usdc, circle, SPL_TOKEN))) === null,
+    };
     await sendAs(await joinAndLockIx(members[3]!.publicKey, keys(circle), least), members[3]!);
+    const spent = BigInt(solBefore) - BigInt((await h.context.banksClient.getAccount(members[3]!.publicKey))!.lamports);
+    assert.equal(spent, joinLamports(missing, (space) => rentOf.minimumBalance(BigInt(space))), `the join spent ${spent} lamports`);
     assert.equal(BigInt((await memberOf(circle, members[3]!)).stockRaw.toString()), least);
     assert.equal((await circleOf(circle)).joinedBitmap, 0b01111);
   });

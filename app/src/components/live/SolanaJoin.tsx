@@ -14,7 +14,7 @@ import type { Connection, PublicKey } from "@solana/web3.js";
 
 import { parseUnits, tokenAccountOf, unitsText } from "@/lib/actions";
 import { countedOfRaw, minJoinStock, type CircleView } from "@/lib/circle";
-import { joinPriceProblem, joinReadiness, joinViewAt, STOCK_DECIMALS, type BalanceRead } from "@/lib/solana-join";
+import { JOIN_SPACE, joinLamports, joinPriceProblem, joinReadiness, joinViewAt, STOCK_DECIMALS, type BalanceRead } from "@/lib/solana-join";
 import type { ScaledUi } from "@/lib/scaledUi";
 import s from "@/components/circle/Circle.module.css";
 
@@ -23,13 +23,15 @@ function amountOf(data: Uint8Array): bigint {
   return new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(64, true);
 }
 
-export default function SolanaJoin({ c: read, split, owner, mints, connection, blocked, readAt, words, onJoin }: {
+export default function SolanaJoin({ c: read, split, owner, mints, vaults, connection, blocked, readAt, words, onJoin }: {
   /** The circle as last read. */
   c: CircleView;
   /** The mint's scheduled split, from the same read: the multiplier in force is judged on this row's own clock. */
   split: Pick<ScaledUi, "multiplier" | "newMultiplier" | "effectiveAt">;
   owner: PublicKey;
   mints: { stockMint: PublicKey; usdcMint: PublicKey };
+  /** The circle's own stock and USDC vaults: a join creates them, at the joiner's cost, when they do not exist yet. */
+  vaults: { stock: PublicKey; usdc: PublicKey };
   connection: Connection;
   blocked: string | null;
   /** The circle read's time: balances are read again with each new read. */
@@ -44,8 +46,9 @@ export default function SolanaJoin({ c: read, split, owner, mints, connection, b
     const id = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => window.clearInterval(id);
   }, []);
-  const c = joinViewAt(read, split, now);
   const priceProblem = joinPriceProblem(read, split, now);
+  // the circle at the multiplier in force (the read itself when that cannot be carried; priceProblem then stops all)
+  const c = joinViewAt(read, split, now) ?? read;
   // no least from a price the program would refuse
   const least = priceProblem ? null : minJoinStock(c);
   // the least, from each new read, until the member types their own amount (adversary on 6587a2b)
@@ -60,9 +63,19 @@ export default function SolanaJoin({ c: read, split, owner, mints, connection, b
     void Promise.all([
       connection.getAccountInfo(tokenAccountOf(owner, mints, "stock")),
       connection.getAccountInfo(tokenAccountOf(owner, mints, "usdc")),
-    ]).then(
-      ([stock, usdc]) => {
-        if (live) setBalances({ stock: stock ? amountOf(stock.data) : null, usdc: usdc ? amountOf(usdc.data) : null });
+      connection.getBalance(owner),
+      connection.getAccountInfo(vaults.stock),
+      connection.getAccountInfo(vaults.usdc),
+    ]).then(async ([stock, usdc, sol, stockVault, usdcVault]) => {
+      const rents = new Map<number, bigint>();
+      for (const space of new Set([JOIN_SPACE.member, JOIN_SPACE.usdcAccount, JOIN_SPACE.stockVault, JOIN_SPACE.usdcVault])) {
+        rents.set(space, BigInt(await connection.getMinimumBalanceForRentExemption(space)));
+      }
+      const solNeeded = joinLamports({ usdcAccount: !usdc, stockVault: !stockVault, usdcVault: !usdcVault }, (space) => rents.get(space)!);
+      return { stock: stock ? amountOf(stock.data) : null, usdc: usdc ? amountOf(usdc.data) : null, sol: BigInt(sol), solNeeded };
+    }).then(
+      (read) => {
+        if (live) setBalances(read);
       },
       () => {
         if (live) setBalances("failed");

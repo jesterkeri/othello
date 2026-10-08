@@ -27,7 +27,7 @@ import { type CircleStatus, type CircleView, coverageLabel, defaultRecovered, de
 import { payoutSteps, type ChainWords, type CloseOut, type ReleasePhase } from "@/lib/core/circle-page";
 import { ringOf, seatLabel } from "@/lib/core/ring";
 import { solToList } from "@/lib/to-list-solana";
-import { activateIx, addStockIx, cancelCircleIx, declareDefaultIx, joinAndLockIx, leaveFormingIx, parseUnits, releasePotIx, topUpReserveIx, unitsText, updateCoverageIx, withdrawIx } from "@/lib/actions";
+import { activateIx, addStockIx, cancelCircleIx, declareDefaultIx, joinAndLockIx, leaveFormingIx, parseUnits, releasePotIx, tokenAccountOf, topUpReserveIx, unitsText, updateCoverageIx, withdrawIx } from "@/lib/actions";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
@@ -425,7 +425,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const seatOpen = c.status === "Forming" && yourTurn !== null && !seatSet(c.joinedBitmap, yourTurn) && !!wallet.publicKey;
   const allJoined = dv.joined === c.n;
   // join_and_lock values the stock at its own clock: the join row judges the price on its own clock (lib/solana-join.ts)
-  const joinPrice = joinPriceProblem(c, live.split, wallClock);
+  const joinPrice = c.status === "Forming" ? joinPriceProblem(c, live.split, wallClock) : null;
   const formingRows = c.status !== "Forming" ? null : (
     <>
       {seatOpen && wallet.publicKey && (
@@ -436,6 +436,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
           split={live.split}
           owner={wallet.publicKey}
           mints={{ stockMint: new PublicKey(live.accounts.stockMint), usdcMint: new PublicKey(live.accounts.usdcMint) }}
+          vaults={{ stock: tokenAccountOf(keys.circle, keys, "stock"), usdc: tokenAccountOf(keys.circle, keys, "usdc") }}
           connection={connection}
           blocked={sendBlocked}
           readAt={live.readAt}
@@ -444,7 +445,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
         />
       )}
       {mine && (
-        <ActionRow title="Your seat is locked" text={`Until the circle starts you can leave: your ${unitsText(BigInt(mine.lockedRaw), 8)} NFLXx devnet mirror, the ${usdc(BigInt(c.guaranteePerMember))} guarantee and any top-ups come back to this wallet.`}>
+        <ActionRow title="Your seat is locked" text={`Until the circle starts you can leave: your ${unitsText(BigInt(mine.lockedRaw), 8)} NFLXx devnet mirror, the ${usdc(BigInt(c.guaranteePerMember))} guarantee, any top-ups and the seat account's rent in SOL come back to this wallet.`}>
           <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canSend} onClick={() => void send("Leave the circle", (me) => leaveFormingIx(me, keys))}>
             Leave and take them back
           </button>

@@ -12,8 +12,14 @@ import { multiplierAt, toFixed1e9, type ScaledUi } from "./scaledUi";
  * The circle as join_and_lock would value it at `now` (wall clock, seconds): the multiplier in force then, which a
  * split can change after the page's last read (adversary on 16ea294). Pure.
  */
-export function joinViewAt(c: CircleView, split: Pick<ScaledUi, "multiplier" | "newMultiplier" | "effectiveAt">, now: number): CircleView {
-  return { ...c, effectiveMultiplier: toFixed1e9(multiplierAt(split as ScaledUi, now)) };
+export function joinViewAt(c: CircleView, split: Pick<ScaledUi, "multiplier" | "newMultiplier" | "effectiveAt">, now: number): CircleView | null {
+  // toFixed1e9 refuses a multiplier it cannot carry exactly; the page then names no figure and never throws while it
+  // renders (adversary on e0d1637: an absurd scheduled multiplier crashed the whole page)
+  try {
+    return { ...c, effectiveMultiplier: toFixed1e9(multiplierAt(split as ScaledUi, now)) };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -26,7 +32,9 @@ export function joinPriceProblem(c: CircleView, split: Pick<ScaledUi, "multiplie
   if (isStale(c, now)) return `The price is ${formatDuration(now - c.feed.updatedAt)} old, and joining needs a fresh one.`;
   // repricing by the read or by the clock: either way join_and_lock may refuse (blocking for at most one read when a
   // price set ahead for a scheduled split comes into force)
-  if (c.effectiveMultiplier !== c.feed.pricedForMultiplier || joinViewAt(c, split, now).effectiveMultiplier !== c.feed.pricedForMultiplier) {
+  const at = joinViewAt(c, split, now);
+  if (!at) return "The stock's multiplier in force cannot be shown exactly by this app, so it names no figure; join from the Othello devnet tools.";
+  if (c.effectiveMultiplier !== c.feed.pricedForMultiplier || at.effectiveMultiplier !== c.feed.pricedForMultiplier) {
     return "Price and split disagree (repricing): joining waits for a price set for the new multiplier.";
   }
   return null;
@@ -35,7 +43,27 @@ export function joinPriceProblem(c: CircleView, split: Pick<ScaledUi, "multiplie
 export const STOCK_DECIMALS = 8;
 
 /** A wallet's balances as this page last read them: null for a token account that does not exist. */
-export type JoinBalances = { stock: bigint | null; usdc: bigint | null };
+/**
+ * The accounts join_and_lock creates with the joining wallet as payer (join_and_lock.rs: the Member always; the
+ * member's USDC account and the circle's two vaults when they do not exist yet), by their exact data sizes:
+ * Member = 8 + Member::INIT_SPACE (state.rs: 32+32+1+1+8+8+8+8+1+8+4 = 111), an SPL token account 165, a Token-2022
+ * account for the stock (ImmutableOwner) 170. tests/b2-solana-forming-actions.spec.ts checks the lamports a join
+ * really spends against joinLamports.
+ */
+export const JOIN_SPACE = { member: 119, usdcAccount: 165, stockVault: 170, usdcVault: 165 } as const;
+/** One signature's base fee, in lamports (no priority fee is set). */
+export const BASE_FEE = 5_000n;
+
+/** The SOL a join costs this wallet, in lamports: the rent of every account it creates, and the fee. */
+export function joinLamports(missing: { usdcAccount: boolean; stockVault: boolean; usdcVault: boolean }, rent: (space: number) => bigint): bigint {
+  return BASE_FEE + rent(JOIN_SPACE.member)
+    + (missing.usdcAccount ? rent(JOIN_SPACE.usdcAccount) : 0n)
+    + (missing.stockVault ? rent(JOIN_SPACE.stockVault) : 0n)
+    + (missing.usdcVault ? rent(JOIN_SPACE.usdcVault) : 0n);
+}
+
+/** `sol` / `solNeeded` in lamports: what the wallet holds, and what joinLamports says the join costs it. */
+export type JoinBalances = { stock: bigint | null; usdc: bigint | null; sol: bigint; solNeeded: bigint };
 /** Where the page's read of a wallet's balances stands. */
 export type BalanceRead = JoinBalances | "reading" | "failed";
 
@@ -61,6 +89,9 @@ export function joinReadiness(
   if (balances.stock === null) return { enabled: false, reason: `This wallet has no ${words.stock} account. Get the stock into it first.` };
   if (balances.stock < raw) return { enabled: false, reason: `This wallet holds ${unitsText(balances.stock, STOCK_DECIMALS)} ${words.stock}; joining with this amount needs ${unitsText(raw, STOCK_DECIMALS)}.` };
   if ((balances.usdc ?? 0n) < guarantee) return { enabled: false, reason: `This wallet holds ${words.usdc(balances.usdc ?? 0n)}; the guarantee is ${words.usdc(guarantee)}.` };
+  if (balances.sol < balances.solNeeded) {
+    return { enabled: false, reason: `This wallet holds ${unitsText(balances.sol, 9)} devnet SOL; joining needs ${unitsText(balances.solNeeded, 9)} for the seat account's rent and the fee (free from faucet.solana.com).` };
+  }
   return { enabled: true, reason: null };
 }
 
