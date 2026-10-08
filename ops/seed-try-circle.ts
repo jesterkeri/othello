@@ -19,7 +19,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 import * as anchor from "@coral-xyz/anchor";
 
-import { DEMO, seedTryCircle } from "./demo.ts";
+import { DEMO, seedTryCircle, type TrySeatsRecord } from "./demo.ts";
 import { DEMO_RECORD, TRY_RECORD, devnetChain, tryCircleKeys } from "./devnet-cli.ts";
 
 const args = process.argv.slice(2);
@@ -50,7 +50,20 @@ if (existsSync(TRY_RECORD)) {
 const { chain, mints } = await devnetChain();
 const scripted = tryCircleKeys(DEMO.n - 1);
 console.log(`Seeding a try circle on devnet as ${chain.admin.publicKey.toBase58()}, seat ${DEMO.n} for ${wallet.toBase58()}`);
-const circle = await seedTryCircle(chain, mints, scripted, wallet);
+// Written before the first send (seedTryCircle calls write once its no-send checks pass), then completed below.
+const record: TrySeatsRecord = {
+  read: () => (existsSync(TRY_RECORD) ? (JSON.parse(readFileSync(TRY_RECORD, "utf8")) as { members: string[] }).members : null),
+  write: (members) =>
+    writeFileSync(
+      TRY_RECORD,
+      JSON.stringify(
+        { cluster: "devnet", program: chain.program.programId.toBase58(), creator: members[0], members, pending: true },
+        null,
+        2,
+      ) + "\n",
+    ),
+};
+const circle = await seedTryCircle(chain, mints, scripted, wallet, record);
 
 writeFileSync(
   TRY_RECORD,

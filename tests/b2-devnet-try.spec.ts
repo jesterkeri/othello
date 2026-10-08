@@ -26,6 +26,8 @@ import {
   addresses,
   seedDemoCircle,
   seedTryCircle,
+  memoryTryRecord,
+  type TrySeatsRecord,
   touchPrices,
   type Chain,
 } from "../ops/demo.ts";
@@ -60,7 +62,10 @@ describe("PR #29 devnet try: touch-prices and the try circle, on the devnet buil
     assert.equal(built.status, 0, `devnet build failed: ${built.stderr || built.error}`);
   });
 
+  let record: TrySeatsRecord;
+
   beforeEach(async () => {
+    record = memoryTryRecord();
     h = await harness([], DEVNET_SO);
     await h.setClock(BEFORE_SPLIT);
     const rent = await h.context.banksClient.getRent();
@@ -160,7 +165,7 @@ describe("PR #29 devnet try: touch-prices and the try circle, on the devnet buil
   it("the try circle: Forming, seats 1 to 4 joined, the wallet's seat open and funded; the wallet joins, leaves and joins again", async () => {
     const before = await demoState();
     const adminBefore = await lamportsOf(h.authority.publicKey);
-    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     const spent = adminBefore - (await lamportsOf(h.authority.publicKey));
     // What the try costs the admin, so devnet funding is a measured figure.
     console.log(`      try circle cost to admin: ${(Number(spent) / anchor.web3.LAMPORTS_PER_SOL).toFixed(6)} SOL in ${sent} transactions`);
@@ -232,39 +237,67 @@ describe("PR #29 devnet try: touch-prices and the try circle, on the devnet buil
   });
 
   it("is safe to re-run: a second run sends nothing, before and after the wallet joins", async () => {
-    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     const n = sent;
-    assert.ok((await seedTryCircle(chain, MINTS, scripted, wallet.publicKey)).equals(circle));
+    assert.ok((await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record)).equals(circle));
     assert.equal(sent, n);
     const c = await fetchAccount<CircleState>(h.program, "circle", circle);
     const keys: CircleKeys = { circle, usdcMint: MINTS.usdc, stockMint: MINTS.stock, members: c.members.slice(0, c.n) };
     await sendAs(await joinAndLockIx(wallet.publicKey, keys, MEMBER_STOCK), wallet);
-    await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     assert.equal(sent, n, "a re-run after the join sent more");
   });
 
   it("refuses, sending nothing, when the price would go stale within the margin; touch-prices then lets it through", async () => {
     await h.setClock((await updatedAt()) + DEMO.maxPriceAge - TRY_PRICE_MARGIN_SECS + 1);
-    await assert.rejects(seedTryCircle(chain, MINTS, scripted, wallet.publicKey), /run ops\/touch-prices\.ts first\. Nothing was sent/);
+    await assert.rejects(seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record), /run ops\/touch-prices\.ts first\. Nothing was sent/);
     assert.equal(sent, 0);
     await touchPrices(chain, MINTS);
-    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     assert.ok("forming" in (await fetchAccount<CircleState>(h.program, "circle", circle)).status);
   });
 
   it("refuses, sending nothing: another wallet for an existing try circle, the admin or a script key as the wallet, an address that cannot sign", async () => {
-    await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     const n = sent;
-    await assert.rejects(seedTryCircle(chain, MINTS, scripted, anchor.web3.Keypair.generate().publicKey), /seats are not these keys and this wallet\. Nothing was sent/);
-    await assert.rejects(seedTryCircle(chain, MINTS, scripted, h.authority.publicKey), /the admin or a script-held key/);
-    await assert.rejects(seedTryCircle(chain, MINTS, scripted, scripted[2]!.publicKey), /the admin or a script-held key/);
-    await assert.rejects(seedTryCircle(chain, MINTS, scripted, demo().circle), /is not a wallet address/);
+    await assert.rejects(seedTryCircle(chain, MINTS, scripted, anchor.web3.Keypair.generate().publicKey, record), /seats are not these keys and this wallet\. Nothing was sent/);
+    await assert.rejects(seedTryCircle(chain, MINTS, scripted, h.authority.publicKey, record), /the admin or a script-held key/);
+    await assert.rejects(seedTryCircle(chain, MINTS, scripted, scripted[2]!.publicKey, record), /the admin or a script-held key/);
+    await assert.rejects(seedTryCircle(chain, MINTS, scripted, demo().circle, record), /is not a wallet address/);
     assert.equal(sent, n);
+  });
+
+  it("PR #30 Codex r1: a run stopped after funding wallet A binds the rerun to A; wallet B is refused, unfunded, and no circle is made", async () => {
+    // Stop the first run (wallet A) after its first send lands: A's seat may be funded, no circle exists yet.
+    const send = chain.send;
+    let n = 0;
+    const stopping: Chain = { ...chain, send: async (ixs, signers) => { if (n++ >= 5) throw new Error("stopped"); await send(ixs, signers); } };
+    await assert.rejects(seedTryCircle(stopping, MINTS, scripted, wallet.publicKey, record), /stopped/);
+    const tryCircle = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("circle"), scripted[0]!.publicKey.toBuffer(), Buffer.alloc(8)],
+      h.program.programId,
+    )[0];
+    assert.equal(await raw(tryCircle), null, "the stopped run must not have created the circle");
+    assert.ok(await lamportsOf(wallet.publicKey) > 0n, "not vacuous: wallet A was funded before the stop");
+    assert.deepEqual(record.read(), [...scripted, wallet].map((k) => k.publicKey.toBase58()), "the seats were recorded before the first send");
+
+    const other = anchor.web3.Keypair.generate();
+    const before = sent;
+    await assert.rejects(seedTryCircle(chain, MINTS, scripted, other.publicKey, record), /is recorded for wallet .*Nothing was sent/);
+    assert.equal(sent, before, "the rerun with wallet B sent something");
+    assert.equal(await lamportsOf(other.publicKey), 0n, "wallet B was funded");
+    assert.equal(await tokens(MINTS.stock, other.publicKey, TOKEN_2022), 0n);
+    assert.equal(await raw(tryCircle), null, "a circle was created for wallet B");
+
+    // The same wallet finishes it.
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
+    assert.ok(circle.equals(tryCircle));
+    assert.ok("forming" in (await fetchAccount<CircleState>(h.program, "circle", circle)).status);
   });
 
   it("refuses, sending nothing, when the demo's pool or feed is missing (it never creates them)", async () => {
     const otherStock = { ...MINTS, usdc: anchor.web3.Keypair.generate().publicKey };
-    await assert.rejects(seedTryCircle(chain, otherStock, scripted, wallet.publicKey), /pool .* is missing or not this admin's: seed the demo circle first\. Nothing was sent/);
+    await assert.rejects(seedTryCircle(chain, otherStock, scripted, wallet.publicKey, record), /pool .* is missing or not this admin's: seed the demo circle first\. Nothing was sent/);
     assert.equal(sent, 0);
   });
 });

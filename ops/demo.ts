@@ -396,7 +396,26 @@ export const TRY_PRICE_MARGIN_SECS = 3600;
  * Never creates or changes the price feed or the pool: it uses the demo's, as they are. So it cannot disturb the
  * demo circle. Every step checks the chain first, so a stopped run is finished by running it again.
  */
-export async function seedTryCircle(chain: Chain, mints: Mints, scripted: KeypairT[], wallet: PublicKeyT): Promise<PublicKeyT> {
+/**
+ * Where a try seed records which seats it is for (ops/try-circle.json on devnet; memory in tests). PR #30 Codex r1:
+ * the record is written BEFORE the first send, so a run that stops after funding a wallet binds every rerun to that
+ * same wallet, whether or not the circle exists yet.
+ */
+export type TrySeatsRecord = { read(): string[] | null; write(seats: string[]): void };
+
+/** A TrySeatsRecord held in memory: the bankrun specs' stand-in for ops/try-circle.json. */
+export function memoryTryRecord(): TrySeatsRecord {
+  let seats: string[] | null = null;
+  return { read: () => seats, write: (s) => void (seats = s) };
+}
+
+export async function seedTryCircle(
+  chain: Chain,
+  mints: Mints,
+  scripted: KeypairT[],
+  wallet: PublicKeyT,
+  record: TrySeatsRecord,
+): Promise<PublicKeyT> {
   const { program, admin } = chain;
   if (scripted.length !== DEMO.n - 1) throw new Error(`a try circle has ${DEMO.n - 1} script-held seats, got ${scripted.length}`);
   if (!PublicKey.isOnCurve(wallet.toBytes())) throw new Error(`${wallet.toBase58()} is not a wallet address (it cannot sign). Nothing was sent.`);
@@ -432,6 +451,16 @@ export async function seedTryCircle(chain: Chain, mints: Mints, scripted: Keypai
       `the price is ${Math.floor(age / 3600)} h old and a circle takes it up to ${DEMO.maxPriceAge / 3600} h: run ops/touch-prices.ts first. Nothing was sent.`,
     );
   }
+
+  // The last no-send check, and then the first write: the seats this seed is for, recorded before anything is sent.
+  const recorded = record.read();
+  const names = seats.map((k) => k.toBase58());
+  if (recorded && (recorded.length !== names.length || recorded.some((k, i) => k !== names[i]))) {
+    throw new Error(
+      `the try seed is recorded for wallet ${recorded[recorded.length - 1]} (seats ${recorded.join(", ")}), not ${wallet.toBase58()}. Nothing was sent.`,
+    );
+  }
+  if (!recorded) record.write(names);
 
   // Seats: the script-held keys and the wallet, each funded the same way, and only before the circle exists. Funding
   // comes first, so a circle on chain means every seat was funded. After that a seat's balance is its own: the wallet's

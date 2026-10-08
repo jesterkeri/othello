@@ -26,6 +26,8 @@ import {
   scheduleSplit,
   seedDemoCircle,
   seedTryCircle,
+  memoryTryRecord,
+  type TrySeatsRecord,
   touchPrices,
   type Chain,
 } from "../ops/demo.ts";
@@ -71,7 +73,10 @@ describe("adversary r2: the try seed, stopped at every send, a part-funded walle
     assert.equal(built.status, 0, `devnet build failed: ${built.stderr || built.error}`);
   });
 
+  let tryRecord: TrySeatsRecord;
+
   beforeEach(async () => {
+    tryRecord = memoryTryRecord();
     h = await harness([], DEVNET_SO);
     await h.setClock(BEFORE_SPLIT);
     const rent = await h.context.banksClient.getRent();
@@ -207,17 +212,18 @@ describe("adversary r2: the try seed, stopped at every send, a part-funded walle
       for (let k = 0; k < 10; k++) {
         scripted = Array.from({ length: DEMO.n - 1 }, () => anchor.web3.Keypair.generate());
         wallet = anchor.web3.Keypair.generate();
-        await assert.rejects(seedTryCircle(stopping(k, landed), MINTS, scripted, wallet.publicKey), /stopped at send/);
-        const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+        tryRecord = memoryTryRecord(); // new keys: a first run, with no record yet
+        await assert.rejects(seedTryCircle(stopping(k, landed), MINTS, scripted, wallet.publicKey, tryRecord), /stopped at send/);
+        const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
         await finishedState(circle);
         assert.equal(await tokens(MINTS.stock, wallet.publicKey, TOKEN_2022), MEMBER_STOCK, `stop ${k}: wallet stock`);
         assert.equal(await tokens(MINTS.usdc, wallet.publicKey, SPL_TOKEN), MEMBER_USDC, `stop ${k}: wallet usdc`);
         assert.equal(await lamportsOf(wallet.publicKey), BigInt(MEMBER_LAMPORTS), `stop ${k}: wallet SOL`);
         const n = sent;
-        await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+        await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
         assert.equal(sent, n, `stop ${k}: a re-run of the finished seed sent more`);
         await joinLeaveJoin(circle, `stop ${k}`);
-        await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+        await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
         assert.equal(sent, n, `stop ${k}: a re-run after join, leave, join sent more`);
       }
     });
@@ -228,20 +234,21 @@ describe("adversary r2: the try seed, stopped at every send, a part-funded walle
     for (const k of [6, 7, 9]) {
       scripted = Array.from({ length: DEMO.n - 1 }, () => anchor.web3.Keypair.generate());
       wallet = anchor.web3.Keypair.generate();
-      await assert.rejects(seedTryCircle(stopping(k, false), MINTS, scripted, wallet.publicKey), /stopped at send/);
+      tryRecord = memoryTryRecord(); // new keys: a first run, with no record yet
+      await assert.rejects(seedTryCircle(stopping(k, false), MINTS, scripted, wallet.publicKey, tryRecord), /stopped at send/);
       const circle = addresses(h.program, MINTS, scripted[0]!.publicKey).circle;
       const early = await ready(circle);
       await sendAs(await joinAndLockIx(wallet.publicKey, early.keys, early.least), wallet);
       await sendAs(await leaveFormingIx(wallet.publicKey, early.keys), wallet);
       const adminBefore = await lamportsOf(h.authority.publicKey);
       const walletBefore = await lamportsOf(wallet.publicKey);
-      await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+      await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
       assert.equal(await lamportsOf(h.authority.publicKey), adminBefore, `stop ${k}: the admin paid for the re-run`);
       assert.equal(await lamportsOf(wallet.publicKey), walletBefore, `stop ${k}: the wallet was topped up after the circle existed`);
       await finishedState(circle);
       const n = sent;
       await joinLeaveJoin(circle, `stop ${k}, early join`);
-      await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+      await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
       assert.equal(sent, n, `stop ${k}: a re-run after join, leave, join sent more`);
     }
   });
@@ -258,7 +265,7 @@ describe("adversary r2: the try seed, stopped at every send, a part-funded walle
       ],
       [h.authority],
     );
-    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
     assert.equal(await tokens(MINTS.stock, wallet.publicKey, TOKEN_2022), MEMBER_STOCK);
     assert.equal(await tokens(MINTS.usdc, wallet.publicKey, SPL_TOKEN), MEMBER_USDC);
     assert.equal(await lamportsOf(wallet.publicKey), BigInt(MEMBER_LAMPORTS));
@@ -270,7 +277,7 @@ describe("adversary r2: the try seed, stopped at every send, a part-funded walle
     await scheduleSplit(chain, MINTS, demoMembers[0]!.publicKey, now + 600);
     await h.setClock(now + 700);
     await touchPrices(chain, MINTS);
-    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, tryRecord);
     await finishedState(circle);
     await joinLeaveJoin(circle, "after the split");
   });

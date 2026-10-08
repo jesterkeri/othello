@@ -30,6 +30,8 @@ import {
   addresses,
   seedDemoCircle,
   seedTryCircle,
+  memoryTryRecord,
+  type TrySeatsRecord,
   touchPrices,
   type Chain,
 } from "../ops/demo.ts";
@@ -64,7 +66,10 @@ describe("adversary: the try seed re-run after the wallet joined and left", () =
     assert.equal(built.status, 0, `devnet build failed: ${built.stderr || built.error}`);
   });
 
+  let record: TrySeatsRecord;
+
   beforeEach(async () => {
+    record = memoryTryRecord();
     h = await harness([], DEVNET_SO);
     await h.setClock(BEFORE_SPLIT);
     const rent = await h.context.banksClient.getRent();
@@ -143,7 +148,7 @@ describe("adversary: the try seed re-run after the wallet joined and left", () =
   };
 
   it("a re-run after the wallet joined and then left sends nothing", async () => {
-    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    const circle = await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     const n = sent;
     const c = await fetchAccount<CircleState>(h.program, "circle", circle);
     const keys: CircleKeys = { circle, usdcMint: MINTS.usdc, stockMint: MINTS.stock, members: c.members.slice(0, c.n) };
@@ -152,7 +157,7 @@ describe("adversary: the try seed re-run after the wallet joined and left", () =
     assert.equal(await raw(memberAddress(h.program.programId, circle, wallet.publicKey)), null, "the leave did not close the seat");
     const walletLamports = await lamportsOf(wallet.publicKey);
     const adminBefore = await lamportsOf(h.authority.publicKey);
-    await seedTryCircle(chain, MINTS, scripted, wallet.publicKey);
+    await seedTryCircle(chain, MINTS, scripted, wallet.publicKey, record);
     const adminAfter = await lamportsOf(h.authority.publicKey);
     assert.equal(
       sent,
