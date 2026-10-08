@@ -138,8 +138,11 @@ async function fetchOrNull<T>(chain: Chain, name: string, address: PublicKeyT): 
 /**
  * Seeds the demo circle through activation. `members[0]` is the creator; the
  * member order is the turn order. Returns the circle address.
+ *
+ * `joined` (tests of the forming circle's own steps): only those seats, by turn, join, and the circle is left
+ * Forming. Omitted: every seat joins and the circle is activated, as before.
  */
-export async function seedDemoCircle(chain: Chain, mints: Mints, members: KeypairT[]): Promise<PublicKeyT> {
+export async function seedDemoCircle(chain: Chain, mints: Mints, members: KeypairT[], joined?: number[]): Promise<PublicKeyT> {
   if (members.length !== DEMO.n) throw new Error(`the demo circle has ${DEMO.n} members, got ${members.length}`);
   const { program, admin } = chain;
   const m = methods(program);
@@ -302,6 +305,7 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
   // 5. Every member joins, BEFORE any split is scheduled (join refuses during
   //    Repricing, SPEC §5).
   for (const [i, w] of members.entries()) {
+    if (joined && !joined.includes(i)) continue;
     if (await chain.getAccount(a.member(w.publicKey))) continue;
     const ix = await m.joinAndLock!(new BN(DEMO.lockRaw.toString()))
       .accounts({
@@ -326,6 +330,7 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
   }
 
   // 6. Activate.
+  if (joined) return a.circle;
   const circle = await fetchOrNull<CircleAccount>(chain, "circle", a.circle);
   if (circle && "forming" in circle.status) {
     const ix = await m.activate!().accounts({ creator: creator.publicKey, circle: a.circle } ).instruction();
