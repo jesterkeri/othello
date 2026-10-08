@@ -14,7 +14,8 @@ import type { Connection, PublicKey } from "@solana/web3.js";
 
 import { parseUnits, tokenAccountOf, unitsText } from "@/lib/actions";
 import { countedOfRaw, minJoinStock, type CircleView } from "@/lib/circle";
-import { joinReadiness, STOCK_DECIMALS, type BalanceRead } from "@/lib/solana-join";
+import { joinPriceProblem, joinReadiness, joinViewAt, STOCK_DECIMALS, type BalanceRead } from "@/lib/solana-join";
+import type { ScaledUi } from "@/lib/scaledUi";
 import s from "@/components/circle/Circle.module.css";
 
 /** The u64 amount of an SPL / Token-2022 token account (bytes 64..72). */
@@ -22,8 +23,11 @@ function amountOf(data: Uint8Array): bigint {
   return new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(64, true);
 }
 
-export default function SolanaJoin({ c, owner, mints, connection, blocked, readAt, words, onJoin }: {
+export default function SolanaJoin({ c: read, split, owner, mints, connection, blocked, readAt, words, onJoin }: {
+  /** The circle as last read. */
   c: CircleView;
+  /** The mint's scheduled split, from the same read: the multiplier in force is judged on this row's own clock. */
+  split: Pick<ScaledUi, "multiplier" | "newMultiplier" | "effectiveAt">;
   owner: PublicKey;
   mints: { stockMint: PublicKey; usdcMint: PublicKey };
   connection: Connection;
@@ -33,7 +37,17 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
   words: { stock: string; stockShort: string; usdc: (base: bigint) => string };
   onJoin: (raw: bigint) => void;
 }) {
-  const least = minJoinStock(c);
+  // this row's own clock, one tick a second: the price ages and a split takes effect between reads, and nothing else
+  // redraws the page while reads keep failing (adversary on b620e79)
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const c = joinViewAt(read, split, now);
+  const priceProblem = joinPriceProblem(read, split, now);
+  // no least from a price the program would refuse
+  const least = priceProblem ? null : minJoinStock(c);
   // the least, from each new read, until the member types their own amount (adversary on 6587a2b)
   const [typed, setTyped] = useState<string | null>(null);
   const amount = typed ?? (least !== null ? unitsText(least, STOCK_DECIMALS) : "");
@@ -63,7 +77,8 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
 
   // a circle whose minimum cover is 0 takes a join with no stock (h = 0 >= 0); parseUnits refuses 0, so read it here
   const raw = parseUnits(amount, STOCK_DECIMALS) ?? (/^0*(?:\.0*)?$/.test(amount.trim()) && /\d/.test(amount) ? 0n : null);
-  const ready = joinReadiness(c, raw, balances, blocked, words);
+  const stopped = blocked ?? priceProblem;
+  const ready = joinReadiness(c, raw, balances, stopped, words);
   const cover = raw !== null ? countedOfRaw(c, raw) : null;
   const guarantee = BigInt(c.guaranteePerMember);
   return (
@@ -73,8 +88,8 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
         <p className={s.bannerText}>
           Lock the {words.stock} as your cover and add the {words.usdc(guarantee)} guarantee to the shared reserve.
           {/* no figure from a price the program would refuse (stale, unset, or set for another multiplier) */}
-          {least !== null && !blocked ? ` This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` : ""}
-          {cover !== null && !blocked ? ` ${unitsText(raw!, STOCK_DECIMALS)} ${words.stock} counts as ${words.usdc(cover)} of cover at the current price.` : ""}
+          {least !== null && !stopped ? ` This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` : ""}
+          {cover !== null && !stopped ? ` ${unitsText(raw!, STOCK_DECIMALS)} ${words.stock} counts as ${words.usdc(cover)} of cover at the current price.` : ""}
           {" "}You can leave and take both back until the circle starts.
         </p>
         {ready.reason && <p className={s.bannerText}>{ready.reason}</p>}
@@ -83,7 +98,7 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
         <label className={s.amountRow}>
           <input className={s.amount} inputMode="decimal" value={amount} onChange={(e) => setTyped(e.target.value)} aria-label={`${words.stock} to lock`} />
           <button type="button" className={s.pay} disabled={!ready.enabled} onClick={() => raw !== null && onJoin(raw)}>
-            Join: lock {raw !== null ? unitsText(raw, STOCK_DECIMALS) : "0"} {words.stockShort} and the {words.usdc(guarantee)} guarantee
+            {raw !== null && !stopped ? `Join: lock ${unitsText(raw, STOCK_DECIMALS)} ${words.stockShort} and the ${words.usdc(guarantee)} guarantee` : "Join"}
           </button>
         </label>
       </span>

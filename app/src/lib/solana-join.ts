@@ -5,7 +5,32 @@
  * transaction in flight, the price). Pure. No "@/" imports: tests import it directly.
  */
 import { unitsText } from "./actions";
-import { minJoinStock, type CircleView } from "./circle";
+import { formatDuration, isStale, minJoinStock, type CircleView } from "./circle";
+import { multiplierAt, toFixed1e9, type ScaledUi } from "./scaledUi";
+
+/**
+ * The circle as join_and_lock would value it at `now` (wall clock, seconds): the multiplier in force then, which a
+ * split can change after the page's last read (adversary on 16ea294). Pure.
+ */
+export function joinViewAt(c: CircleView, split: Pick<ScaledUi, "multiplier" | "newMultiplier" | "effectiveAt">, now: number): CircleView {
+  return { ...c, effectiveMultiplier: toFixed1e9(multiplierAt(split as ScaledUi, now)) };
+}
+
+/**
+ * Why join_and_lock would refuse ANY amount at `now` because of the price (valuation.rs value_position: PriceStale,
+ * MultiplierPriceMismatch), or null. Judged at `now`, not at the read: a price ages and a split takes effect between
+ * reads, and reads can keep failing (adversary on b620e79). Pure.
+ */
+export function joinPriceProblem(c: CircleView, split: Pick<ScaledUi, "multiplier" | "newMultiplier" | "effectiveAt">, now: number): string | null {
+  if (c.feed.wrapperPrice === 0 || c.feed.sharePrice === 0) return "No price has been set for the stock yet, and joining needs a set, fresh price.";
+  if (isStale(c, now)) return `The price is ${formatDuration(now - c.feed.updatedAt)} old, and joining needs a fresh one.`;
+  // repricing by the read or by the clock: either way join_and_lock may refuse (blocking for at most one read when a
+  // price set ahead for a scheduled split comes into force)
+  if (c.effectiveMultiplier !== c.feed.pricedForMultiplier || joinViewAt(c, split, now).effectiveMultiplier !== c.feed.pricedForMultiplier) {
+    return "Price and split disagree (repricing): joining waits for a price set for the new multiplier.";
+  }
+  return null;
+}
 
 export const STOCK_DECIMALS = 8;
 

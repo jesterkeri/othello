@@ -1,30 +1,28 @@
 /**
- * B2 adversary on 16ea294: "Claim your seat" offers a join that join_and_lock refuses, by what the page already knows.
+ * B2 adversary on b620e79: "Claim your seat" still names, and still offers, a join at a price the program refuses.
  *
- *   Spec 1 (PR 2 brief): the join "is enabled only when nothing the page can know would make join_and_lock refuse
- *   (... a fresh price set for the multiplier in force ...); otherwise it says why". Its amount "is prefilled with the
- *   least stock the program accepts (join_and_lock's CollateralBelowMinimum rule, exactly)".
+ *   Spec 1 (PR 2 brief): the amount "is prefilled with the least stock the program accepts (join_and_lock's
+ *   CollateralBelowMinimum rule, exactly, at the multiplier in force when it is sent) ...; it names what the amount
+ *   counts as in cover, and names no figure from a price the program would refuse. It is enabled only when nothing the
+ *   page can know would make join_and_lock refuse (... a fresh price set for the multiplier in force now ...)".
  *
- * 1. A split that takes effect between the read and the moment the page is drawn. join_and_lock values the stock with
- *    value_position (programs/othello/src/valuation.rs), which decodes the mint's multiplier at the chain's clock
- *    (effective_multiplier_bits(&config, now)) and refuses MultiplierPriceMismatch unless the feed was priced for it.
- *    The page gates the join on `repricing`, which compares the feed's stamp with view.effectiveMultiplier, the
- *    multiplier at the READ's time (lib/live.ts decodeLive: multiplierAt(scaled, now)). The page also holds the split
- *    schedule (live.split) and the wall clock, and already uses them: SolanaPanel is given multiplierAt(live.split,
- *    Date.now()) and the top line drops "Split scheduled" once effectiveAt <= wallClock. A read is routinely several
- *    seconds old when drawn (the page polls every 5 s and /api/circle serves a read for 4 s), and the last good read
- *    stays on screen for as long as reads fail. Fixture: the demo circle's Forming state (app/src/fixtures/circles.ts)
- *    and the real NFLXx 10-for-1 (SPEC 9b.1: x1 to x10), with the feed still priced for x1.
+ * 1. A stale price. join_and_lock refuses PriceStale (valuation.rs value_position: age <= max_price_age), so there is
+ *    no least the program accepts. SolanaJoin hides its two sentences while `blocked`, but still prefills the input
+ *    with minJoinStock at that stale price and names it on the button ("Join: lock 1 NFLXx mirror ..."). The same
+ *    holds for a price set for another multiplier (repricing).
  *
- * 2. A circle whose min_stock_cover is 0 (create_circle allows it when the guarantees meet the peak need on their own;
- *    tests/a7-circle-page-closeout-zero-stock-adversary.spec.ts covers a seat that joined with stock_raw 0). The least
- *    stock join_and_lock accepts is then 0 (valuation.h = 0 >= 0), and minJoinStock says so, but SolanaJoin prefills
- *    an empty field and parseUnits never yields 0, so the join at the least amount can never be sent.
+ * 2. The split crossing with no re-render. b620e79 judges "the multiplier in force now" by Date.now() at render
+ *    time, but nothing renders the page when the split takes effect. While the reads fail with the route's constant
+ *    "devnet RPC unreachable or rate-limited" (app/src/app/api/circle/route.ts), setError gets the same string each
+ *    time and React bails out, so the last render (the first failure's, drawn before effectiveAt) stays: Join
+ *    enabled, the cover figure at x1, after the 10-for-1 has taken effect and the feed is priced for x1 only
+ *    (MultiplierPriceMismatch). Real time and real timers (the page's own 5 s refresh included), so any re-render the
+ *    page schedules is seen.
  *
- * Harness: the minimal hook runner of tests/b2-solana-join-wallet-switch-adversary.spec.ts (LiveCircle once, to take
- * the SolanaJoin element it draws; then SolanaJoin itself with those props, effects run).
+ * Harness: the minimal hook runner of tests/b2-solana-join-split-crossed-adversary.spec.ts. Fixture: the demo circle's
+ * Forming state (app/src/fixtures/circles.ts), the NFLXx 10-for-1 of SPEC 9b.1 (x1 to x10).
  *
- *   npx mocha --import=tsx --timeout 600000 tests/b2-solana-join-split-crossed-adversary.spec.ts     (installs hooks: its own process)
+ *   npx mocha --import=tsx --timeout 600000 tests/b2-solana-join-refused-price-adversary.spec.ts     (installs hooks: its own process)
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -53,12 +51,14 @@ const mini = {
   render: null as null | (() => El),
   tree: null as El | null,
   scheduled: false,
+  lastRenderAt: 0,
 };
 const changed = (a?: unknown[], b?: unknown[]) => !a || !b || a.length !== b.length || a.some((x, k) => !Object.is(x, b[k]));
 function rerender() {
   mini.scheduled = false;
   mini.i = 0;
   mini.e = 0;
+  mini.lastRenderAt = Date.now();
   mini.tree = mini.render!();
   for (const ef of mini.effects) {
     if (ef.pending) {
@@ -80,6 +80,7 @@ const ReactStub = {
     if (!(k in mini.slots)) mini.slots[k] = typeof init === "function" ? (init as () => T)() : init;
     const set = (next: T | ((p: T) => T)) => {
       const val = typeof next === "function" ? (next as (p: T) => T)(mini.slots[k] as T) : next;
+      // as React does: setting the same value does not render again
       if (!Object.is(val, mini.slots[k])) {
         mini.slots[k] = val;
         schedule();
@@ -117,7 +118,6 @@ const ReactStub = {
   },
   Fragment: "fragment",
 };
-// the key is kept: it decides whether React keeps a child's state across renders
 const jsx = (type: unknown, props: Record<string, unknown>, key?: unknown) => ({ type, props, key });
 
 // ---------------------------------------------------------------- the I/O the page touches, driven by the test
@@ -125,7 +125,28 @@ const g = globalThis as Record<string, unknown>;
 g.__mini = ReactStub;
 g.__jsx = jsx;
 g.React = ReactStub;
-g.window = { setInterval: () => 0, clearInterval: () => {} };
+// real timers: whatever the page schedules (its 5 s refresh, or any clock it keeps) really runs
+const timers = new Set<ReturnType<typeof setInterval>>();
+g.window = {
+  setInterval: (fn: () => void, ms: number) => {
+    const id = setInterval(fn, ms);
+    timers.add(id);
+    return id;
+  },
+  clearInterval: (id: ReturnType<typeof setInterval>) => {
+    clearInterval(id);
+    timers.delete(id);
+  },
+  setTimeout: (fn: () => void, ms: number) => {
+    const id = setTimeout(fn, ms);
+    timers.add(id);
+    return id;
+  },
+  clearTimeout: (id: ReturnType<typeof setTimeout>) => {
+    clearTimeout(id);
+    timers.delete(id);
+  },
+};
 
 const STUBS: Record<string, string> = {
   react: `const m = globalThis.__mini; export default m; export const { useState, useRef, useMemo, useCallback, useEffect, createElement, Fragment } = m;`,
@@ -190,8 +211,8 @@ const mints = JSON.parse(readFileSync(resolve(REPO, "ops/devnet-mints.json"), "u
 const NOW = Math.floor(Date.now() / 1000);
 const A = CIRCLE_STATES.active;
 const wallets = A.members.map(() => anchor.web3.Keypair.generate().publicKey);
-// forming: seat 1 (the creator) has joined, seats 2 to 5 have not; price fresh and set for the multiplier in force
-const view: CircleView = {
+// forming: seat 1 (the creator) has joined, seats 2 to 5 have not; the feed priced for x1, fresh unless a test says not
+const forming: CircleView = {
   ...A,
   members: A.members.map((m, i) => ({ ...m, address: wallets[i]!.toBase58() })),
   creator: wallets[0]!.toBase58(),
@@ -204,6 +225,7 @@ const view: CircleView = {
   nextGateShortBy: 0,
   feed: { ...A.feed, updatedAt: NOW - 30 },
 };
+type Split = { multiplier: number; newMultiplier: number; effectiveAt: number };
 
 /** An SPL / Token-2022 token account's bytes as the RPC returns them: mint, owner, then the u64 amount at 64. */
 function tokenAccount(mint: anchor.web3.PublicKey, owner: anchor.web3.PublicKey, amount: bigint): { data: Uint8Array } {
@@ -215,61 +237,109 @@ function tokenAccount(mint: anchor.web3.PublicKey, owner: anchor.web3.PublicKey,
   return { data: new Uint8Array(b) };
 }
 
-
-async function drawJoin(view: CircleView, opts: { readAt: number; split: { multiplier: number; newMultiplier: number; effectiveAt: number } }) {
+/** Seat 2's wallet holds plenty of the stock and the guarantee: nothing about its balances refuses the join. */
+async function wire(view: CircleView) {
   const stockMint = new anchor.web3.PublicKey(mints.nflxxMirror);
   const usdcMint = new anchor.web3.PublicKey(mints.testUsdc);
   const { tokenAccountOf } = await import(pathToFileURL(resolve(SRC, "lib/actions.ts")).href);
   const me = wallets[1]!;
-  // seat 2's wallet holds plenty of the stock and the guarantee: nothing about its balances refuses the join
   const accounts = new Map<string, { data: Uint8Array }>([
     [tokenAccountOf(me, { stockMint, usdcMint }, "stock").toBase58(), tokenAccount(stockMint, me, 1_000_000_000_000n)],
     [tokenAccountOf(me, { stockMint, usdcMint }, "usdc").toBase58(), tokenAccount(usdcMint, me, BigInt(view.guaranteePerMember))],
   ]);
   g.__conn = { getAccountInfo: async (k: anchor.web3.PublicKey) => accounts.get(k.toBase58()) ?? null };
-  const CIRCLE = anchor.web3.Keypair.generate().publicKey.toBase58();
-  const live = { view, accounts: { circle: CIRCLE, usdcMint: mints.testUsdc, stockMint: mints.nflxxMirror }, split: opts.split, pool: { discountBps: 2000, usdc: 1_000_000_000 }, readAt: opts.readAt };
-  g.fetch = async () => ({ json: async () => live });
+  g.__wallet = { publicKey: me, sendTransaction: async () => "x" };
+}
 
+/** SolanaJoin as the DOM shows it for these props: rendered, effects (the balance read) run. */
+async function drawJoinFrom(props: Record<string, unknown>) {
+  const { default: SolanaJoin } = await import(pathToFileURL(JOIN).href);
   mini.slots.length = 0;
   mini.effects.length = 0;
+  mini.render = () => SolanaJoin(props);
+  rerender();
+  await settle();
+  return { button: joinButton()!, input: find(mini.tree, (e) => e.type === "input")!, text: text(mini.tree) };
+}
+
+async function joinElementOf(view: CircleView, split: Split, readAt: number) {
+  await wire(view);
+  const CIRCLE = anchor.web3.Keypair.generate().publicKey.toBase58();
+  const live = { view, accounts: { circle: CIRCLE, usdcMint: mints.testUsdc, stockMint: mints.nflxxMirror }, split, pool: { discountBps: 2000, usdc: 1_000_000_000 }, readAt };
+  g.fetch = async () => ({ json: async () => live });
   const page = await import(pathToFileURL(PAGE).href);
   const { default: SolanaJoin } = await import(pathToFileURL(JOIN).href);
-  const { default: SolanaPanel } = await import(pathToFileURL(resolve(SRC, "components/live/SolanaPanel.tsx")).href);
+  mini.slots.length = 0;
+  mini.effects.length = 0;
   mini.render = () => page.default({ address: CIRCLE });
-  g.__wallet = { publicKey: me, sendTransaction: async () => "x" };
   rerender();
   await settle();
   const el = find(mini.tree, (e) => e.type === SolanaJoin);
   assert.ok(el, "precondition: seat 2's wallet is offered Claim your seat");
-  const panel = find(mini.tree, (e) => e.type === SolanaPanel);
-
-  mini.slots.length = 0;
-  mini.effects.length = 0;
-  mini.render = () => SolanaJoin(el.props);
-  rerender();
-  await settle();
-  return { button: joinButton()!, input: find(mini.tree, (e) => e.type === "input")!, text: text(mini.tree), panel };
+  // unmount the page (its refresh interval) before the next draw
+  for (const ef of mini.effects) ef.cleanup?.();
+  return el;
 }
 
-describe("B2 adversary: Claim your seat offers a join join_and_lock refuses", () => {
-  it("a split that took effect after the read: the join waits for a price set for the new multiplier", async () => {
-    // read 8 s ago, under x1 (the feed's own stamp); the 10-for-1 took effect 3 s ago and nobody has repriced yet
-    const readAt = NOW - 8;
-    const split = { multiplier: 1, newMultiplier: 10, effectiveAt: NOW - 3 };
-    const { button, text: said, panel } = await drawJoin(view, { readAt, split });
-    // the page knows the multiplier in force now: it hands x10 to its own mirror panel
-    assert.equal((panel!.props.mirror as { multiplierNow: number }).multiplierNow, 10, "precondition: the page draws the mirror at x10 now");
-    assert.equal(view.feed.pricedForMultiplier, 1_000_000_000, "precondition: the feed is priced for x1 only");
-    assert.equal(button.props.disabled, true, `Join is enabled although the chain now values the stock at x10 and the feed is priced for x1 (MultiplierPriceMismatch). The page said: ${said.slice(0, 400)}`);
+describe("B2 adversary: Claim your seat at a price the program refuses", () => {
+  afterEach(() => {
+    for (const id of timers) clearInterval(id);
+    timers.clear();
   });
 
-  it("min_stock_cover 0: the field is prefilled with the least the program accepts, 0, and that join can be sent", async () => {
+  it("a stale price: the amount and the button name no least stock computed from it", async () => {
     const { minJoinStock } = await import(pathToFileURL(resolve(SRC, "lib/circle.ts")).href);
-    const zero: CircleView = { ...view, minStockCover: 0 };
-    assert.equal(minJoinStock(zero), 0n, "precondition: the least stock join_and_lock accepts here is 0");
-    const { input, button, text: said } = await drawJoin(zero, { readAt: NOW, split: { multiplier: 1, newMultiplier: 1, effectiveAt: 0 } });
-    assert.equal(input.props.value, "0", `the amount is not prefilled with the least (0); the page said: ${said.slice(0, 400)}`);
-    assert.equal(button.props.disabled, false, "the join at the least amount cannot be sent");
+    const { unitsText } = await import(pathToFileURL(resolve(SRC, "lib/actions.ts")).href);
+    // priced 60 s past max_price_age: join_and_lock refuses PriceStale, whatever the amount
+    const stale: CircleView = { ...forming, feed: { ...forming.feed, updatedAt: NOW - forming.maxPriceAge - 60 } };
+    const el = await joinElementOf(stale, { multiplier: 1, newMultiplier: 1, effectiveAt: 0 }, NOW);
+    const fromStale = unitsText(minJoinStock(stale) as bigint, 8);
+    const { button, input, text: said } = await drawJoinFrom(el.props);
+    // since the fix for b620e79 the join row judges the price on its own clock, so the precondition reads what it draws
+    assert.match(said, /old, and joining needs a fresh one/, "precondition: the page knows the price is stale");
+    assert.equal(button.props.disabled, true, "precondition: the join is disabled");
+    const label = text(button.props.children);
+    assert.ok(
+      input.props.value !== fromStale && !label.includes(`lock ${fromStale} `),
+      `the least at the stale price (${fromStale}) is still named: input "${String(input.props.value)}", button "${label}". The page said: ${said.slice(0, 300)}`,
+    );
+  });
+
+  it("the split takes effect while the reads fail: Join is no longer enabled once x10 is in force", async () => {
+    await wire(forming);
+    const CIRCLE = anchor.web3.Keypair.generate().publicKey.toBase58();
+    const t0 = Math.floor(Date.now() / 1000);
+    // the 10-for-1 takes effect 7 s from now, after the page's first refresh (at 5 s) has failed and been drawn;
+    // the feed is priced for x1 and fresh
+    const split: Split = { multiplier: 1, newMultiplier: 10, effectiveAt: t0 + 7 };
+    const live = { view: { ...forming, feed: { ...forming.feed, updatedAt: t0 - 5 } }, accounts: { circle: CIRCLE, usdcMint: mints.testUsdc, stockMint: mints.nflxxMirror }, split, pool: { discountBps: 2000, usdc: 1_000_000_000 }, readAt: t0 };
+    // the first read succeeds; every read after it fails with the route's own constant words
+    let reads = 0;
+    g.fetch = async () => { console.log("fetch", Date.now() / 1000 - t0); return { json: async () => (++reads === 1 ? live : { error: "devnet RPC unreachable or rate-limited" }) }; };
+    const page = await import(pathToFileURL(PAGE).href);
+    const { default: SolanaJoin } = await import(pathToFileURL(JOIN).href);
+    mini.slots.length = 0;
+    mini.effects.length = 0;
+    mini.render = () => page.default({ address: CIRCLE });
+    rerender();
+    await settle();
+    const before = find(mini.tree, (e) => e.type === SolanaJoin);
+    assert.ok(before && before.props.blocked === null, "precondition: before the split, Claim your seat is drawn with nothing blocking it");
+
+    // wait until the split has been in force for 4 s (past the page's second refresh at 10 s, which fails too)
+    while (Math.floor(Date.now() / 1000) < split.effectiveAt + 4) await new Promise((r) => setTimeout(r, 100));
+    await settle();
+    assert.ok(reads >= 3, `precondition: the page's refresh ran twice more and failed (${reads} reads)`);
+    assert.ok(text(mini.tree).includes("devnet RPC unreachable or rate-limited"), "precondition: the page shows the failed read");
+    const after = find(mini.tree, (e) => e.type === SolanaJoin);
+    const lastDrawn = mini.lastRenderAt / 1000 - split.effectiveAt;
+    for (const ef of mini.effects) ef.cleanup?.();
+    assert.ok(after, "precondition: Claim your seat is still drawn");
+    const { button, text: said } = await drawJoinFrom(after.props);
+    assert.equal(
+      button.props.disabled,
+      true,
+      `Join is still enabled ${Math.floor(Date.now() / 1000) - split.effectiveAt} s after the 10-for-1 took effect, with the feed priced for x1 (MultiplierPriceMismatch); the page last rendered ${lastDrawn.toFixed(1)} s from it. It says: ${said.slice(0, 400)}`,
+    );
   });
 });

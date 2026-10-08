@@ -173,7 +173,7 @@ describe("PR 2: a forming Solana circle's own steps", () => {
   it("a seat that has not joined sees Claim your seat; a wallet with no seat does not", async () => {
     const seat = await buttons(forming);
     assert.match(seat.text, /Claim your seat/);
-    assert.equal(Object.keys(seat.on).some((k) => k.startsWith("Join: lock")), true);
+    assert.equal(Object.keys(seat.on).some((k) => k.startsWith("Join: lock")), true, "a usable price names the amount");
     g.__wallet = { publicKey: anchor.web3.Keypair.generate().publicKey, sendTransaction: async () => "x" };
     const stranger = await buttons(forming);
     assert.doesNotMatch(stranger.text, /Claim your seat/);
@@ -182,15 +182,17 @@ describe("PR 2: a forming Solana circle's own steps", () => {
   it("the join waits for a fresh price, and says so", async () => {
     const stale: CircleView = { ...forming, feed: { ...forming.feed, updatedAt: NOW - forming.maxPriceAge - 60 } };
     const { text, on } = await buttons(stale);
-    const join = Object.keys(on).find((k) => k.startsWith("Join: lock"))!;
+    const join = Object.keys(on).find((k) => /^Join(: lock|$)/.test(k))!;
     assert.equal(on[join], false);
-    assert.match(text, /old, and the program acts only on a fresh one/);
+    assert.match(text, /old, and joining needs a fresh one/);
   });
 
   it("while price and split disagree, the join names no minimum or cover figure, and says why it waits", async () => {
-    const repricing: CircleView = { ...forming, effectiveMultiplier: forming.feed.pricedForMultiplier * 10 };
+    // the feed priced for x10 while the mint is at x1 (the split in force): join_and_lock refuses MultiplierPriceMismatch
+    const repricing: CircleView = { ...forming, feed: { ...forming.feed, pricedForMultiplier: forming.effectiveMultiplier * 10 } };
     const { text, on } = await buttons(repricing);
-    assert.equal(on[Object.keys(on).find((k) => k.startsWith("Join: lock"))!], false);
+    assert.equal(on[Object.keys(on).find((k) => /^Join(: lock|$)/.test(k))!], false);
+    assert.match(text, /joining waits for a price set for the new multiplier/);
     assert.doesNotMatch(text, /needs at least/);
     assert.doesNotMatch(text, /counts as .* of cover at the current price/);
   });

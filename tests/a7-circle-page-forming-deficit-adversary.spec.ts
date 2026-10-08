@@ -235,7 +235,7 @@ describe("A7 adversary: a Forming circle is not ended; a deficit is not prepaid"
     assert.doesNotMatch(text, /payouts wait/i, "a Forming circle has no payout to hold");
     const seat = await render(formingAfterSplit, { phase: "idle" }, null, { seat: 5, kind: "join" });
     assert.match(seat, /This seat has not joined yet/, "precondition: seat 5 has not joined");
-    assert.match(seat, /Joining waits until the price is set for the new multiplier\./);
+    assert.match(seat, /joining waits for a price set for the new multiplier\./);
   });
 
   it("a defaulted seat with an escrow deficit is told the escrow's shortfall and its cure, in test USDC", async () => {

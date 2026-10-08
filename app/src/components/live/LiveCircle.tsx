@@ -31,7 +31,8 @@ import { activateIx, addStockIx, cancelCircleIx, declareDefaultIx, joinAndLockIx
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
-import { multiplierAt, toFixed1e9 } from "@/lib/scaledUi";
+import { multiplierAt } from "@/lib/scaledUi";
+import { joinPriceProblem } from "@/lib/solana-join";
 
 import SolanaJoin from "./SolanaJoin";
 import SolanaPanel from "./SolanaPanel";
@@ -423,24 +424,20 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     : null;
   const seatOpen = c.status === "Forming" && yourTurn !== null && !seatSet(c.joinedBitmap, yourTurn) && !!wallet.publicKey;
   const allJoined = dv.joined === c.n;
-  // join_and_lock values the stock at the multiplier in force at ITS clock: a split that took effect after this read
-  // already counts (adversary on 16ea294), so the join row reads the multiplier by the wall clock
-  const multNow = toFixed1e9(multiplierAt(live.split, wallClock));
-  const joinView: CircleView = { ...c, effectiveMultiplier: multNow };
-  const joinPriceBlock = multNow !== c.feed.pricedForMultiplier
-    ? "Price and split disagree (repricing): joining waits for a price set for the new multiplier."
-    : priceBlock;
+  // join_and_lock values the stock at its own clock: the join row judges the price on its own clock (lib/solana-join.ts)
+  const joinPrice = joinPriceProblem(c, live.split, wallClock);
   const formingRows = c.status !== "Forming" ? null : (
     <>
       {seatOpen && wallet.publicKey && (
         <SolanaJoin
           // one join row per wallet: nothing read for the previous wallet is drawn for the next (adversary on 6587a2b)
           key={wallet.publicKey.toBase58()}
-          c={joinView}
+          c={c}
+          split={live.split}
           owner={wallet.publicKey}
           mints={{ stockMint: new PublicKey(live.accounts.stockMint), usdcMint: new PublicKey(live.accounts.usdcMint) }}
           connection={connection}
-          blocked={sendBlocked ?? joinPriceBlock}
+          blocked={sendBlocked}
           readAt={live.readAt}
           words={{ stock: "NFLXx devnet mirror", stockShort: "NFLXx mirror", usdc }}
           onJoin={(raw) => void send("Join", (me) => joinAndLockIx(me, keys, raw))}
@@ -626,7 +623,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       title={`Seat ${fm.turn + 1}: ${fm.name}${fm.address === you ? " (you)" : ""}`}
       text={kind === "join" && !fmJoined
         ? c.status === "Forming"
-          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${usdc(BigInt(c.guaranteePerMember))} guarantee. ${fm.address === you ? "Claim it below." : `It belongs to wallet ${shortAddress(fm.address)}: connect that wallet to join.`}${repricing ? " Joining waits until the price is set for the new multiplier." : priceBlock ? " Joining waits for a set, fresh price." : ""}`
+          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${usdc(BigInt(c.guaranteePerMember))} guarantee. ${fm.address === you ? "Claim it below." : `It belongs to wallet ${shortAddress(fm.address)}: connect that wallet to join.`}${joinPrice ? ` ${joinPrice}` : ""}`
           : `This seat never joined, and the circle is ${c.status}: it can no longer be joined.`
         : !fmJoined
           ? "This seat has not joined yet: nothing is locked."
