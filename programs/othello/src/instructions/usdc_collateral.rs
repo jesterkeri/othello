@@ -49,20 +49,30 @@ pub fn collateral_vault_address(circle: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[COLLATERAL_VAULT_SEED, circle.as_ref()], &crate::ID)
 }
 
-pub fn features_address() -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[Features::SEED], &crate::ID)
+/// A seat's SeatCollateral, read once: what it holds and the bump of its address.
+pub struct SeatRead {
+    pub usdc_locked: u64,
+    pub bump: u8,
 }
 
-/// The USDC a seat has locked, read from its SeatCollateral address as a state union: 0 when absent; the account's
-/// own figure when it is this program's SeatCollateral for exactly this circle and wallet; refused otherwise.
-pub fn seat_usdc_locked(account: &AccountInfo, circle: &Pubkey, wallet: &Pubkey) -> Result<u64> {
-    require_keys_eq!(
-        account.key(),
-        seat_collateral_address(circle, wallet).0,
-        OthelloError::BadSeatCollateral
-    );
+/// Reads a seat's SeatCollateral address as a state union: 0 when absent; the account's own figure when it is this
+/// program's SeatCollateral for exactly this circle and wallet; refused otherwise.
+///
+/// Compute (NFR-3, U1 adversary): an absent account's address is found once with find_program_address (1,500 CU
+/// per bump tried); a present one is checked with create_program_address at its stored bump, a single try. Callers
+/// read once and pass the result on, never re-deriving.
+pub fn read_seat_collateral(
+    account: &AccountInfo,
+    circle: &Pubkey,
+    wallet: &Pubkey,
+) -> Result<SeatRead> {
     if is_absent(account) {
-        return Ok(0);
+        let (address, bump) = seat_collateral_address(circle, wallet);
+        require_keys_eq!(account.key(), address, OthelloError::BadSeatCollateral);
+        return Ok(SeatRead {
+            usdc_locked: 0,
+            bump,
+        });
     }
     require_keys_eq!(*account.owner, crate::ID, OthelloError::BadSeatCollateral);
     let data = account.try_borrow_data()?;
@@ -72,7 +82,21 @@ pub fn seat_usdc_locked(account: &AccountInfo, circle: &Pubkey, wallet: &Pubkey)
         seat.circle == *circle && seat.wallet == *wallet,
         OthelloError::BadSeatCollateral
     );
-    Ok(seat.usdc_locked)
+    let address = Pubkey::create_program_address(
+        &[
+            SeatCollateral::SEED,
+            circle.as_ref(),
+            wallet.as_ref(),
+            &[seat.bump],
+        ],
+        &crate::ID,
+    )
+    .map_err(|_| error!(OthelloError::BadSeatCollateral))?;
+    require_keys_eq!(account.key(), address, OthelloError::BadSeatCollateral);
+    Ok(SeatRead {
+        usdc_locked: seat.usdc_locked,
+        bump: seat.bump,
+    })
 }
 
 /// The collateral vault as a state union.
@@ -81,17 +105,23 @@ pub enum CollateralVault {
     Present { amount: u64 },
 }
 
+/// The collateral vault, read once: its state and the bump of its address (found once; a token account stores none).
+pub struct VaultRead {
+    pub state: CollateralVault,
+    pub bump: u8,
+}
+
 /// Reads the collateral vault: its key must be the circle's PDA exactly (a circle USDC vault or any other token
 /// account of the right mint and authority is refused); absent, or an SPL Token account of APPROVED_USDC whose
 /// authority is the circle.
-pub fn read_collateral_vault(account: &AccountInfo, circle: &Pubkey) -> Result<CollateralVault> {
-    require_keys_eq!(
-        account.key(),
-        collateral_vault_address(circle).0,
-        OthelloError::BadCollateralVault
-    );
+pub fn read_collateral_vault(account: &AccountInfo, circle: &Pubkey) -> Result<VaultRead> {
+    let (address, bump) = collateral_vault_address(circle);
+    require_keys_eq!(account.key(), address, OthelloError::BadCollateralVault);
     if is_absent(account) {
-        return Ok(CollateralVault::Absent);
+        return Ok(VaultRead {
+            state: CollateralVault::Absent,
+            bump,
+        });
     }
     require_keys_eq!(
         *account.owner,
@@ -105,25 +135,31 @@ pub fn read_collateral_vault(account: &AccountInfo, circle: &Pubkey) -> Result<C
         vault.mint == APPROVED_USDC && vault.owner == *circle,
         OthelloError::BadCollateralVault
     );
-    Ok(CollateralVault::Present {
-        amount: vault.amount,
+    Ok(VaultRead {
+        state: CollateralVault::Present {
+            amount: vault.amount,
+        },
+        bump,
     })
 }
 
-/// Requires the feature marker: the exact `["features"]` PDA, this program's Features account.
+/// Requires the feature marker: this program's Features account at exactly the `["features"]` PDA, checked at its
+/// stored bump (one create_program_address, not a search).
 pub fn require_usdc_enabled(features: &AccountInfo) -> Result<()> {
-    require_keys_eq!(
-        features.key(),
-        features_address().0,
-        OthelloError::UsdcCollateralNotEnabled
-    );
     require!(
         *features.owner == crate::ID && !features.data_is_empty(),
         OthelloError::UsdcCollateralNotEnabled
     );
     let data = features.try_borrow_data()?;
-    Features::try_deserialize(&mut &data[..])
+    let marker = Features::try_deserialize(&mut &data[..])
         .map_err(|_| error!(OthelloError::UsdcCollateralNotEnabled))?;
+    let address = Pubkey::create_program_address(&[Features::SEED, &[marker.bump]], &crate::ID)
+        .map_err(|_| error!(OthelloError::UsdcCollateralNotEnabled))?;
+    require_keys_eq!(
+        features.key(),
+        address,
+        OthelloError::UsdcCollateralNotEnabled
+    );
     Ok(())
 }
 
@@ -218,17 +254,15 @@ pub struct UsdcLock<'a, 'info> {
 }
 
 /// Moves `amount` of the member's USDC into the collateral vault (created if absent) and adds it to the seat's
-/// SeatCollateral (created if absent). Returns the seat's new `usdc_locked`. The caller has checked the marker, the
-/// approved mint and the member's balance.
-pub fn lock_usdc(l: &UsdcLock, amount: u64) -> Result<u64> {
+/// SeatCollateral (created if absent). Returns the seat's new `usdc_locked`. `seat` and `vault` are the caller's own
+/// reads of those two accounts (read_seat_collateral, read_collateral_vault), made before anything moved, so a bad
+/// account refused with nothing done; they are not re-derived here. The caller has checked the marker, the approved
+/// mint and the member's balance.
+pub fn lock_usdc(l: &UsdcLock, amount: u64, seat: &SeatRead, vault: &VaultRead) -> Result<u64> {
     let circle = l.circle.key();
 
-    // Read both unions before anything moves, so a bad account refuses with nothing done.
-    let locked_before = seat_usdc_locked(l.seat_collateral, &circle, &l.wallet)?;
-    let vault = read_collateral_vault(l.collateral_vault, &circle)?;
-
-    if let CollateralVault::Absent = vault {
-        let bump = collateral_vault_address(&circle).1;
+    if let CollateralVault::Absent = vault.state {
+        let bump = vault.bump;
         create_pda(
             l.payer,
             l.collateral_vault,
@@ -262,7 +296,7 @@ pub fn lock_usdc(l: &UsdcLock, amount: u64) -> Result<u64> {
         l.usdc_mint.decimals,
     )?;
 
-    let (_, bump) = seat_collateral_address(&circle, &l.wallet);
+    let bump = seat.bump;
     if is_absent(l.seat_collateral) {
         create_pda(
             l.payer,
@@ -278,17 +312,18 @@ pub fn lock_usdc(l: &UsdcLock, amount: u64) -> Result<u64> {
             ],
         )?;
     }
-    let usdc_locked = locked_before
+    let usdc_locked = seat
+        .usdc_locked
         .checked_add(amount)
         .ok_or(OthelloError::ValuationOverflow)?;
-    let seat = SeatCollateral {
+    let written = SeatCollateral {
         circle,
         wallet: l.wallet,
         usdc_locked,
         bump,
     };
     let mut data = l.seat_collateral.try_borrow_mut_data()?;
-    seat.try_serialize(&mut &mut data[..])?;
+    written.try_serialize(&mut &mut data[..])?;
 
     Ok(usdc_locked)
 }
@@ -394,6 +429,12 @@ pub fn handle_add_usdc_collateral(ctx: Context<AddUsdcCollateral>, amount: u64) 
         OthelloError::InsufficientBalance
     );
 
+    let seat = read_seat_collateral(
+        &ctx.accounts.seat_collateral,
+        &ctx.accounts.circle.key(),
+        &ctx.accounts.wallet.key(),
+    )?;
+    let vault = read_collateral_vault(&ctx.accounts.collateral_vault, &ctx.accounts.circle.key())?;
     let usdc_locked = lock_usdc(
         &UsdcLock {
             payer: &ctx.accounts.wallet.to_account_info(),
@@ -407,6 +448,8 @@ pub fn handle_add_usdc_collateral(ctx: Context<AddUsdcCollateral>, amount: u64) 
             system_program: &ctx.accounts.system_program.to_account_info(),
         },
         amount,
+        &seat,
+        &vault,
     )?;
 
     emit!(UsdcCollateralAdded {

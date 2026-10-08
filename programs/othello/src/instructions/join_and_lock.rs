@@ -34,8 +34,8 @@ use anchor_spl::token_interface::{
 use crate::errors::OthelloError;
 use crate::events::MemberJoined;
 use crate::instructions::usdc_collateral::{
-    lock_usdc, read_collateral_vault, require_approved_usdc, require_usdc_enabled,
-    seat_usdc_locked, UsdcLock,
+    lock_usdc, read_collateral_vault, read_seat_collateral, require_approved_usdc,
+    require_usdc_enabled, SeatRead, UsdcLock, VaultRead,
 };
 use crate::state::{Circle, CircleStatus, Member, PriceFeed};
 use crate::valuation::value_position;
@@ -200,7 +200,7 @@ pub struct JoinAndLockV2<'info> {
     )]
     pub circle_usdc_vault: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// CHECK: the seat's SeatCollateral as a state union (usdc_collateral::seat_usdc_locked); created by lock_usdc
+    /// CHECK: the seat's SeatCollateral as a state union (usdc_collateral::read_seat_collateral); created by lock_usdc
     /// when usdc_raw > 0.
     #[account(mut)]
     pub seat_collateral: UncheckedAccount<'info>,
@@ -355,22 +355,24 @@ fn join<'a, 'info>(
     // v2 join, so a wrong account refuses rather than being ignored, and the seat's H counts any USDC already
     // locked behind it.
     let usdc_raw = usdc.as_ref().map_or(0, |u| u.usdc_raw);
-    let usdc_already = match &usdc {
-        None => 0,
+    // Each is read ONCE and the reads are passed to lock_usdc (NFR-3: every address search costs compute).
+    let reads: Option<(SeatRead, VaultRead)> = match &usdc {
+        None => None,
         Some(u) => {
             require!(
                 stock_raw.checked_add(u.usdc_raw).is_some_and(|t| t > 0),
                 OthelloError::InvalidParams
             );
-            let already = seat_usdc_locked(u.seat_collateral, &circle.key(), &j.wallet.key())?;
-            read_collateral_vault(u.collateral_vault, &circle.key())?;
+            let seat = read_seat_collateral(u.seat_collateral, &circle.key(), &j.wallet.key())?;
+            let vault = read_collateral_vault(u.collateral_vault, &circle.key())?;
             if u.usdc_raw > 0 {
                 require_usdc_enabled(u.features)?;
                 require_approved_usdc(circle, &j.usdc_token_program.key())?;
             }
-            already
+            Some((seat, vault))
         }
     };
+    let usdc_already = reads.as_ref().map_or(0, |(seat, _)| seat.usdc_locked);
 
     // SPEC §5: H(stock_raw) >= min_stock_cover, with the price fresh and the
     // stamp matching the mint. value_position enforces all three, so a stale or
@@ -456,7 +458,7 @@ fn join<'a, 'info>(
 
     // SPEC §4b: the USDC collateral, on top of the guarantee, into the collateral vault (created if absent), and
     // the seat's SeatCollateral (created if absent).
-    if let Some(u) = &usdc {
+    if let (Some(u), Some((seat, vault))) = (&usdc, &reads) {
         if u.usdc_raw > 0 {
             lock_usdc(
                 &UsdcLock {
@@ -471,6 +473,8 @@ fn join<'a, 'info>(
                     system_program: u.system_program,
                 },
                 u.usdc_raw,
+                seat,
+                vault,
             )?;
         }
     }
