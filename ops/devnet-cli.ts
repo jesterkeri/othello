@@ -11,13 +11,13 @@
  * (directory 0700, files 0600). They hold only devnet test tokens, but they are
  * still keys: never committed, never printed.
  */
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 import * as anchor from "@coral-xyz/anchor";
 
-import type { Chain, Mints } from "./demo.ts";
+import type { Chain, Mints, TrySeatsRecord } from "./demo.ts";
 
 const REPO = resolve(import.meta.dirname, "..");
 export const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
@@ -83,13 +83,39 @@ export async function devnetChain(): Promise<{ chain: Chain; mints: Mints; conne
 
 /** Loads the n demo member keypairs, creating any that are missing. Never prints a secret. */
 export function demoMembers(n: number): anchor.web3.Keypair[] {
-  mkdirSync(MEMBER_DIR, { recursive: true, mode: 0o700 });
-  chmodSync(MEMBER_DIR, 0o700);
+  return keysIn(MEMBER_DIR, n);
+}
+
+/**
+ * Creates `path` with `text`, all at once and only if it does not exist: written to a temp file, then hard-linked
+ * into place (link refuses an existing name, rename would replace it). A process killed mid-write leaves only a temp
+ * file, never a half-written `path`; of two processes creating the same file, exactly one wins. Returns false when
+ * `path` already existed (its content is then the other writer's, untouched).
+ * PR #30 adversary r4: the keys were written with a plain writeFileSync (a kill left an empty key file every rerun
+ * then crashed on), and the binding by rename (a second run could replace another wallet's binding).
+ */
+function createOnce(path: string, text: string): boolean {
+  const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(temp, text, { mode: 0o600 });
+  try {
+    linkSync(temp, path);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw e;
+  } finally {
+    unlinkSync(temp);
+  }
+}
+
+function keysIn(dir: string, n: number): anchor.web3.Keypair[] {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
   return Array.from({ length: n }, (_, i) => {
-    const path = resolve(MEMBER_DIR, `member-${i + 1}.json`);
+    const path = resolve(dir, `member-${i + 1}.json`);
     if (!existsSync(path)) {
-      const k = anchor.web3.Keypair.generate();
-      writeFileSync(path, JSON.stringify(Array.from(k.secretKey)), { mode: 0o600 });
+      // If another run created it first, theirs is the key: read below.
+      createOnce(path, JSON.stringify(Array.from(anchor.web3.Keypair.generate().secretKey)));
     }
     chmodSync(path, 0o600);
     return anchor.web3.Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
@@ -105,16 +131,19 @@ export function demoMembers(n: number): anchor.web3.Keypair[] {
  * ops/demo-circle.json recorded when the seed ran.
  */
 export function loadDemoMembers(): anchor.web3.Keypair[] {
-  const record = JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { members: string[] };
-  return record.members.map((expected, i) => {
-    const path = resolve(MEMBER_DIR, `member-${i + 1}.json`);
+  return loadRecordedKeys(DEMO_RECORD, MEMBER_DIR, (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { members: string[] }).members);
+}
+
+function loadRecordedKeys(record: string, dir: string, members: string[]): anchor.web3.Keypair[] {
+  return members.map((expected, i) => {
+    const path = resolve(dir, `member-${i + 1}.json`);
     if (!existsSync(path)) {
-      throw new Error(`Missing ${path}: this machine does not hold the demo member keys (the seed made them on the machine it ran on). Nothing was created or printed.`);
+      throw new Error(`Missing ${path}: this machine does not hold the keys ${record} records (the seed made them on the machine it ran on). Nothing was created or printed.`);
     }
     chmodSync(path, 0o600);
     const k = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
     if (k.publicKey.toBase58() !== expected) {
-      throw new Error(`${path} is ${k.publicKey.toBase58()}, but seat ${i + 1} of the demo circle is ${expected}. Nothing was printed or sent.`);
+      throw new Error(`${path} is ${k.publicKey.toBase58()}, but seat ${i + 1} in ${record} is ${expected}. Nothing was printed or sent.`);
     }
     return k;
   });
@@ -123,4 +152,48 @@ export function loadDemoMembers(): anchor.web3.Keypair[] {
 export function writeDemoRecord(update: Record<string, unknown>): void {
   const current = existsSync(DEMO_RECORD) ? (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as Record<string, unknown>) : {};
   writeFileSync(DEMO_RECORD, JSON.stringify({ ...current, ...update }, null, 2) + "\n");
+}
+
+/**
+ * The try circle (ops/seed-try-circle.ts): its own script-held keys, never mixed with the demo circle's, in
+ * ~/.config/othello-demo/devnet-try/ (0700, keys 0600). The binding of those keys to the seats they seed, wallet
+ * included, lives IN THE SAME FOLDER (seats.json, public addresses only), not in the checkout: PR #30 adversary r3
+ * showed a per-checkout binding let a second checkout (or one recreated after `git worktree remove`) reuse the
+ * machine's keys for another wallet. seedTryCircle writes it before its first send, through createOnce: never half a
+ * record, and never one run's binding replaced by another's. ops/try-circle.json is only the finished seed's output.
+ */
+export const TRY_RECORD = resolve(import.meta.dirname, "try-circle.json");
+const TRY_DIR = resolve(homedir(), ".config/othello-demo/devnet-try");
+export const TRY_BINDING = resolve(TRY_DIR, "seats.json");
+
+/** The machine-wide binding of the try keys to their seats, as seedTryCircle reads and writes it. */
+export function tryBinding(): TrySeatsRecord {
+  return {
+    read: () => (existsSync(TRY_BINDING) ? (JSON.parse(readFileSync(TRY_BINDING, "utf8")) as { members: string[] }).members : null),
+    // Exclusive: creates the binding only if none exists; if another run bound first, its seats must be these.
+    write: (members) => {
+      mkdirSync(TRY_DIR, { recursive: true, mode: 0o700 });
+      if (createOnce(TRY_BINDING, JSON.stringify({ members }, null, 2) + "\n")) return;
+      const bound = (JSON.parse(readFileSync(TRY_BINDING, "utf8")) as { members: string[] }).members;
+      if (bound.length !== members.length || bound.some((k, i) => k !== members[i])) {
+        throw new Error(`${TRY_BINDING} was just bound to wallet ${bound[bound.length - 1]} by another run. Nothing was sent.`);
+      }
+    },
+  };
+}
+
+/**
+ * The try seed's no-send pre-check and its keys, for `wallet`: refuses (before anything is read from a cluster or
+ * sent) if the machine's binding names another wallet; then loads the keys, made only if no binding exists yet, and
+ * loaded only, exactly as bound, once one does. Key files with no binding mean no run ever sent anything (the binding
+ * is written before the first send), so they are reused.
+ */
+export function tryRunFor(wallet: anchor.web3.PublicKey, n: number): { keys: anchor.web3.Keypair[]; binding: TrySeatsRecord } {
+  const binding = tryBinding();
+  const bound = binding.read();
+  if (bound && bound[bound.length - 1] !== wallet.toBase58()) {
+    throw new Error(`${TRY_BINDING} binds the try seed to wallet ${bound[bound.length - 1]}, not ${wallet.toBase58()}. Nothing was sent.`);
+  }
+  const keys = bound ? loadRecordedKeys(TRY_BINDING, TRY_DIR, bound.slice(0, n)) : keysIn(TRY_DIR, n);
+  return { keys, binding };
 }

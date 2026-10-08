@@ -135,6 +135,89 @@ async function fetchOrNull<T>(chain: Chain, name: string, address: PublicKeyT): 
   return chain.program.coder.accounts.decode(name, Buffer.from(info.data)) as T;
 }
 
+type Addresses = ReturnType<typeof addresses>;
+
+/**
+ * What the admin sends a seat's wallet before it joins: SOL for fees and rent, the stock it locks, the USDC it owes.
+ * Topped up to exactly that, never past it, and nothing once the seat has joined (joining spends some of it on rent,
+ * and a re-run must not read that as "under-funded" and send more).
+ */
+async function fundingIxs(chain: Chain, mints: Mints, a: Addresses, wallet: PublicKeyT): Promise<Ix[]> {
+  const { admin } = chain;
+  const ixs: Ix[] = [];
+  if (await chain.getAccount(a.member(wallet))) return ixs;
+  const lamports = (await chain.getAccount(wallet))?.lamports ?? 0;
+  if (lamports < MEMBER_LAMPORTS) {
+    ixs.push(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: wallet, lamports: MEMBER_LAMPORTS - lamports }));
+  }
+  const stockAta = ataAddress(mints.stock, wallet, TOKEN_2022);
+  const usdcAta = ataAddress(mints.usdc, wallet, SPL_TOKEN);
+  const stock = await tokenBalance(chain, stockAta);
+  const usdc = await tokenBalance(chain, usdcAta);
+  if (stock < MEMBER_STOCK) {
+    ixs.push(createAtaIdempotentIx(admin.publicKey, wallet, mints.stock, TOKEN_2022));
+    ixs.push(mintToCheckedIx(mints.stock, stockAta, admin.publicKey, MEMBER_STOCK - stock, NFLXX_MIRROR_DECIMALS, TOKEN_2022));
+  }
+  if (usdc < MEMBER_USDC) {
+    ixs.push(createAtaIdempotentIx(admin.publicKey, wallet, mints.usdc, SPL_TOKEN));
+    ixs.push(mintToCheckedIx(mints.usdc, usdcAta, admin.publicKey, MEMBER_USDC - usdc, TEST_USDC_DECIMALS, SPL_TOKEN));
+  }
+  return ixs;
+}
+
+/** create_circle with SPEC's demo parameters, the members named in turn order. */
+async function createCircleIx(program: anchor.Program<anchor.Idl>, mints: Mints, a: Addresses, creator: PublicKeyT, members: PublicKeyT[]): Promise<Ix> {
+  return methods(program)
+    .createCircle!(
+      {
+        circleId: new BN(DEMO.circleId.toString()),
+        contribution: new BN(DEMO.contribution),
+        roundSecs: new BN(DEMO.roundSecs),
+        graceSecs: new BN(DEMO.graceSecs),
+        haircutBps: DEMO.haircutBps,
+        coverageBps: DEMO.coverageBps,
+        warnBps: DEMO.warnBps,
+        guaranteePerMember: new BN(DEMO.guaranteePerMember),
+        minStockCover: new BN(DEMO.minStockCover),
+        maxPriceAge: new BN(DEMO.maxPriceAge),
+      },
+      members,
+    )
+    .accounts({
+      creator,
+      circle: a.circle,
+      stockMint: mints.stock,
+      usdcMint: mints.usdc,
+      priceFeed: a.feed,
+      pool: a.pool,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
+/** join_and_lock of the demo's 1.1 token for `wallet`. */
+async function joinIx(program: anchor.Program<anchor.Idl>, mints: Mints, a: Addresses, wallet: PublicKeyT): Promise<Ix> {
+  return methods(program)
+    .joinAndLock!(new BN(DEMO.lockRaw.toString()))
+    .accounts({
+      wallet,
+      circle: a.circle,
+      member: a.member(wallet),
+      stockMint: mints.stock,
+      usdcMint: mints.usdc,
+      priceFeed: a.feed,
+      memberStockAta: ataAddress(mints.stock, wallet, TOKEN_2022),
+      memberUsdcAta: ataAddress(mints.usdc, wallet, SPL_TOKEN),
+      circleStockVault: ataAddress(mints.stock, a.circle, TOKEN_2022),
+      circleUsdcVault: ataAddress(mints.usdc, a.circle, SPL_TOKEN),
+      stockTokenProgram: TOKEN_2022,
+      usdcTokenProgram: SPL_TOKEN,
+      associatedTokenProgram: ASSOCIATED_TOKEN,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
 /**
  * Seeds the demo circle through activation. `members[0]` is the creator; the
  * member order is the turn order. Returns the circle address.
@@ -243,28 +326,7 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
   // 3. Members: SOL for fees, the stock they lock, the USDC they owe. Topped
   //    up to exactly what they need, never past it.
   for (const [i, w] of members.entries()) {
-    const ixs: Ix[] = [];
-    // Only before joining: joining spends some of it on rent, and a re-run
-    // must not read that as "under-funded" and send more.
-    const joined = await chain.getAccount(a.member(w.publicKey));
-    if (!joined) {
-      const lamports = (await chain.getAccount(w.publicKey))?.lamports ?? 0;
-      if (lamports < MEMBER_LAMPORTS) {
-        ixs.push(SystemProgram.transfer({ fromPubkey: admin.publicKey, toPubkey: w.publicKey, lamports: MEMBER_LAMPORTS - lamports }));
-      }
-      const stockAta = ataAddress(mints.stock, w.publicKey, TOKEN_2022);
-      const usdcAta = ataAddress(mints.usdc, w.publicKey, SPL_TOKEN);
-      const stock = await tokenBalance(chain, stockAta);
-      const usdc = await tokenBalance(chain, usdcAta);
-      if (stock < MEMBER_STOCK) {
-        ixs.push(createAtaIdempotentIx(admin.publicKey, w.publicKey, mints.stock, TOKEN_2022));
-        ixs.push(mintToCheckedIx(mints.stock, stockAta, admin.publicKey, MEMBER_STOCK - stock, NFLXX_MIRROR_DECIMALS, TOKEN_2022));
-      }
-      if (usdc < MEMBER_USDC) {
-        ixs.push(createAtaIdempotentIx(admin.publicKey, w.publicKey, mints.usdc, SPL_TOKEN));
-        ixs.push(mintToCheckedIx(mints.usdc, usdcAta, admin.publicKey, MEMBER_USDC - usdc, TEST_USDC_DECIMALS, SPL_TOKEN));
-      }
-    }
+    const ixs = await fundingIxs(chain, mints, a, w.publicKey);
     if (ixs.length) {
       await chain.send(ixs, [admin]);
       chain.log(`member ${i + 1} funded: ${w.publicKey.toBase58()}`);
@@ -273,32 +335,7 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
 
   // 4. The circle, created by member 1 with every member named in turn order.
   if (!circleBefore) {
-    const ix = await m.createCircle!(
-      {
-        circleId: new BN(DEMO.circleId.toString()),
-        contribution: new BN(DEMO.contribution),
-        roundSecs: new BN(DEMO.roundSecs),
-        graceSecs: new BN(DEMO.graceSecs),
-        haircutBps: DEMO.haircutBps,
-        coverageBps: DEMO.coverageBps,
-        warnBps: DEMO.warnBps,
-        guaranteePerMember: new BN(DEMO.guaranteePerMember),
-        minStockCover: new BN(DEMO.minStockCover),
-        maxPriceAge: new BN(DEMO.maxPriceAge),
-      },
-      members.map((w) => w.publicKey),
-    )
-      .accounts({
-        creator: creator.publicKey,
-        circle: a.circle,
-        stockMint: mints.stock,
-        usdcMint: mints.usdc,
-        priceFeed: a.feed,
-        pool: a.pool,
-        systemProgram: SystemProgram.programId,
-      } )
-      .instruction();
-    await chain.send([ix], [creator]);
+    await chain.send([await createCircleIx(program, mints, a, creator.publicKey, members.map((w) => w.publicKey))], [creator]);
     chain.log(`circle created: ${a.circle.toBase58()}`);
   }
 
@@ -307,24 +344,7 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
   for (const [i, w] of members.entries()) {
     if (joined && !joined.includes(i)) continue;
     if (await chain.getAccount(a.member(w.publicKey))) continue;
-    const ix = await m.joinAndLock!(new BN(DEMO.lockRaw.toString()))
-      .accounts({
-        wallet: w.publicKey,
-        circle: a.circle,
-        member: a.member(w.publicKey),
-        stockMint: mints.stock,
-        usdcMint: mints.usdc,
-        priceFeed: a.feed,
-        memberStockAta: ataAddress(mints.stock, w.publicKey, TOKEN_2022),
-        memberUsdcAta: ataAddress(mints.usdc, w.publicKey, SPL_TOKEN),
-        circleStockVault: ataAddress(mints.stock, a.circle, TOKEN_2022),
-        circleUsdcVault: ataAddress(mints.usdc, a.circle, SPL_TOKEN),
-        stockTokenProgram: TOKEN_2022,
-        usdcTokenProgram: SPL_TOKEN,
-        associatedTokenProgram: ASSOCIATED_TOKEN,
-        systemProgram: SystemProgram.programId,
-      } )
-      .instruction();
+    const ix = await joinIx(program, mints, a, w.publicKey);
     await chain.send([ix], [w]);
     chain.log(`member ${i + 1} joined and locked 1.1 NFLXx mirror`);
   }
@@ -338,6 +358,141 @@ export async function seedDemoCircle(chain: Chain, mints: Mints, members: Keypai
     chain.log("circle activated");
   }
 
+  return a.circle;
+}
+
+/**
+ * SPEC.md:137 / TASKS T26: keeps the demo's price fresh. Calls touch_prices ONLY, which moves the feed's updated_at to
+ * the chain's now and nothing else (I17: prices and stamp untouched), so it can never re-bind a price to another
+ * multiplier. Returns the feed's updated_at before and after.
+ */
+export async function touchPrices(chain: Chain, mints: Mints): Promise<{ before: number; after: number }> {
+  const { program, admin } = chain;
+  const feed = addresses(program, mints, admin.publicKey).feed;
+  const read = () => fetchOrNull<{ authority: PublicKeyT; updatedAt: { toString(): string } }>(chain, "priceFeed", feed);
+  const was = await read();
+  if (!was) throw new Error(`there is no price feed at ${feed.toBase58()} for ${mints.stock.toBase58()}. Nothing was sent.`);
+  if (!was.authority.equals(admin.publicKey)) {
+    throw new Error(`the price feed ${feed.toBase58()} belongs to ${was.authority.toBase58()}, not this admin. Nothing was sent.`);
+  }
+  const ix = await methods(program).touchPrices!().accounts({ authority: admin.publicKey, feed }).instruction();
+  await chain.send([ix], [admin]);
+  const now = await read();
+  const before = Number(was.updatedAt.toString());
+  const after = Number(now!.updatedAt.toString());
+  chain.log(`price refreshed: updated_at ${new Date(before * 1000).toISOString()} -> ${new Date(after * 1000).toISOString()}`);
+  return { before, after };
+}
+
+/** A try circle is refused unless its price stays fresh this long after the check: the joins that follow need it. */
+export const TRY_PRICE_MARGIN_SECS = 3600;
+
+/**
+ * A forming circle for trying the app's join and leave from a real wallet (PR #29's devnet try). SPEC's demo
+ * parameters; `scripted` (n - 1 script-held keys) take seats 1 to n - 1, `scripted[0]` creates it, and each joins;
+ * seat n is `wallet`, funded like every seat (0.02 SOL, 1.1 NFLXx mirror, the test USDC it owes) and left open. The
+ * circle stays Forming.
+ *
+ * Never creates or changes the price feed or the pool: it uses the demo's, as they are. So it cannot disturb the
+ * demo circle. Every step checks the chain first, so a stopped run is finished by running it again.
+ */
+/**
+ * Where a try seed records which seats it is for (ops/try-circle.json on devnet; memory in tests). PR #30 Codex r1:
+ * the record is written BEFORE the first send, so a run that stops after funding a wallet binds every rerun to that
+ * same wallet, whether or not the circle exists yet.
+ */
+export type TrySeatsRecord = {
+  read(): string[] | null;
+  /** Creates the record if none exists; throws (nothing sent) if another run has recorded other seats meanwhile. */
+  write(seats: string[]): void;
+};
+
+/** A TrySeatsRecord held in memory: the bankrun specs' stand-in for ops/try-circle.json. */
+export function memoryTryRecord(): TrySeatsRecord {
+  let seats: string[] | null = null;
+  return {
+    read: () => seats,
+    write: (s) => {
+      if (seats && (seats.length !== s.length || seats.some((k, i) => k !== s[i]))) {
+        throw new Error(`the try seed was just bound to wallet ${seats[seats.length - 1]} by another run. Nothing was sent.`);
+      }
+      seats ??= s;
+    },
+  };
+}
+
+export async function seedTryCircle(
+  chain: Chain,
+  mints: Mints,
+  scripted: KeypairT[],
+  wallet: PublicKeyT,
+  record: TrySeatsRecord,
+): Promise<PublicKeyT> {
+  const { program, admin } = chain;
+  if (scripted.length !== DEMO.n - 1) throw new Error(`a try circle has ${DEMO.n - 1} script-held seats, got ${scripted.length}`);
+  if (!PublicKey.isOnCurve(wallet.toBytes())) throw new Error(`${wallet.toBase58()} is not a wallet address (it cannot sign). Nothing was sent.`);
+  if (wallet.equals(admin.publicKey) || scripted.some((k) => k.publicKey.equals(wallet))) {
+    throw new Error(`${wallet.toBase58()} is the admin or a script-held key: the try seat must be your own wallet. Nothing was sent.`);
+  }
+  const creator = scripted[0]!;
+  const seats = [...scripted.map((k) => k.publicKey), wallet];
+  const a = addresses(program, mints, creator.publicKey);
+
+  // Everything checked before anything is sent.
+  const existing = await fetchOrNull<{ n: number; members: PublicKeyT[]; status: Record<string, unknown> }>(chain, "circle", a.circle);
+  if (existing) {
+    const named = existing.members.slice(0, existing.n);
+    if (named.length !== seats.length || named.some((k, i) => !k.equals(seats[i]!))) {
+      throw new Error(`the try circle ${a.circle.toBase58()} exists and its seats are not these keys and this wallet. Nothing was sent.`);
+    }
+    if (!("forming" in existing.status)) {
+      throw new Error(`the try circle ${a.circle.toBase58()} is no longer Forming (${Object.keys(existing.status)[0]}). Nothing was sent.`);
+    }
+  }
+  const pool = await fetchOrNull<{ authority: PublicKeyT }>(chain, "liquidationPool", a.pool);
+  if (!pool || !pool.authority.equals(admin.publicKey)) {
+    throw new Error(`the demo's pool ${a.pool.toBase58()} is missing or not this admin's: seed the demo circle first. Nothing was sent.`);
+  }
+  const feed = await fetchOrNull<{ authority: PublicKeyT; updatedAt: { toString(): string } }>(chain, "priceFeed", a.feed);
+  if (!feed || !feed.authority.equals(admin.publicKey)) {
+    throw new Error(`the demo's price feed ${a.feed.toBase58()} is missing or not this admin's: seed the demo circle first. Nothing was sent.`);
+  }
+  const age = (await chain.now()) - Number(feed.updatedAt.toString());
+  if (age + TRY_PRICE_MARGIN_SECS > DEMO.maxPriceAge) {
+    throw new Error(
+      `the price is ${Math.floor(age / 3600)} h old and a circle takes it up to ${DEMO.maxPriceAge / 3600} h: run ops/touch-prices.ts first. Nothing was sent.`,
+    );
+  }
+
+  // The last no-send check, and then the first write: the seats this seed is for, recorded before anything is sent.
+  const recorded = record.read();
+  const names = seats.map((k) => k.toBase58());
+  if (recorded && (recorded.length !== names.length || recorded.some((k, i) => k !== names[i]))) {
+    throw new Error(
+      `the try seed is recorded for wallet ${recorded[recorded.length - 1]} (seats ${recorded.join(", ")}), not ${wallet.toBase58()}. Nothing was sent.`,
+    );
+  }
+  if (!recorded) record.write(names);
+
+  // Seats: the script-held keys and the wallet, each funded the same way, and only before the circle exists. Funding
+  // comes first, so a circle on chain means every seat was funded. After that a seat's balance is its own: the wallet's
+  // join and leave fees leave it under MEMBER_LAMPORTS, and a re-run must not top it up (PR #30 adversary).
+  for (const [i, w] of existing ? [] : seats.entries()) {
+    const ixs = await fundingIxs(chain, mints, a, w);
+    if (ixs.length) {
+      await chain.send(ixs, [admin]);
+      chain.log(`seat ${i + 1} funded: ${w.toBase58()}${i === seats.length - 1 ? " (your wallet)" : ""}`);
+    }
+  }
+  if (!existing) {
+    await chain.send([await createCircleIx(program, mints, a, creator.publicKey, seats)], [creator]);
+    chain.log(`try circle created: ${a.circle.toBase58()}`);
+  }
+  for (const [i, k] of scripted.entries()) {
+    if (await chain.getAccount(a.member(k.publicKey))) continue;
+    await chain.send([await joinIx(program, mints, a, k.publicKey)], [k]);
+    chain.log(`seat ${i + 1} joined and locked 1.1 NFLXx mirror`);
+  }
   return a.circle;
 }
 
