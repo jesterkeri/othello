@@ -214,12 +214,17 @@ describe("A7: the shared single-circle page", () => {
       assert.match(text, /not a member of this circle, so it has nothing to collect/);
     });
 
-    it("a seat page: that seat first; a join page for a seat not yet joined says joining opens in the next update", async () => {
+    it("a seat page: that seat first; your own seat's join page offers the join (PR 2)", async () => {
       const forming: CircleView = { ...base, status: "Forming", round: 0, paidBitmap: 0, receivedBitmap: 0, joinedBitmap: 0b00001 };
       const { text } = await buttons(forming, { seat: 2, kind: "join" });
       assert.match(text, new RegExp(`Seat 2: ${forming.members[1]!.name} \\(you\\)`));
       assert.match(text, /This seat has not joined yet/);
-      assert.match(text, /Joining from this page opens in the next update/);
+      assert.match(text, /Claim it below\./);
+      assert.match(text, /Claim your seat/);
+      assert.doesNotMatch(text, /opens in the next update/);
+      // another seat's join page names the wallet the seat belongs to
+      const other = await buttons(forming, { seat: 3, kind: "join" });
+      assert.match(other.text, /It belongs to wallet .+: connect that wallet to join\./);
     });
 
     it("a seat the circle does not have is refused", async () => {

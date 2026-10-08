@@ -312,6 +312,49 @@ export function stockCover(m: MemberView, c: CircleView): number {
 }
 
 /**
+ * H for `raw` of the circle's stock, exactly as join_and_lock values it (valuation.rs value_position: fund_value,
+ * exec_value, counted_value), in bigint so no figure is rounded on the way. The price must be fresh and set for the
+ * multiplier in force; the caller checks that (the program refuses otherwise).
+ */
+export function countedOfRaw(c: CircleView, raw: bigint): bigint {
+  const fund = (raw * BigInt(c.effectiveMultiplier) * BigInt(c.feed.sharePrice)) / (ONE_E9 * ONE_E8);
+  const exec = (raw * BigInt(c.feed.wrapperPrice)) / ONE_E8;
+  const lower = fund < exec ? fund : exec;
+  return (lower * (BPS - BigInt(c.haircutBps))) / BPS;
+}
+
+/**
+ * The least stock a seat can join with: the smallest raw amount whose counted value reaches min_stock_cover
+ * (join_and_lock.rs: valuation.h >= circle.min_stock_cover, else CollateralBelowMinimum). H only grows with raw, so a
+ * binary search finds it exactly. Null when no amount can reach it at this price (a zero price).
+ */
+/** Whether valuation.rs would refuse `raw` with ValuationOverflow (fund_value or exec_value past u64). */
+export function valuationOverflows(c: CircleView, raw: bigint): boolean {
+  const U64 = (1n << 64n) - 1n;
+  const fund = (raw * BigInt(c.effectiveMultiplier) * BigInt(c.feed.sharePrice)) / (ONE_E9 * ONE_E8);
+  const exec = (raw * BigInt(c.feed.wrapperPrice)) / ONE_E8;
+  return fund > U64 || exec > U64;
+}
+
+export function minJoinStock(c: CircleView): bigint | null {
+  const target = BigInt(c.minStockCover);
+  if (target <= 0n) return 0n;
+  let hi = 1n;
+  while (countedOfRaw(c, hi) < target) {
+    if (hi > 1n << 64n) return null; // past u64: no stock amount the program takes
+    hi *= 2n;
+  }
+  let lo = 0n; // countedOfRaw(lo) < target
+  while (hi - lo > 1n) {
+    const mid = (lo + hi) / 2n;
+    if (countedOfRaw(c, mid) >= target) hi = mid;
+    else lo = mid;
+  }
+  // a least past u64, or one the program could not value, is no least at all (adversary on 9268b2e and e7959b0)
+  return hi > (1n << 64n) - 1n || valuationOverflows(c, hi) ? null : hi;
+}
+
+/**
  * SPEC §6, `recovered`: the test USDC the liquidation pool pays for a defaulter's stock, with
  * the program's own rounding (declare_default.rs `waterfall`). declare_default refuses with
  * PoolInsufficient unless the pool's USDC vault holds at least this, so the app checks it

@@ -179,3 +179,78 @@ export async function withdrawIx(wallet: PublicKeyT, k: CircleKeys) {
     })
     .instruction();
 }
+
+// The forming circle's own steps (SPEC §5, T09 and the G2 repair): a seat joins and leaves from its own wallet, and
+// only the creator starts or cancels. Joshua 2026-10-08: Solana gets the same steps as Robinhood on the shared page.
+
+/**
+ * Joins the wallet's own seat: locks `stockRaw` of the circle's stock and moves the guarantee in test USDC
+ * (join_and_lock). The program refuses unless the stock counts as at least min_stock_cover (CollateralBelowMinimum),
+ * the price is fresh and set for the mint's multiplier, the circle is Forming and the wallet holds a seat.
+ */
+export async function joinAndLockIx(wallet: PublicKeyT, k: CircleKeys, stockRaw: bigint) {
+  const { id, methods } = program();
+  return methods.joinAndLock!(new BN(stockRaw.toString()))
+    .accountsStrict({
+      wallet,
+      circle: k.circle,
+      member: memberAddress(id, k.circle, wallet),
+      stockMint: k.stockMint,
+      usdcMint: k.usdcMint,
+      priceFeed: feedOf(id, k),
+      memberStockAta: ata(wallet, k.stockMint, TOKEN_2022),
+      memberUsdcAta: ata(wallet, k.usdcMint, SPL_TOKEN),
+      circleStockVault: ata(k.circle, k.stockMint, TOKEN_2022),
+      circleUsdcVault: ata(k.circle, k.usdcMint, SPL_TOKEN),
+      stockTokenProgram: TOKEN_2022,
+      usdcTokenProgram: SPL_TOKEN,
+      associatedTokenProgram: ASSOCIATED_TOKEN,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
+/** Leaves the wallet's own seat before the circle starts: its stock, guarantee and top-ups come back (leave_forming). */
+export async function leaveFormingIx(wallet: PublicKeyT, k: CircleKeys) {
+  const { id, methods } = program();
+  return methods.leaveForming!()
+    .accountsStrict({
+      wallet,
+      circle: k.circle,
+      member: memberAddress(id, k.circle, wallet),
+      stockMint: k.stockMint,
+      usdcMint: k.usdcMint,
+      memberStockAta: ata(wallet, k.stockMint, TOKEN_2022),
+      memberUsdcAta: ata(wallet, k.usdcMint, SPL_TOKEN),
+      circleStockVault: ata(k.circle, k.stockMint, TOKEN_2022),
+      circleUsdcVault: ata(k.circle, k.usdcMint, SPL_TOKEN),
+      stockTokenProgram: TOKEN_2022,
+      usdcTokenProgram: SPL_TOKEN,
+      associatedTokenProgram: ASSOCIATED_TOKEN,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+}
+
+/** Starts the circle once every seat has joined (activate; creator only, NotAllJoined otherwise). */
+export async function activateIx(creator: PublicKeyT, k: CircleKeys) {
+  return program().methods.activate!().accountsStrict({ creator, circle: k.circle }).instruction();
+}
+
+/** Cancels a forming circle; each joined seat then takes its stock and guarantee back through withdraw (cancel_circle; creator only). */
+export async function cancelCircleIx(creator: PublicKeyT, k: CircleKeys) {
+  return program().methods.cancelCircle!().accountsStrict({ creator, circle: k.circle }).instruction();
+}
+
+/** A wallet's own token account for the circle's stock (Token-2022) or its test USDC (SPL Token). */
+export function tokenAccountOf(owner: PublicKeyT, k: Pick<CircleKeys, "stockMint" | "usdcMint">, kind: "stock" | "usdc"): PublicKeyT {
+  return kind === "stock" ? ata(owner, k.stockMint, TOKEN_2022) : ata(owner, k.usdcMint, SPL_TOKEN);
+}
+
+/** `raw` base units as the shortest exact decimal text parseUnits reads back to the same `raw`. */
+export function unitsText(raw: bigint, decimals: number): string {
+  const s = raw.toString().padStart(decimals + 1, "0");
+  const whole = s.slice(0, s.length - decimals);
+  const frac = s.slice(s.length - decimals).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
+}
