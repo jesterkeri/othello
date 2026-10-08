@@ -1,0 +1,38 @@
+/**
+ * Whether a wallet can join a forming Solana circle's seat, by everything the page can know before the program checks
+ * (PR 2, Joshua 2026-10-08): the least stock (minJoinStock, join_and_lock's CollateralBelowMinimum rule), the wallet's
+ * stock account and balance, its test USDC for the guarantee, and anything that blocks every send (no wallet, a
+ * transaction in flight, the price). Pure. No "@/" imports: tests import it directly.
+ */
+import { unitsText } from "./actions";
+import { minJoinStock, type CircleView } from "./circle";
+
+export const STOCK_DECIMALS = 8;
+
+/** A wallet's balances as this page last read them: null for a token account that does not exist. */
+export type JoinBalances = { stock: bigint | null; usdc: bigint | null };
+
+/**
+ * Whether this wallet can join with `raw` of stock, by everything the page can know, and if not, why. `blocked` is the
+ * parent's reason none of the circle's sends can go now (no wallet, a transaction in flight, the price). Pure.
+ */
+export function joinReadiness(
+  c: CircleView,
+  raw: bigint | null,
+  balances: JoinBalances | "reading",
+  blocked: string | null,
+  words: { stock: string; usdc: (base: bigint) => string },
+): { enabled: boolean; reason: string | null } {
+  if (blocked) return { enabled: false, reason: blocked };
+  const least = minJoinStock(c);
+  if (least === null) return { enabled: false, reason: "No amount of stock reaches this circle's minimum cover at the current price." };
+  if (raw === null) return { enabled: false, reason: `Type how much ${words.stock} to lock.` };
+  if (raw < least) return { enabled: false, reason: `This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` };
+  if (balances === "reading") return { enabled: false, reason: "Reading this wallet's balances…" };
+  const guarantee = BigInt(c.guaranteePerMember);
+  if (balances.stock === null) return { enabled: false, reason: `This wallet has no ${words.stock} account. Get the stock into it first.` };
+  if (balances.stock < raw) return { enabled: false, reason: `This wallet holds ${unitsText(balances.stock, STOCK_DECIMALS)} ${words.stock}; joining with this amount needs ${unitsText(raw, STOCK_DECIMALS)}.` };
+  if ((balances.usdc ?? 0n) < guarantee) return { enabled: false, reason: `This wallet holds ${words.usdc(balances.usdc ?? 0n)}; the guarantee is ${words.usdc(guarantee)}.` };
+  return { enabled: true, reason: null };
+}
+

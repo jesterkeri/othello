@@ -27,16 +27,20 @@ import { type CircleStatus, coverageLabel, defaultRecovered, derive, execValue, 
 import { payoutSteps, type ChainWords, type CloseOut, type ReleasePhase } from "@/lib/core/circle-page";
 import { ringOf, seatLabel } from "@/lib/core/ring";
 import { solToList } from "@/lib/to-list-solana";
-import { addStockIx, declareDefaultIx, parseUnits, releasePotIx, topUpReserveIx, updateCoverageIx, withdrawIx } from "@/lib/actions";
+import { activateIx, addStockIx, cancelCircleIx, declareDefaultIx, joinAndLockIx, leaveFormingIx, parseUnits, releasePotIx, topUpReserveIx, unitsText, updateCoverageIx, withdrawIx } from "@/lib/actions";
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
 import { multiplierAt } from "@/lib/scaledUi";
 
+import SolanaJoin from "./SolanaJoin";
 import SolanaPanel from "./SolanaPanel";
 
 const REFRESH_MS = 5_000;
 const USDC_WORD = "test USDC";
+// the forming circle's creator steps, by the name each transaction carries
+const START = "Start the circle";
+const CANCEL = "Cancel the circle";
 // what pays a defaulted seat's share of a round: the escrow its default prepaid (declare_default sells the stock only
 // up to the debt and the reserve pays the rest, SPEC.md section 6), never "the locked stock"
 const COVERED = "the escrow its default prepaid";
@@ -232,7 +236,9 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
   const isRelease = pay.phase !== "idle" && pay.what.startsWith("Release");
   // a finished action's outcome (done, declined, refused) from a round the read has left is not shown here
   // (or from a state it has left: the last round's payment once the circle has completed)
-  const stale = (pay.phase === "done" || pay.phase === "failed") && (pay.round !== c.round || pay.status !== c.status);
+  // except the state a finished action itself caused: a done Start reads Active, a done Cancel reads Cancelled (PR 2)
+  const caused = pay.phase === "done" && pay.status === "Forming" && ((pay.what === START && c.status === "Active") || (pay.what === CANCEL && c.status === "Cancelled"));
+  const stale = (pay.phase === "done" || pay.phase === "failed") && (pay.round !== c.round || pay.status !== c.status) && !caused;
   const status = othersInFlight ? `${you ? "Another wallet's" : "A"} transaction is still waiting for its wallet or for devnet. Sending opens again once it settles.` :
     isRelease || stale ? null :
     pay.phase === "wallet"
@@ -408,6 +414,49 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     </div>
   ) : null;
 
+  // PR 2 (Joshua 2026-10-08): the forming circle's own steps, as Robinhood has them. A seat joins and leaves from its
+  // own wallet; only the creator starts (once every seat has joined) or cancels. Each is enabled only when this read
+  // says the program would take it; the program checks again and any refusal shows in its own words.
+  const sendBlocked = busy
+    ? `${othersInFlight && you ? "Another wallet's" : "A"} transaction is still waiting for its wallet or for devnet.`
+    : null;
+  const seatOpen = c.status === "Forming" && yourTurn !== null && !seatSet(c.joinedBitmap, yourTurn) && !!wallet.publicKey;
+  const allJoined = dv.joined === c.n;
+  const formingRows = c.status !== "Forming" ? null : (
+    <>
+      {seatOpen && wallet.publicKey && (
+        <SolanaJoin
+          c={c}
+          owner={wallet.publicKey}
+          mints={{ stockMint: new PublicKey(live.accounts.stockMint), usdcMint: new PublicKey(live.accounts.usdcMint) }}
+          connection={connection}
+          blocked={sendBlocked ?? priceBlock}
+          readAt={live.readAt}
+          words={{ stock: "NFLXx devnet mirror", stockShort: "NFLXx mirror", usdc }}
+          onJoin={(raw) => void send("Join", (me) => joinAndLockIx(me, keys, raw))}
+        />
+      )}
+      {mine && (
+        <ActionRow title="Your seat is locked" text={`Until the circle starts you can leave: your ${unitsText(BigInt(mine.lockedRaw), 8)} NFLXx devnet mirror, the ${usdc(BigInt(c.guaranteePerMember))} guarantee and any top-ups come back to this wallet.`}>
+          <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canSend} onClick={() => void send("Leave the circle", (me) => leaveFormingIx(me, keys))}>
+            Leave and take them back
+          </button>
+        </ActionRow>
+      )}
+      {you !== null && you === c.creator && (
+        <ActionRow
+          title="Creator controls"
+          text={`${allJoined ? "Every seat has joined: starting opens round 1." : `${c.n - dv.joined} of ${c.n} seats still to join; starting opens once every seat has.`} Cancelling ends the circle before it starts, and each joined seat then withdraws its stock and guarantee.`}
+        >
+          <span className={s.actionButtons}>
+            <button type="button" className={s.pay} disabled={!canSend || !allJoined} onClick={() => void send(START, (me) => activateIx(me, keys))}>Start the circle</button>
+            <button type="button" className={`${s.pay} ${s.payQuiet}`} disabled={!canSend} onClick={() => void send(CANCEL, (me) => cancelCircleIx(me, keys))}>Cancel the circle</button>
+          </span>
+        </ActionRow>
+      )}
+    </>
+  );
+
   const action = (
     <div className={s.action} aria-live="polite">
       <span className={s.actionText}>
@@ -567,7 +616,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
       title={`Seat ${fm.turn + 1}: ${fm.name}${fm.address === you ? " (you)" : ""}`}
       text={kind === "join" && !fmJoined
         ? c.status === "Forming"
-          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${usdc(BigInt(c.guaranteePerMember))} guarantee. Joining from this page opens in the next update; until then the seat joins from the Othello devnet tools.${repricing ? " Joining waits until the price is set for the new multiplier." : priceBlock ? " Joining waits for a set, fresh price." : ""}`
+          ? `This seat has not joined yet. Joining locks the ${stockUnit} as cover and adds the ${usdc(BigInt(c.guaranteePerMember))} guarantee. ${fm.address === you ? "Claim it below." : `It belongs to wallet ${shortAddress(fm.address)}: connect that wallet to join.`}${repricing ? " Joining waits until the price is set for the new multiplier." : priceBlock ? " Joining waits for a set, fresh price." : ""}`
           : `This seat never joined, and the circle is ${c.status}: it can no longer be joined.`
         : !fmJoined
           ? "This seat has not joined yet: nothing is locked."
@@ -598,6 +647,7 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
           {focus}
           <CopyLink path={address === DEMO_CIRCLE ? "/circle/demo" : `/circle/sol:${address}`} title="Share this circle" text="Copy the permanent circle link to share its live state. A joinable invite is available only while a circle is forming." label="Copy circle link" />
           {action}
+          {formingRows}
           {memberTools}
           {anyone}
         </NextStep>

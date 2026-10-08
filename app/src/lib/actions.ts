@@ -241,3 +241,16 @@ export async function activateIx(creator: PublicKeyT, k: CircleKeys) {
 export async function cancelCircleIx(creator: PublicKeyT, k: CircleKeys) {
   return program().methods.cancelCircle!().accountsStrict({ creator, circle: k.circle }).instruction();
 }
+
+/** A wallet's own token account for the circle's stock (Token-2022) or its test USDC (SPL Token). */
+export function tokenAccountOf(owner: PublicKeyT, k: Pick<CircleKeys, "stockMint" | "usdcMint">, kind: "stock" | "usdc"): PublicKeyT {
+  return kind === "stock" ? ata(owner, k.stockMint, TOKEN_2022) : ata(owner, k.usdcMint, SPL_TOKEN);
+}
+
+/** `raw` base units as the shortest exact decimal text parseUnits reads back to the same `raw`. */
+export function unitsText(raw: bigint, decimals: number): string {
+  const s = raw.toString().padStart(decimals + 1, "0");
+  const whole = s.slice(0, s.length - decimals);
+  const frac = s.slice(s.length - decimals).replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole;
+}
