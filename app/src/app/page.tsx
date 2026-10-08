@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import Landing from "@/components/landing/Landing";
@@ -19,20 +19,39 @@ export default function Page() {
   const wallet = useWalletUi();
   const { side } = useActiveSide();
   const router = useRouter();
-  // On load, and when a window narrows to phone width (the landing is hidden there, so it must not stay blank).
+  // Known only in the browser; the prerender carries both views and CSS shows the right one until then.
+  const [phone, setPhone] = useState(false);
+
+  // On load, and when a window narrows to phone width. Setting `phone` in the same commit as the landing's own first
+  // effect drops the landing before its theme effects run, so a phone that never sees the landing does not have the
+  // landing's default theme saved for it (PR #31 adversary).
   useEffect(() => {
     const query = window.matchMedia(PHONE);
     const go = () => {
       const to = phoneHome(query.matches);
-      if (to) router.replace(to);
+      if (!to) return;
+      setPhone(true);
+      router.replace(to);
     };
     go();
     query.addEventListener("change", go);
     return () => query.removeEventListener("change", go);
   }, [router]);
+
+  // Once it is known to be a phone, the line shows at any width (a phone turned sideways mid-redirect stays readable).
+  const opening = (
+    <main className={phone ? `${s.phone} ${s.known}` : s.phone}>
+      <p>Opening your circles…</p>
+      <a href="/circles">Go to circles</a>
+    </main>
+  );
+  if (phone) return opening;
   return (
-    <div className={s.home}>
-      <Landing side={side} onConnectWallet={wallet.openConnect} />
-    </div>
+    <>
+      {opening}
+      <div className={s.home}>
+        <Landing side={side} onConnectWallet={wallet.openConnect} />
+      </div>
+    </>
   );
 }

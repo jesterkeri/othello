@@ -1,12 +1,48 @@
-/* Joshua, 2026-10-08: no landing page on phones. The landing stays in the page (desktop shows it, and nothing shifts
-   on hydration) but is hidden at the app's phone width, while app/page.tsx sends the phone on to /circles. The
-   breakpoint is PHONE in lib/phone.ts; keep the two equal. */
+/* Joshua, 2026-10-08: no landing page on phones. The prerendered page carries both: the landing (desktop paints it
+   at once, and nothing shifts on hydration) and a short "opening your circles" line with a plain link (a phone paints
+   it at once, and it works with no JavaScript at all). Each is hidden at the other's width. app/page.tsx then sends
+   the phone on to /circles. The breakpoint is PHONE in lib/phone.ts; keep the two equal. */
 .home {
   display: contents;
+}
+
+.phone {
+  display: none;
+}
+
+.phone.known {
+  display: flex;
 }
 
 @media (max-width: 759px) {
   .home {
     display: none;
   }
+
+  .phone {
+    display: flex;
+  }
+}
+
+/* Before any theme has loaded the page's tokens may be unset: fall back to the system's own light or dark. */
+.phone {
+  color-scheme: light dark;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  background: var(--desk, Canvas);
+  color: var(--ink, CanvasText);
+  font: 500 17px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-align: center;
+}
+
+.phone a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 12px 8px;
 }
