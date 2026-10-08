@@ -350,8 +350,8 @@ export function minJoinStock(c: CircleView): bigint | null {
     if (countedOfRaw(c, mid) >= target) hi = mid;
     else lo = mid;
   }
-  // a least the program could not value is no least at all (adversary on 9268b2e)
-  return valuationOverflows(c, hi) ? null : hi;
+  // a least past u64, or one the program could not value, is no least at all (adversary on 9268b2e and e7959b0)
+  return hi > (1n << 64n) - 1n || valuationOverflows(c, hi) ? null : hi;
 }
 
 /**

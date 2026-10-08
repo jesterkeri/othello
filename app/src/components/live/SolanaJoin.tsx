@@ -9,7 +9,7 @@
  *
  * Its own component so LiveCircle's state (seeded in order by its tests) is untouched.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Connection, PublicKey } from "@solana/web3.js";
 
 import { parseUnits, tokenAccountOf, unitsText } from "@/lib/actions";
@@ -46,9 +46,11 @@ export default function SolanaJoin({ c: read, split, owner, mints, vaults, conne
     const id = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
     return () => window.clearInterval(id);
   }, []);
-  // never earlier than the read: chain time only moves forward, so a device clock running behind must not make a price
-  // the read found stale look fresh (adversary on ba8bef5)
-  const at = Math.max(now, readAt);
+  // never earlier than the read, and moving on from it: chain time only moves forward, so a device clock running
+  // behind must not make a price the read found stale look fresh (adversary on ba8bef5), and the seconds since the
+  // read arrived still count on such a device (adversary on e7959b0: the judgement froze at the read while reads failed)
+  const seenAt = useMemo(() => Math.floor(Date.now() / 1000), [readAt]);
+  const at = Math.max(now, readAt + Math.max(0, now - seenAt));
   const priceProblem = joinPriceProblem(read, split, at);
   // the circle at the multiplier in force (the read itself when that cannot be carried; priceProblem then stops all)
   const c = joinViewAt(read, split, at) ?? read;
