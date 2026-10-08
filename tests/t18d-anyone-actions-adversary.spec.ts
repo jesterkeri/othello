@@ -58,6 +58,11 @@ registerHooks({
     if (specifier.endsWith(".module.css")) {
       return { url: "data:text/javascript,export default new Proxy({}, { get: (_, k) => String(k) });", shortCircuit: true };
     }
+    // the frame (Shell) picks its side from the connected wallets (lib/active-side.ts, since A2): stub that layer as
+    // this test stubs the wallet control, so the page renders without the app's wallet providers
+    if (specifier === "@/lib/active-side") {
+      return { url: "data:text/javascript,export function useActiveSide() { return { side: 'solana', connected: { evm: false, solana: true } }; } export function showsChainSwitch() { return false; }", shortCircuit: true };
+    }
     if (specifier === "@/components/othello/WalletConnect" || specifier === "./WalletConnect") {
       return { url: "data:text/javascript,export function WalletControl() { return null; }", shortCircuit: true };
     }

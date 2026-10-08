@@ -168,7 +168,10 @@ registerHooks({
 });
 const text = (el: unknown): string =>
   el == null || typeof el === "boolean" ? "" : typeof el === "string" || typeof el === "number" ? String(el)
-    : Array.isArray(el) ? el.map(text).join("") : text((el as El).props?.children);
+    : Array.isArray(el) ? el.map(text).join("")
+    // as find: the shared circle page's named props (payout, closeOut, act, banners, ...) are part of the page's text
+    : (el as El).props ? [(el as El).props.children, ...Object.entries((el as El).props).filter(([k, v]) => k !== "children" && v && typeof v === "object").map(([, v]) => v)].map(text).join("")
+    : typeof el === "object" ? Object.values(el as object).map(text).join(" ") : "";
 const settle = async () => {
   for (let k = 0; k < 200; k++) await new Promise((r) => setTimeout(r, 1));
 };
@@ -253,7 +256,8 @@ describe("adversary de3c654: a fallback read one block back replaces a newer vie
     mini.render = () => mod.default({ address: circle });
     rerender();
     await settle();
-    assert.match(text(mini.tree), /^Forming/, `precondition: the page shows the Forming circle:\n${text(mini.tree).slice(0, 400)}`);
+    // the status pill: once the first thing in the page's text, now the shared circle page's `status` prop
+    assert.equal((mini.tree as El).props.status, "Forming", `precondition: the page shows the Forming circle:\n${text(mini.tree).slice(0, 400)}`);
 
     // block N+1: the creator cancels the circle; the next 8 s read shows it
     await anvilRpc({ jsonrpc: "2.0", id: 1, method: "evm_increaseTime", params: [5] });
@@ -262,7 +266,7 @@ describe("adversary de3c654: a fallback read one block back replaces a newer vie
     const tick = io.intervals.find((x) => x.ms === 8_000)!;
     tick.fn();
     await settle();
-    assert.match(text(mini.tree), /Cancelled/, `precondition: the page shows the cancellation at N+1:\n${text(mini.tree).slice(0, 400)}`);
+    assert.equal((mini.tree as El).props.status, "Cancelled", `precondition: the page shows the cancellation at N+1:\n${text(mini.tree).slice(0, 400)}`);
 
     // The next 8 s read: no new block yet, and eth_call lands on a node one block behind.
     lag = true;
@@ -270,7 +274,8 @@ describe("adversary de3c654: a fallback read one block back replaces a newer vie
     tick.fn();
     await settle();
     const shown = text(mini.tree);
-    assert.match(shown, /Cancelled/,
+    // the status pill (the shared circle page's `status` prop) still says Cancelled
+    assert.equal((mini.tree as El).props.status, "Cancelled",
       `the page replaced its view of block N+1 with an older one (chainTime ${shownAt.join(", ")}): the cancellation ` +
       `un-happened on screen and the circle reads as Forming again:\n${shown.slice(0, 300)}`);
   });

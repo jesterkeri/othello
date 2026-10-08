@@ -196,7 +196,14 @@ function find(el: unknown, pred: (e: El) => boolean): El | null {
   }
   const e = el as El;
   if (e.props && pred(e)) return e;
-  return e.props ? find(e.props.children, pred) : null;
+  // the shared circle page (components/circle-page/CirclePage.tsx) takes panels as named props (payout, closeOut,
+  // act, ...), not only as children: search every prop that holds elements, and plain objects' values
+  const inner = e.props ? [e.props.children, ...Object.entries(e.props).filter(([k, v]) => k !== "children" && v && typeof v === "object").map(([, v]) => v)] : Object.values(e);
+  for (const x of inner) {
+    const hit = find(x, pred);
+    if (hit) return hit;
+  }
+  return null;
 }
 const ringEl = () => find(mini.tree, (e) => "ring" in e.props && "pot" in e.props);
 const payments = () => (ringEl()!.props.ring as { seats: { payment: string | null }[] }).seats.map((s) => s.payment);
@@ -207,7 +214,10 @@ const recordButtons = () => {
 };
 const text = (el: unknown): string =>
   el == null || typeof el === "boolean" ? "" : typeof el === "string" || typeof el === "number" ? String(el)
-    : Array.isArray(el) ? el.map(text).join("") : text((el as El).props?.children);
+    : Array.isArray(el) ? el.map(text).join("")
+    // as find: the shared circle page's named props (payout, closeOut, act, banners, ...) are part of the page's text
+    : (el as El).props ? [(el as El).props.children, ...Object.entries((el as El).props).filter(([k, v]) => k !== "children" && v && typeof v === "object").map(([, v]) => v)].map(text).join("")
+    : typeof el === "object" ? Object.values(el as object).map(text).join(" ") : "";
 const settle = async () => {
   for (let k = 0; k < 20; k++) await new Promise((r) => setTimeout(r, 0));
 };

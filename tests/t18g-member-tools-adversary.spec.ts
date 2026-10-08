@@ -52,6 +52,11 @@ registerHooks({
     if (specifier.endsWith(".module.css")) {
       return { url: "data:text/javascript,export default new Proxy({}, { get: (_, k) => String(k) });", shortCircuit: true };
     }
+    // the frame (Shell) picks its side from the connected wallets (lib/active-side.ts, since A2): stub that layer as
+    // this test stubs the wallet control, so the page renders without the app's wallet providers
+    if (specifier === "@/lib/active-side") {
+      return { url: "data:text/javascript,export function useActiveSide() { return { side: 'solana', connected: { evm: false, solana: true } }; } export function showsChainSwitch() { return false; }", shortCircuit: true };
+    }
     if (specifier === "@/components/othello/WalletConnect" || specifier === "./WalletConnect") {
       return { url: "data:text/javascript,export function WalletControl() { return null; }", shortCircuit: true };
     }
@@ -148,6 +153,6 @@ describe("T18g adversary: member tools for a seat that never joined", () => {
     g.__wallet = { publicKey: new anchor.web3.PublicKey(cancelled.members[1]!.address), sendTransaction: async () => "x" };
     const { on, text } = await buttons(cancelled);
     assert.notEqual(on["Withdraw"], true, "withdraw enabled for a wallet with no Member account (SPEC.md:114)");
-    assert.doesNotMatch(text, /withdraw your stock, unused guarantee and top-ups/);
+    assert.doesNotMatch(text, /withdraw your|withdraw whatever/); // the member row's withdraw wording, any version
   });
 });

@@ -24,7 +24,12 @@ export type RingSource = {
 };
 
 /** How amounts and the locked collateral are named: USDG on Robinhood (the default), USDC and the stock on Solana. */
-export type RingWords = { fmt: (base: bigint) => string; collateral: string };
+/**
+ * `covered`: what pays a defaulted seat's share of the round, after "covered by" (Robinhood: its locked collateral, the
+ * default; Solana: the escrow its default prepaid, since declare_default sells the stock only up to the debt and the
+ * reserve pays the rest; adversary on 401fac3).
+ */
+export type RingWords = { fmt: (base: bigint) => string; collateral: string; covered?: string };
 
 
 export type SeatRole = "receiving" | "received" | "upcoming" | "joined" | "open";
@@ -102,7 +107,7 @@ export function ringOf(v: RingSource, me?: string | null, now: number = v.chainT
       joined: cancelled ? "joined before the circle was cancelled" : "joined", open: cancelled ? "did not join" : "not joined yet" }[role];
     const payWords = payment === null
       ? (finished && (v.status === "Completed" || seat.joined) ? (seat.withdrawn ? ", collected their share" : ", has not collected their share yet") : "")
-      : { paid: ", paid this round", covered: `, settled in default: covered by locked ${words.collateral}`, short: ", settled in default: cover short", late: seat.marked ? ", late: payment recorded as missed" : ", late: unpaid after the grace period", due: ", payment due this round" }[payment];
+      : { paid: ", paid this round", covered: `, settled in default: covered by ${words.covered ?? `locked ${words.collateral}`}`, short: ", settled in default: cover short", late: seat.marked ? ", late: payment recorded as missed" : ", late: unpaid after the grace period", due: ", payment due this round" }[payment];
     return {
       turn: seat.turn,
       label: seatLabel(seat.turn),
