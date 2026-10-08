@@ -83,10 +83,14 @@ export async function devnetChain(): Promise<{ chain: Chain; mints: Mints; conne
 
 /** Loads the n demo member keypairs, creating any that are missing. Never prints a secret. */
 export function demoMembers(n: number): anchor.web3.Keypair[] {
-  mkdirSync(MEMBER_DIR, { recursive: true, mode: 0o700 });
-  chmodSync(MEMBER_DIR, 0o700);
+  return keysIn(MEMBER_DIR, n);
+}
+
+function keysIn(dir: string, n: number): anchor.web3.Keypair[] {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
   return Array.from({ length: n }, (_, i) => {
-    const path = resolve(MEMBER_DIR, `member-${i + 1}.json`);
+    const path = resolve(dir, `member-${i + 1}.json`);
     if (!existsSync(path)) {
       const k = anchor.web3.Keypair.generate();
       writeFileSync(path, JSON.stringify(Array.from(k.secretKey)), { mode: 0o600 });
@@ -105,16 +109,19 @@ export function demoMembers(n: number): anchor.web3.Keypair[] {
  * ops/demo-circle.json recorded when the seed ran.
  */
 export function loadDemoMembers(): anchor.web3.Keypair[] {
-  const record = JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { members: string[] };
-  return record.members.map((expected, i) => {
-    const path = resolve(MEMBER_DIR, `member-${i + 1}.json`);
+  return loadRecordedKeys(DEMO_RECORD, MEMBER_DIR, (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as { members: string[] }).members);
+}
+
+function loadRecordedKeys(record: string, dir: string, members: string[]): anchor.web3.Keypair[] {
+  return members.map((expected, i) => {
+    const path = resolve(dir, `member-${i + 1}.json`);
     if (!existsSync(path)) {
-      throw new Error(`Missing ${path}: this machine does not hold the demo member keys (the seed made them on the machine it ran on). Nothing was created or printed.`);
+      throw new Error(`Missing ${path}: this machine does not hold the keys ${record} records (the seed made them on the machine it ran on). Nothing was created or printed.`);
     }
     chmodSync(path, 0o600);
     const k = anchor.web3.Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
     if (k.publicKey.toBase58() !== expected) {
-      throw new Error(`${path} is ${k.publicKey.toBase58()}, but seat ${i + 1} of the demo circle is ${expected}. Nothing was printed or sent.`);
+      throw new Error(`${path} is ${k.publicKey.toBase58()}, but seat ${i + 1} in ${record} is ${expected}. Nothing was printed or sent.`);
     }
     return k;
   });
@@ -123,4 +130,18 @@ export function loadDemoMembers(): anchor.web3.Keypair[] {
 export function writeDemoRecord(update: Record<string, unknown>): void {
   const current = existsSync(DEMO_RECORD) ? (JSON.parse(readFileSync(DEMO_RECORD, "utf8")) as Record<string, unknown>) : {};
   writeFileSync(DEMO_RECORD, JSON.stringify({ ...current, ...update }, null, 2) + "\n");
+}
+
+/**
+ * The try circle (ops/seed-try-circle.ts): its own script-held keys, in ~/.config/othello-demo/devnet-try/, and its own
+ * record, ops/try-circle.json, so they never mix with the demo circle's. The keys are made only for the first seed;
+ * once the record exists they are loaded only, and must be exactly the seats it recorded.
+ */
+export const TRY_RECORD = resolve(import.meta.dirname, "try-circle.json");
+const TRY_DIR = resolve(homedir(), ".config/othello-demo/devnet-try");
+
+export function tryCircleKeys(n: number): anchor.web3.Keypair[] {
+  if (!existsSync(TRY_RECORD)) return keysIn(TRY_DIR, n);
+  const { members } = JSON.parse(readFileSync(TRY_RECORD, "utf8")) as { members: string[] };
+  return loadRecordedKeys(TRY_RECORD, TRY_DIR, members.slice(0, n));
 }
