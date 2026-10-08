@@ -23,7 +23,7 @@ import CopyLink from "@/components/circle-page/CopyLink";
 import PayoutPanel from "@/components/circle-page/PayoutPanel";
 import s from "@/components/circle/Circle.module.css";
 import Shell from "@/components/othello/Shell";
-import { type CircleStatus, coverageLabel, defaultRecovered, derive, execValue, formatDuration, formatRaw, formatUsdc, fundValue, obligations, releaseBlock, seatSet, shortAddress, stockCover } from "@/lib/circle";
+import { type CircleStatus, type CircleView, coverageLabel, defaultRecovered, derive, execValue, formatDuration, formatRaw, formatUsdc, fundValue, obligations, releaseBlock, seatSet, shortAddress, stockCover } from "@/lib/circle";
 import { payoutSteps, type ChainWords, type CloseOut, type ReleasePhase } from "@/lib/core/circle-page";
 import { ringOf, seatLabel } from "@/lib/core/ring";
 import { solToList } from "@/lib/to-list-solana";
@@ -31,7 +31,7 @@ import { activateIx, addStockIx, cancelCircleIx, declareDefaultIx, joinAndLockIx
 import { contributeIx, explainFailure } from "@/lib/contribute";
 import { DEMO_CIRCLE, LABELS, explorer, liveCircleUrl, liveKeyOf } from "@/lib/devnet";
 import type { LiveCircle as Live } from "@/lib/live";
-import { multiplierAt } from "@/lib/scaledUi";
+import { multiplierAt, toFixed1e9 } from "@/lib/scaledUi";
 
 import SolanaJoin from "./SolanaJoin";
 import SolanaPanel from "./SolanaPanel";
@@ -423,17 +423,24 @@ export default function LiveCircle({ address = DEMO_CIRCLE, seat, kind }: { addr
     : null;
   const seatOpen = c.status === "Forming" && yourTurn !== null && !seatSet(c.joinedBitmap, yourTurn) && !!wallet.publicKey;
   const allJoined = dv.joined === c.n;
+  // join_and_lock values the stock at the multiplier in force at ITS clock: a split that took effect after this read
+  // already counts (adversary on 16ea294), so the join row reads the multiplier by the wall clock
+  const multNow = toFixed1e9(multiplierAt(live.split, wallClock));
+  const joinView: CircleView = { ...c, effectiveMultiplier: multNow };
+  const joinPriceBlock = multNow !== c.feed.pricedForMultiplier
+    ? "Price and split disagree (repricing): joining waits for a price set for the new multiplier."
+    : priceBlock;
   const formingRows = c.status !== "Forming" ? null : (
     <>
       {seatOpen && wallet.publicKey && (
         <SolanaJoin
           // one join row per wallet: nothing read for the previous wallet is drawn for the next (adversary on 6587a2b)
           key={wallet.publicKey.toBase58()}
-          c={c}
+          c={joinView}
           owner={wallet.publicKey}
           mints={{ stockMint: new PublicKey(live.accounts.stockMint), usdcMint: new PublicKey(live.accounts.usdcMint) }}
           connection={connection}
-          blocked={sendBlocked ?? priceBlock}
+          blocked={sendBlocked ?? joinPriceBlock}
           readAt={live.readAt}
           words={{ stock: "NFLXx devnet mirror", stockShort: "NFLXx mirror", usdc }}
           onJoin={(raw) => void send("Join", (me) => joinAndLockIx(me, keys, raw))}

@@ -36,7 +36,7 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
   const least = minJoinStock(c);
   // the least, from each new read, until the member types their own amount (adversary on 6587a2b)
   const [typed, setTyped] = useState<string | null>(null);
-  const amount = typed ?? (least !== null && least > 0n ? unitsText(least, STOCK_DECIMALS) : "");
+  const amount = typed ?? (least !== null ? unitsText(least, STOCK_DECIMALS) : "");
   const [balances, setBalances] = useState<BalanceRead>("reading");
   const ownerKey = owner.toBase58();
 
@@ -61,7 +61,8 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerKey, readAt, connection]);
 
-  const raw = parseUnits(amount, STOCK_DECIMALS);
+  // a circle whose minimum cover is 0 takes a join with no stock (h = 0 >= 0); parseUnits refuses 0, so read it here
+  const raw = parseUnits(amount, STOCK_DECIMALS) ?? (/^0*(?:\.0*)?$/.test(amount.trim()) && /\d/.test(amount) ? 0n : null);
   const ready = joinReadiness(c, raw, balances, blocked, words);
   const cover = raw !== null ? countedOfRaw(c, raw) : null;
   const guarantee = BigInt(c.guaranteePerMember);
@@ -71,7 +72,8 @@ export default function SolanaJoin({ c, owner, mints, connection, blocked, readA
         <span className={s.bannerTitle}>Claim your seat</span>
         <p className={s.bannerText}>
           Lock the {words.stock} as your cover and add the {words.usdc(guarantee)} guarantee to the shared reserve.
-          {least !== null ? ` This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` : ""}
+          {/* no figure from a price the program would refuse (stale, unset, or set for another multiplier) */}
+          {least !== null && !blocked ? ` This circle needs at least ${unitsText(least, STOCK_DECIMALS)} ${words.stock}.` : ""}
           {cover !== null && !blocked ? ` ${unitsText(raw!, STOCK_DECIMALS)} ${words.stock} counts as ${words.usdc(cover)} of cover at the current price.` : ""}
           {" "}You can leave and take both back until the circle starts.
         </p>

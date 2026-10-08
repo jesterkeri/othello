@@ -187,6 +187,14 @@ describe("PR 2: a forming Solana circle's own steps", () => {
     assert.match(text, /old, and the program acts only on a fresh one/);
   });
 
+  it("while price and split disagree, the join names no minimum or cover figure, and says why it waits", async () => {
+    const repricing: CircleView = { ...forming, effectiveMultiplier: forming.feed.pricedForMultiplier * 10 };
+    const { text, on } = await buttons(repricing);
+    assert.equal(on[Object.keys(on).find((k) => k.startsWith("Join: lock"))!], false);
+    assert.doesNotMatch(text, /needs at least/);
+    assert.doesNotMatch(text, /counts as .* of cover at the current price/);
+  });
+
   it("a joined seat can leave while the circle forms", async () => {
     const two: CircleView = { ...forming, joinedBitmap: 0b00011 };
     const { text, on } = await buttons(two);
