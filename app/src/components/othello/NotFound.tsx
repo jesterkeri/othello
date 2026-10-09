@@ -18,22 +18,26 @@ export type NotFoundProps = { path?: string; walletAddress?: string | null; onCo
 
 export default function NotFound({ path, walletAddress, onConnectWallet, onNavigate, homeHref = '/', createHref = '/circles/new' }: NotFoundProps) {
   // A track is two strips rolled by one strip's length. A wider window (a large display, or zoomed out) needs a longer
-  // strip, so after mount, and on every resize, the strip grows to at least REACH windows; the roll time grows with
-  // it (--rounds in the CSS), so the text moves at the same speed whatever the length.
+  // strip, so the strip grows to at least REACH windows plus one spare round (the tapes are tilted 2 degrees, and a
+  // strip of exactly REACH windows can leave a sliver); the roll time grows with it (--rounds in the CSS), so the text
+  // moves at the same speed whatever the length. It is measured again whenever the window or the strip itself changes
+  // size: the strip changes when Archivo swaps in for its wider fallback after the page has hydrated.
   const [rounds, setRounds] = useState(MIN_ROUNDS);
   const track = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const el = track.current;
+    if (!el) return;
     const fit = () => {
-      const el = track.current;
-      if (!el) return;
       const strip = el.scrollWidth / 2;
       if (strip <= 0) return;
       const perRound = strip / rounds;
-      setRounds(Math.max(MIN_ROUNDS, Math.ceil((REACH * window.innerWidth) / perRound)));
+      setRounds(Math.max(MIN_ROUNDS, Math.ceil((REACH * window.innerWidth) / perRound) + 1));
     };
     fit();
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    const sized = new ResizeObserver(fit);
+    sized.observe(el);
+    return () => { window.removeEventListener('resize', fit); sized.disconnect(); };
   }, [rounds]);
   const tape = Array.from({ length: rounds }).flatMap(() => PHRASES);
   return (
