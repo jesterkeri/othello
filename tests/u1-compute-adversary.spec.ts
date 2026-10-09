@@ -67,10 +67,12 @@ const CREATOR_SEED = "othello u1 adversary: creator";
 const MEMBER_SEED = "othello u1 adversary: member 0";
 const CIRCLE_ID = 10691n;
 /**
- * The compute limit slice 4's builder prepends to join_and_lock_v2 (design r8 [R3-3]). 300,000 covers the measured
- * maximum (199,860) plus 66 further unlucky bump tries.
+ * The compute limit slice 4's builder prepends to join_and_lock_v2 (design r9 [R3-3], [C32-2]; SPEC NFR-3). Measured
+ * maximum 199,881 here and 218,636 with every created address pre-funded (u1-compute-probe-adversary).
  */
 const JOIN_V2_CU_LIMIT = 300_000;
+/** SPEC NFR-3 / design r9 [R3-3]: a builder's limit is at least the measured maximum + 20%, rounded up to 10,000. */
+const ruleLimit = (max: number) => Math.ceil((max * 1.2) / 10_000) * 10_000;
 
 describe("U1 adversary: join_and_lock_v2 fits the default compute budget (NFR-3)", () => {
   let h: Harness;
@@ -300,5 +302,6 @@ describe("U1 adversary: join_and_lock_v2 fits the default compute budget (NFR-3)
     const at = (q: number) => used[Math.min(used.length - 1, Math.floor(q * used.length))]!;
     console.log(`      USDC-only first join, 200 pairs: min ${used[0]}, median ${at(0.5)}, p95 ${at(0.95)}, max ${used[used.length - 1]} CU`);
     assert.ok(used[used.length - 1]! < JOIN_V2_CU_LIMIT, `max ${used[used.length - 1]} is over the builder's limit`);
+    assert.ok(JOIN_V2_CU_LIMIT >= ruleLimit(used[used.length - 1]!), `max ${used[used.length - 1]} needs a limit of ${ruleLimit(used[used.length - 1]!)} (NFR-3)`);
   });
 });

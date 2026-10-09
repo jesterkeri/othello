@@ -2,8 +2,8 @@
  * Adversary r2 on 5c048be (USDC slice 1): compute of the slice-1 instructions over 60 fixed key pairs, with every
  * address each instruction creates pre-funded with 1 lamport by a stranger (the slower create path). Bounds: SPEC.md:24
  * NFR-3's default 200,000 for join_and_lock and add_usdc_collateral; join_and_lock_v2 under JOIN_V2_CU_LIMIT, the
- * limit slice 4's builder prepends (design r8 [R3-3]). Measured at 5c048be: v2 USDC-only max 218,615; stock+USDC
- * 178,679; legacy 156,438; add 60,673.
+ * limit slice 4's builder prepends (design r9 [R3-3], [C32-2]), which must be at least the measured maximum + 20%
+ * rounded up to 10,000. Measured at 963a63b: v2 USDC-only max 218,636; stock+USDC 178,700; legacy 156,438; add 60,689.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -51,6 +51,8 @@ const G = BigInt(DEMO.guaranteePerMember);
 const seed = (s: string) => createHash("sha256").update(s).digest();
 
 const JOIN_V2_CU_LIMIT = 300_000;
+/** SPEC NFR-3 / design r9 [R3-3]: a builder's limit is at least the measured maximum + 20%, rounded up to 10,000. */
+const ruleLimit = (max: number) => Math.ceil((max * 1.2) / 10_000) * 10_000;
 const DEFAULT_CU = 200_000;
 
 describe("U1 adversary r2: slice-1 compute with every created address pre-funded", () => {
@@ -215,6 +217,9 @@ describe("U1 adversary r2: slice-1 compute with every created address pre-funded
     const max = (k: string) => out[k]![out[k]!.length - 1]!;
     assert.ok(max("v2grief") < JOIN_V2_CU_LIMIT, `USDC-only join ${max("v2grief")}`);
     assert.ok(max("bothGrief") < JOIN_V2_CU_LIMIT, `stock+USDC join ${max("bothGrief")}`);
+    for (const k of ["v2grief", "bothGrief"] as const) {
+      assert.ok(JOIN_V2_CU_LIMIT >= ruleLimit(max(k)), `${k} ${max(k)} needs a limit of ${ruleLimit(max(k))} (NFR-3)`);
+    }
     assert.ok(max("legacyGrief") < DEFAULT_CU, `legacy join ${max("legacyGrief")}`);
     assert.ok(max("addGrief") < DEFAULT_CU, `add_usdc_collateral ${max("addGrief")}`);
   });
