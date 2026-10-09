@@ -238,7 +238,9 @@ export function moduleShadows(appSrc: string = `${ROOT}app/src`): string[] {
  * Changing either one means editing this list, which a review sees.
  */
 export const PINNED_BUILD_FILES: Record<string, string> = {
-  "app/next.config.mjs": "67c04765514b646bda06605f69bb6d7113d4c8f8871408cf2606ab478d39bb9e",
+  // PR #33 re-pin: adds headers() only (a year's immutable Cache-Control on the content-addressed /fonts/*.woff2);
+  // no alias, webpack, turbopack or resolve setting.
+  "app/next.config.mjs": "c83f1093df5d9304c50cc7e2f600e977f6275424bcafb5344e6ad8086be5d24c",
   "app/tsconfig.json": "8ca1ad27ebaba629ce060411aef2a0bc2e317becd7e66978aece1d2d0d4b6bde",
 };
 
