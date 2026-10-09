@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 
 import { WalletModal } from "@/components/othello/WalletConnect";
 import { EvmWalletProvider } from "@/lib/robinhood/wallet";
@@ -7,27 +6,16 @@ import { PALETTES, themeVars } from "@/lib/theme";
 import { cssVars, paintStoredTheme, screenDefaults } from "@/lib/theme-boot";
 import { WalletProviders } from "@/lib/wallet";
 
+import "./fonts.css";
 import "./globals.css";
 
 /**
- * Archivo carries the wdth axis because the statement type sets font-stretch
- * (OTHELLO-STYLE.md, Type): 68-70% for tapes and tile headlines, 82% on the
- * logo and the ajo button.
+ * The two typefaces come from app/src/app/fonts.css and app/public/fonts, not next/font/google (see fonts.css for
+ * why). Archivo carries the wdth axis because the statement type sets font-stretch (OTHELLO-STYLE.md, Type): 68-70%
+ * for tapes and tile headlines, 82% on the logo and the ajo button. The three latin files are preloaded, as
+ * next/font/google preloaded them.
  */
-const archivo = Archivo({
-  subsets: ["latin"],
-  axes: ["wdth"],
-  style: ["normal", "italic"],
-  variable: "--font-archivo",
-  display: "swap",
-});
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-jakarta",
-  display: "swap",
-});
+const PRELOADED_FONTS = ["archivo-latin.4c98b9d490.woff2", "archivo-latin-italic.d2a3a083e9.woff2", "plus-jakarta-sans-latin.cd8db90cd9.woff2"];
 
 export const metadata: Metadata = {
   title: "Othello",
@@ -47,8 +35,11 @@ const baseVars = cssVars(themeVars(PALETTES[0]!, false));
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     // suppressHydrationWarning: the head script sets data-mode and color-scheme on <html> before React hydrates
-    <html lang="en" className={`${archivo.variable} ${jakarta.variable}`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {PRELOADED_FONTS.map((f) => (
+          <link key={f} rel="preload" href={`/fonts/${f}`} as="font" type="font/woff2" crossOrigin="" />
+        ))}
         <style dangerouslySetInnerHTML={{ __html: `:root{${baseVars}}${screenDefaults}` }} />
         <script dangerouslySetInnerHTML={{ __html: paintStoredTheme }} />
       </head>
