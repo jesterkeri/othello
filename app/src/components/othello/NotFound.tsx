@@ -28,7 +28,9 @@ export default function NotFound({ path, walletAddress, onConnectWallet, onNavig
     const el = track.current;
     if (!el) return;
     const fit = () => {
-      const strip = el.scrollWidth / 2;
+      // the layout width, fractional: scrollWidth rounds to whole pixels, so strip / rounds would differ slightly with
+      // rounds itself and, at some widths, flip rounds between N and N+1 forever (adversary on 6724b33)
+      const strip = parseFloat(getComputedStyle(el).width) / 2;
       if (strip <= 0) return;
       const perRound = strip / rounds;
       setRounds(Math.max(MIN_ROUNDS, Math.ceil((REACH * window.innerWidth) / perRound) + 1));

@@ -27,7 +27,8 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-const WIDTHS = [320, 760, 1280, 1920, 2560, 3840, 4096, 5120];
+// 4559, 5572, 7092 and 8105 showed bare tape on a build without NotFound.tsx's spare round (adversary on 6724b33)
+const WIDTHS = [320, 760, 1280, 1920, 2560, 3840, 4096, 4559, 5120, 5572, 7092, 8105];
 const ROLL = [0, 25, 50];
 
 function chromeBin(): string {
