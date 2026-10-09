@@ -22,17 +22,21 @@ export default function NotFound({ path, walletAddress, onConnectWallet, onNavig
   // strip of exactly REACH windows can leave a sliver); the roll time grows with it (--rounds in the CSS), so the text
   // moves at the same speed whatever the length. It is measured again whenever the window or the strip itself changes
   // size: the strip changes when Archivo swaps in for its wider fallback after the page has hydrated.
+  //
+  // One round's width is read across the first MIN_ROUNDS rounds, which exist at any count, never from the whole strip:
+  // a measurement that depends on the count it sets feeds back, and any rounding in it (scrollWidth's whole pixels,
+  // the 6 significant digits of a computed width past 100,000px) flipped the count between N and N+1 forever at some
+  // widths (adversary on 6724b33 and 9f6b59c).
   const [rounds, setRounds] = useState(MIN_ROUNDS);
   const track = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = track.current;
     if (!el) return;
     const fit = () => {
-      // the layout width, fractional: scrollWidth rounds to whole pixels, so strip / rounds would differ slightly with
-      // rounds itself and, at some widths, flip rounds between N and N+1 forever (adversary on 6724b33)
-      const strip = parseFloat(getComputedStyle(el).width) / 2;
-      if (strip <= 0) return;
-      const perRound = strip / rounds;
+      const first = el.children[0], after = el.children[MIN_ROUNDS * PHRASES.length];
+      if (!(first instanceof HTMLElement) || !(after instanceof HTMLElement)) return;
+      const perRound = (after.offsetLeft - first.offsetLeft) / MIN_ROUNDS;
+      if (!(perRound > 0)) return; // not laid out (also NaN)
       setRounds(Math.max(MIN_ROUNDS, Math.ceil((REACH * window.innerWidth) / perRound) + 1));
     };
     fit();
@@ -40,7 +44,7 @@ export default function NotFound({ path, walletAddress, onConnectWallet, onNavig
     const sized = new ResizeObserver(fit);
     sized.observe(el);
     return () => { window.removeEventListener('resize', fit); sized.disconnect(); };
-  }, [rounds]);
+  }, []);
   const tape = Array.from({ length: rounds }).flatMap(() => PHRASES);
   return (
     <Shell active={null} walletAddress={walletAddress} onConnectWallet={onConnectWallet} onNavigate={onNavigate}>
