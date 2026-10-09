@@ -10,7 +10,10 @@ const PHRASES = ['Page not found', 'Nothing is wrong with your wallet', 'Go home
 export type NotFoundProps = { path?: string; walletAddress?: string | null; onConnectWallet?: () => void; onNavigate?: (label: string) => void; homeHref?: string; createHref?: string };
 
 export default function NotFound({ path, walletAddress, onConnectWallet, onNavigate, homeHref = '/', createHref = '/circles/new' }: NotFoundProps) {
-  const tape = Array.from({ length: 4 }).flatMap(() => PHRASES);
+  // One strip is 8 rounds of the phrases (about 5,900px at 18px): a track is two strips rolled by one, and a strip
+  // must be at least 1.45x the window (the tape starts 45% left of it), so the text reaches the right edge up to
+  // about 4,000px wide.
+  const tape = Array.from({ length: 8 }).flatMap(() => PHRASES);
   return (
     <Shell active={null} walletAddress={walletAddress} onConnectWallet={onConnectWallet} onNavigate={onNavigate}>
       <div className={s.hero}>

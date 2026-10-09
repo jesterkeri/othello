@@ -6,8 +6,8 @@
  *
  * Pinned here: at every breakpoint, the .tapes margins in NotFound.module.css are exactly the negative of Shell's
  * .panel padding on the left, right and bottom (desktop), and on the left and right (phone, where the nav pill sits
- * below the tapes). Checked in Chromium at 1440 and 390 px before this test: the tapes span 0 to the window's width,
- * with no horizontal scroll.
+ * below the tapes); nothing lifts the tapes or a tape over the rail. tests/a10-404-tapes-render-adversary.spec.ts
+ * checks the rendered page (run by hand with A10_URL).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -71,6 +71,17 @@ describe("A10: the 404 tapes run edge to edge, under the rail", () => {
   it("the tapes sit below the rail, which is fixed above the page", () => {
     assert.match(decl(shell, ".rail", "position", false), /^fixed$/);
     assert.match(decl(shell, ".rail", "z-index", false), /^\d+$/);
-    assert.doesNotMatch(notFound, /\.tapes \{[^}]*z-index/, "the tapes must not rise above the rail");
+    // no rule for the tapes, a tape or its track, anywhere in the file (adversary on b212ead: a z-index on .tape lifted
+    // the tapes over the rail and the first version of this check, which read only `.tapes {`, passed)
+    for (const rule of notFound.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      if (/\.(tapes?|tapeA|tapeB|track|back)\b/.test(rule[1]!)) assert.doesNotMatch(rule[2]!, /z-index|position:\s*(fixed|sticky)/, `${rule[1]!.trim()} must not rise above the rail`);
+    }
+  });
+
+  it("every .tapes margin rule keeps the edge-to-edge margins (no later rule overrides them)", () => {
+    for (const rule of notFound.matchAll(/(?:^|\n|\{\s*)\.tapes \{([^}]*)\}/g)) {
+      assert.doesNotMatch(rule[1]!, /margin-(left|right)\s*:/, "a side margin longhand would override the edge-to-edge shorthand");
+    }
+    assert.equal([...notFound.matchAll(/\.tapes \{[^}]*\bmargin:/g)].length, 2, "one margin for desktop and one for phone");
   });
 });
