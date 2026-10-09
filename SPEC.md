@@ -21,7 +21,7 @@ Nothing here is implementation code: struct layouts and formulas are specificati
 **NFR (prioritised)**
 1. NFR-1 Correctness of money maths: fixed-point only, rounding in the protocol's favour, checked u128. (functional correctness)
 2. NFR-2 Every refusal carries the numbers the UI needs (needed vs have). (usability / interaction capability)
-3. NFR-3 Every instruction fits in the default 200k CU with n = 8. ASSUMPTION, measured in gate 1 and gate 2.
+3. NFR-3 Every instruction fits in the default 200k CU with n = 8. ASSUMPTION, measured in gate 1 and gate 2. Exception (USDC-COLLATERAL-DESIGN r9 [R3-3], [C32-2]): an instruction whose measured maximum exceeds 200k is never sent without its builder prepending `setComputeUnitLimit(L)`, L ≥ the measured maximum + 20% rounded up to 10,000. `join_and_lock_v2` measured 218,636 (every created address pre-funded), so its builders prepend L = 300,000 and the program instruction sits at compiled index 1, where the r9 [R7-1] decoder reads it.
 4. NFR-4 Demo runs start to finish in under 6 minutes of wall time with 120 s rounds.
 
 **Non-goals.** FRAME section 4 plus: multi-asset collateral beyond the circle's own USDC (D1, amended by §4b), open join (D3), cross-circle reputation (D9), keeper rewards, indexer.
@@ -94,7 +94,7 @@ need_i = max(0, ceil(O_i x coverage_bps / 10000) - H_i)                // G requ
 reserve_free = reserve_total - reserve_losses - reserve_allocated
 ```
 
-## 4b. USDC as collateral (Solana; Joshua 2026-10-08; othello-design/USDC-COLLATERAL-DESIGN.md r8, Codex DESIGN-APPROVED)
+## 4b. USDC as collateral (Solana; Joshua 2026-10-08; othello-design/USDC-COLLATERAL-DESIGN.md r9 = the DESIGN-APPROVED r8 + the PR #32 review's two corrections)
 
 D1 is amended for one extra asset, the circle's own USDC mint: a seat may lock stock, USDC, or both, and its cover is
 the sum. Still one stock per circle; no third asset. Existing accounts never change (Option B). Where this section and
@@ -214,7 +214,7 @@ Withdraw never changes reserve_total, reserve_losses or escrow, so every member'
 | I2 | `reserve_allocated ≤ reserve_total − reserve_losses` and `Σ Member.allocated = Circle.reserve_allocated` after every instruction | property test after every ix, incl. declare_default during Repricing |
 | I3 | usdc vault balance = `reserve_total − reserve_losses + escrow + held_contributions − withdrawn_usdc` (+ dust) | test after every ix in the scenario suite |
 | I4 | stock vault balance = Σ member.stock_raw | same |
-| I4b | collateral vault balance = Σ SeatCollateral.usdc_locked over the circle's seats (§4b) | same |
+| I4b | collateral vault balance ≥ Σ SeatCollateral.usdc_locked over the circle's seats (+ donations: anyone can send USDC straight to the vault; a donation is no seat's collateral and no member's cover, no instruction counts it or refuses because of it, until a later specified settlement rule assigns it) (§4b) | same, exactly Σ + the donation, with one donation case per instruction that moves collateral |
 | I5 | `mult_fixed = floor(true_value × 1e9)` exactly; vectors 1002664207, 1003269012; NaN/Inf/negative rejected | unit (gate 1) |
 | I6 | Pot released only when every seat is paid or escrow-covered | unit |
 | I7 | `declare_default` only when `clock.unix_timestamp > deadline + grace`, and a seat is never defaultable less than `round_secs + grace` after its round opened | unit with Clock warp, incl. a late `release_pot` |

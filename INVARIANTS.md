@@ -8,7 +8,7 @@ Canonical. Each must have the named test before its gate closes. A test that can
 | I2 | `reserve_allocated ≤ reserve_total − reserve_losses` and `Σ Member.allocated = Circle.reserve_allocated` after every instruction | property test after every ix, incl. declare_default during Repricing |
 | I3 | usdc vault balance = `reserve_total − reserve_losses + escrow + held_contributions − withdrawn_usdc` (+ dust) | test after every ix in the scenario suite |
 | I4 | stock vault balance = Σ member.stock_raw | same |
-| I4b | collateral vault balance = Σ SeatCollateral.usdc_locked over the circle's seats (SPEC §4b; USDC-COLLATERAL-DESIGN r8) | same |
+| I4b | collateral vault balance ≥ Σ SeatCollateral.usdc_locked over the circle's seats (+ donations: anyone can send USDC straight to the vault; a donation is no seat's collateral and no member's cover, no instruction counts it or refuses because of it, until a later specified settlement rule assigns it) (SPEC §4b; USDC-COLLATERAL-DESIGN r9 [C32-1]) | same, exactly Σ + the donation, with one donation case per instruction that moves collateral |
 | I5 | `mult_fixed = floor(true_value × 1e9)` exactly; vectors 1002664207, 1003269012; NaN/Inf/negative rejected | unit (gate 1) |
 | I6 | Pot released only when every seat is paid or escrow-covered | unit |
 | I7 | `declare_default` only when `clock.unix_timestamp > deadline + grace`, and a seat is never defaultable less than `round_secs + grace` after its round opened | unit with Clock warp, incl. a late `release_pot` |

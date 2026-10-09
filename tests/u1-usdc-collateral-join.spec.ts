@@ -1,5 +1,5 @@
 /**
- * USDC collateral, slice 1 (SPEC §4b; othello-design/USDC-COLLATERAL-DESIGN.md r8): the pinned USDC mint, the
+ * USDC collateral, slice 1 (SPEC §4b; othello-design/USDC-COLLATERAL-DESIGN.md r9): the pinned USDC mint, the
  * feature marker, join_and_lock_v2 and add_usdc_collateral, on the default build in bankrun with the real NFLXx
  * mint bytes.
  *
@@ -11,7 +11,9 @@
  * - The SeatCollateral and the collateral vault are state unions: absent works (also when someone sent SOL to the
  *   address), a substituted vault or another seat's account is refused, and nothing moves on a refusal.
  * - join_and_lock is unchanged: with usdc 0, v2 creates nothing USDC-side; the legacy join still reads the price.
- * - I4b: the collateral vault holds exactly the sum of usdc_locked, after every lock.
+ * - I4b: the collateral vault holds at least the sum of usdc_locked, after every lock: exactly the sum where nobody
+ *   donates, and the sum plus the donation where someone sends USDC straight to the vault. A donation is nobody's
+ *   cover, and no instruction refuses because of it (design r9 [C32-1]).
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -192,11 +194,16 @@ describe("U1 USDC collateral: pinned mint, marker, join_and_lock_v2, add_usdc_co
   const seat = async (w: anchor.web3.PublicKey) => decodeSeat((await raw(seatAddress(w)))!.data);
   const lockedOf = async (w: anchor.web3.PublicKey) => ((await raw(seatAddress(w))) ? (await seat(w)).usdcLocked : 0n);
 
-  /** I4b: collateral vault balance = Σ usdc_locked over the circle's seats. */
-  const assertI4b = async () => {
+  /** I4b: collateral vault balance >= Σ usdc_locked; here exactly the sum plus what was donated straight to it. */
+  const assertI4b = async (donated = 0n) => {
     let sum = 0n;
     for (const w of wallets) sum += await lockedOf(w.publicKey);
-    assert.equal((await amountAt(vaultAddress())) ?? 0n, sum, "I4b: the collateral vault is not the sum of usdc_locked");
+    assert.equal((await amountAt(vaultAddress())) ?? 0n, sum + donated, "I4b: the collateral vault is not Σ usdc_locked + donations");
+  };
+  /** Anyone can transfer USDC straight into the collateral vault, without Othello: the vault's balance grows. */
+  const donate = async (amount: bigint) => {
+    const v = tokenAccount({ mint: usdcMint, owner: circle, amount: (await amountAt(vaultAddress()))! + amount, tokenProgram: SPL_TOKEN_PROGRAM });
+    h.putAccount(vaultAddress(), v.data, v.owner);
   };
 
   function fund(w: anchor.web3.PublicKey, stock: bigint, usdc: bigint) {
@@ -472,6 +479,24 @@ describe("U1 USDC collateral: pinned mint, marker, join_and_lock_v2, add_usdc_co
       await call(h.program, "cancelCircle", []).accounts({ creator: wallets[0]!.publicKey, circle }).signers([wallets[0]!]).rpc();
       assert.equal(await h.refusal(addUsdc(wallets[1]!, USDC)), "CircleNotActive");
       await assertI4b();
+    });
+
+    it("a donation straight to the vault is nobody's cover and refuses nothing (I4b is a lower bound, design r9 [C32-1])", async () => {
+      await joinV2(wallets[1]!, 0n, MIN);
+      const DONATION = 7n * USDC + 3n;
+      await donate(DONATION);
+      await assertI4b(DONATION);
+      // the donor's USDC does not count for the seat already holding USDC, nor for a seat joining after it
+      assert.equal((await seat(wallets[1]!.publicKey)).usdcLocked, MIN);
+      assert.equal(await h.refusal(joinV2(wallets[2]!, 0n, MIN - 1n)), "CollateralBelowMinimum");
+      await h.nextSlot();
+      await joinV2(wallets[2]!, 0n, MIN);
+      await addUsdc(wallets[1]!, 5n * USDC);
+      await joinV2(wallets[3]!, HALF_TOKEN, 60n * USDC);
+      assert.equal((await seat(wallets[1]!.publicKey)).usdcLocked, MIN + 5n * USDC);
+      assert.equal((await seat(wallets[2]!.publicKey)).usdcLocked, MIN);
+      assert.equal((await seat(wallets[3]!.publicKey)).usdcLocked, 60n * USDC);
+      await assertI4b(DONATION);
     });
 
     it("refuses a substituted vault and another seat's SeatCollateral", async () => {
