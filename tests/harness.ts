@@ -498,6 +498,13 @@ export function readFeed(h: Harness, mint: anchor.web3.PublicKey): Promise<Price
   return fetchAccount<PriceFeedState>(h.program, "priceFeed", priceFeedAddress(h.program, mint));
 }
 
+/**
+ * SPEC §4b: the one USDC mint the default (mainnet) build's create_circle takes, programs/othello/src/allowlist.rs
+ * APPROVED_USDC. Tests write a hand-made SPL mint at this address (splMintAccount); the devnet build pins the test
+ * USDC instead (ops/devnet-mints.json).
+ */
+export const APPROVED_USDC = new anchor.web3.PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+
 /** SPL Token, for the USDC side. Token-2022 is the stock side. */
 export const SPL_TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 

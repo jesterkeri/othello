@@ -8,6 +8,7 @@ Canonical. Each must have the named test before its gate closes. A test that can
 | I2 | `reserve_allocated ≤ reserve_total − reserve_losses` and `Σ Member.allocated = Circle.reserve_allocated` after every instruction | property test after every ix, incl. declare_default during Repricing |
 | I3 | usdc vault balance = `reserve_total − reserve_losses + escrow + held_contributions − withdrawn_usdc` (+ dust) | test after every ix in the scenario suite |
 | I4 | stock vault balance = Σ member.stock_raw | same |
+| I4b | collateral vault balance ≥ Σ SeatCollateral.usdc_locked over the circle's seats (+ donations: anyone can send USDC straight to the vault; a donation is no seat's collateral and no member's cover, no instruction counts it or refuses because of it, until a later specified settlement rule assigns it) (SPEC §4b; USDC-COLLATERAL-DESIGN r9 [C32-1]) | same, exactly Σ + the donation, with one donation case per instruction that moves collateral |
 | I5 | `mult_fixed = floor(true_value × 1e9)` exactly; vectors 1002664207, 1003269012; NaN/Inf/negative rejected | unit (gate 1) |
 | I6 | Pot released only when every seat is paid or escrow-covered | unit |
 | I7 | `declare_default` only when `clock.unix_timestamp > deadline + grace`, and a seat is never defaultable less than `round_secs + grace` after its round opened | unit with Clock warp, incl. a late `release_pot` |
@@ -21,5 +22,5 @@ Canonical. Each must have the named test before its gate closes. A test that can
 | I15 | A defaulter's withdraw weight excludes what their own default consumed | unit (G3) |
 | I16 | Withdraw order does not change any member's amount | property test over permutations (G2) |
 | I17 | `set_prices` never binds a share price to a multiplier the script did not name; `touch_prices` never changes prices or stamp | unit (G1): Scheduled stamp then Current with old share price before T → refused |
-| I18 | Paused ⇔ `next_gate_short_by > 0`; a top-up of exactly `short_by` makes the next gate pass (if the round is funded), **except after a default declared during Repricing, where short_by is approximate until the next full coverage refresh (update_coverage or release_pot) (r8)**; **no Paused after a healthy payout** (demo circle, every round) | scenario test (G3) |
+| I18 | Paused ⇔ `next_gate_short_by > 0`; a top-up of exactly `short_by` makes the next gate pass (if the round is funded), **except after a default declared during Repricing, where short_by is approximate until the next full coverage refresh (update_coverage or release_pot) (r8); the same exception covers every declare_default that takes the capped no-price allocation branch because a surviving stock seat cannot be valued, whatever the default's funding (USDC-COLLATERAL-DESIGN r8)**; **no Paused after a healthy payout** (demo circle, every round) | scenario test (G3) |
 

@@ -52,6 +52,9 @@ pub struct MemberJoined {
     pub stock_cover: u64,
     pub guarantee: u64,
     pub joined_bitmap: u8,
+    /// USDC locked as collateral at join (SPEC §4b); 0 for a stock-only join. `stock_cover` is the seat's whole H,
+    /// stock part plus this.
+    pub usdc_raw: u64,
 }
 
 #[event]
@@ -247,4 +250,21 @@ pub struct StockAdded {
     pub turn: u8,
     pub raw: u64,
     pub stock_raw: u64,
+}
+
+/// `add_usdc_collateral` (SPEC §4b).
+#[event]
+pub struct UsdcCollateralAdded {
+    pub circle: Pubkey,
+    pub wallet: Pubkey,
+    pub turn: u8,
+    pub amount: u64,
+    pub usdc_locked: u64,
+}
+
+/// `enable_usdc_collateral` (SPEC §4b): the one-way switch that lets USDC be locked.
+#[event]
+pub struct UsdcCollateralEnabled {
+    pub features: Pubkey,
+    pub enabled_by: Pubkey,
 }

@@ -21,10 +21,10 @@ Nothing here is implementation code: struct layouts and formulas are specificati
 **NFR (prioritised)**
 1. NFR-1 Correctness of money maths: fixed-point only, rounding in the protocol's favour, checked u128. (functional correctness)
 2. NFR-2 Every refusal carries the numbers the UI needs (needed vs have). (usability / interaction capability)
-3. NFR-3 Every instruction fits in the default 200k CU with n = 8. ASSUMPTION, measured in gate 1 and gate 2.
+3. NFR-3 Every instruction fits in the default 200k CU with n = 8. ASSUMPTION, measured in gate 1 and gate 2. Exception (USDC-COLLATERAL-DESIGN r9 [R3-3], [C32-2]): an instruction whose measured maximum exceeds 200k is never sent without its builder prepending `setComputeUnitLimit(L)`, L ≥ the measured maximum + 20% rounded up to 10,000. `join_and_lock_v2` measured 218,636 (every created address pre-funded), so its builders prepend L = 300,000 and the program instruction sits at compiled index 1, where the r9 [R7-1] decoder reads it.
 4. NFR-4 Demo runs start to finish in under 6 minutes of wall time with 120 s rounds.
 
-**Non-goals.** FRAME section 4 plus: multi-asset collateral (D1), open join (D3), cross-circle reputation (D9), keeper rewards, indexer.
+**Non-goals.** FRAME section 4 plus: multi-asset collateral beyond the circle's own USDC (D1, amended by §4b), open join (D3), cross-circle reputation (D9), keeper rewards, indexer.
 
 ---
 
@@ -94,6 +94,31 @@ need_i = max(0, ceil(O_i x coverage_bps / 10000) - H_i)                // G requ
 reserve_free = reserve_total - reserve_losses - reserve_allocated
 ```
 
+## 4b. USDC as collateral (Solana; Joshua 2026-10-08; othello-design/USDC-COLLATERAL-DESIGN.md r9 = the DESIGN-APPROVED r8 + the PR #32 review's two corrections)
+
+D1 is amended for one extra asset, the circle's own USDC mint: a seat may lock stock, USDC, or both, and its cover is
+the sum. Still one stock per circle; no third asset. Existing accounts never change (Option B). Where this section and
+the design differ, the design wins and this section is corrected.
+
+- **Pinned mint.** `APPROVED_USDC` (devnet build: the Othello test USDC; default build: mainnet USDC), owned by SPL
+  Token, never Token-2022. `create_circle` requires `usdc_mint == APPROVED_USDC` for every new circle;
+  `join_and_lock_v2` and `add_usdc_collateral` require it of the circle they act on.
+- **SeatCollateral**, seeds `["seat_usdc", circle, wallet]`: `{ circle, wallet, usdc_locked: u64, bump }`, created the
+  first time a seat locks USDC. "Absent" = owned by the System Program with no data (any lamports) and reads as
+  `usdc_locked = 0`; anything else must be this program's SeatCollateral for the same circle and wallet
+  (`bad_seat_collateral`).
+- **Collateral vault**, seeds `["usdc_collateral", circle]`: an SPL Token account of APPROVED_USDC whose authority is
+  the circle PDA, separate from `circle_usdc_vault` (I3 keeps its form). Taken as a seed-checked raw account: absent
+  (System-owned, no data) or present (that token account); any other key is `bad_collateral_vault`. Only
+  `join_and_lock_v2` and `add_usdc_collateral` create it, and only when they move USDC into it.
+- **Valuation.** `H(seat) = stock part + usdc_locked`; the stock part is today's H when `stock_raw > 0` and exactly 0
+  when `stock_raw = 0` (no feed read). USDC counts at face value, no haircut.
+- **Feature marker**, seeds `["features"]`: created once by `enable_usdc_collateral` (signer: the program's upgrade
+  authority, read from ProgramData); moves no tokens (I8). It gates only whether USDC can be LOCKED: the USDC-locking
+  instructions take it and refuse without it (`usdc_collateral_not_enabled`).
+- Default waterfall, withdraw, leave_forming, update_coverage and release_pot with USDC, the 2n account lists, the
+  compute gate and the release order: see the design; this section gains them as they are built.
+
 ## 5. Instruction surface
 
 **Admin (r6).** "admin" is the program's upgrade authority. `init_price_feed` and `init_pool` require it as signer, read from the upgradeable loader's ProgramData account for this program; `set_prices`, `touch_prices` and `seed_pool` check the authority those two recorded (`feed.authority`, `pool.authority`). A program deployed immutable has no admin. No config account exists and none is needed: the deploy key is the root, so there is no window after deploy in which anyone else can claim a feed.
@@ -102,6 +127,9 @@ reserve_free = reserve_total - reserve_losses - reserve_allocated
 |---|---|---|---|---|
 | `create_circle(params, members[..n])` | creator (must be in members) | 3≤n≤8, unique wallets, mints/feed/pool match, **param ranges below**, **peak-guarantee check below** | Circle Forming | `invalid_params`, `guarantee_below_peak_need` |
 | `join_and_lock(stock_raw)` | signer found by scanning `members[..n]` (turn = index; no turn argument); creates the member's USDC ATA if missing (member pays) so release_pot never has to | Forming, not joined, H(stock_raw) ≥ min_stock_cover, price fresh + not repricing | stock → vault, guarantee → vault, reserve_total += g, deposits_total += g | `not_a_member`, `circle_not_forming`, `collateral_below_minimum`, `insufficient_balance`, `price_stale`, `multiplier_price_mismatch`, `multiplier_invalid` |
+| `join_and_lock_v2(stock_raw, usdc_raw)` (§4b) | as `join_and_lock` | as `join_and_lock`, plus: `stock_raw + usdc_raw > 0`; H(seat) = stock part + usdc_raw ≥ min_stock_cover; the price is read only when `stock_raw > 0`; when `usdc_raw > 0` the feature marker exists and the circle's USDC mint is APPROVED_USDC | as `join_and_lock`; usdc_raw → collateral vault (created if absent), SeatCollateral created with `usdc_locked = usdc_raw`; with `stock_raw = 0` no stock moves (the member's stock account is created if missing). `join_and_lock(stock_raw)` is this with `usdc_raw = 0` | as `join_and_lock`, plus `usdc_collateral_not_enabled`, `usdc_mint_not_approved`, `bad_seat_collateral`, `bad_collateral_vault` |
+| `add_usdc_collateral(amount)` (§4b) | member, not defaulted | Forming (joined) or Active; amount > 0; feature marker exists; circle's USDC mint is APPROVED_USDC | amount → collateral vault (created if absent); `usdc_locked += amount` (SeatCollateral created if absent); emits UsdcCollateralAdded | `circle_not_active`, `already_defaulted`, `invalid_params` (zero), `insufficient_balance`, `usdc_collateral_not_enabled`, `usdc_mint_not_approved`, `bad_seat_collateral`, `bad_collateral_vault` |
+| `enable_usdc_collateral` (§4b) | admin (upgrade authority via ProgramData) | marker absent | feature marker created; one-way; moves no tokens | `unauthorized` |
 | `cancel_circle` | creator | Forming | status Cancelled (refunds via withdraw) | `circle_not_forming` |
 | `leave_forming` | a joined member, own seat only | Forming | stock_raw → member; guarantee + top_ups → member; joined bit cleared; reserve_total −= (g + t); deposits_total −= (g + t); Member PDA closed to the wallet (a clean rejoin is possible); withdrawn_usdc and withdrawn_bitmap unchanged; emits MemberLeftForming | `circle_not_forming` |
 | `activate` | creator | Forming, joined_bitmap full | Active, round 0, deadline = now + round_secs | `not_all_joined` |
@@ -186,6 +214,7 @@ Withdraw never changes reserve_total, reserve_losses or escrow, so every member'
 | I2 | `reserve_allocated ≤ reserve_total − reserve_losses` and `Σ Member.allocated = Circle.reserve_allocated` after every instruction | property test after every ix, incl. declare_default during Repricing |
 | I3 | usdc vault balance = `reserve_total − reserve_losses + escrow + held_contributions − withdrawn_usdc` (+ dust) | test after every ix in the scenario suite |
 | I4 | stock vault balance = Σ member.stock_raw | same |
+| I4b | collateral vault balance ≥ Σ SeatCollateral.usdc_locked over the circle's seats (+ donations: anyone can send USDC straight to the vault; a donation is no seat's collateral and no member's cover, no instruction counts it or refuses because of it, until a later specified settlement rule assigns it) (§4b) | same, exactly Σ + the donation, with one donation case per instruction that moves collateral |
 | I5 | `mult_fixed = floor(true_value × 1e9)` exactly; vectors 1002664207, 1003269012; NaN/Inf/negative rejected | unit (gate 1) |
 | I6 | Pot released only when every seat is paid or escrow-covered | unit |
 | I7 | `declare_default` only when `clock.unix_timestamp > deadline + grace`, and a seat is never defaultable less than `round_secs + grace` after its round opened | unit with Clock warp, incl. a late `release_pot` |
@@ -199,7 +228,7 @@ Withdraw never changes reserve_total, reserve_losses or escrow, so every member'
 | I15 | A defaulter's withdraw weight excludes what their own default consumed | unit (G3) |
 | I16 | Withdraw order does not change any member's amount | property test over permutations (G2) |
 | I17 | `set_prices` never binds a share price to a multiplier the script did not name; `touch_prices` never changes prices or stamp | unit (G1): Scheduled stamp then Current with old share price before T → refused |
-| I18 | Paused ⇔ `next_gate_short_by > 0`; a top-up of exactly `short_by` makes the next gate pass (if the round is funded), **except after a default declared during Repricing, where short_by is approximate until the next full coverage refresh (update_coverage or release_pot) (r8)**; **no Paused after a healthy payout** (demo circle, every round) | scenario test (G3) |
+| I18 | Paused ⇔ `next_gate_short_by > 0`; a top-up of exactly `short_by` makes the next gate pass (if the round is funded), **except after a default declared during Repricing, where short_by is approximate until the next full coverage refresh (update_coverage or release_pot) (r8); the same exception covers every declare_default that takes the capped no-price allocation branch because a surviving stock seat cannot be valued, whatever the default's funding (USDC-COLLATERAL-DESIGN r8)**; **no Paused after a healthy payout** (demo circle, every round) | scenario test (G3) |
 
 
 ## 9. User-facing copy and error contract (from design/FLOWS.md)
@@ -246,6 +275,10 @@ Anchor error names = the machine codes below (snake_case in copy, UpperCamel in 
 | Guarantee too small | Each member's guarantee must be at least {x} USDC so the reserve covers the busiest round | peak need {peak} USDC | Raise the guarantee | inline, on the field | `guarantee_below_peak_need` |
 | Invalid settings | {field} must be {rule} | | Fix the field | inline, on the field | `invalid_params` |
 | Not finished | You can withdraw when the circle ends | | none | inline | `not_finished` |
+| USDC collateral off (§4b) | USDC collateral is not available yet | the feature marker is absent | Lock stock instead | inline refusal | `usdc_collateral_not_enabled` |
+| USDC mint not approved (§4b) | This circle's USDC can't be used as collateral | circle created on another USDC mint | Lock stock instead | inline refusal | `usdc_mint_not_approved` |
+| Bad seat collateral (§4b) | The circle changed: read it again | the seat's USDC collateral account passed does not match | Reload the circle | inline refusal | `bad_seat_collateral` |
+| Bad collateral vault (§4b) | The circle changed: read it again | the collateral vault passed does not match | Reload the circle | inline refusal | `bad_collateral_vault` |
 | Wallet rejected | You cancelled in your wallet. Nothing was sent. | | Try again | toast, neutral | client only |
 | Tx expired | That transaction didn't land. Nothing changed. | | Try again | toast | client only |
 | Mainnet data unavailable | Live AAPLx data unavailable right now | | Retry | inline in Stock | client only |

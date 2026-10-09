@@ -25,6 +25,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM, BEFORE_SPLIT, BN, CURRENT, FIXTURE_MINTS, ONE_X, SPL_TOKEN_PROGRAM, TEN_X, TOKEN_2022_PROGRAM,
   ataAddress, call, circleAddress, fetchAccount, harness, initFeed, initPoolIx, poolAddress, priceFeedAddress, seedPoolIx,
   send, setPrices, SPLIT_AT, splMintAccount, tokenAccount, type Harness,
+  APPROVED_USDC,
 } from "./harness.ts";
 import { decodeLive, type LiveCircle } from "../app/src/lib/live.ts";
 import { solToList } from "../app/src/lib/to-list-solana.ts";
@@ -130,7 +131,7 @@ describe("A6 adversary: a Paused round read while the price is stale shows as an
   it("a recipient whose round the chain stores as Paused is told so and offered the top-up, even while the price is stale", async () => {
     h = await harness(["NFLXx"]);
     stockMint = new anchor.web3.PublicKey(FIXTURE_MINTS.NFLXx);
-    usdcMint = anchor.web3.Keypair.generate().publicKey;
+    usdcMint = APPROVED_USDC; // SPEC §4b: create_circle takes only the approved USDC mint
     const mint = splMintAccount(6);
     h.putAccount(usdcMint, mint.data, mint.owner);
     await h.setClock(BEFORE_SPLIT);
