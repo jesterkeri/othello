@@ -4,11 +4,8 @@ import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } fro
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
 import { sideName, type ChainSide } from '@/lib/chains';
-
-/** Robinhood Chain testnet's first circle from the official factory (circles(0)): Completed, every round paid out. A
- *  judge without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). */
-const SHOWCASE_RH_CIRCLE = '0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34';
 import { hrefFor } from '@/lib/nav';
+import { useFirstCircle } from '@/lib/robinhood/use-first-circle';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
   PALETTES, SLOT_LABELS, STORAGE_KEY, cacheThemeVars, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
@@ -16,6 +13,34 @@ import {
 } from '@/lib/theme';
 
 // Every product string is design/FLOWS.md §8 (Landing) verbatim, or §1/§10. Do not rewrite copy here.
+
+/** Robinhood Chain testnet's first circle from the trusted factory (circles(0)), read when the landing opens; a judge
+ *  without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). Until the read
+ *  answers the card is not a link; if it fails, the card says so rather than pointing anywhere. */
+function RobinhoodTryCard() {
+  const first = useFirstCircle();
+  const style = { backgroundColor: 'var(--acid)', color: 'var(--acidInk)' };
+  const title = <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>;
+  if (first.status === 'ready') {
+    return (
+      <a className={s.tryCard} href={`/circle/rh:${first.circle}`} style={style}>
+        {title}
+        <span className={s.tryBody}>A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.</span>
+        <Arrow size={20} />
+      </a>
+    );
+  }
+  const body =
+    first.status === 'loading' ? 'Reading the circle from Robinhood Chain testnet…'
+      : first.status === 'none' ? 'No circle on Robinhood Chain testnet yet.'
+        : 'Robinhood Chain testnet could not be read right now. Try again in a moment.';
+  return (
+    <div className={s.tryCard} style={style} aria-disabled="true" aria-busy={first.status === 'loading'}>
+      {title}
+      <span className={s.tryBody}>{body}</span>
+    </div>
+  );
+}
 
 export type LandingState = 'ready' | 'loading' | 'resetting';
 
@@ -370,11 +395,7 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
           <section className={s.tryOn} aria-labelledby="try-on">
             <span id="try-on" className={s.micro}>Try it on</span>
             <div className={s.tryRow}>
-              <a className={s.tryCard} href={`/circle/rh:${SHOWCASE_RH_CIRCLE}`} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
-                <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
-                <span className={s.tryBody}>A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.</span>
-                <Arrow size={20} />
-              </a>
+              <RobinhoodTryCard />
               <a className={s.tryCard} href="/circle/demo" style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
                 <span className={`${s.display} ${s.tryTitle}`}>{sideName('solana')}</span>
                 <span className={s.tryBody}>A live savings circle backed by stock, in labelled test mirrors of xStocks.</span>

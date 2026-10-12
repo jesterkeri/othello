@@ -540,6 +540,23 @@ export async function checkTrustedFactory(
   return { ok: true };
 }
 
+/**
+ * The trusted factory's first circle, `circles(0)`, read from the chain after the factory's code is checked against
+ * its pin, or null when there is no factory yet or it has made no circle. The landing's "Try it on" card links to it,
+ * so no circle address is ever written into the build: the trust gate allows only USDG and the factory there.
+ */
+export async function firstCircleWith(
+  client: Pick<PublicClient, "readContract" | "getCode">,
+  factory: TrustedFactory | null,
+): Promise<Address | null> {
+  if (!factory) return null;
+  const t = await checkTrustedFactory(client, factory);
+  if (!t.ok) throw new Error("Othello's factory on Robinhood Chain testnet could not be verified.");
+  const count = await client.readContract({ address: factory.address, abi: othelloFactoryAbi, functionName: "circleCount" });
+  if (count === 0n) return null;
+  return client.readContract({ address: factory.address, abi: othelloFactoryAbi, functionName: "circles", args: [0n] });
+}
+
 export type CreateResult = { ok: true; txHash: string; circle: Address } | Extract<ActionResult, { ok: false }>;
 
 export async function createCircleWith(
