@@ -5,10 +5,11 @@ the same amount every round and one member takes the whole pot each round, until
 of people save this way, and the circle's one weakness is trust: a member who has already taken the pot
 can stop paying.
 
-Othello makes that risk visible and covered. Each member locks collateral (tokenized stock on Solana) and a small cash
-guarantee. Every round the circle checks, on chain, that the collateral still covers what the remaining members are
-owed before it releases the pot. If a member stops paying, their collateral is used to make the others whole. Members
-keep the upside of the stock they lock, and no one has to trust a treasurer.
+Othello makes that risk visible and backs it with collateral. Each member locks collateral (tokenized stock on Solana)
+and a small cash guarantee. Every round the circle checks, on chain, that the collateral still covers what the
+remaining members are owed before it releases the pot. If a member who has already taken the pot stops paying, their
+collateral and the shared reserve go toward what they owe; if that is not enough, the circle pauses until members top
+up the reserve. Members keep the upside of the stock they lock, and no one has to trust a treasurer.
 
 Othello runs on two chains with one website: **Solana devnet** (an Anchor program, xStock collateral) and **Robinhood
 Chain testnet** (Solidity contracts; circles saved and collateralised in test USDG). The circles are testnet
@@ -44,8 +45,10 @@ the funds or a key.
 3. **Release.** When the round is funded, anyone can release the pot to that round's member. On Solana the program
    first checks that every member's collateral, valued at a haircut, still covers what the circle is owed (invariant
    I1); if it does not, the circle pauses until someone tops up.
-4. **Default.** If a member misses a payment past the grace period, anyone can declare the default; their guarantee
-   and collateral cover the shortfall, so the rest of the circle still gets paid.
+4. **Default.** If a member who has already received the pot misses a payment past the grace period, anyone can
+   declare the default (on Robinhood Chain the missed payment is first marked late). Their collateral and the free
+   reserve are applied to what they still owe. If that does not cover it, the circle records the shortfall and pauses
+   payouts until a member tops up the reserve; the first top-up fills the shortfall.
 5. **Finish.** After the last round each member withdraws what is left of their own deposit.
 
 Tokenized stocks split and pay dividends. Solana xStocks carry a scaled UI multiplier for that; the program values
@@ -85,8 +88,9 @@ corepack pnpm -C app dev
 - Solana program: `anchor build`, then a spec, for example
   `npx mocha --import=tsx --timeout 900000 tests/t09-join-and-lock.spec.ts`.
 - Solidity: `cd evm && forge test`.
-- CI runs the app build, the contracts, the reference model, a read-only USDG fork suite and the release gate on every
-  pull request.
+- CI: the harness workflow (guardrails, secret scan) runs on every pull request; the EVM workflow (app build, Solidity
+  contracts, reference model, read-only USDG fork suite, release gate) runs when app, EVM, core, release or its own
+  test paths change.
 
 ## Honest limits
 
