@@ -15,29 +15,38 @@ import {
 // Every product string is design/FLOWS.md §8 (Landing) verbatim, or §1/§10. Do not rewrite copy here.
 
 /** Robinhood Chain testnet's first circle from the trusted factory (circles(0)), read when the landing opens; a judge
- *  without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). Until the read
- *  answers the card is not a link; if it fails, the card says so rather than pointing anywhere. */
+ *  without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). While the read is
+ *  in flight the card shows the same words and arrow it will show as a link, so the answer moves nothing (the A9
+ *  layout-shift spec loads this page); it is not a link until the read answers. Only a failure changes the words. */
 function RobinhoodTryCard() {
   const first = useFirstCircle();
   const style = { backgroundColor: 'var(--acid)', color: 'var(--acidInk)' };
   const title = <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>;
+  const body = <span className={s.tryBody}>A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.</span>;
   if (first.status === 'ready') {
     return (
       <a className={s.tryCard} href={`/circle/rh:${first.circle}`} style={style}>
         {title}
-        <span className={s.tryBody}>A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.</span>
+        {body}
         <Arrow size={20} />
       </a>
     );
   }
-  const body =
-    first.status === 'loading' ? 'Reading the circle from Robinhood Chain testnet…'
-      : first.status === 'none' ? 'No circle on Robinhood Chain testnet yet.'
-        : 'Robinhood Chain testnet could not be read right now. Try again in a moment.';
+  if (first.status === 'loading') {
+    return (
+      <div className={s.tryCard} style={style} aria-disabled="true" aria-busy="true">
+        {title}
+        {body}
+        <Arrow size={20} />
+      </div>
+    );
+  }
   return (
-    <div className={s.tryCard} style={style} aria-disabled="true" aria-busy={first.status === 'loading'}>
+    <div className={s.tryCard} style={style} aria-disabled="true">
       {title}
-      <span className={s.tryBody}>{body}</span>
+      <span className={s.tryBody}>
+        {first.status === 'none' ? 'No circle on Robinhood Chain testnet yet.' : 'Robinhood Chain testnet could not be read right now. Try again in a moment.'}
+      </span>
     </div>
   );
 }
