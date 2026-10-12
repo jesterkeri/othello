@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
-import { SIDE_HOME, sideName, type ChainSide } from '@/lib/chains';
+import { sideName, type ChainSide } from '@/lib/chains';
 import { hrefFor } from '@/lib/nav';
+import { useFirstCircle } from '@/lib/robinhood/use-first-circle';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
   PALETTES, SLOT_LABELS, STORAGE_KEY, cacheThemeVars, customToProfile, hsl, huesFor, huesFromBase, innerVars, loadTheme, preview, saveTheme, themeVars,
@@ -12,6 +13,43 @@ import {
 } from '@/lib/theme';
 
 // Every product string is design/FLOWS.md §8 (Landing) verbatim, or §1/§10. Do not rewrite copy here.
+
+/** Robinhood Chain testnet's first circle from the trusted factory (circles(0)), read when the landing opens; a judge
+ *  without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). The card is a link
+ *  only once the read answers "ready". Its size never depends on the answer: the description and both failure
+ *  messages always share one grid cell (the tallest sets the height) and only the current one is visible, so loading,
+ *  ready, no circle and a failed read all have the same box and nothing on the page moves (the A9 layout-shift spec
+ *  loads this page, and must not depend on the RPC answering; Codex PR #36 r2). The arrow is absolutely positioned. */
+const TRY_RH_TEXT = {
+  circle: 'A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.',
+  none: 'No circle on Robinhood Chain testnet yet.',
+  error: 'Robinhood Chain testnet could not be read right now. Try again in a moment.',
+} as const;
+
+function RobinhoodTryCard() {
+  const first = useFirstCircle();
+  const shown: keyof typeof TRY_RH_TEXT = first.status === 'none' || first.status === 'error' ? first.status : 'circle';
+  const style = { backgroundColor: 'var(--acid)', color: 'var(--acidInk)' };
+  const content = (
+    <>
+      <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
+      <span className={s.tryStack}>
+        {(Object.keys(TRY_RH_TEXT) as (keyof typeof TRY_RH_TEXT)[]).map((k) => (
+          <span key={k} className={`${s.tryBody} ${k === shown ? '' : s.tryHidden}`}>{TRY_RH_TEXT[k]}</span>
+        ))}
+      </span>
+      {shown === 'circle' && <Arrow size={20} />}
+    </>
+  );
+  if (first.status === 'ready') {
+    return <a className={s.tryCard} href={`/circle/rh:${first.circle}`} style={style} data-try-state="ready">{content}</a>;
+  }
+  return (
+    <div className={s.tryCard} style={style} aria-disabled="true" aria-busy={first.status === 'loading'} data-try-state={first.status}>
+      {content}
+    </div>
+  );
+}
 
 export type LandingState = 'ready' | 'loading' | 'resetting';
 
@@ -366,14 +404,10 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
           <section className={s.tryOn} aria-labelledby="try-on">
             <span id="try-on" className={s.micro}>Try it on</span>
             <div className={s.tryRow}>
-              <a className={s.tryCard} href={SIDE_HOME.robinhood} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
-                <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
-                <span className={s.tryBody}>Savings circles in USDG. Test USDG only; it has no value.</span>
-                <Arrow size={20} />
-              </a>
-              <a className={s.tryCard} href={hrefFor('Circles', 'solana')} style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
+              <RobinhoodTryCard />
+              <a className={s.tryCard} href="/circle/demo" style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
                 <span className={`${s.display} ${s.tryTitle}`}>{sideName('solana')}</span>
-                <span className={s.tryBody}>Savings circles backed by stock, traded as labelled test mirrors of xStocks.</span>
+                <span className={s.tryBody}>A live savings circle backed by stock, in labelled test mirrors of xStocks.</span>
                 <Arrow size={20} />
               </a>
             </div>

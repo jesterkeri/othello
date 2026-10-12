@@ -34,6 +34,17 @@ export function gateDecision(page: ChainSide, label: GatedLabel, connected: Conn
   return { show: "connect" };
 }
 
+/**
+ * A page of one circle (/circle/<id>, and its seat pages /circle/<id>/join/<n> and /position/<n>; not /circle/new): read
+ * by anyone, with any wallet or none (Joshua, 2026-10-12: a judge who will not connect a wallet must still see a circle
+ * working; and a link to a circle shows that circle even when the other chain's wallet is connected). Its actions still
+ * ask for the right wallet.
+ */
+export function readsWithoutWallet(pathname: string | null | undefined): boolean {
+  const m = /^\/circle\/([^/]+)(?:\/(?:join|position)\/[^/]+)?$/.exec(pathname || "/");
+  return m !== null && m[1] !== "new";
+}
+
 /** The menu label a gated route belongs to. */
 export function labelOf(pathname: string): GatedLabel {
   if (pathname === "/assets" || pathname.startsWith("/assets/") || pathname === "/robinhood/assets" || pathname.startsWith("/robinhood/assets/")) return "Assets";

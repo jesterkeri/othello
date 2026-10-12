@@ -118,6 +118,10 @@
 .tryCard svg { position: absolute; right: 18px; bottom: 18px; }
 .tryTitle { font-size: clamp(20px, 2.4vw, 26px); line-height: .95; }
 .tryBody { font-size: 13.5px; line-height: 1.45; font-weight: 700; text-wrap: pretty; }
+/* RobinhoodTryCard: every message in one grid cell, so the card's height never depends on which is shown. */
+.tryStack { display: grid; }
+.tryStack > * { grid-area: 1 / 1; }
+.tryHidden { visibility: hidden; }
 .tabsWrap { padding: 0 clamp(16px, 3vw, 44px) clamp(16px, 2.4vw, 26px); display: flex; justify-content: center; }
 .tabs { display: flex; gap: 3px; border: 3px solid var(--line); border-radius: 999px; background: var(--paper); padding: 4px; box-shadow: 3px 3px 0 var(--line); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .tab { flex: 0 0 auto; border: 0; border-radius: 999px; background: transparent; padding: 12px clamp(14px, 1.6vw, 22px); font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; min-height: 44px; transition: background .15s; }
