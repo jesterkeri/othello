@@ -15,38 +15,38 @@ import {
 // Every product string is design/FLOWS.md §8 (Landing) verbatim, or §1/§10. Do not rewrite copy here.
 
 /** Robinhood Chain testnet's first circle from the trusted factory (circles(0)), read when the landing opens; a judge
- *  without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). While the read is
- *  in flight the card shows the same words and arrow it will show as a link, so the answer moves nothing (the A9
- *  layout-shift spec loads this page); it is not a link until the read answers. Only a failure changes the words. */
+ *  without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). The card is a link
+ *  only once the read answers "ready". Its size never depends on the answer: the description and both failure
+ *  messages always share one grid cell (the tallest sets the height) and only the current one is visible, so loading,
+ *  ready, no circle and a failed read all have the same box and nothing on the page moves (the A9 layout-shift spec
+ *  loads this page, and must not depend on the RPC answering; Codex PR #36 r2). The arrow is absolutely positioned. */
+const TRY_RH_TEXT = {
+  circle: 'A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.',
+  none: 'No circle on Robinhood Chain testnet yet.',
+  error: 'Robinhood Chain testnet could not be read right now. Try again in a moment.',
+} as const;
+
 function RobinhoodTryCard() {
   const first = useFirstCircle();
+  const shown: keyof typeof TRY_RH_TEXT = first.status === 'none' || first.status === 'error' ? first.status : 'circle';
   const style = { backgroundColor: 'var(--acid)', color: 'var(--acidInk)' };
-  const title = <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>;
-  const body = <span className={s.tryBody}>A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.</span>;
+  const content = (
+    <>
+      <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
+      <span className={s.tryStack}>
+        {(Object.keys(TRY_RH_TEXT) as (keyof typeof TRY_RH_TEXT)[]).map((k) => (
+          <span key={k} className={`${s.tryBody} ${k === shown ? '' : s.tryHidden}`}>{TRY_RH_TEXT[k]}</span>
+        ))}
+      </span>
+      {shown === 'circle' && <Arrow size={20} />}
+    </>
+  );
   if (first.status === 'ready') {
-    return (
-      <a className={s.tryCard} href={`/circle/rh:${first.circle}`} style={style}>
-        {title}
-        {body}
-        <Arrow size={20} />
-      </a>
-    );
-  }
-  if (first.status === 'loading') {
-    return (
-      <div className={s.tryCard} style={style} aria-disabled="true" aria-busy="true">
-        {title}
-        {body}
-        <Arrow size={20} />
-      </div>
-    );
+    return <a className={s.tryCard} href={`/circle/rh:${first.circle}`} style={style} data-try-state="ready">{content}</a>;
   }
   return (
-    <div className={s.tryCard} style={style} aria-disabled="true">
-      {title}
-      <span className={s.tryBody}>
-        {first.status === 'none' ? 'No circle on Robinhood Chain testnet yet.' : 'Robinhood Chain testnet could not be read right now. Try again in a moment.'}
-      </span>
+    <div className={s.tryCard} style={style} aria-disabled="true" aria-busy={first.status === 'loading'} data-try-state={first.status}>
+      {content}
     </div>
   );
 }
