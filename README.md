@@ -57,7 +57,8 @@ the funds or a key.
 4. **Default.** If a member who has already received the pot misses a payment past the grace period, anyone can
    declare the default (on Robinhood Chain the missed payment is first marked late). Their collateral and the free
    reserve are applied to what they still owe. If that does not cover it, the circle records the shortfall and pauses
-   payouts until a member tops up the reserve; the first top-up fills the shortfall.
+   payouts until members top up the reserve. Top-ups fill the shortfall first; any shortfall left keeps payouts
+   paused.
 5. **Finish.** After the last round each member withdraws what is left of their own deposit.
 
 Tokenized stocks split and pay dividends. Solana xStocks carry a scaled UI multiplier for that; the program values
@@ -98,8 +99,8 @@ corepack pnpm -C app dev
   `npx mocha --import=tsx --timeout 900000 tests/t09-join-and-lock.spec.ts`.
 - Solidity: `cd evm && forge test`.
 - CI: the harness workflow (guardrails, secret scan) runs on every pull request; the EVM workflow (app build, Solidity
-  contracts, reference model, read-only USDG fork suite, release gate) runs when app, EVM, core, release or its own
-  test paths change.
+  contracts, reference model, read-only USDG fork suite, release gate) runs when its configured app, EVM, core, release or
+  selected test paths change.
 
 ## Honest limits
 
