@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import s from './Landing.module.css';
 import { applyThemeToDocument } from '@/lib/applyTheme';
-import { SIDE_HOME, sideName, type ChainSide } from '@/lib/chains';
+import { sideName, type ChainSide } from '@/lib/chains';
+
+/** Robinhood Chain testnet's first circle from the official factory (circles(0)): Completed, every round paid out. A
+ *  judge without a wallet opens it read-only (lib/side-rules.ts readsWithoutWallet; Joshua, 2026-10-12). */
+const SHOWCASE_RH_CIRCLE = '0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34';
 import { hrefFor } from '@/lib/nav';
 import { WalletControl } from '@/components/othello/WalletConnect';
 import {
@@ -366,14 +370,14 @@ export default function Landing({ state = 'ready', side = null, walletConnected 
           <section className={s.tryOn} aria-labelledby="try-on">
             <span id="try-on" className={s.micro}>Try it on</span>
             <div className={s.tryRow}>
-              <a className={s.tryCard} href={SIDE_HOME.robinhood} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
+              <a className={s.tryCard} href={`/circle/rh:${SHOWCASE_RH_CIRCLE}`} style={{ backgroundColor: 'var(--acid)', color: 'var(--acidInk)' }}>
                 <span className={`${s.display} ${s.tryTitle}`}>{sideName('robinhood')}</span>
-                <span className={s.tryBody}>Savings circles in USDG. Test USDG only; it has no value.</span>
+                <span className={s.tryBody}>A finished savings circle in USDG, every round paid out. Test USDG only; it has no value.</span>
                 <Arrow size={20} />
               </a>
-              <a className={s.tryCard} href={hrefFor('Circles', 'solana')} style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
+              <a className={s.tryCard} href="/circle/demo" style={{ backgroundColor: 'var(--sky)', color: 'var(--skyInk)' }}>
                 <span className={`${s.display} ${s.tryTitle}`}>{sideName('solana')}</span>
-                <span className={s.tryBody}>Savings circles backed by stock, traded as labelled test mirrors of xStocks.</span>
+                <span className={s.tryBody}>A live savings circle backed by stock, in labelled test mirrors of xStocks.</span>
                 <Arrow size={20} />
               </a>
             </div>

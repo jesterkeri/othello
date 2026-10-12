@@ -211,7 +211,7 @@ describe("A7: the shared single-circle page", () => {
       const done: CircleView = { ...base, status: "Completed", round: 4, paidBitmap: 0, receivedBitmap: 0b11111, withdrawnBitmap: 0 };
       const { on, text } = await buttons(done);
       assert.equal(on["Withdraw"], undefined);
-      assert.match(text, /not a member of this circle, so it has nothing to collect/);
+      assert.match(text, /Only the circle's members collect here, each with their own wallet/);
     });
 
     it("a seat page: that seat first; a join page for a seat not yet joined says joining opens in the next update", async () => {
