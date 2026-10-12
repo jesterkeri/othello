@@ -4,7 +4,7 @@
 >
 > | Chain | Direct link | What you see |
 > |---|---|---|
-> | **Solana devnet** | **https://othello-chains.vercel.app/circle/demo** | A live circle mid-round: the ring of seats, who has paid, the pot, the payout safety check, each member's locked collateral |
+> | **Solana devnet** | **https://othello-chains.vercel.app/circle/demo** | A live circle, read from devnet as you watch: the ring of seats, who has paid, the pot, the payout safety check, each member's locked collateral |
 > | **Robinhood Chain testnet** | **https://othello-chains.vercel.app/circle/rh:0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34** | A finished circle: every round paid out, each member collecting their own share |
 >
 > Home page with both: https://othello-chains.vercel.app
