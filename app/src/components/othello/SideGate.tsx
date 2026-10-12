@@ -16,7 +16,7 @@ import { useActiveSide } from '@/lib/active-side';
 import { sideName, sideOf, type ChainSide } from '@/lib/chains';
 import { useWalletUi } from '@/lib/wallet';
 
-import { gateDecision, labelOf, type GatedLabel } from '@/lib/side-rules';
+import { gateDecision, labelOf, readsWithoutWallet, type GatedLabel } from '@/lib/side-rules';
 
 export type { GatedLabel };
 
@@ -86,5 +86,7 @@ export default function SideGate({ side, label, children }: { side: ChainSide; l
 /** For a route group's layout: the chain and the label come from the URL, so every page under it is gated alike. */
 export function RouteGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() || '/';
+  // a circle's own page is read by anyone, whatever wallet is connected (lib/side-rules.ts readsWithoutWallet)
+  if (readsWithoutWallet(pathname)) return <>{children}</>;
   return <SideGate side={sideOf(pathname)} label={labelOf(pathname)}>{children}</SideGate>;
 }

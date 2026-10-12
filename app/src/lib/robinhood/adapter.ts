@@ -10,6 +10,7 @@ import {
   checkTrustedFactory,
   createCircleWith,
   createRobinhoodAdapterWith,
+  firstCircleWith,
   listCirclesPageWith,
   type CircleParams,
   type CirclePage,
@@ -81,6 +82,11 @@ export function createCircle(
     params,
     members,
   );
+}
+
+/** The one trusted factory's first circle (null: no factory yet, or no circle); throws if the factory fails its pin. */
+export function firstCircle(client: Pick<PublicClient, "readContract" | "getCode">): Promise<Address | null> {
+  return firstCircleWith(client, TRUSTED_FACTORY);
 }
 
 /** One page (newest first) of the circles of the one trusted factory that `account` created or joined. */

@@ -66,7 +66,7 @@ export default function CloseOutPanel({ words, close, completed, canWrite, block
         </>
       )}
       {mine?.collected && <p className={r.blocker}>You have collected your share. Nothing more to do here.</p>}
-      {!mine && <p className={r.note}>This wallet is not a member of this circle, so it has nothing to collect.</p>}
+      {!mine && <p className={r.note}>Only the circle's members collect here, each with their own wallet; a member who connects sees their share.</p>}
       <p className={r.note}>{words.testNote}</p>
     </section>
   );

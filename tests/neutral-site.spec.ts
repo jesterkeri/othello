@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { hrefFor } from "../app/src/lib/nav.ts";
-import { activeSide, gateDecision, labelOf, pageNetwork, showsChainSwitch } from "../app/src/lib/side-rules.ts";
+import { activeSide, gateDecision, labelOf, pageNetwork, readsWithoutWallet, showsChainSwitch } from "../app/src/lib/side-rules.ts";
 
 const none = { solana: false, robinhood: false };
 const evm = { solana: false, robinhood: true };
@@ -107,6 +107,16 @@ describe("neutral site: the connected wallet decides the side", () => {
     for (const p of ["/", "/how-it-works", "/circles", "/no-such-page", "/robinhoodx", "/assetsx", "", null, undefined,
       "/circle/no-such-state", "/robinhood/no-such-page", "/portfolio/x", "/assets/NOTASTOCK", "/circle/demo/join/9"]) {
       assert.equal(pageNetwork(p as string), null, String(p));
+    }
+  });
+  it("a circle's own page is read by anyone, with any wallet or none (Joshua, 2026-10-12); the rest stays gated", () => {
+    for (const p of ["/circle/demo", "/circle/sol:7UPChBZoujx4dQgRjj9MvjUT2uGyWWPG4w7bR7eigMx9", "/circle/rh:0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34",
+      "/circle/rh%3A0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34", "/circle/demo/join/5", "/circle/demo/position/1", "/circle/active"]) {
+      assert.equal(readsWithoutWallet(p), true, p);
+    }
+    for (const p of ["/circle/new", "/circles", "/portfolio", "/assets", "/assets/TSLAx", "/robinhood", "/robinhood/new", "/split-lab", "/solana",
+      "/circle", "/circle/", "/circle/demo/join", "/circle/demo/pay/1", "/circle/demo/join/1/x", "", null, undefined]) {
+      assert.equal(readsWithoutWallet(p), false, String(p));
     }
   });
 });
