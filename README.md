@@ -1,5 +1,14 @@
 # Othello
 
+> **Judges: no wallet needed.** Open a live circle on either chain directly:
+>
+> | Chain | Direct link | What you see |
+> |---|---|---|
+> | **Solana devnet** | **https://othello-chains.vercel.app/circle/demo** | A live circle mid-round: the ring of seats, who has paid, the pot, the payout safety check, each member's locked collateral |
+> | **Robinhood Chain testnet** | **https://othello-chains.vercel.app/circle/rh:0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34** | A finished circle: every round paid out, each member collecting their own share |
+>
+> Home page with both: https://othello-chains.vercel.app
+
 **Savings circles backed by stocks.** In a savings circle (an *ajo*, *esusu*, *tanda* or *chit fund*), a few people pay
 the same amount every round and one member takes the whole pot each round, until everyone has had a turn. Millions
 of people save this way, and the circle's one weakness is trust: a member who has already taken the pot
