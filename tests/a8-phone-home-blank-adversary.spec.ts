@@ -110,7 +110,10 @@ describe("A8 adversary: the home page on a phone before its JavaScript runs", fu
     assert.equal(desk.width, 1280, "precondition: the desktop window is 1280 px wide");
     assert.ok(desk.landing && desk.visible.length > 0, `precondition: the same HTML on a desktop paints the landing (saw ${JSON.stringify(desk.visible)})`);
     const phone = paint(html, 390);
-    assert.equal(phone.width, 390, "precondition: the phone window is 390 px wide, inside max-width 759px");
+    // Full Google Chrome's headless mode (CI's /usr/bin/google-chrome) will not make a window narrower than 500 px, so
+    // asking for 390 gives 500 there and 390 in chrome-headless-shell. Either is a phone to the page: inside
+    // max-width 759px (app/src/lib/phone.ts), the breakpoint the landing is hidden and the redirect taken at.
+    assert.ok(phone.width >= 320 && phone.width <= 759, `precondition: the phone window is a phone width (320 to 759 px), not ${phone.width}`);
     assert.notEqual(phone.visible, "", "a phone opening / is shown an empty page until the bundle hydrates and router.replace('/circles') runs; if it never runs, the page stays empty");
   });
 });
