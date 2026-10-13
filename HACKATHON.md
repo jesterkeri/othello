@@ -1,4 +1,26 @@
-# Stocklana: the rules, as published
+# Hackathons
+
+Othello was built from 2026-09-21 (first commit) and entered at three hackathons. Each entry is disclosed in the
+others.
+
+| Hackathon | Entry | Status |
+|---|---|---|
+| [Colosseum Crypto World's Fair](https://colosseum.com/worldsfair) | Othello on Solana devnet and Robinhood Chain testnet, one website | submitted by 2026-10-12 23:59 PT |
+| [Arbitrum Open House](https://openhouse.arbitrum.io/) (online buildathon) | the Robinhood Chain build: `OthelloFactory` / `OthelloCircle`, test USDG | submitted (deadline 2026-10-04) |
+| [Stocklana](https://hackathons.solana.com/hackathons/stocklana) (Solana) | the first Solana devnet build of the Anchor program | submitted 2026-09-25 |
+
+Colosseum's rules: the official rules
+([PDF](https://colosseum.com/legal/Crypto%20World's%20Fair%20Hackathon%20Rules.pdf)) and the
+[FAQ](https://www.colosseum.com/hackathon#faqs). Contest period 2026-09-14 06:00 PT to 2026-10-12 23:59 PT, so all of
+Othello was built inside it. Work since the earlier entries: the Robinhood Chain build, one chain-neutral website over
+both chains (circles list, circle page, portfolio, how it works), the live devnet circle page and the Solana join,
+leave, start and cancel actions.
+
+Open-source and third-party code: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Othello's own code: [MIT](LICENSE).
+
+---
+
+## Stocklana: the rules, as published (2026-09-22)
 
 Source: https://hackathons.solana.com/hackathons/stocklana
 Fetched 2026-09-22 by the build session. Quotes are the site's words. Anything

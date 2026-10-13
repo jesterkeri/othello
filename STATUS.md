@@ -2,6 +2,25 @@
 
 | field | value |
 |---|---|
+| project | Othello: stock-backed savings circles on Solana devnet and Robinhood Chain testnet, one website |
+| live | https://othello-chains.vercel.app |
+| entered | Colosseum Crypto World's Fair (2026-10-12); earlier Arbitrum Open House and Stocklana, see HACKATHON.md |
+| updated | 2026-10-12 |
+
+## Where things are
+- `staging` is the integration branch and GitHub's default; production is released from it by a reviewed release
+  gate (`ops/`). `main` is protected and not used for releases.
+- Every change goes through a pull request, an adversarial test pass and an independent Codex review before it merges.
+- In progress, not released: USDC as collateral on Solana (branch `feat/usdc-collateral`, slice 1 of 5 merged there;
+  design in SPEC.md section 4b). It changes nothing deployed.
+- The build log is `DONE.md` (append-only evidence) and `TASKS.md`.
+
+---
+
+## Gate history (Stocklana build, 2026-09-21)
+
+| field | value |
+|---|---|
 | project | Othello: xStock-backed mutual credit circle (Stocklana hackathon) |
 | stage | 6 build (Claude Code), gate 1 |
 | tier | 1 (short doc per stage) |

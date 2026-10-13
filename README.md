@@ -1,59 +1,93 @@
 # Othello
 
-Othello is a wallet-native savings circle: members contribute in turn, while the circle records who has paid and what is locked. This repository contains two distinct ecosystem builds:
+> **Judges: no wallet needed.** Open a live circle on either chain directly:
+>
+> | Chain | Direct link | What you see |
+> |---|---|---|
+> | **Solana devnet** | **https://othello-chains.vercel.app/circle/demo** | A live circle, read from devnet as you watch: the ring of seats, who has paid, the pot, the payout safety check, each member's locked collateral |
+> | **Robinhood Chain testnet** | **https://othello-chains.vercel.app/circle/rh:0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34** | A finished circle: every round paid out, each member collecting their own share |
+>
+> Home page with both: https://othello-chains.vercel.app
 
-- **Robinhood Chain:** the current testnet release, with test USDG circles and read-only Robinhood testnet Stock Token pages.
-- **Solana / Stocklana:** the original Anchor implementation, devnet circle demonstration, and read-only mainnet xStock experience.
+**Savings circles backed by stocks.** In a savings circle (an *ajo*, *esusu*, *tanda* or *chit fund*), a few people pay
+the same amount every round and one member takes the whole pot each round, until everyone has had a turn. Millions
+of people save this way, and the circle's one weakness is trust: a member who has already taken the pot
+can stop paying.
 
-They share the Othello product idea, but they do not share assets, networks, or transaction paths. Testnet tokens are never presented as having value.
+Othello makes that risk visible and backs it with collateral. Each member locks collateral (tokenized stock on Solana)
+and a small cash guarantee. Every round the circle checks, on chain, that the collateral still covers what the
+remaining members are owed before it releases the pot. If a member who has already taken the pot stops paying, their
+collateral and the shared reserve go toward what they owe; if that is not enough, the circle pauses until members top
+up the reserve. Members keep the upside of the stock they lock, and no one has to trust a treasurer.
 
-## Live builds
+Othello runs on two chains with one website: **Solana devnet** (an Anchor program, xStock collateral) and **Robinhood
+Chain testnet** (Solidity contracts; circles saved and collateralised in test USDG). The circles are testnet
+demonstrations: test tokens have no value, and nothing on the site is financial advice.
 
-| Build | Link | Network and scope |
+## Try it
+
+**Live site: https://othello-chains.vercel.app**
+
+| What | Where | Wallet needed |
 |---|---|---|
-| Robinhood Chain | https://othello-chains.vercel.app/robinhood | Robinhood Chain testnet (`46630`); circles use test USDG. |
-| Solana / Stocklana | https://othello-circle.vercel.app | Solana devnet circle demonstration and read-only Solana mainnet xStock views. |
+| Watch a live Solana circle on devnet: seats, rounds, coverage, the pot | [/circle/demo](https://othello-chains.vercel.app/circle/demo) | No |
+| A finished Robinhood Chain circle: every round paid out, each member collecting their share | [/circle/rh:0x4bBB…Cd34](https://othello-chains.vercel.app/circle/rh:0x4bBBf722b8A3D6B5C4497eCD30c34b0FcC9aCd34) | No |
+| How a circle works, step by step | [/how-it-works](https://othello-chains.vercel.app/how-it-works) | No |
+| See your circles on either chain | [/circles](https://othello-chains.vercel.app/circles) | Phantom (Solana) or MetaMask (EVM) |
+| Create a circle and pay into it on Robinhood Chain | [/robinhood](https://othello-chains.vercel.app/robinhood) | MetaMask on Robinhood Chain testnet (`46630`) |
+| Stock pages: Solana xStocks with live Jupiter quotes, and Robinhood testnet Stock Tokens (read only) | [/assets](https://othello-chains.vercel.app/assets), [/robinhood/assets](https://othello-chains.vercel.app/robinhood/assets) | No, except to buy |
 
-## Live Robinhood Chain build
+Test assets: the [Robinhood testnet faucet](https://faucet.testnet.chain.robinhood.com/) gives test ETH and five
+Stock Tokens; Robinhood circles are paid in test USDG. Connecting a wallet shares only its address, and every
+transaction needs the wallet holder's own confirmation.
 
-- **Judges' link:** https://othello-chains.vercel.app/robinhood
-- **Network:** Robinhood Chain testnet, chain ID `46630`
-- **Reviewed release commit:** `84ac22b045efa315b46bdc77c2fe3d964b3b621f`
-- **Factory:** [`0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5`](https://explorer.testnet.chain.robinhood.com/address/0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5), deployed and source-verified on the testnet explorer
-- **Circle asset:** test USDG. It is a test token with no value.
+**The one mainnet action:** an xStock page can buy that xStock with USDC through Jupiter. It is a real Solana mainnet
+swap with real funds, built by Jupiter, checked by the site and signed in the buyer's own wallet; Othello never holds
+the funds or a key.
 
-Start at `/robinhood`. The page opens directly to Robinhood Chain wallets, while the top bar keeps the selected EVM wallet and network aligned with every write. A person must click before the app requests accounts or a chain switch.
+## How it works
 
-## What to try
+1. **Form.** A creator sets the members, the contribution, the round length and the cover rules. Each member joins by
+   locking collateral and a guarantee.
+2. **Pay.** Every round each member contributes the same amount. Payments are recorded on chain, so everyone sees who
+   has paid.
+3. **Release.** When the round is funded, anyone can release the pot to that round's member. On Solana the program
+   first checks that every member's collateral, valued at a haircut, still covers what the circle is owed (invariant
+   I1); if it does not, the circle pauses until someone tops up.
+4. **Default.** If a member who has already received the pot misses a payment past the grace period, anyone can
+   declare the default (on Robinhood Chain the missed payment is first marked late). Their collateral and the free
+   reserve are applied to what they still owe. If that does not cover it, the circle records the shortfall and pauses
+   payouts until members top up the reserve. Top-ups fill the shortfall first; any shortfall left keeps payouts
+   paused.
+5. **Finish.** After the last round each member withdraws what is left of their own deposit.
 
-| What | Where | Notes |
+Tokenized stocks split and pay dividends. Solana xStocks carry a scaled UI multiplier for that; the program values
+collateral through the multiplier, so a stock split is never mistaken for a loss of collateral.
+
+## On chain
+
+| Chain | Code | Address |
 |---|---|---|
-| Connect an EVM wallet | `/robinhood` | Robinhood Chain testnet only; no transaction is sent by connecting. |
-| View the circle asset | `/robinhood/assets` | Shows a connected wallet's test USDG balance. |
-| View faucet Stock Tokens | `/robinhood/assets/TSLA` and the other listed pages | TSLA, AMZN, PLTR, NFLX and AMD are Robinhood testnet ERC-20s. The pages are read only and show no price. |
-| Get test assets | [Robinhood testnet faucet](https://faucet.testnet.chain.robinhood.com/) | The faucet supplies test ETH and five of each listed Stock Token. |
-| Create and use a circle | `/robinhood` | Testnet circles are paid and locked in test USDG, not Stock Tokens. Every write requires an explicit wallet confirmation. |
+| Solana devnet | `programs/othello/` (Anchor 1.1, about 5,500 lines of Rust) | Program `DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT` |
+| Robinhood Chain testnet (`46630`) | `evm/src/` (`OthelloFactory`, `OthelloCircle`, about 720 lines of Solidity) | Factory [`0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5`](https://explorer.testnet.chain.robinhood.com/address/0x7Fc4f743a620F282EE02D83c5bDc0186c7d935D5), source-verified |
 
-The Assets page intentionally distinguishes the five faucet tokens from the wider Robinhood Stock Token registry: the other registry entries need mainnet and are not offered as testnet assets.
-
-## Security and scope
-
-- Othello does not ask for a recovery phrase, private key, or wallet password.
-- The frontend has no transfer or approval path for the five Stock Tokens. It reads their public balances and supply only.
-- The factory and test USDG are pinned by the release gate. The gate also pins each testnet ticker to its exact reviewed contract, so a swapped label and address fails the build.
-- The release builds from a fresh clone, scans the browser bundle, and accepts only the reviewed factory, USDG, and five read-only Stock Token addresses.
-- This is a testnet demonstration. No price, return, or investment advice is provided, and test assets have no value.
+On Solana devnet the stock prices come from a price feed the program's upgrade authority sets
+(`init_price_feed`, `set_prices`, `touch_prices`); the program refuses a price older than the circle's maximum age.
+A production build would read an oracle instead. The demo circle uses devnet mirror tokens of real xStocks.
 
 ## Repository map
 
-- `evm/src/`: `OthelloFactory` and `OthelloCircle` contracts.
-- `evm/script/`: factory deployment and demonstration scripts.
-- `evm/test/` and `core/`: contract tests, invariants, the reference model, and replay vectors.
-- `app/`: Next.js application, Robinhood adapter, EIP-6963 wallet selection, and the neutral/chain-aware UI.
-- `ops/`: reviewed release gate and production-release tooling.
-- `tests/`: 159 TypeScript specs, including wallet state, release, bundle, and adversarial regression tests.
+- `programs/othello/`: the Anchor program (circles, joining and locking, contributions, release, coverage, defaults,
+  top-ups, withdrawals, the price feed and the liquidation pool).
+- `evm/`: Solidity contracts, Foundry tests and deployment scripts.
+- `core/`: the shared reference model and replay vectors both chains are tested against.
+- `app/`: the Next.js website, one chain-neutral interface over a Solana adapter and a Robinhood adapter.
+- `ops/`: the release gate (it rebuilds from a clean clone, scans the browser bundle and pins every contract address)
+  and the devnet demo tooling.
+- `tests/`: TypeScript specs, including bankrun tests of the program and adversarial regression tests.
+- `SPEC.md`, `INVARIANTS.md`: the specification and the invariants the tests check.
 
-Run locally:
+## Run it locally
 
 ```bash
 corepack pnpm install --frozen-lockfile
@@ -61,25 +95,30 @@ corepack pnpm -C app install --frozen-lockfile
 corepack pnpm -C app dev
 ```
 
-For the EVM suite, run `cd evm && forge test`. The full CI workflow also builds the app, checks the release gate against Robinhood testnet, and runs a read-only USDG fork suite.
-
-## Solana / Stocklana build
-
-The Solana implementation remains part of this repository and is separately usable from the Robinhood Chain testnet release.
-
-- **Circle demo network:** Solana devnet, using demonstration assets.
-- **Asset-view network:** Solana mainnet, read only for xStock discovery and market data.
-
-- `programs/othello/`: the Anchor program for circles, joining and locking, contributions, release, coverage updates, defaults, liquidation, top-ups, and withdrawals. The devnet program is deployed at `DhZhSvtTh78ZK26MkVVpyeDYr4MuyTZSVrT5YEFqqrDT`.
-- The Solana demo circle uses devnet assets. Its mainnet Assets pages are read-only xStock views; any mainnet wallet transaction requires the wallet holder's explicit confirmation.
-- xStocks use a scaled UI multiplier for splits and dividends. The Anchor program accounts for that multiplier rather than treating a split as a loss of collateral.
-- Solana devnet keys, when used by local demo tooling, live outside the repository; no credential file is tracked.
-
-The Solana and Robinhood pages keep their network-specific assets and language separate, so a connected wallet is not asked to use an asset from the other chain.
+- Solana program: `anchor build`, then a spec, for example
+  `npx mocha --import=tsx --timeout 900000 tests/t09-join-and-lock.spec.ts`.
+- Solidity: `cd evm && forge test`.
+- CI: the harness workflow (guardrails, secret scan) runs on every pull request; the EVM workflow (app build, Solidity
+  contracts, reference model, read-only USDG fork suite, release gate) runs when its configured app, EVM, core, release or
+  selected test paths change.
 
 ## Honest limits
 
-- The Robinhood release is testnet only.
-- Circles currently use test USDG. The listed testnet Stock Tokens are visible assets, not circle collateral or payment assets.
-- A connected wallet and its provider remain the authority for every transaction. Othello cannot protect a compromised browser, extension, or wallet.
-- Dependency advisories are tracked separately and require a reviewed package-upgrade pass; no dependency update is included in this release.
+- The circles are testnet and devnet only; no Othello program or contract is on mainnet, and test assets have no
+  value. The xStock buy on the Assets pages is a mainnet Jupiter swap, separate from the circles.
+- Solana prices on devnet are set by the program's upgrade authority, not read from an oracle.
+- Solana circles are created with the devnet tooling in `ops/`; the website creates Robinhood circles.
+- Robinhood testnet circles hold test USDG; the testnet Stock Tokens are shown read only, not used as collateral.
+- Not audited. The program and contracts were reviewed by independent AI reviewers and adversarial tests, which is
+  not a substitute for an audit.
+- Your wallet stays the authority for every transaction. Othello never asks for a recovery phrase or private key.
+
+## Hackathons
+
+Othello was built from 2026-09-21. It was entered at Solana's Stocklana hackathon (submitted 2026-09-25, Solana
+devnet) and the Arbitrum Open House buildathon (the Robinhood Chain build), and is submitted to Colosseum's Crypto
+World's Fair. See [HACKATHON.md](HACKATHON.md).
+
+## License
+
+[MIT](LICENSE). Third-party code and its licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
